@@ -1,0 +1,16 @@
+flowchart TB
+    subgraph "Tabele SMS"
+        T["📋 sms_templates<br/>(szablony)"]
+        S["📤 sms_sends<br/>(wysłane SMS)"]
+        E["📊 sms_events<br/>(statusy delivery)"]
+        B["🚫 sms_suppressions<br/>(blacklist)"]
+    end
+
+    subgraph "Wizyta"
+        A["📅 appointments<br/>sent_24h_reminder_sms<br/>sent_2h_reminder_sms"]
+    end
+
+    T -->|"render"| S
+    S -->|"webhook"| E
+    E -->|"3x failed"| B
+    A -->|"flagi"| S

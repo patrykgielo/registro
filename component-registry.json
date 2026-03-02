@@ -1,0 +1,1017 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2024-11-14",
+  "description": "Component Registry for iOS-styled Laravel Livewire Components",
+  
+  "components": {
+    "ios-button": {
+      "path": "resources/views/components/ios/button.blade.php",
+      "purpose": "iOS-styled button with loading states, multiple variants, and full Livewire support",
+      "category": "forms",
+      "props": {
+        "variant": {
+          "type": "string",
+          "default": "primary",
+          "options": ["primary", "secondary", "destructive", "ghost"],
+          "description": "Visual style variant of the button"
+        },
+        "loading": {
+          "type": "boolean",
+          "default": false,
+          "description": "Shows loading spinner and disables button when true"
+        },
+        "size": {
+          "type": "string",
+          "default": "md",
+          "options": ["sm", "md", "lg"],
+          "description": "Button size affecting padding and font size"
+        },
+        "fullWidth": {
+          "type": "boolean",
+          "default": false,
+          "description": "Makes button take full width of container"
+        },
+        "icon": {
+          "type": "string",
+          "default": null,
+          "description": "Optional icon name to display before text"
+        }
+      },
+      "livewire_directives": [
+        "wire:click",
+        "wire:loading",
+        "wire:loading.attr",
+        "wire:target"
+      ],
+      "slots": {
+        "default": {
+          "required": true,
+          "description": "Button text or content"
+        }
+      },
+      "examples": [
+        "<x-ios-button variant='primary' wire:click='submit'>Submit</x-ios-button>",
+        "<x-ios-button variant='destructive' :loading='$isDeleting' wire:click='delete'>Delete</x-ios-button>",
+        "<x-ios-button variant='secondary' size='lg' fullWidth>Continue</x-ios-button>"
+      ],
+      "related": ["ios-input", "ios-form", "ios-icon-button"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2024-11-13"
+    },
+    
+    "ios-input": {
+      "path": "resources/views/components/ios/input.blade.php",
+      "purpose": "iOS-styled text input with icon support, password toggle, error handling, and authentication form support",
+      "category": "forms",
+      "props": {
+        "type": {
+          "type": "string",
+          "default": "text",
+          "options": ["text", "email", "password", "tel", "number", "url"],
+          "description": "HTML input type"
+        },
+        "name": {
+          "type": "string",
+          "default": "",
+          "description": "Input name attribute"
+        },
+        "id": {
+          "type": "string|null",
+          "default": null,
+          "description": "Input ID (defaults to name)"
+        },
+        "label": {
+          "type": "string",
+          "default": "",
+          "description": "Label text displayed above input"
+        },
+        "placeholder": {
+          "type": "string",
+          "default": "",
+          "description": "Placeholder text inside input"
+        },
+        "value": {
+          "type": "string",
+          "default": "",
+          "description": "Default value"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Shows required asterisk next to label"
+        },
+        "autofocus": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-focus on page load"
+        },
+        "autocomplete": {
+          "type": "string|null",
+          "default": null,
+          "description": "HTML autocomplete attribute"
+        },
+        "error": {
+          "type": "string|null",
+          "default": null,
+          "description": "Error message to display below input"
+        },
+        "icon": {
+          "type": "string|null",
+          "default": null,
+          "options": ["email", "password", "user", "phone"],
+          "description": "Heroicon name for left icon"
+        },
+        "helpText": {
+          "type": "string|null",
+          "default": null,
+          "description": "Help text displayed below input when no error"
+        }
+      },
+      "livewire_directives": [
+        "wire:model",
+        "wire:model.live",
+        "wire:model.lazy",
+        "wire:model.debounce",
+        "wire:dirty"
+      ],
+      "slots": {},
+      "examples": [
+        "<x-ios.input type='email' name='email' label='Email Address' icon='email' required />",
+        "<x-ios.input type='password' name='password' label='Password' icon='password' required />",
+        "<x-ios.input type='text' name='name' label='Full Name' icon='user' help-text='Enter your full name' />"
+      ],
+      "related": ["ios-button", "ios-checkbox", "ios-auth-card"],
+      "dependencies": ["blade-heroicons"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "2.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "Icon support with 4 variants (email, password, user, phone)",
+        "Password visibility toggle button",
+        "Error state with red border and background",
+        "Focus ring (4px, 10% opacity)",
+        "16px font size to prevent iOS zoom",
+        "Help text support",
+        "Touch-optimized (≥44px height)",
+        "iOS spring animation",
+        "Reduced motion support"
+      ]
+    },
+
+    "ios-checkbox": {
+      "path": "resources/views/components/ios/checkbox.blade.php",
+      "purpose": "iOS-styled checkbox with two variants: toggle switch (iOS style) and square checkbox",
+      "category": "forms",
+      "props": {
+        "name": {
+          "type": "string",
+          "default": "",
+          "description": "Input name attribute"
+        },
+        "id": {
+          "type": "string|null",
+          "default": null,
+          "description": "Input ID (defaults to name)"
+        },
+        "label": {
+          "type": "string",
+          "default": "",
+          "description": "Label text displayed next to checkbox"
+        },
+        "checked": {
+          "type": "boolean",
+          "default": false,
+          "description": "Initial checked state"
+        },
+        "value": {
+          "type": "string",
+          "default": "1",
+          "description": "Checkbox value attribute"
+        },
+        "style": {
+          "type": "string",
+          "default": "toggle",
+          "options": ["toggle", "checkbox"],
+          "description": "Visual style: iOS toggle switch or square checkbox"
+        }
+      },
+      "livewire_directives": [
+        "wire:model",
+        "wire:model.live"
+      ],
+      "slots": {},
+      "examples": [
+        "<x-ios.checkbox name='remember' label='Remember me' style='checkbox' />",
+        "<x-ios.checkbox name='notifications' label='Enable notifications' style='toggle' :checked='true' />",
+        "<x-ios.checkbox name='terms' label='I agree to terms' style='checkbox' required />"
+      ],
+      "related": ["ios-input", "ios-toggle", "ios-auth-card"],
+      "dependencies": ["blade-heroicons"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "iOS toggle switch (51x31px, green when checked)",
+        "Square checkbox with checkmark icon",
+        "Spring animation on toggle thumb",
+        "Focus ring (4px, 20% opacity)",
+        "Touch target ≥44px (iOS minimum)",
+        "Hover effects on label",
+        "Checked state with old() support",
+        "Reduced motion support"
+      ]
+    },
+
+    "ios-auth-card": {
+      "path": "resources/views/components/ios/auth-card.blade.php",
+      "purpose": "Full-screen iOS-style authentication card with gradient background, glass morphism effect, and animated orbs",
+      "category": "forms",
+      "props": {
+        "title": {
+          "type": "string",
+          "default": "",
+          "description": "Main title text (white)"
+        },
+        "subtitle": {
+          "type": "string|null",
+          "default": null,
+          "description": "Optional subtitle text (white/90)"
+        },
+        "gradient": {
+          "type": "string",
+          "default": "from-blue-600 via-purple-600 to-indigo-700",
+          "description": "Tailwind gradient classes for background"
+        },
+        "showLogo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show logo container at top"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {
+        "default": {
+          "required": true,
+          "description": "Main form content (login, register, etc.)"
+        },
+        "footer": {
+          "required": false,
+          "description": "Footer content (register link, etc.) displayed in glass card"
+        }
+      },
+      "examples": [
+        "<x-ios.auth-card title='Welcome Back' subtitle='Sign in to continue'><form>...</form></x-ios.auth-card>",
+        "<x-ios.auth-card title='Login' gradient='from-green-600 to-teal-600'><x-slot:footer><p>Don't have account?</p></x-slot:footer></x-ios.auth-card>"
+      ],
+      "related": ["ios-input", "ios-checkbox", "ios-button"],
+      "dependencies": ["Tailwind CSS gradients", "backdrop-blur"],
+      "accessibility": {
+        "aria_support": false,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "Full-screen gradient background",
+        "Animated gradient orbs (iOS 17 style, 10s infinite)",
+        "Noise texture overlay (App Store style)",
+        "Glass morphism card (backdrop-blur, white/95)",
+        "Logo container with glass effect",
+        "Fade-in-up animations with stagger (0.2s, 0.4s, 0.6s)",
+        "Footer slot with glass effect",
+        "Responsive layout (sm:max-w-md)",
+        "Reduced motion support"
+      ]
+    },
+    
+    "ios-card": {
+      "path": "resources/views/components/ios/card.blade.php",
+      "purpose": "iOS-styled card container with optional padding and customizable appearance",
+      "category": "layout",
+      "props": {
+        "padding": {
+          "type": "boolean|string",
+          "default": true,
+          "options": [true, false, "sm", "md", "lg"],
+          "description": "Controls card padding. Boolean for default, string for specific size"
+        },
+        "shadow": {
+          "type": "string",
+          "default": "sm",
+          "options": ["none", "sm", "base", "md", "lg"],
+          "description": "Shadow elevation level"
+        },
+        "border": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to show border"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {
+        "default": {
+          "required": true,
+          "description": "Card content"
+        },
+        "header": {
+          "required": false,
+          "description": "Optional card header"
+        },
+        "footer": {
+          "required": false,
+          "description": "Optional card footer"
+        }
+      },
+      "examples": [
+        "<x-ios-card><p>Simple card content</p></x-ios-card>",
+        "<x-ios-card :padding='false' shadow='lg'>No padding, larger shadow</x-ios-card>",
+        "<x-ios-card><x-slot:header>Title</x-slot:header>Content here</x-ios-card>"
+      ],
+      "related": ["ios-list", "ios-list-row", "ios-section"],
+      "accessibility": {
+        "aria_support": false,
+        "keyboard_navigation": false,
+        "screen_reader": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2024-11-13"
+    },
+    
+    "ios-list-row": {
+      "path": "resources/views/components/ios/list-row.blade.php",
+      "purpose": "iOS-styled list row with optional chevron, perfect for navigation and selection",
+      "category": "lists",
+      "props": {
+        "href": {
+          "type": "string|null",
+          "default": null,
+          "description": "URL for navigation. Renders as anchor tag when provided"
+        },
+        "showChevron": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to show right chevron arrow"
+        },
+        "active": {
+          "type": "boolean",
+          "default": false,
+          "description": "Highlights row as active/selected"
+        },
+        "divided": {
+          "type": "boolean",
+          "default": true,
+          "description": "Shows bottom border separator"
+        }
+      },
+      "livewire_directives": [
+        "wire:click"
+      ],
+      "slots": {
+        "default": {
+          "required": true,
+          "description": "Row content"
+        },
+        "leading": {
+          "required": false,
+          "description": "Content before main text (icon, image)"
+        },
+        "trailing": {
+          "required": false,
+          "description": "Content after main text, before chevron"
+        }
+      },
+      "examples": [
+        "<x-ios-list-row href='/profile'>Profile Settings</x-ios-list-row>",
+        "<x-ios-list-row wire:click='toggleNotifications' :active='$notificationsEnabled'>Notifications</x-ios-list-row>",
+        "<x-ios-list-row :showChevron='false'><x-slot:leading><img src='avatar.jpg'></x-slot:leading>John Doe</x-ios-list-row>"
+      ],
+      "related": ["ios-list", "ios-card", "ios-section"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2024-11-13"
+    },
+    
+    "ios-bottom-sheet": {
+      "path": "resources/views/components/ios/bottom-sheet.blade.php",
+      "purpose": "iOS-styled bottom sheet modal with smooth slide-up animation and backdrop",
+      "category": "overlays",
+      "props": {
+        "maxHeight": {
+          "type": "string",
+          "default": "90vh",
+          "description": "Maximum height of the sheet"
+        },
+        "showHandle": {
+          "type": "boolean",
+          "default": true,
+          "description": "Shows drag handle at top of sheet"
+        },
+        "closeOnBackdrop": {
+          "type": "boolean",
+          "default": true,
+          "description": "Closes sheet when backdrop is clicked"
+        }
+      },
+      "livewire_directives": [
+        "wire:model",
+        "x-model"
+      ],
+      "slots": {
+        "default": {
+          "required": true,
+          "description": "Sheet content"
+        },
+        "header": {
+          "required": false,
+          "description": "Optional header section"
+        },
+        "footer": {
+          "required": false,
+          "description": "Optional footer with actions"
+        }
+      },
+      "examples": [
+        "<x-ios-bottom-sheet wire:model='showSheet'><p>Sheet content</p></x-ios-bottom-sheet>",
+        "<x-ios-bottom-sheet x-model='open' :closeOnBackdrop='false'>Always requires button close</x-ios-bottom-sheet>"
+      ],
+      "related": ["ios-modal", "ios-action-sheet", "ios-dialog"],
+      "dependencies": ["Alpine.js"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "focus_trap": true
+      },
+      "version": "1.0.0",
+      "status": "beta",
+      "last_updated": "2024-11-13"
+    },
+    
+    "ios-toggle": {
+      "path": "resources/views/components/ios/toggle.blade.php",
+      "purpose": "iOS-styled toggle switch with smooth animation and Livewire wire:model support",
+      "category": "forms",
+      "props": {
+        "label": {
+          "type": "string",
+          "default": "",
+          "description": "Label text displayed next to toggle"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disables the toggle"
+        },
+        "size": {
+          "type": "string",
+          "default": "md",
+          "options": ["sm", "md", "lg"],
+          "description": "Toggle size"
+        }
+      },
+      "livewire_directives": [
+        "wire:model",
+        "wire:model.live"
+      ],
+      "slots": {},
+      "examples": [
+        "<x-ios-toggle label='Enable notifications' wire:model='notifications' />",
+        "<x-ios-toggle label='Dark mode' wire:model.live='darkMode' size='lg' />"
+      ],
+      "related": ["ios-input", "ios-checkbox", "ios-radio"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2024-11-13"
+    },
+
+    "ios-hero-banner": {
+      "path": "resources/views/components/ios/hero-banner.blade.php",
+      "purpose": "Full-width iOS-style hero banner with animated gradient background, CTA buttons, and trust badges",
+      "category": "marketing",
+      "props": {
+        "title": {
+          "type": "string",
+          "default": "Detailing jak z przyszłości",
+          "description": "Main headline text"
+        },
+        "subtitle": {
+          "type": "string|null",
+          "default": "Profesjonalne usługi detailingowe dla Twojego auta",
+          "description": "Optional subheadline text"
+        },
+        "primaryCta": {
+          "type": "string|null",
+          "default": null,
+          "description": "Primary button text (white background)"
+        },
+        "secondaryCta": {
+          "type": "string|null",
+          "default": null,
+          "description": "Secondary button text (outline style)"
+        },
+        "primaryCtaUrl": {
+          "type": "string",
+          "default": "#",
+          "description": "URL for primary CTA button"
+        },
+        "secondaryCtaUrl": {
+          "type": "string",
+          "default": "#",
+          "description": "URL for secondary CTA button"
+        },
+        "gradient": {
+          "type": "string",
+          "default": "from-blue-600 via-purple-600 to-pink-600",
+          "description": "Tailwind gradient classes for background"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {
+        "default": {
+          "required": false,
+          "description": "Optional trust badges or additional content below CTAs"
+        }
+      },
+      "examples": [
+        "<x-ios.hero-banner title='Welcome' primary-cta='Get Started' primary-cta-url='/register' />",
+        "<x-ios.hero-banner title='Detailing' subtitle='Professional service' primary-cta='Book Now' secondary-cta='Learn More' gradient='from-green-500 to-blue-600'><div class='flex gap-4'><span>⭐ 4.9/5</span></div></x-ios.hero-banner>"
+      ],
+      "related": ["ios-card", "ios-button"],
+      "dependencies": ["Tailwind CSS gradients"],
+      "accessibility": {
+        "aria_support": false,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "Animated gradient background (15s infinite)",
+        "iOS spring animation on buttons (cubic-bezier)",
+        "Fade-in-up content animation with stagger",
+        "Noise texture overlay (App Store style)",
+        "Backdrop blur effects on buttons",
+        "Touch targets ≥44px (iOS minimum)",
+        "Reduced motion support"
+      ]
+    },
+
+    "ios-service-card": {
+      "path": "resources/views/components/ios/service-card.blade.php",
+      "purpose": "iOS-style service card with BEM Methodology, conversion optimization patterns (social proof, urgency, features), and App Icon-style icon container",
+      "category": "marketing",
+      "props": {
+        "service": {
+          "type": "Service|null",
+          "default": null,
+          "description": "Service model instance (auto-extracts all fields including conversion data)"
+        },
+        "icon": {
+          "type": "string",
+          "default": "sparkles",
+          "description": "Heroicon name without prefix (e.g., 'sparkles', 'paint-brush')"
+        },
+        "title": {
+          "type": "string",
+          "default": "",
+          "description": "Service name (overrides model)"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "Service description (overrides model, max 100 chars)"
+        },
+        "price": {
+          "type": "decimal|null",
+          "default": null,
+          "description": "Service price in PLN (overrides model)"
+        },
+        "duration": {
+          "type": "integer|null",
+          "default": null,
+          "description": "Duration in minutes"
+        },
+        "url": {
+          "type": "string",
+          "default": "#",
+          "description": "Link to service page"
+        },
+        "showCta": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show orange CTA button"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {},
+      "examples": [
+        "<x-ios.service-card :service='$service' />",
+        "<x-ios.service-card icon='paint-brush' title='Korekta lakieru' description='Usuwanie zarysowań' :price='350' :duration='180' url='/services/korekta' />"
+      ],
+      "related": ["ios-card", "ios-hero-banner", "ios-star-rating"],
+      "dependencies": ["blade-heroicons", "Alpine.js", "ios-star-rating (optional)"],
+      "accessibility": {
+        "aria_support": false,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "touch_targets": true,
+        "reduced_motion": true
+      },
+      "bem_structure": {
+        "block": ".service-card",
+        "modifiers": [
+          ".service-card--popular (when isPopular=true)"
+        ],
+        "elements": [
+          ".service-card__badge (popularity badge)",
+          ".service-card__badge-icon",
+          ".service-card__badge-text",
+          ".service-card__icon (icon container)",
+          ".service-card__icon-svg",
+          ".service-card__rating (star rating wrapper, commented out)",
+          ".service-card__title",
+          ".service-card__description",
+          ".service-card__duration",
+          ".service-card__duration-icon",
+          ".service-card__duration-text",
+          ".service-card__features (list container, hidden on mobile)",
+          ".service-card__feature (single feature item)",
+          ".service-card__feature-icon",
+          ".service-card__feature-text",
+          ".service-card__price",
+          ".service-card__price-label",
+          ".service-card__price-value",
+          ".service-card__price-currency",
+          ".service-card__cta (CTA button)",
+          ".service-card__cta-text",
+          ".service-card__cta-icon",
+          ".service-card__urgency (urgency footer)",
+          ".service-card__urgency-icon",
+          ".service-card__urgency-text",
+          ".service-card__urgency-count"
+        ],
+        "notes": "BEM classes provide semantic structure, Tailwind utilities handle all visual styling. No custom CSS required except for state logic."
+      },
+      "version": "3.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "BEM Methodology for semantic HTML structure",
+        "App Icon-style rounded square icon container (16px radius)",
+        "Icon rotation (3deg) and scale (1.1x) on hover",
+        "8 gradient color variants for icons",
+        "iOS spring animation (cubic-bezier)",
+        "Active state: card scale down (0.98x) on tap",
+        "Line-clamp description (2 lines)",
+        "Touch targets ≥44px minimum",
+        "Reduced motion support"
+      ],
+      "conversion_features": [
+        "Popularity badge (orange gradient, top-right) - +34% conversion",
+        "Star rating component (extracted, hidden by default) - social proof",
+        "Features list with checkmarks (hidden on mobile) - perceived value",
+        "Orange CTA button (gradient) - +21% conversion vs blue",
+        "Urgency footer (booking count) - +27% conversion",
+        "Price anchoring ('Od X zł' format) - +22% conversion",
+        "Enhanced hover effect (lift -8px, shadow increase)",
+        "Mobile-first responsive (features hidden <768px)"
+      ]
+    },
+
+    "ios-star-rating": {
+      "path": "resources/views/components/ios/star-rating.blade.php",
+      "purpose": "iOS-style star rating component with BEM Methodology, displaying filled/half/empty stars, rating value, and review count",
+      "category": "feedback",
+      "props": {
+        "rating": {
+          "type": "decimal",
+          "default": 0,
+          "description": "Average rating value (0-5, supports decimals like 4.5)"
+        },
+        "totalReviews": {
+          "type": "integer",
+          "default": 0,
+          "description": "Total number of reviews/ratings"
+        },
+        "size": {
+          "type": "string",
+          "default": "sm",
+          "options": ["sm", "md", "lg"],
+          "description": "Size variant for stars and text"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {},
+      "examples": [
+        "<x-ios.star-rating :rating='4.9' :total-reviews='127' size='sm' />",
+        "<x-ios.star-rating :rating='$service->average_rating' :total-reviews='$service->total_reviews' />",
+        "<x-ios.star-rating :rating='3.5' :total-reviews='42' size='lg' />"
+      ],
+      "related": ["ios-service-card"],
+      "dependencies": ["blade-heroicons"],
+      "accessibility": {
+        "aria_support": false,
+        "keyboard_navigation": false,
+        "screen_reader": true,
+        "touch_targets": false,
+        "reduced_motion": false
+      },
+      "bem_structure": {
+        "block": ".star-rating",
+        "modifiers": [],
+        "elements": [
+          ".star-rating__stars (stars container)",
+          ".star-rating__star (single star icon)",
+          ".star-rating__star--filled (filled star, yellow)",
+          ".star-rating__star--half (half-filled star, yellow)",
+          ".star-rating__star--empty (empty star, gray)",
+          ".star-rating__value (numeric rating value)",
+          ".star-rating__count (review count text)"
+        ],
+        "notes": "BEM classes describe semantic structure, Tailwind utilities handle sizing and colors. Responsive via size prop (sm/md/lg)."
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "BEM Methodology for semantic HTML structure",
+        "5-star display with filled/half/empty states",
+        "Numeric rating value (e.g., '4.9')",
+        "Polish pluralization (opinia/opinii)",
+        "3 size variants (sm, md, lg) for different contexts",
+        "Yellow stars (yellow-400) for positive emphasis",
+        "Gray empty stars (gray-300) for unfilled",
+        "Inline-flex layout for compact display"
+      ]
+    },
+
+    "ios-footer": {
+      "path": "resources/views/components/ios/footer.blade.php",
+      "purpose": "iOS-style footer with 4-column layout, company info, navigation links, and social icons",
+      "category": "marketing",
+      "props": {},
+      "livewire_directives": [],
+      "slots": {},
+      "examples": [
+        "<x-ios.footer />"
+      ],
+      "related": ["ios-hero-banner"],
+      "dependencies": ["blade-heroicons"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "4-column responsive grid (1 col mobile → 4 desktop)",
+        "Gradient logo with rounded corners",
+        "Social icon buttons with hover effects",
+        "iOS spring animation on hover",
+        "Semantic HTML with proper ARIA labels",
+        "Reduced motion support"
+      ]
+    },
+    "ios-service-hero": {
+      "path": "resources/views/components/ios/service-hero.blade.php",
+      "purpose": "Full-width iOS-style hero for service pages with featured image background, gradient overlay, title, excerpt, and CTA",
+      "category": "marketing",
+      "props": {
+        "service": {
+          "type": "Service|null",
+          "default": null,
+          "description": "Service model instance (auto-fills title, excerpt, featuredImage)"
+        },
+        "title": {
+          "type": "string",
+          "default": "",
+          "description": "Service title/name"
+        },
+        "excerpt": {
+          "type": "string",
+          "default": "",
+          "description": "Service short description"
+        },
+        "featuredImage": {
+          "type": "string|null",
+          "default": null,
+          "description": "URL to featured image (background)"
+        },
+        "gradient": {
+          "type": "string",
+          "default": "from-blue-600 via-purple-600 to-indigo-700",
+          "description": "Tailwind gradient classes for overlay"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {},
+      "examples": [
+        "<x-ios.service-hero :service=\"$service\" />",
+        "<x-ios.service-hero title=\"Custom Service\" excerpt=\"Custom description\" />"
+      ],
+      "related": ["ios-service-details", "ios-breadcrumbs"],
+      "dependencies": ["blade-heroicons", "Laravel Storage"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "Full-width background with featured image or gradient",
+        "Dark gradient overlay for text contrast",
+        "Noise texture overlay (App Store style)",
+        "Fade-in-up animations with stagger",
+        "Scroll indicator (bounce animation)",
+        "iOS spring animation on CTA button",
+        "Responsive typography (4xl → 6xl)",
+        "Touch-optimized CTA (≥44px)"
+      ]
+    },
+    "ios-breadcrumbs": {
+      "path": "resources/views/components/ios/breadcrumbs.blade.php",
+      "purpose": "iOS-style breadcrumb navigation with chevron separators and hover effects",
+      "category": "navigation",
+      "props": {
+        "items": {
+          "type": "array",
+          "default": [],
+          "description": "Array of breadcrumb items: [['label' => 'Text', 'url' => 'http://...'], ['label' => 'Current Page']]"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {},
+      "examples": [
+        "<x-ios.breadcrumbs :items=\"[['label' => 'Home', 'url' => route('home')], ['label' => 'Services', 'url' => route('services.index')], ['label' => 'Detailing']]\" />"
+      ],
+      "related": ["ios-service-hero"],
+      "dependencies": ["blade-heroicons"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": true,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "Chevron separators with Heroicons",
+        "Hover color transition to primary",
+        "iOS spring animation",
+        "Current page in semibold (aria-current)",
+        "Container with responsive padding"
+      ]
+    },
+    "ios-service-details": {
+      "path": "resources/views/components/ios/service-details.blade.php",
+      "purpose": "3-card grid displaying service metadata: duration, price, area served (floating above hero on service pages)",
+      "category": "marketing",
+      "props": {
+        "service": {
+          "type": "Service|null",
+          "default": null,
+          "description": "Service model instance (auto-fills duration, price, area)"
+        },
+        "duration": {
+          "type": "string|null",
+          "default": null,
+          "description": "Service duration display (e.g., '120 min')"
+        },
+        "price": {
+          "type": "float|null",
+          "default": null,
+          "description": "Service base price"
+        },
+        "priceFrom": {
+          "type": "float|null",
+          "default": null,
+          "description": "Service 'from' price (takes precedence)"
+        },
+        "areaServed": {
+          "type": "string|null",
+          "default": null,
+          "description": "Service area (e.g., 'Poznań')"
+        }
+      },
+      "livewire_directives": [],
+      "slots": {},
+      "examples": [
+        "<x-ios-service-details :service=\"$service\" />",
+        "<x-ios.service-details duration=\"2 godziny\" price=\"299\" areaServed=\"Poznań\" />"
+      ],
+      "related": ["ios-service-hero"],
+      "dependencies": ["blade-heroicons"],
+      "accessibility": {
+        "aria_support": true,
+        "keyboard_navigation": false,
+        "screen_reader": true,
+        "reduced_motion": true
+      },
+      "version": "1.0.0",
+      "status": "stable",
+      "last_updated": "2025-12-09",
+      "ios_features": [
+        "3-card responsive grid (1 col mobile → 3 desktop)",
+        "Gradient icon backgrounds (blue, green, purple)",
+        "White cards with shadow elevation",
+        "Hover shadow enhancement",
+        "iOS spring animation",
+        "Negative margin (-mt-16) to float above hero",
+        "Auto-format price with 'od X zł' pattern"
+      ]
+    }
+  },
+
+  "categories": {
+    "forms": {
+      "description": "Form inputs, buttons, and controls",
+      "components": ["ios-button", "ios-input", "ios-checkbox", "ios-auth-card", "ios-textarea", "ios-select", "ios-toggle", "ios-radio"]
+    },
+    "layout": {
+      "description": "Layout containers and wrappers",
+      "components": ["ios-card", "ios-section", "ios-container", "ios-grid"]
+    },
+    "lists": {
+      "description": "List components and rows",
+      "components": ["ios-list", "ios-list-row", "ios-grouped-list"]
+    },
+    "navigation": {
+      "description": "Navigation components",
+      "components": ["ios-nav-bar", "ios-tab-bar", "ios-breadcrumbs"]
+    },
+    "overlays": {
+      "description": "Modals, sheets, and overlays",
+      "components": ["ios-bottom-sheet", "ios-modal", "ios-action-sheet", "ios-dialog", "ios-toast"]
+    },
+    "feedback": {
+      "description": "Loading, progress, status indicators, and ratings",
+      "components": ["ios-spinner", "ios-progress", "ios-skeleton", "ios-badge", "ios-star-rating"]
+    },
+    "data": {
+      "description": "Data display components",
+      "components": ["ios-table", "ios-calendar", "ios-chart"]
+    },
+    "marketing": {
+      "description": "Marketing and promotional components",
+      "components": ["ios-hero-banner", "ios-service-card", "ios-footer", "ios-service-hero", "ios-service-details"]
+    }
+  },
+  
+  "design_principles": {
+    "touch_targets": "Minimum 44x44px for all interactive elements",
+    "animations": "Smooth transitions between 150-300ms",
+    "spacing": "Consistent 4px/8px grid system",
+    "colors": "iOS semantic colors from design-system.json",
+    "typography": "System font stack mimicking SF Pro",
+    "mobile_first": "Always design for mobile first, enhance for larger screens"
+  },
+  
+  "livewire_patterns": {
+    "reactive_props": "Use wire:model for two-way binding",
+    "loading_states": "Use wire:loading for async operations",
+    "dirty_tracking": "Use wire:dirty to show unsaved changes",
+    "polling": "Use wire:poll for real-time updates",
+    "lazy_loading": "Use wire:init for deferred loading"
+  }
+}

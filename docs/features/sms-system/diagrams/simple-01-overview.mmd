@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph Triggery
+        A[Użytkownik tworzy wizytę]
+        B[Scheduler co 1h]
+    end
+
+    subgraph SMS System
+        C[SmsService]
+        D[SMSAPI.pl]
+    end
+
+    subgraph Wynik
+        E[SMS do klienta]
+    end
+
+    A -->|Event| C
+    B -->|Job| C
+    C -->|HTTP| D
+    D --> E

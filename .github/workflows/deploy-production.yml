@@ -1,0 +1,277 @@
+name: Build and Deploy
+
+# Disabled for Registro migration - manual trigger only
+on:
+  workflow_dispatch:
+
+# Prevent concurrent deployments - queue new ones, don't cancel
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: PHPUnit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: registro_test
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -psecret --silent"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+      redis:
+        image: redis:7.0
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@cf4cade2721270509d5b1c766ab3549210a39a2a  # v2.33.0
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, json, bcmath, pdo, pdo_sqlite, pdo_mysql, mysql, redis, exif, pcntl, gd, zip, intl, opcache
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@f4b3439a656ba812b8cb417d2d49f9c810103092  # v3.4.0
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Run Laravel Pint (Code Style)
+        run: ./vendor/bin/pint --test
+
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan config:cache
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: registro_test
+          DB_USERNAME: root
+          DB_PASSWORD: secret
+
+      - name: Run migrations and seeders
+        run: |
+          php artisan migrate --force
+          php artisan db:seed --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: registro_test
+          DB_USERNAME: root
+          DB_PASSWORD: secret
+
+      - name: Run PHPUnit tests
+        run: |
+          php artisan config:clear
+          php artisan test --testsuite=Feature
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: registro_test
+          DB_USERNAME: root
+          DB_PASSWORD: secret
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          QUEUE_CONNECTION: redis
+          CACHE_DRIVER: redis
+          CACHE_STORE: redis
+          SESSION_DRIVER: array
+          MAIL_MAILER: array
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build image
+        run: |
+          docker build \
+            --no-cache \
+            --pull \
+            --tag ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }} \
+            --tag ghcr.io/patrykgielo/registro:latest \
+            .
+
+      - name: Push image
+        run: |
+          docker push ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }}
+          docker push ghcr.io/patrykgielo/registro:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    environment:
+      name: production
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy to VPS (with retry)
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08  # v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 60
+          command: |
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o ConnectTimeout=60 -o StrictHostKeyChecking=accept-new -o UpdateHostKeys=yes \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'DEPLOY_SCRIPT'
+            set -e
+
+            echo "Production Deployment Started"
+            echo "Version: ${{ github.ref_name }}"
+            echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
+
+            cd /var/www/registro
+
+            set -a
+            source .env
+            set +a
+
+            echo "Downloading docker-compose.prod.yml..."
+            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -o docker-compose.prod.yml \
+              "https://raw.githubusercontent.com/patrykgielo/registro/${{ github.ref_name }}/docker-compose.prod.yml"
+
+            echo "Downloading nginx production config..."
+            mkdir -p docker/nginx
+            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -o docker/nginx/app.prod.conf \
+              "https://raw.githubusercontent.com/patrykgielo/registro/${{ github.ref_name }}/docker/nginx/app.prod.conf"
+
+            echo "Logging into GHCR..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "Cleaning old Docker images..."
+            docker image prune -af --filter "until=24h" || true
+
+            echo "Pulling Docker image..."
+            docker compose -f docker-compose.prod.yml pull
+
+            echo "Recreating containers..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate app mysql redis nginx horizon scheduler
+
+            echo "Waiting for MySQL..."
+            until docker compose -f docker-compose.prod.yml exec -T mysql mysqladmin ping -h localhost --silent < /dev/null; do
+              sleep 2
+            done
+
+            echo "Waiting for Redis..."
+            until docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" ping < /dev/null | grep -q PONG; do
+              sleep 2
+            done
+
+            echo "Running migrations..."
+            docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force < /dev/null
+
+            echo "Clearing caches..."
+            docker compose -f docker-compose.prod.yml exec -T app php artisan optimize:clear < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app php artisan filament:optimize-clear < /dev/null
+
+            echo "Optimizing..."
+            docker compose -f docker-compose.prod.yml exec -T app php artisan config:cache < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app php artisan route:cache < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app php artisan view:cache < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app php artisan event:cache < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app php artisan filament:optimize < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app composer install --optimize-autoloader --no-dev < /dev/null
+            docker compose -f docker-compose.prod.yml exec -T app php artisan storage:link < /dev/null || true
+
+            echo "Restarting Horizon..."
+            docker compose -f docker-compose.prod.yml restart horizon
+
+            echo "Verifying storage..."
+            docker compose -f docker-compose.prod.yml exec -T app ls -la public/storage < /dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T app printenv FILESYSTEM_DISK < /dev/null || true
+
+            echo "Production Deployment Complete"
+            docker compose -f docker-compose.prod.yml ps
+            DEPLOY_SCRIPT
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Health Check (Post-Deployment)
+        timeout-minutes: 5
+        run: |
+          echo "Verifying application health..."
+          for i in {1..30}; do
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" https://${{ secrets.VPS_HOST }}/up 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Health check passed (HTTP $HTTP_CODE)"
+              exit 0
+            fi
+            echo "Attempt $i/30: HTTP $HTTP_CODE, retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 5 minutes"
+          exit 1

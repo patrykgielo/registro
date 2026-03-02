@@ -1,0 +1,45 @@
+sequenceDiagram
+    participant User
+    participant Controller
+    participant Appointment Model
+    participant Event
+    participant AppServiceProvider
+    participant SmsService
+    participant SmsApiGateway
+    participant SMSAPI.pl
+    participant Database
+
+    User->>Controller: Create Appointment
+    Controller->>Appointment Model: Appointment::create()
+    Appointment Model->>Database: INSERT appointment
+    Appointment Model->>Event: dispatch AppointmentCreated
+
+    Event->>AppServiceProvider: Event Listener triggered
+
+    AppServiceProvider->>AppServiceProvider: Check SMS enabled (settings)
+    AppServiceProvider->>AppServiceProvider: Check send_booking_confirmation
+
+    alt SMS Enabled
+        AppServiceProvider->>SmsService: sendFromTemplate('appointment-created')
+
+        SmsService->>SmsService: Check suppression list
+        SmsService->>SmsService: Check GDPR consent
+        SmsService->>SmsService: Check spending limits
+        SmsService->>Database: Fetch SmsTemplate
+        SmsService->>SmsService: Render template with Blade
+        SmsService->>Database: Create SmsSend (status=pending)
+
+        SmsService->>SmsApiGateway: send(phone, message)
+        SmsApiGateway->>SMSAPI.pl: HTTP POST /sms.do
+        SMSAPI.pl-->>SmsApiGateway: Response {sms_id, status}
+        SmsApiGateway-->>SmsService: Success
+
+        SmsService->>Database: Update SmsSend (status=sent, sms_id)
+        SmsService->>Database: Create SmsEvent (type=sent)
+        SmsService-->>AppServiceProvider: SMS sent OK
+    else SMS Disabled
+        AppServiceProvider->>AppServiceProvider: Skip SMS, log info
+    end
+
+    AppServiceProvider-->>Controller: Continue flow
+    Controller-->>User: Appointment created response

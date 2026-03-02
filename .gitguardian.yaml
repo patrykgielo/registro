@@ -1,0 +1,30 @@
+# GitGuardian configuration
+# Ignore false positives in documentation and examples
+
+version: 2
+
+paths-ignore:
+  # Documentation files with example configurations
+  - docs/**/*.md
+  - README.md
+  - CONTRIBUTING.md
+  - CHANGELOG.md
+
+  # Test files with mock credentials
+  - tests/**/*
+  - database/factories/**/*
+
+  # Config examples
+  - .env.example
+  - .env.production.example
+
+matches-ignore:
+  # Ignore generic example values
+  - name: Example SMTP credentials
+    match: smtp.example.com
+  - name: Example email addresses
+    match: your-email@example.com
+  - name: Example passwords
+    match: your-.*-password
+  - name: Placeholder credentials
+    match: your-16-char-app-password

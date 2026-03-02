@@ -1,0 +1,559 @@
+@import 'tailwindcss';
+
+/* Design Tokens - Auto-generated from design-system.json */
+@import './design-tokens.css';
+
+/* Premium CMS Typography */
+@import './prose-typography.css';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+/*
+ * Safelist: CTA Container padding classes (dynamically generated in PHP)
+ * These classes are used in cta-banner.blade.php via match() statements
+ * p-8 p-10 p-12 md:p-12 md:p-16 md:p-20
+ * rounded-lg rounded-xl rounded-2xl rounded-3xl
+ */
+
+/* Custom styles using plain CSS - Tailwind CSS 4.0 compatible */
+
+/* =============================================================================
+   iOS-Style Components & Animations
+   ============================================================================= */
+
+/* Smooth Scroll (iOS-style) */
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 100px; /* Account for fixed header */
+}
+
+/* =============================================================================
+   Animations & Keyframes
+   ============================================================================= */
+
+/* Fade In Up Animation (iOS spring) */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.8s cubic-bezier(0.36, 0.66, 0.04, 1) both;
+}
+
+/* Blob Animation (iOS 17 style) */
+@keyframes blob {
+    0%, 100% {
+        transform: translate(0px, 0px) scale(1);
+    }
+    33% {
+        transform: translate(30px, -50px) scale(1.1);
+    }
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+}
+
+.animate-blob {
+    animation: blob 10s infinite;
+}
+
+/* Gradient Animation */
+@keyframes gradient {
+    0%, 100% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+.animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 15s ease infinite;
+}
+
+/* Animation Delays (used in auth-card, hero-banner) */
+.animation-delay-200 {
+    animation-delay: 0.2s;
+}
+
+.animation-delay-400 {
+    animation-delay: 0.4s;
+}
+
+.animation-delay-600 {
+    animation-delay: 0.6s;
+}
+
+.animation-delay-2000 {
+    animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+    animation-delay: 4s;
+}
+
+/* =============================================================================
+   iOS Components
+   ============================================================================= */
+
+/* iOS Spring Animation (Core transition timing) */
+.ios-spring {
+    transition-timing-function: cubic-bezier(0.36, 0.66, 0.04, 1);
+}
+
+/* iOS Input Styles */
+.ios-input {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ios-input:focus {
+    outline: none;
+}
+
+.ios-input::placeholder {
+    opacity: 1;
+}
+
+/* iOS Toggle Switch */
+.ios-toggle {
+    position: relative;
+}
+
+.ios-toggle-thumb {
+    transition-property: transform;
+    transition-timing-function: cubic-bezier(0.36, 0.66, 0.04, 1);
+}
+
+/* iOS Checkbox */
+.ios-checkbox {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Card Styles */
+.ios-card {
+    -webkit-tap-highlight-color: transparent;
+    min-height: 44px; /* iOS touch target minimum */
+}
+
+.ios-card:active {
+    transform: scale(0.98);
+}
+
+/* iOS Button Styles */
+.ios-button {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+.ios-button-primary {
+    background: rgba(255, 255, 255, 0.95);
+    color: #5A8A99;  /* Brand cyan interactive (Bentley Modern) */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.ios-button-primary:hover {
+    background: rgba(255, 255, 255, 1);
+}
+
+.ios-button-secondary-outline {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* Touch Target (iOS minimum 44x44px) */
+.ios-checkbox-group label {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+/* =============================================================================
+   Utility Classes
+   ============================================================================= */
+
+/* Line Clamp */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Noise Texture (iOS App Store style) */
+.bg-noise {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* =============================================================================
+   Accessibility: Reduced Motion
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    .animate-fade-in-up,
+    .animate-blob,
+    .animate-gradient,
+    .ios-spring {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+        opacity: 1 !important;
+    }
+
+    .ios-spring:hover,
+    .ios-spring:active {
+        transform: none !important;
+    }
+
+    .ios-toggle,
+    .ios-toggle-thumb,
+    .ios-checkbox {
+        transition: none !important;
+    }
+
+    .group-hover\:scale-110,
+    .group-hover\:rotate-3 {
+        transition: none !important;
+        transform: none !important;
+    }
+}
+
+/* =============================================================================
+   Registro Brand Color System (Bentley Modern: 25% Saturation Sophisticated)
+   ============================================================================= */
+
+:root {
+    /* Registro Brand Colors - Bentley Modern Palette */
+    --brand-cyan: #6B9FA8;           /* Desaturated cyan (25% sat, 10% usage) */
+    --brand-cyan-interactive: #5A8A99; /* Interactive hover state */
+    --brand-cyan-text: #4D7C8A;      /* Text links (darker for contrast) */
+    --brand-charcoal: #2B2D2F;       /* Warm charcoal (60% usage, dark primary) */
+    --brand-tan: #D4C5B0;            /* Tan leather (30% usage, warm secondary) */
+    --brand-bronze: #8B7355;         /* Bronze (<5% usage, premium touch) */
+    --brand-bronze-hover: #7A6449;   /* Bronze hover state */
+
+    /* iOS Semantic Colors (preserved for compatibility) */
+    --ios-green: #34C759;
+    --ios-yellow: #FFCC00;
+    --ios-orange: #FF9500;
+    --ios-red: #FF3B30;
+
+    /* Registro Gradients (Updated with Bentley Modern colors) */
+    --gradient-primary: linear-gradient(135deg, rgba(107, 159, 168, 0.8) 0%, rgba(90, 138, 153, 0.8) 100%);
+    --gradient-accent: linear-gradient(135deg, rgba(139, 115, 85, 0.8) 0%, rgba(122, 100, 73, 0.8) 100%);
+    --gradient-hero: linear-gradient(to bottom, #E8F2F4, transparent);
+    --gradient-cta: linear-gradient(to right, #6B9FA8, #8B7355);
+}
+
+/* Radial Gradient Utility (for orbs) */
+.bg-gradient-radial {
+    background-image: radial-gradient(circle, var(--tw-gradient-stops));
+}
+
+/* 3-Layer iOS Shadow System (elevation levels) */
+.shadow-ios-sm {
+    box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.12),
+        0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.shadow-ios-md {
+    box-shadow:
+        0 4px 6px rgba(0, 0, 0, 0.1),
+        0 2px 4px rgba(0, 0, 0, 0.06),
+        0 0 20px rgba(99, 102, 241, 0.1); /* Colored glow */
+}
+
+.shadow-ios-lg {
+    box-shadow:
+        0 10px 15px rgba(0, 0, 0, 0.1),
+        0 4px 6px rgba(0, 0, 0, 0.05),
+        0 0 40px rgba(99, 102, 241, 0.15);
+}
+
+.shadow-ios-xl {
+    box-shadow:
+        0 20px 25px rgba(0, 0, 0, 0.15),
+        0 10px 10px rgba(0, 0, 0, 0.04),
+        0 0 60px rgba(99, 102, 241, 0.2);
+}
+
+/* Glass Morphism Utilities */
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* iOS Typography Scale */
+.text-ios-hero {
+    font-size: clamp(3rem, 8vw, 6rem);      /* 48-96px */
+    font-weight: 300;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+}
+
+.text-ios-title {
+    font-size: clamp(2rem, 5vw, 3.5rem);    /* 32-56px */
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+}
+
+.text-ios-headline {
+    font-size: clamp(1.5rem, 3vw, 2rem);    /* 24-32px */
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+.text-ios-body {
+    font-size: 1.125rem;                    /* 18px */
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+}
+
+/* Fluid Typography Utilities (Responsive without breakpoints) */
+.text-fluid-hero {
+    font-size: clamp(2.25rem, 6vw, 6rem);   /* 36-96px */
+    line-height: 1.1;
+}
+
+.text-fluid-subtitle {
+    font-size: clamp(1.125rem, 2.5vw, 1.5rem); /* 18-24px */
+    line-height: 1.5;
+}
+
+.text-fluid-body {
+    font-size: clamp(1rem, 2vw, 1.25rem);   /* 16-20px */
+    line-height: 1.6;
+}
+
+/* =============================================================================
+   Service Card Conversion Optimization
+   ============================================================================= */
+
+/* Service Card Elevated (hover state) */
+.service-card-elevated {
+    transform: translateY(-8px);
+    box-shadow:
+        0 20px 25px rgba(0, 0, 0, 0.1),
+        0 10px 10px rgba(0, 0, 0, 0.04),
+        0 0 40px rgba(249, 115, 22, 0.15); /* Orange glow */
+}
+
+/* Star Rating Component */
+.star-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+/* Feature List Checkmark Animation */
+.feature-checkmark {
+    animation: checkmark-pop 0.3s cubic-bezier(0.36, 0.66, 0.04, 1);
+}
+
+@keyframes checkmark-pop {
+    0% {
+        transform: scale(0);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Orange CTA Pulse Effect (optional) */
+.cta-orange-pulse {
+    animation: orange-pulse 2s infinite;
+}
+
+@keyframes orange-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(249, 115, 22, 0);
+    }
+}
+
+/* Reduced Motion Support for Conversion Features */
+@media (prefers-reduced-motion: reduce) {
+    .service-card-elevated,
+    .feature-checkmark,
+    .cta-orange-pulse {
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
+/* =============================================================================
+   Dark Theme Components (Client Request: Dark Tiles & Header)
+   Colors: Section #00323B, Tiles #000000, CTA #0AB1EA, Text #FFFFFF
+   ============================================================================= */
+
+/* Dark Section Background */
+.bg-section-dark {
+    background-color: var(--color-dark-section, #00323B);
+}
+
+/* Service Card Dark Variant */
+.service-card-dark {
+    background-color: var(--color-dark-tile, #000000);
+    border: none;
+}
+
+/* Colored Glow Shadows (visible on dark backgrounds) */
+.shadow-dark-glow {
+    box-shadow:
+        0 0 20px var(--color-dark-glow, rgba(10, 177, 234, 0.15)),
+        0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.shadow-dark-glow-hover {
+    box-shadow:
+        0 0 35px var(--color-dark-glow-hover, rgba(10, 177, 234, 0.25)),
+        0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Dark Variant Text Colors */
+.text-dark-primary {
+    color: var(--color-dark-text, #FFFFFF);
+}
+
+.text-dark-muted {
+    color: var(--color-dark-text-muted, rgba(255, 255, 255, 0.7));
+}
+
+/* CTA Button Dark Variant */
+.btn-cta-dark {
+    background-color: var(--color-dark-cta, #0AB1EA);
+    color: white;
+    transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.btn-cta-dark:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+}
+
+/* Duration Badge Dark Variant */
+.badge-duration-dark {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Features List Dark Variant */
+.features-list-dark {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Urgency Footer Dark Variant */
+.urgency-footer-dark {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Header Dark Variant */
+.header-dark {
+    background-color: #000000;
+}
+
+.header-dark-scrolled {
+    background-color: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+/* Reduced Motion for Dark Components */
+@media (prefers-reduced-motion: reduce) {
+    .shadow-dark-glow,
+    .shadow-dark-glow-hover,
+    .btn-cta-dark {
+        transition: none !important;
+    }
+}
+
+/* =============================================================================
+   CMS Featured Image Cards
+   ============================================================================= */
+
+/* CMS Card Image (16:9 aspect ratio) */
+.cms-card-image {
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+/* Service Card with Background Image */
+.service-card-bg-image {
+    position: relative;
+    background-size: cover;
+    background-position: center;
+}
+
+/* Service Card Overlay (black at 90%) */
+.service-card-bg-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: var(--color-dark-tile, #000000);
+    opacity: 0.9;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+/* CMS Content Card Structure */
+.cms-content-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.cms-content-card:hover {
+    transform: translateY(-4px);
+}
+
+.cms-content-card:hover .cms-card-image {
+    transform: scale(1.05);
+}
+
+/* Reduced Motion for CMS Cards */
+@media (prefers-reduced-motion: reduce) {
+    .cms-content-card,
+    .cms-card-image {
+        transition: none !important;
+        transform: none !important;
+    }
+}

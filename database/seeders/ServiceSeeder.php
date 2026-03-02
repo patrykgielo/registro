@@ -1,0 +1,270 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Service;
+use Illuminate\Database\Seeder;
+
+class ServiceSeeder extends Seeder
+{
+    /**
+     * Seed car detailing services (production lookup data).
+     *
+     * This seeder is idempotent - can be run multiple times safely.
+     * Uses 'name' field as unique key for updateOrCreate.
+     */
+    public function run(): void
+    {
+        $services = [
+            [
+                'name' => 'Mycie podstawowe',
+                'slug' => 'mycie-podstawowe',
+                'icon' => 'rectangle-stack',
+                'description' => 'Podstawowe mycie zewnętrzne i wewnętrzne samochodu',
+                'excerpt' => 'Szybkie i skuteczne mycie zewnętrzne oraz podstawowe wnętrza',
+                'body' => '<p>Mycie podstawowe to idealne rozwiązanie dla właścicieli aut, którzy cenią sobie czystość i estetykę swojego pojazdu. Usługa obejmuje dokładne mycie nadwozia, czyszczenie felg oraz podstawowe odkurzanie wnętrza. Nasi specjaliści zadbają o to, aby Twoje auto wyglądało świeżo i czystości.</p>',
+                'content' => null,
+                'meta_title' => 'Mycie podstawowe - Registro',
+                'meta_description' => 'Szybkie i skuteczne mycie zewnętrzne oraz podstawowe wnętrza. Cena: 150 PLN. Czas: 60 min.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 60,
+                'price' => 150.00,
+                'price_from' => null,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 1,
+                // Conversion optimization fields
+                'average_rating' => 4.7,
+                'total_reviews' => 89,
+                'is_popular' => false,
+                'booking_count_week' => 12,
+                'features' => [
+                    'Mycie nadwozia pianą aktywną',
+                    'Czyszczenie felg i opon',
+                    'Podstawowe odkurzanie wnętrza',
+                    'Wycieranie szyb na sucho',
+                ],
+            ],
+            [
+                'name' => 'Mycie premium',
+                'slug' => 'mycie-premium',
+                'icon' => 'sparkles',
+                'description' => 'Dokładne mycie zewnętrzne i wewnętrzne z odkurzaniem i czyszczeniem tapicerki',
+                'excerpt' => 'Kompleksowe mycie ze szczególną dbałością o detale i wykończenie',
+                'body' => '<p>Mycie premium to zaawansowana usługa dla wymagających klientów. Oprócz standardowego mycia nadwozia, oferujemy dokładne czyszczenie wszystkich elementów zewnętrznych oraz kompleksowe sprzątanie wnętrza. Czyszczenie kokpitu, tapicerki i wykładzin podłogowych sprawia, że Twoje auto wygląda jak nowe.</p>',
+                'content' => null,
+                'meta_title' => 'Mycie premium - Registro',
+                'meta_description' => 'Kompleksowe mycie ze szczególną dbałością o detale i wykończenie. Cena: 250 PLN. Czas: 2 godziny.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 120,
+                'price' => 250.00,
+                'price_from' => null,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 2,
+                // Conversion optimization fields
+                'average_rating' => 4.9,
+                'total_reviews' => 156,
+                'is_popular' => true,
+                'booking_count_week' => 24,
+                'features' => [
+                    'Mycie 2-faz. pianą aktywną',
+                    'Czyszczenie kokpitu i plastików',
+                    'Odkurzanie i czyszczenie tapicerki',
+                    'Aplikacja dressingu na opony',
+                ],
+            ],
+            [
+                'name' => 'Korekta lakieru',
+                'slug' => 'korekta-lakieru',
+                'icon' => 'paint-brush',
+                'description' => 'Profesjonalna korekta lakieru - usuwanie zarysowań i hologramów',
+                'excerpt' => 'Usuwanie zarysowań, matowienia i przywracanie głębi koloru',
+                'body' => '<p>Korekta lakieru to zaawansowana usługa polegająca na usunięciu mikro zarysowań, hologramów i matowienia powłoki lakierniczej. Dzięki zastosowaniu profesjonalnych maszyn polerskich oraz najwyższej jakości past, przywracamy lakierowi głębię koloru i lustrzany połysk. Proces wykonywany jest etapami z kontrolą grubości lakieru.</p>',
+                'content' => null,
+                'meta_title' => 'Korekta lakieru - Registro',
+                'meta_description' => 'Usuwanie zarysowań, matowienia i przywracanie głębi koloru. Cena: 800 PLN. Czas: 4 godziny.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 240,
+                'price' => 800.00,
+                'price_from' => 800.00,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 3,
+                // Conversion optimization fields
+                'average_rating' => 4.8,
+                'total_reviews' => 112,
+                'is_popular' => true,
+                'booking_count_week' => 18,
+                'features' => [
+                    'Pomiar grubości lakieru',
+                    'Usuwanie zarysowań 2-3 etapy',
+                    'Polerownie wykończeniowe',
+                    'Kontrola pracy w świetle LED',
+                ],
+            ],
+            [
+                'name' => 'Powłoka ceramiczna',
+                'slug' => 'powloka-ceramiczna',
+                'icon' => 'shield-check',
+                'description' => 'Aplikacja ceramicznej powłoki ochronnej na lakier',
+                'excerpt' => 'Długotrwała ochrona lakieru z efektem hydrofobowym',
+                'body' => '<p>Powłoka ceramiczna to najlepsza forma ochrony lakieru dostępna na rynku. Tworzy trwałą warstwę ochronną, która zabezpiecza przed zanieczyszczeniami, promieniowaniem UV, oraz wpływem chemikaliów drogowych. Dodatkowo nadaje głęboki połysk i efekt hydrofobowy (wodoodporność). Trwałość powłoki to nawet 3-5 lat przy odpowiedniej pielęgnacji.</p>',
+                'content' => null,
+                'meta_title' => 'Powłoka ceramiczna - Registro',
+                'meta_description' => 'Długotrwała ochrona lakieru z efektem hydrofobowym. Cena: od 1200 PLN. Czas: 3 godziny.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 180,
+                'price' => 1200.00,
+                'price_from' => 1200.00,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 4,
+                // Conversion optimization fields
+                'average_rating' => 4.9,
+                'total_reviews' => 78,
+                'is_popular' => false,
+                'booking_count_week' => 9,
+                'features' => [
+                    'Ochrona na 3-5 lat',
+                    'Efekt hydrofobowy (perling)',
+                    'Ochrona przed UV i chemikaliami',
+                    'Gwarancja producenta',
+                ],
+            ],
+            [
+                'name' => 'Wosk na gorąco',
+                'slug' => 'wosk-na-goraco',
+                'icon' => 'sun',
+                'description' => 'Aplikacja wosku na gorąco dla ochrony i połysku lakieru',
+                'excerpt' => 'Naturalna ochrona i niesamowity połysk',
+                'body' => '<p>Wosk na gorąco to sprawdzona metoda zabezpieczenia lakieru przed czynnikami zewnętrznymi. Aplikowany w podwyższonej temperaturze, wosk głębiej penetruje strukturę lakieru, tworząc warstwę ochronną. Efekt to piękny, głęboki połysk oraz ochrona trwająca do kilku miesięcy. Polecane dla klientów ceniących tradycyjne metody detailingu.</p>',
+                'content' => null,
+                'meta_title' => 'Wosk na gorąco - Registro',
+                'meta_description' => 'Naturalna ochrona i niesamowity połysk. Cena: 200 PLN. Czas: 90 minut.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 90,
+                'price' => 200.00,
+                'price_from' => null,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 5,
+                // Conversion optimization fields
+                'average_rating' => 4.6,
+                'total_reviews' => 64,
+                'is_popular' => false,
+                'booking_count_week' => 7,
+                'features' => [
+                    'Wosk premium Carnauba',
+                    'Aplikacja na gorąco',
+                    'Głęboki połysk lakieru',
+                    'Ochrona do 3 miesięcy',
+                ],
+            ],
+            [
+                'name' => 'Pranie tapicerki',
+                'slug' => 'pranie-tapicerki',
+                'icon' => 'squares-plus',
+                'description' => 'Głębokie czyszczenie i pranie tapicerki materiałowej lub skórzanej',
+                'excerpt' => 'Usuwanie zabrudzeń, plam i nieprzyjemnych zapachów',
+                'body' => '<p>Pranie tapicerki to kompleksowa usługa czyszczenia wnętrza samochodu. Wykorzystujemy profesjonalne ekstraktory parowe oraz specjalistyczne środki czyszczące do usuwania nawet najtrudniejszych zabrudzeń. Proces obejmuje pranie foteli, podsufitki, wykładzin i plastików. Po usłudze wnętrze jest odświeżone, a wszystkie nieprzyjemne zapachy znikają.</p>',
+                'content' => null,
+                'meta_title' => 'Pranie tapicerki - Registro',
+                'meta_description' => 'Usuwanie zabrudzeń, plam i nieprzyjemnych zapachów. Cena: 350 PLN. Czas: 2 godziny.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 120,
+                'price' => 350.00,
+                'price_from' => null,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 6,
+                // Conversion optimization fields
+                'average_rating' => 4.8,
+                'total_reviews' => 93,
+                'is_popular' => false,
+                'booking_count_week' => 15,
+                'features' => [
+                    'Ekstraktor parowy Kärcher',
+                    'Usuwanie trudnych plam',
+                    'Czyszczenie podsufitki',
+                    'Neutralizacja zapachów',
+                ],
+            ],
+            [
+                'name' => 'Czyszczenie silnika',
+                'slug' => 'czyszczenie-silnika',
+                'icon' => 'beaker',
+                'description' => 'Profesjonalne czyszczenie komory silnika',
+                'excerpt' => 'Czysty silnik to gwarancja estetyki i łatwiejszej diagnostyki',
+                'body' => '<p>Czyszczenie komory silnika to usługa zwiększająca estetykę pojazdu oraz ułatwiająca ewentualne naprawy i diagnostykę. Usuwamy tłuszcz, brud i resztki olejów, używając bezpiecznych środków czyszczących. Proces kończy się zabezpieczeniem elementów gumowych i plastikowych, co przedłuża ich żywotność. Polecane szczególnie przed przeglądem technicznym lub sprzedażą auta.</p>',
+                'content' => null,
+                'meta_title' => 'Czyszczenie silnika - Registro',
+                'meta_description' => 'Czysty silnik to gwarancja estetyki i łatwiejszej diagnostyki. Cena: 150 PLN. Czas: 60 minut.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 60,
+                'price' => 150.00,
+                'price_from' => null,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 7,
+                // Conversion optimization fields
+                'average_rating' => 4.5,
+                'total_reviews' => 52,
+                'is_popular' => false,
+                'booking_count_week' => 6,
+                'features' => [
+                    'Bezpieczne środki czyszczące',
+                    'Usuwanie tłuszczu i oleju',
+                    'Zabezpieczenie gumy i plastiku',
+                    'Idealne przed sprzedażą',
+                ],
+            ],
+            [
+                'name' => 'Detailing kompletny',
+                'slug' => 'detailing-kompletny',
+                'icon' => 'sparkles',
+                'description' => 'Kompleksowy pakiet detailingu - mycie, korekta, powłoka ceramiczna, pranie wnętrza',
+                'excerpt' => 'Najwyższa jakość - kompleksowa renowacja auta od A do Z',
+                'body' => '<p>Detailing kompletny to flagowa usługa dla najbardziej wymagających klientów. Pakiet obejmuje pełną korektrę lakieru, aplikację powłoki ceramicznej, kompleksowe pranie wnętrza oraz czyszczenie wszystkich elementów zewnętrznych i wewnętrznych. Auto wychodzi ze studia w stanie lepszym niż salonowe. To inwestycja w długotrwałą ochronę i estetykę pojazdu.</p>',
+                'content' => null,
+                'meta_title' => 'Detailing kompletny - Registro',
+                'meta_description' => 'Najwyższa jakość - kompleksowa renowacja auta od A do Z. Cena: od 2500 PLN. Czas: 8 godzin.',
+                'featured_image' => null,
+                'published_at' => now(),
+                'duration_minutes' => 480,
+                'price' => 2500.00,
+                'price_from' => 2500.00,
+                'area_served' => 'Poznań',
+                'is_active' => true,
+                'sort_order' => 8,
+                // Conversion optimization fields
+                'average_rating' => 5.0,
+                'total_reviews' => 47,
+                'is_popular' => false,
+                'booking_count_week' => 5,
+                'features' => [
+                    'Korekta + powłoka ceramiczna',
+                    'Kompleksowe pranie wnętrza',
+                    'Czyszczenie wszystkich elementów',
+                    'Stan lepszy niż salonowy',
+                ],
+            ],
+        ];
+
+        foreach ($services as $serviceData) {
+            Service::updateOrCreate(
+                ['name' => $serviceData['name']],
+                $serviceData
+            );
+        }
+
+        $this->command->info('Services seeded successfully!');
+    }
+}

@@ -1,0 +1,145 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Enums;
+
+/**
+ * Template Key Registry
+ *
+ * Single source of truth for all SMS and Email template identifiers.
+ * Each case maps to a `key` column in sms_templates / email_templates tables.
+ *
+ * Usage:
+ * - Notifications pass TemplateKey::XYZ->value to sendFromTemplate()
+ * - Filament Resources use ::optionsForChannel() for admin selectors
+ * - ReminderConfigResource uses ::reminderOptions() for reminder-specific keys
+ */
+enum TemplateKey: string
+{
+    // ── Appointment lifecycle (SMS + Email) ──────────────────────
+    case APPOINTMENT_CREATED = 'appointment-created';
+    case APPOINTMENT_CONFIRMED = 'appointment-confirmed';
+    case APPOINTMENT_RESCHEDULED = 'appointment-rescheduled';
+    case APPOINTMENT_CANCELLED = 'appointment-cancelled';
+
+    // ── Reminders (SMS + Email) ──────────────────────────────────
+    case APPOINTMENT_REMINDER_24H = 'appointment-reminder-24h';
+    case APPOINTMENT_REMINDER_2H = 'appointment-reminder-2h';
+    case APPOINTMENT_FOLLOWUP = 'appointment-followup';
+
+    // ── User account (Email only) ────────────────────────────────
+    case USER_REGISTERED = 'user-registered';
+    case PASSWORD_RESET = 'password-reset';
+
+    // ── Email change flow (Email only) ───────────────────────────
+    case EMAIL_CHANGE_REQUESTED = 'email-change-requested';
+    case EMAIL_CHANGE_VERIFICATION = 'email-change-verification';
+    case EMAIL_CHANGE_COMPLETED = 'email-change-completed';
+
+    // ── Account deletion (Email only) ────────────────────────────
+    case ACCOUNT_DELETION_REQUESTED = 'account-deletion-requested';
+    case ACCOUNT_DELETION_COMPLETED = 'account-deletion-completed';
+
+    // ── Admin (Email only) ───────────────────────────────────────
+    case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
+    case ADMIN_USER_CREATED = 'admin-user-created';
+
+    /**
+     * Get human-readable label for admin UI.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::APPOINTMENT_CREATED => 'Potwierdzenie rezerwacji',
+            self::APPOINTMENT_CONFIRMED => 'Potwierdzenie przez admina',
+            self::APPOINTMENT_RESCHEDULED => 'Zmiana terminu',
+            self::APPOINTMENT_CANCELLED => 'Anulowanie wizyty',
+            self::APPOINTMENT_REMINDER_24H => 'Przypomnienie 24h przed',
+            self::APPOINTMENT_REMINDER_2H => 'Przypomnienie 2h przed',
+            self::APPOINTMENT_FOLLOWUP => 'Follow-up po wizycie',
+            self::USER_REGISTERED => 'Rejestracja konta',
+            self::PASSWORD_RESET => 'Reset hasla',
+            self::EMAIL_CHANGE_REQUESTED => 'Zmiana email (stary adres)',
+            self::EMAIL_CHANGE_VERIFICATION => 'Zmiana email (weryfikacja)',
+            self::EMAIL_CHANGE_COMPLETED => 'Zmiana email (potwierdzenie)',
+            self::ACCOUNT_DELETION_REQUESTED => 'Usuwanie konta (zgloszenie)',
+            self::ACCOUNT_DELETION_COMPLETED => 'Usuwanie konta (potwierdzenie)',
+            self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
+            self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
+        };
+    }
+
+    /**
+     * Get channels that support this template.
+     *
+     * @return array<string>
+     */
+    public function channels(): array
+    {
+        return match ($this) {
+            self::APPOINTMENT_CREATED,
+            self::APPOINTMENT_CONFIRMED,
+            self::APPOINTMENT_RESCHEDULED,
+            self::APPOINTMENT_CANCELLED,
+            self::APPOINTMENT_REMINDER_24H,
+            self::APPOINTMENT_REMINDER_2H,
+            self::APPOINTMENT_FOLLOWUP => ['sms', 'email'],
+
+            default => ['email'],
+        };
+    }
+
+    /**
+     * Check if this template supports a given channel.
+     */
+    public function supportsChannel(string $channel): bool
+    {
+        return in_array($channel, $this->channels(), true);
+    }
+
+    /**
+     * Get all options for Filament select fields.
+     *
+     * @return array<string, string>
+     */
+    public static function options(): array
+    {
+        return collect(self::cases())
+            ->mapWithKeys(fn (self $key) => [$key->value => $key->label()])
+            ->toArray();
+    }
+
+    /**
+     * Get options filtered by channel.
+     *
+     * @return array<string, string>
+     */
+    public static function optionsForChannel(string $channel): array
+    {
+        return collect(self::cases())
+            ->filter(fn (self $key) => $key->supportsChannel($channel))
+            ->mapWithKeys(fn (self $key) => [$key->value => $key->label()])
+            ->toArray();
+    }
+
+    /**
+     * Get reminder-eligible template options for a channel.
+     * Used by ReminderConfigResource — only appointment reminders and followups.
+     *
+     * @return array<string, string>
+     */
+    public static function reminderOptions(string $channel): array
+    {
+        $reminderKeys = [
+            self::APPOINTMENT_REMINDER_24H,
+            self::APPOINTMENT_REMINDER_2H,
+            self::APPOINTMENT_FOLLOWUP,
+        ];
+
+        return collect($reminderKeys)
+            ->filter(fn (self $key) => $key->supportsChannel($channel))
+            ->mapWithKeys(fn (self $key) => [$key->value => $key->label()])
+            ->toArray();
+    }
+}

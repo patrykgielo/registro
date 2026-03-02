@@ -1,0 +1,17 @@
+flowchart LR
+    subgraph "Dzień przed wizytą"
+        J1["🕐 Job 12:00"]
+        J2["🕐 Job 13:00"]
+    end
+
+    subgraph "Okno SMS 23-25h"
+        W["📍 12:00 - 14:00<br/>(2h okno)"]
+    end
+
+    subgraph "Dzień wizyty"
+        V["📅 Wizyta 14:00"]
+    end
+
+    J1 -->|"✅ Łapie wizytę"| W
+    J2 -->|"❌ Już wysłano"| W
+    W -->|"24h przed"| V

@@ -1,0 +1,233 @@
+{
+  "version": "4.0.0",
+  "last_updated": "2025-12-11",
+  "description": "Registro Car Detailing - Medical Precision (Monochrome Luxury: 24% Saturation Turquoise Accent)",
+
+  "colors": {
+    "primary": {
+      "50": "#E6F4F6",
+      "100": "#CCE9ED",
+      "200": "#99D3DB",
+      "300": "#66BDC9",
+      "400": "#4AA5B0",
+      "500": "#3D8A94",
+      "600": "#2F6A72",
+      "700": "#224A50",
+      "800": "#162A2E",
+      "900": "#0A0F10"
+    },
+    "neutral": {
+      "50": "#F9FAFB",
+      "100": "#F3F4F6",
+      "200": "#E5E7EB",
+      "300": "#D1D5DB",
+      "400": "#9CA3AF",
+      "500": "#6B7280",
+      "600": "#4B5563",
+      "700": "#374151",
+      "800": "#1F2937",
+      "900": "#111827"
+    },
+    "semantic": {
+      "success": "#34C759",
+      "warning": "#FF9500",
+      "error": "#FF3B30",
+      "info": "#4AA5B0"
+    },
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#F3F4F6",
+      "tertiary": "#E5E7EB"
+    },
+    "text": {
+      "primary": "#1F2937",
+      "secondary": "#4B5563",
+      "tertiary": "#6B7280",
+      "inverse": "#FFFFFF",
+      "link": "#4AA5B0",
+      "linkHover": "#3D8A94"
+    },
+    "border": {
+      "light": "#E5E7EB",
+      "medium": "#D1D5DB",
+      "dark": "#9CA3AF",
+      "focus": "#4AA5B0"
+    },
+    "states": {
+      "hover": {
+        "primary": "#3D8A94",
+        "neutral": "#F3F4F6"
+      },
+      "focus": {
+        "ring": "#4AA5B0",
+        "ringOpacity": "0.5",
+        "ringWidth": "2px"
+      },
+      "active": {
+        "primary": "#2F6A72",
+        "neutral": "#E5E7EB"
+      },
+      "disabled": {
+        "background": "#F3F4F6",
+        "text": "#9CA3AF",
+        "opacity": "0.6"
+      }
+    },
+    "opacity": {
+      "overlay": "rgba(31, 41, 55, 0.5)",
+      "hover": "rgba(74, 165, 176, 0.12)",
+      "focus": "rgba(74, 165, 176, 0.2)",
+      "disabled": "rgba(156, 163, 175, 0.6)"
+    },
+    "dark": {
+      "section": "#00323B",
+      "tile": "#000000",
+      "cta": "#0AB1EA",
+      "text": "#FFFFFF",
+      "textMuted": "rgba(255, 255, 255, 0.7)",
+      "border": "rgba(255, 255, 255, 0.1)",
+      "glow": "rgba(10, 177, 234, 0.15)",
+      "glowHover": "rgba(10, 177, 234, 0.25)"
+    }
+  },
+
+  "typography": {
+    "fontFamilies": {
+      "system": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif",
+      "mono": "'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace"
+    },
+    "fontSizes": {
+      "xs": "0.75rem",
+      "sm": "0.875rem",
+      "base": "1rem",
+      "lg": "1.125rem",
+      "xl": "1.25rem",
+      "2xl": "1.5rem",
+      "3xl": "1.875rem",
+      "4xl": "2.25rem",
+      "5xl": "3rem"
+    },
+    "fontWeights": {
+      "light": "300",
+      "normal": "400",
+      "medium": "500",
+      "semibold": "600",
+      "bold": "700"
+    },
+    "lineHeights": {
+      "tight": "1.25",
+      "snug": "1.375",
+      "normal": "1.5",
+      "relaxed": "1.625",
+      "loose": "2"
+    },
+    "letterSpacing": {
+      "tighter": "-0.05em",
+      "tight": "-0.025em",
+      "normal": "0",
+      "wide": "0.025em",
+      "wider": "0.05em"
+    }
+  },
+
+  "spacing": {
+    "0": "0",
+    "1": "0.25rem",
+    "2": "0.5rem",
+    "3": "0.75rem",
+    "4": "1rem",
+    "5": "1.25rem",
+    "6": "1.5rem",
+    "8": "2rem",
+    "10": "2.5rem",
+    "12": "3rem",
+    "16": "4rem",
+    "20": "5rem",
+    "24": "6rem"
+  },
+
+  "borderRadius": {
+    "none": "0",
+    "sm": "0.25rem",
+    "base": "0.375rem",
+    "md": "0.5rem",
+    "lg": "0.625rem",
+    "xl": "1.25rem",
+    "2xl": "1.5rem",
+    "3xl": "1.875rem",
+    "full": "9999px"
+  },
+
+  "shadows": {
+    "sm": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+    "base": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)",
+    "md": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
+    "lg": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)",
+    "xl": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+    "2xl": "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+    "inner": "inset 0 2px 4px 0 rgba(0, 0, 0, 0.05)"
+  },
+
+  "animations": {
+    "durations": {
+      "fast": "150ms",
+      "base": "200ms",
+      "slow": "300ms",
+      "slower": "500ms"
+    },
+    "easings": {
+      "linear": "linear",
+      "easeIn": "cubic-bezier(0.4, 0, 1, 1)",
+      "easeOut": "cubic-bezier(0, 0, 0.2, 1)",
+      "easeInOut": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "ios": "cubic-bezier(0.25, 0.1, 0.25, 1)"
+    }
+  },
+
+  "breakpoints": {
+    "sm": "640px",
+    "md": "768px",
+    "lg": "1024px",
+    "xl": "1280px",
+    "2xl": "1536px"
+  },
+
+  "ios": {
+    "touchTarget": {
+      "minimum": "44px",
+      "comfortable": "48px",
+      "large": "56px"
+    },
+    "separators": {
+      "hairline": "0.5px",
+      "thin": "1px"
+    },
+    "statusBar": {
+      "height": "44px",
+      "heightWithNotch": "88px"
+    },
+    "navigationBar": {
+      "height": "44px",
+      "heightLarge": "96px"
+    },
+    "tabBar": {
+      "height": "49px",
+      "heightWithSafeArea": "83px"
+    },
+    "safeArea": {
+      "bottom": "34px",
+      "notchTop": "44px"
+    }
+  },
+
+  "zIndex": {
+    "base": "0",
+    "dropdown": "1000",
+    "sticky": "1020",
+    "fixed": "1030",
+    "modalBackdrop": "1040",
+    "modal": "1050",
+    "popover": "1060",
+    "tooltip": "1070"
+  }
+}

@@ -1,0 +1,27 @@
+name: Cleanup Build Caches
+
+# Disabled for Registro migration - manual trigger only
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: Cleanup Old Registry Caches
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Cleanup old build caches
+        run: |
+          echo "Cleaning up old registry cache images..."
+
+          # Keep only last 5 version-specific caches
+          gh api repos/${{ github.repository }}/packages/container/registro/versions \
+            --jq '.[] | select(.metadata.container.tags[]? | startswith("buildcache-")) | {id: .id, tags: .metadata.container.tags, created: .created_at}' \
+            | jq -s 'sort_by(.created) | reverse | .[5:] | .[].id' \
+            | xargs -I {} gh api -X DELETE repos/${{ github.repository }}/packages/container/registro/versions/{} || true
+
+          echo "Cache cleanup completed - kept last 5 versions"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

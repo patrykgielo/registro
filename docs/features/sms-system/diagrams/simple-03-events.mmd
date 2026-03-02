@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph "Akcja użytkownika"
+        A1["🆕 Nowa wizyta"]
+        A2["✅ Potwierdzenie"]
+        A3["❌ Anulowanie"]
+        A4["📅 Przełożenie"]
+    end
+
+    subgraph "Szablon SMS"
+        T1[appointment-created]
+        T2[appointment-confirmed]
+        T3[appointment-cancelled]
+        T4[appointment-rescheduled]
+    end
+
+    A1 --> T1
+    A2 --> T2
+    A3 --> T3
+    A4 --> T4
+
+    T1 --> SMS["📱 SMS do klienta"]
+    T2 --> SMS
+    T3 --> SMS
+    T4 --> SMS

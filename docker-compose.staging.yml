@@ -1,0 +1,252 @@
+# Docker Compose Configuration - Staging Environment
+# For srv1203357.hstgr.cloud (Hostinger VPS)
+#
+# Usage:
+#   docker compose -f docker-compose.staging.yml up -d
+#   docker compose -f docker-compose.staging.yml logs -f
+#   docker compose -f docker-compose.staging.yml down
+
+services:
+  app:
+    image: ghcr.io/patrykgielo/registro:develop
+    container_name: registro-staging-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - app_public:/var/www/public
+      - storage-app-public:/var/www/storage/app/public
+      - storage-app-private:/var/www/storage/app/private
+      - storage-framework:/var/www/storage/framework
+      - storage-logs:/var/www/storage/logs
+    networks:
+      - registro-staging
+    environment:
+      - APP_NAME=${APP_NAME:-Registro}
+      - APP_ENV=staging
+      - APP_DEBUG=false
+      - APP_KEY=${APP_KEY}
+      - APP_URL=https://srv1203357.hstgr.cloud
+      - DB_HOST=mysql
+      - DB_CONNECTION=mysql
+      - DB_DATABASE=${DB_DATABASE:-registro_staging}
+      - DB_USERNAME=${DB_USERNAME:-registro}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_CLIENT=phpredis
+      - QUEUE_CONNECTION=redis
+      - CACHE_STORE=redis
+      - SESSION_DRIVER=redis
+      - SESSION_ENCRYPT=true
+      - FILESYSTEM_DISK=public
+      - MAIL_MAILER=smtp
+      - MAIL_HOST=mailpit
+      - MAIL_PORT=1025
+      - SMSAPI_TOKEN=${SMSAPI_TOKEN}
+      - SMSAPI_SERVICE=${SMSAPI_SERVICE:-pl}
+      - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan inspire || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  mysql:
+    image: mysql:8.0
+    container_name: registro-staging-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-registro_staging}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_USER: ${DB_USERNAME:-registro}
+      SERVICE_TAGS: staging
+      SERVICE_NAME: mysql
+    volumes:
+      - ./docker/mysql:/docker-entrypoint-initdb.d
+      - mysql_staging_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"  # Bind to localhost only for security
+    networks:
+      - registro-staging
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: --default-authentication-plugin=mysql_native_password
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: registro-staging-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/app.staging.conf:/etc/nginx/conf.d/default.conf:ro
+      - app_public:/var/www/public:ro
+      - storage-app-public:/var/www/storage/app/public:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
+    networks:
+      - registro-staging
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: registro-staging-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"  # Bind to localhost only
+    volumes:
+      - redis_staging_data:/data
+    networks:
+      - registro-staging
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: registro-staging-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"  # Web UI (public - staging only)
+      - "127.0.0.1:1025:1025"  # SMTP server - localhost only
+    networks:
+      - registro-staging
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      MP_MAX_MESSAGES: 1000
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_BIND_ADDR: 0.0.0.0:1025
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+    volumes:
+      - mailpit_staging_data:/data
+
+  horizon:
+    image: ghcr.io/patrykgielo/registro:develop
+    container_name: registro-staging-horizon
+    restart: unless-stopped
+    working_dir: /var/www
+    networks:
+      - registro-staging
+    environment:
+      - APP_NAME=${APP_NAME:-Registro}
+      - APP_ENV=staging
+      - APP_DEBUG=false
+      - APP_KEY=${APP_KEY}
+      - APP_URL=https://srv1203357.hstgr.cloud
+      - DB_HOST=mysql
+      - DB_CONNECTION=mysql
+      - DB_DATABASE=${DB_DATABASE:-registro_staging}
+      - DB_USERNAME=${DB_USERNAME:-registro}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_CLIENT=phpredis
+      - QUEUE_CONNECTION=redis
+      - CACHE_STORE=redis
+      - SESSION_DRIVER=redis
+      - SESSION_ENCRYPT=true
+      - FILESYSTEM_DISK=public
+      - MAIL_MAILER=smtp
+      - MAIL_HOST=mailpit
+      - MAIL_PORT=1025
+      - SMSAPI_TOKEN=${SMSAPI_TOKEN}
+      - SMSAPI_SERVICE=${SMSAPI_SERVICE:-pl}
+      - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
+    depends_on:
+      - app
+      - redis
+      - mysql
+    command: php artisan horizon
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan horizon:status | grep running"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  scheduler:
+    image: ghcr.io/patrykgielo/registro:develop
+    container_name: registro-staging-scheduler
+    restart: unless-stopped
+    working_dir: /var/www
+    networks:
+      - registro-staging
+    environment:
+      - APP_NAME=${APP_NAME:-Registro}
+      - APP_ENV=staging
+      - APP_DEBUG=false
+      - APP_KEY=${APP_KEY}
+      - APP_URL=https://srv1203357.hstgr.cloud
+      - DB_HOST=mysql
+      - DB_CONNECTION=mysql
+      - DB_DATABASE=${DB_DATABASE:-registro_staging}
+      - DB_USERNAME=${DB_USERNAME:-registro}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_CLIENT=phpredis
+      - QUEUE_CONNECTION=redis
+      - CACHE_STORE=redis
+      - FILESYSTEM_DISK=public
+    depends_on:
+      - app
+      - redis
+      - mysql
+    command: php artisan schedule:work
+
+networks:
+  registro-staging:
+    driver: bridge
+
+volumes:
+  app_public:
+    driver: local
+  storage-app-public:
+    driver: local
+  storage-app-private:
+    driver: local
+  storage-framework:
+    driver: local
+  storage-logs:
+    driver: local
+  mysql_staging_data:
+    driver: local
+  redis_staging_data:
+    driver: local
+  mailpit_staging_data:
+    driver: local

@@ -1,0 +1,55 @@
+# Dependencies (built inside Docker stages, not copied from host)
+node_modules
+vendor
+
+# Build outputs (built inside Docker, not copied from host)
+public/build
+public/hot
+public/storage
+storage/*.key
+dist
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.backup
+.env.production
+
+# Log files
+storage/logs/*.log
+*.log
+
+# Runtime data (regenerated in container)
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+# Tests (not needed in production image)
+tests/
+phpunit.xml
+.phpunit.result.cache
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml

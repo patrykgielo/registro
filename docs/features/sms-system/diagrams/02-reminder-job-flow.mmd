@@ -1,0 +1,45 @@
+flowchart TD
+    A[Laravel Scheduler: Hourly] --> B[SendReminderSmsJob::handle]
+    B --> C{SMS globally enabled?}
+
+    C -->|No| D[Log: SMS disabled, exit]
+    C -->|Yes| E{send_reminder_24h enabled?}
+
+    E -->|Yes| F[Query: 24h reminders]
+    E -->|No| G[Skip 24h]
+
+    F --> H[WHERE status='confirmed']
+    H --> I[WHERE sent_24h_reminder_sms=false]
+    I --> J[WHERE phone IS NOT NULL]
+    J --> K[WHERE appointment_date BETWEEN now+23h AND now+25h]
+
+    K --> L{Loop appointments}
+
+    L --> M{Phone suppressed?}
+    M -->|Yes| N[Skip, log warning]
+    M -->|No| O[Get customer language]
+
+    O --> P[Prepare data array]
+    P --> Q[SmsService::sendFromTemplate]
+    Q --> R[Update sent_24h_reminder_sms=true]
+    R --> S[Stats: 24h_sent++]
+
+    N --> L
+    S --> L
+
+    G --> T{send_reminder_2h enabled?}
+    L -->|Done| T
+
+    T -->|Yes| U[Query: 2h reminders]
+    T -->|No| V[End]
+
+    U --> W[Same logic for 2h window]
+    W --> X[WHERE appointment_date BETWEEN now+1h AND now+3h]
+    X --> Y[Update sent_2h_reminder_sms=true]
+    Y --> Z[Log stats summary]
+    Z --> V
+
+    style R fill:#51CF66,stroke:#2F9E44,stroke-width:2px
+    style Y fill:#51CF66,stroke:#2F9E44,stroke-width:2px
+    style K fill:#FFE066,stroke:#F59F00,stroke-width:2px
+    style X fill:#FFE066,stroke:#F59F00,stroke-width:2px

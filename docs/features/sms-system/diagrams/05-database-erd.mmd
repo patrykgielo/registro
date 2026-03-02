@@ -1,0 +1,62 @@
+erDiagram
+    sms_templates {
+        bigint id PK
+        string key "appointment-created, etc"
+        string language "pl, en"
+        string name "Display name"
+        text body "Template with {{ variables }}"
+        int max_length "160 default"
+        boolean active "true/false"
+        timestamps created_at
+        timestamps updated_at
+    }
+
+    sms_sends {
+        bigint id PK
+        string phone_number "E.164 format"
+        string sms_id "SMSAPI message ID"
+        string message_key "MD5 idempotency key"
+        string template_key FK "Reference to template"
+        text message "Rendered message"
+        string status "pending/sent/delivered/failed"
+        json metadata "appointment_id, etc"
+        int message_length "Character count"
+        int message_parts "SMS segments"
+        string error_code "If failed"
+        text error_message "If failed"
+        timestamps created_at
+        timestamps updated_at
+    }
+
+    sms_events {
+        bigint id PK
+        bigint sms_send_id FK
+        string event_type "sent/delivered/failed/etc"
+        json payload "Raw webhook data"
+        timestamps created_at
+    }
+
+    sms_suppressions {
+        bigint id PK
+        string phone_number UK "E.164 format"
+        string reason "invalid_number/unsubscribed/etc"
+        string source "webhook/manual/gdpr"
+        timestamps created_at
+        timestamps updated_at
+    }
+
+    appointments {
+        bigint id PK
+        string phone "Customer phone"
+        string first_name "Customer first name"
+        string last_name "Customer last name"
+        datetime appointment_date "Appointment date/time"
+        string status "pending/confirmed/completed/cancelled"
+        boolean sent_24h_reminder_sms "Flag: 24h reminder sent"
+        boolean sent_2h_reminder_sms "Flag: 2h reminder sent"
+        boolean sent_followup_sms "Flag: follow-up sent"
+    }
+
+    sms_templates ||--o{ sms_sends : "template_key"
+    sms_sends ||--o{ sms_events : "sms_send_id"
+    appointments ||--o{ sms_sends : "metadata.appointment_id"

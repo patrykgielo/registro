@@ -1,0 +1,68 @@
+
+    /**
+     * SMS settings tab.
+     */
+    private function smsTab(): Tabs\Tab
+    {
+        return Tabs\Tab::make('SMS')
+            ->schema([
+                Section::make('SMSAPI Configuration')
+                    ->description('Configure SMSAPI.pl integration for sending SMS')
+                    ->schema([
+                        Toggle::make('sms.enabled')
+                            ->label('SMS Enabled')
+                            ->helperText('Enable or disable SMS notifications globally'),
+
+                        TextInput::make('sms.api_token')
+                            ->label('API Token')
+                            ->password()
+                            ->revealable()
+                            ->helperText('SMSAPI.pl OAuth 2.0 Bearer Token'),
+
+                        Select::make('sms.service')
+                            ->label('Service')
+                            ->options([
+                                'pl' => 'SMSAPI.pl (Poland)',
+                                'com' => 'SMSAPI.com (International)',
+                            ])
+                            ->required()
+                            ->helperText('SMSAPI service endpoint'),
+
+                        TextInput::make('sms.sender_name')
+                            ->label('Sender Name')
+                            ->maxLength(11)
+                            ->required()
+                            ->helperText('Max 11 characters, alphanumeric'),
+
+                        Toggle::make('sms.test_mode')
+                            ->label('Test Mode (Sandbox)')
+                            ->helperText('Send SMS in test mode (no actual delivery)'),
+                    ])
+                    ->columns(2),
+
+                Section::make('SMS Notification Settings')
+                    ->description('Enable or disable specific SMS notifications')
+                    ->schema([
+                        Toggle::make('sms.send_booking_confirmation')
+                            ->label('Booking Confirmation')
+                            ->helperText('Send SMS when customer creates appointment'),
+
+                        Toggle::make('sms.send_admin_confirmation')
+                            ->label('Admin Confirmation')
+                            ->helperText('Send SMS when admin confirms appointment'),
+
+                        Toggle::make('sms.send_reminder_24h')
+                            ->label('24-Hour Reminder')
+                            ->helperText('Send reminder 24 hours before appointment'),
+
+                        Toggle::make('sms.send_reminder_2h')
+                            ->label('2-Hour Reminder')
+                            ->helperText('Send reminder 2 hours before appointment'),
+
+                        Toggle::make('sms.send_follow_up')
+                            ->label('Follow-up SMS')
+                            ->helperText('Send follow-up after completed appointment'),
+                    ])
+                    ->columns(2),
+            ]);
+    }

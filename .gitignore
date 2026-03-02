@@ -1,0 +1,106 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+/.fleet
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+Homestead.json
+Homestead.yaml
+Thumbs.db
+
+# Local Docker development files (not committed)
+/mysql/
+/php/
+/old_config/
+*.tar.xz
+
+# ============================================================================
+# Docker SSL Certificates (Self-signed - Development Only)
+# ============================================================================
+docker/ssl/*.pem
+docker/ssl/*.key
+docker/ssl/*.crt
+docker/ssl/*.csr
+
+# ============================================================================
+# Database Backups (Never commit to Git)
+# ============================================================================
+backups/
+*.sql
+*.sql.gz
+.backups/
+cookies.txt
+app/vendor/
+
+# ============================================================================
+# Environment Files - CRITICAL SECURITY
+# ============================================================================
+# Never commit environment files containing credentials
+.env
+.env.*
+!.env.example
+!.env.staging.example
+.env.production
+.env.staging
+.env.local
+.env.backup
+.env.old
+
+# ============================================================================
+# SSH Keys - CRITICAL SECURITY
+# ============================================================================
+# Never commit SSH private keys
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_ecdsa
+id_ecdsa.pub
+*.ppk
+authorized_keys
+known_hosts
+registro-staging
+registro-staging.pub
+registro-production
+registro-production.pub
+
+# ============================================================================
+# Credentials Files - CRITICAL SECURITY
+# ============================================================================
+# Never commit any files containing passwords or tokens
+credentials.txt
+passwords.txt
+secrets.txt
+secrets.json
+secrets.yml
+.secrets/
+.credentials/
+*_credentials.*
+*_secrets.*
+
+# ============================================================================
+# Local Configuration - NOT FOR GIT
+# ============================================================================
+# SSH config (use ~/.ssh/config instead)
+.ssh/
+ssh_config
+# Local staging credentials (never commit!)
+.staging-credentials.local
+*.credentials.local

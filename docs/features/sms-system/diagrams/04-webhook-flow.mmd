@@ -1,0 +1,57 @@
+sequenceDiagram
+    participant SMSAPI.pl
+    participant Nginx
+    participant WebhookController
+    participant Database
+    participant Log
+
+    SMSAPI.pl->>Nginx: POST /api/sms/webhook
+    Note over SMSAPI.pl: Payload: {sms_id, status, to, error_code}
+
+    Nginx->>WebhookController: handleDeliveryStatus(Request)
+
+    WebhookController->>WebhookController: verifyWebhookSignature()
+
+    alt Has SMSAPI_WEBHOOK_SECRET
+        WebhookController->>WebhookController: Verify HMAC-SHA256
+        alt Invalid signature
+            WebhookController->>Log: Log warning
+            WebhookController-->>SMSAPI.pl: 401 Unauthorized
+        end
+    else No secret configured
+        WebhookController->>WebhookController: Check IP whitelist
+        alt IP not from SMSAPI
+            alt Production environment
+                WebhookController->>Log: Log error
+                WebhookController-->>SMSAPI.pl: 401 Unauthorized
+            else Development
+                WebhookController->>Log: Log warning (allowed)
+            end
+        end
+    end
+
+    WebhookController->>Database: Find SmsSend by sms_id
+
+    alt SmsSend not found
+        WebhookController->>Log: Log info (ignore)
+        WebhookController-->>SMSAPI.pl: 200 OK
+    else SmsSend found
+        WebhookController->>WebhookController: Map status to event_type
+        Note over WebhookController: DELIVERED→delivered<br/>SENT→sent<br/>FAILED→failed<br/>INVALID→invalid_number
+
+        WebhookController->>Database: Create SmsEvent
+        WebhookController->>Database: Update SmsSend status
+
+        alt Status is invalid_number
+            WebhookController->>Database: Add to SmsSuppression
+            WebhookController->>Log: Log warning (phone suppressed)
+        else Status is failed
+            WebhookController->>Database: Count failures for phone
+            alt Failures >= 3
+                WebhookController->>Database: Add to SmsSuppression
+                WebhookController->>Log: Log warning (auto-suppressed)
+            end
+        end
+
+        WebhookController-->>SMSAPI.pl: 200 OK {processed: true}
+    end

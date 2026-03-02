@@ -1,0 +1,13 @@
+flowchart TD
+    A["⏰ Scheduler (co 1 godzinę)"] --> B[SendReminderSmsJob]
+
+    B --> C["🔍 Szukaj wizyt za 23-25h"]
+
+    C --> D{Znaleziono?}
+
+    D -->|Tak| E["📱 Wyślij SMS"]
+    D -->|Nie| F["✓ Koniec"]
+
+    E --> G["✅ Ustaw flagę sent_24h_reminder_sms = true"]
+    G --> H["Następna wizyta..."]
+    H --> D
