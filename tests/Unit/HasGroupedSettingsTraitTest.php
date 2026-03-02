@@ -36,7 +36,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             /**
              * Expose private method for testing.
              */
-            public function test_normalize(mixed $value): mixed
+            public function testNormalize(mixed $value): mixed
             {
                 return $this->normalizeFileUploadValue($value);
             }
