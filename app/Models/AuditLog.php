@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class AuditLog extends Model
 {
+    use BelongsToOrganization;
+
     // Event type constants
     public const EVENT_CREATED = 'created';
 
@@ -36,6 +39,7 @@ class AuditLog extends Model
     public const EVENT_ACCOUNT_ANONYMIZED = 'account_anonymized';
 
     protected $fillable = [
+        'organization_id',
         'auditable_type',
         'auditable_id',
         'event',

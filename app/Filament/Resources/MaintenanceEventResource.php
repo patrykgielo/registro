@@ -9,7 +9,6 @@ use App\Filament\Resources\MaintenanceEventResource\Pages;
 use App\Models\MaintenanceEvent;
 use BackedEnum;
 use Filament\Actions;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -17,7 +16,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class MaintenanceEventResource extends Resource
+class MaintenanceEventResource extends BaseResource
 {
     protected static ?string $model = MaintenanceEvent::class;
 

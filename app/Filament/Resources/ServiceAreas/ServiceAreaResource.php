@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ServiceAreas;
 
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\ServiceAreas\Pages\CreateServiceArea;
 use App\Filament\Resources\ServiceAreas\Pages\EditServiceArea;
 use App\Filament\Resources\ServiceAreas\Pages\ListServiceAreas;
@@ -9,12 +10,11 @@ use App\Filament\Resources\ServiceAreas\Schemas\ServiceAreaForm;
 use App\Filament\Resources\ServiceAreas\Tables\ServiceAreasTable;
 use App\Models\ServiceArea;
 use BackedEnum;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class ServiceAreaResource extends Resource
+class ServiceAreaResource extends BaseResource
 {
     protected static ?string $model = ServiceArea::class;
 

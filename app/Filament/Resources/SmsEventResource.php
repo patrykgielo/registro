@@ -8,13 +8,12 @@ use App\Filament\Resources\SmsEventResource\Pages;
 use App\Models\SmsEvent;
 use BackedEnum;
 use Filament\Actions;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class SmsEventResource extends Resource
+class SmsEventResource extends BaseResource
 {
     protected static ?string $model = SmsEvent::class;
 

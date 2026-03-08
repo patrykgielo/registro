@@ -7,13 +7,12 @@ use App\Models\CarModel;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class CarModelResource extends Resource
+class CarModelResource extends BaseResource
 {
     protected static ?string $model = CarModel::class;
 

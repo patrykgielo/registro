@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
@@ -10,12 +11,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StaffVacationPeriod extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array<string>
      */
     protected $fillable = [
+        'organization_id',
         'user_id',
         'start_date',
         'end_date',

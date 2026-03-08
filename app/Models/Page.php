@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\MenuLocation;
 use App\Enums\PageLayout;
 use App\Support\Settings\SettingsManager;
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
@@ -14,7 +15,10 @@ use Illuminate\Support\Str;
 
 class Page extends Model
 {
+    use BelongsToOrganization;
+
     protected $fillable = [
+        'organization_id',
         'title',
         'slug',
         'body',

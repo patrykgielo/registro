@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Posts;
 
 use App\Enums\PageLayout;
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\Posts\Pages\CreatePost;
 use App\Filament\Resources\Posts\Pages\EditPost;
 use App\Filament\Resources\Posts\Pages\ListPosts;
@@ -14,7 +15,6 @@ use App\Models\Post;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -23,7 +23,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class PostResource extends Resource
+class PostResource extends BaseResource
 {
     protected static ?string $model = Post::class;
 

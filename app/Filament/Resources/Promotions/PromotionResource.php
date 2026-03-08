@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Promotions;
 
 use App\Enums\PageLayout;
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\Promotions\Pages\CreatePromotion;
 use App\Filament\Resources\Promotions\Pages\EditPromotion;
 use App\Filament\Resources\Promotions\Pages\ListPromotions;
@@ -13,7 +14,6 @@ use App\Models\Promotion;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -22,7 +22,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class PromotionResource extends Resource
+class PromotionResource extends BaseResource
 {
     protected static ?string $model = Promotion::class;
 

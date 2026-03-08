@@ -2,18 +2,18 @@
 
 namespace App\Filament\Resources\ServiceAreaWaitlists;
 
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\ServiceAreaWaitlists\Pages\EditServiceAreaWaitlist;
 use App\Filament\Resources\ServiceAreaWaitlists\Pages\ListServiceAreaWaitlists;
 use App\Filament\Resources\ServiceAreaWaitlists\Schemas\ServiceAreaWaitlistForm;
 use App\Filament\Resources\ServiceAreaWaitlists\Tables\ServiceAreaWaitlistsTable;
 use App\Models\ServiceAreaWaitlist;
 use BackedEnum;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class ServiceAreaWaitlistResource extends Resource
+class ServiceAreaWaitlistResource extends BaseResource
 {
     protected static ?string $model = ServiceAreaWaitlist::class;
 

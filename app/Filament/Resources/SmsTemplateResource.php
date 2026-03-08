@@ -12,7 +12,6 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -22,7 +21,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
 
-class SmsTemplateResource extends Resource
+class SmsTemplateResource extends BaseResource
 {
     protected static ?string $model = SmsTemplate::class;
 

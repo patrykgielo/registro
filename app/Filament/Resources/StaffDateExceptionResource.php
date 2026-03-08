@@ -8,7 +8,6 @@ use App\Models\User;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -16,7 +15,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class StaffDateExceptionResource extends Resource
+class StaffDateExceptionResource extends BaseResource
 {
     protected static ?string $model = StaffDateException::class;
 

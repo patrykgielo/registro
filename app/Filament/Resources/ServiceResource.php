@@ -8,7 +8,6 @@ use App\Models\Service;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -17,7 +16,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class ServiceResource extends Resource
+class ServiceResource extends BaseResource
 {
     protected static ?string $model = Service::class;
 

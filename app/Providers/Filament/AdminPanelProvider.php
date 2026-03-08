@@ -6,6 +6,7 @@ use App\Filament\Pages\MaintenanceSettings;
 use App\Filament\Pages\SystemSettings;
 use App\Filament\Widgets\CacheClearWidget;
 use App\Http\Responses\LoginResponse;
+use App\Models\Organization;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -50,6 +51,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            ->tenant(Organization::class, slugAttribute: 'slug')
 
             // 🎨 COLOR SYSTEM - Medical Precision Turquoise
             ->colors([

@@ -7,13 +7,14 @@ use App\Events\AppointmentConfirmed;
 use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
 use App\Traits\Auditable;
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Appointment extends Model
 {
     /** @use HasFactory<\Database\Factories\AppointmentFactory> */
-    use Auditable, HasFactory;
+    use Auditable, BelongsToOrganization, HasFactory;
 
     /**
      * Fields to include in audit logging (booking data - GDPR relevant)
@@ -80,6 +81,7 @@ class Appointment extends Model
     }
 
     protected $fillable = [
+        'organization_id',
         'service_id',
         'customer_id',
         'staff_id',

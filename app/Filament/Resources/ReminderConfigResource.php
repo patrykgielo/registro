@@ -10,14 +10,13 @@ use App\Models\ReminderConfig;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class ReminderConfigResource extends Resource
+class ReminderConfigResource extends BaseResource
 {
     protected static ?string $model = ReminderConfig::class;
 

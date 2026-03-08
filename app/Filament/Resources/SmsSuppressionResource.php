@@ -9,14 +9,13 @@ use App\Models\SmsSuppression;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class SmsSuppressionResource extends Resource
+class SmsSuppressionResource extends BaseResource
 {
     protected static ?string $model = SmsSuppression::class;
 

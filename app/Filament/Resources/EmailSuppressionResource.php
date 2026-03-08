@@ -9,7 +9,6 @@ use App\Models\EmailSuppression;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -17,7 +16,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class EmailSuppressionResource extends Resource
+class EmailSuppressionResource extends BaseResource
 {
     protected static ?string $model = EmailSuppression::class;
 

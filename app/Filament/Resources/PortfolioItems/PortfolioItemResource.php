@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\PortfolioItems;
 
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\PortfolioItems\Pages\CreatePortfolioItem;
 use App\Filament\Resources\PortfolioItems\Pages\EditPortfolioItem;
 use App\Filament\Resources\PortfolioItems\Pages\ListPortfolioItems;
@@ -13,7 +14,6 @@ use App\Models\PortfolioItem;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -22,7 +22,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class PortfolioItemResource extends Resource
+class PortfolioItemResource extends BaseResource
 {
     protected static ?string $model = PortfolioItem::class;
 

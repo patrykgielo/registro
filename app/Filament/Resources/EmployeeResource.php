@@ -8,7 +8,6 @@ use App\Models\User;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -17,7 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 use UnitEnum;
 
-class EmployeeResource extends Resource
+class EmployeeResource extends BaseResource
 {
     protected static ?string $model = User::class;
 

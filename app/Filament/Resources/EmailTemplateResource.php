@@ -12,7 +12,6 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
@@ -22,7 +21,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
 
-class EmailTemplateResource extends Resource
+class EmailTemplateResource extends BaseResource
 {
     protected static ?string $model = EmailTemplate::class;
 

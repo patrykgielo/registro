@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class ServiceArea extends Model
 {
-    use HasFactory;
+    use BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'city_name',
         'latitude',
         'longitude',

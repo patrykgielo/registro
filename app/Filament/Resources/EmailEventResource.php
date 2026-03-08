@@ -11,14 +11,13 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class EmailEventResource extends Resource
+class EmailEventResource extends BaseResource
 {
     protected static ?string $model = EmailEvent::class;
 

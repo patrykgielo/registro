@@ -7,13 +7,12 @@ use App\Models\CarBrand;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class CarBrandResource extends Resource
+class CarBrandResource extends BaseResource
 {
     protected static ?string $model = CarBrand::class;
 
