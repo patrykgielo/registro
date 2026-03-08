@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Traits;
 
 use App\Models\Organization;
+use App\Support\TenantFeature;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * Adds:
  * - organization() relationship
- * - Global scope to filter by current tenant (when set)
+ * - Global scope to filter by current tenant (Filament OR public request context)
  * - Auto-assign organization_id on creation
  */
 trait BelongsToOrganization
@@ -22,28 +23,26 @@ trait BelongsToOrganization
     {
         // Auto-assign organization_id on creation if in tenant context
         static::creating(function ($model) {
-            if (! $model->organization_id && filament()->getTenant()) {
-                $model->organization_id = filament()->getTenant()->id;
+            if (! $model->organization_id) {
+                $tenant = TenantFeature::currentTenant();
+                if ($tenant) {
+                    $model->organization_id = $tenant->id;
+                }
             }
         });
 
-        // Global scope: filter by current tenant when in Filament panel context
+        // Global scope: filter by current tenant (both Filament and public request contexts)
         static::addGlobalScope('organization', function (Builder $builder) {
             if (app()->runningInConsole() && ! app()->runningUnitTests()) {
                 return;
             }
 
-            // Only apply scope when Filament has a tenant set
-            try {
-                $tenant = filament()->getTenant();
-                if ($tenant) {
-                    $builder->where(
-                        $builder->getModel()->getTable().'.organization_id',
-                        $tenant->id
-                    );
-                }
-            } catch (\Throwable) {
-                // Filament not booted yet or no panel context — skip scoping
+            $tenant = TenantFeature::currentTenant();
+            if ($tenant) {
+                $builder->where(
+                    $builder->getModel()->getTable().'.organization_id',
+                    $tenant->id
+                );
             }
         });
     }

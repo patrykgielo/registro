@@ -13,6 +13,7 @@ use App\Notifications\DataExportCompletedNotification;
 use App\Services\Gdpr\DataExportService;
 use App\Services\ProfileService;
 use App\Support\Settings\SettingsManager;
+use App\Support\TenantFeature;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +61,10 @@ class ProfileController extends Controller
      */
     public function vehicle(Request $request): View
     {
+        if (! TenantFeature::active('vehicles')) {
+            abort(404);
+        }
+
         $user = $request->user();
         $user->load(['vehicles.vehicleType', 'vehicles.carBrand', 'vehicles.carModel']);
 

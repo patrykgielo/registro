@@ -53,7 +53,7 @@ $user->name = "x"  // FORBIDDEN (column doesn't exist!)
 ```
 ALL docs are in: app/docs/
 NOT in: /docs/ (root)
-Archived Paradocks docs: docs/archive/
+Archived legacy docs: docs/archive/
 ```
 
 ---
@@ -92,7 +92,7 @@ feature/* → develop (PR) → main (PR)
 | Full Docs | `app/docs/README.md` |
 | Features | `app/docs/features/` |
 | Filament v4 | `app/docs/guides/filament-v4-*.md` |
-| Archived (Paradocks) | `docs/archive/` |
+| Archived (legacy) | `docs/archive/` |
 
 ---
 

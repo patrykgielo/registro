@@ -14,6 +14,28 @@ class Organization extends Model
 {
     use HasFactory;
 
+    /**
+     * Default feature flags per booking_type.
+     * Override per-tenant via settings.features JSON.
+     */
+    private const FEATURE_DEFAULTS = [
+        'time_slot' => [
+            'vehicles' => false,
+            'mobile_service' => false,
+            'service_area' => false,
+        ],
+        'item_rental' => [
+            'vehicles' => false,
+            'mobile_service' => false,
+            'service_area' => false,
+        ],
+        'both' => [
+            'vehicles' => false,
+            'mobile_service' => false,
+            'service_area' => false,
+        ],
+    ];
+
     protected $fillable = [
         'name',
         'slug',
@@ -65,11 +87,51 @@ class Organization extends Model
     }
 
     /**
+     * Get rental categories belonging to this organization.
+     */
+    public function rentalCategories(): HasMany
+    {
+        return $this->hasMany(RentalCategory::class);
+    }
+
+    /**
+     * Get rental items belonging to this organization.
+     */
+    public function rentalItems(): HasMany
+    {
+        return $this->hasMany(RentalItem::class);
+    }
+
+    /**
+     * Get rentals belonging to this organization.
+     */
+    public function rentals(): HasMany
+    {
+        return $this->hasMany(Rental::class);
+    }
+
+    /**
      * Get settings for this organization.
      */
     public function settingRecords(): HasMany
     {
         return $this->hasMany(Setting::class);
+    }
+
+    /**
+     * Check if this organization supports item rentals.
+     */
+    public function supportsRentals(): bool
+    {
+        return in_array($this->booking_type, ['item_rental', 'both']);
+    }
+
+    /**
+     * Check if this organization supports time-slot appointments.
+     */
+    public function supportsAppointments(): bool
+    {
+        return in_array($this->booking_type, ['time_slot', 'both']);
     }
 
     /**
@@ -96,5 +158,40 @@ class Organization extends Model
         $value = data_get($this->settings, $key);
 
         return $value !== null ? $value : $default;
+    }
+
+    /**
+     * Check if a feature is enabled for this organization.
+     * Explicit override in settings JSON wins over booking_type defaults.
+     */
+    public function hasFeature(string $feature): bool
+    {
+        $override = data_get($this->settings, "features.{$feature}");
+
+        if ($override !== null) {
+            return (bool) $override;
+        }
+
+        return self::FEATURE_DEFAULTS[$this->booking_type][$feature] ?? false;
+    }
+
+    /**
+     * Enable a feature for this organization.
+     */
+    public function enableFeature(string $feature): void
+    {
+        $settings = $this->settings ?? [];
+        data_set($settings, "features.{$feature}", true);
+        $this->update(['settings' => $settings]);
+    }
+
+    /**
+     * Disable a feature for this organization.
+     */
+    public function disableFeature(string $feature): void
+    {
+        $settings = $this->settings ?? [];
+        data_set($settings, "features.{$feature}", false);
+        $this->update(['settings' => $settings]);
     }
 }

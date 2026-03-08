@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Settings;
 
 use App\Models\Setting;
+use App\Support\TenantFeature;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
@@ -243,17 +244,11 @@ class SettingsManager
     }
 
     /**
-     * Get current tenant ID from Filament context.
+     * Get current tenant ID from Filament or public request context.
      */
     private function getCurrentTenantId(): ?int
     {
-        try {
-            $tenant = filament()->getTenant();
-
-            return $tenant?->id;
-        } catch (\Throwable) {
-            return null;
-        }
+        return TenantFeature::currentTenant()?->id;
     }
 
     private function getCacheKey(string $group, ?string $key = null): string

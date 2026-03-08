@@ -16,6 +16,7 @@ use App\Http\Controllers\UserAddressController;
 use App\Http\Controllers\UserVehicleController;
 use App\Http\Middleware\CheckBookingEnabled;
 use App\Http\Middleware\CheckRegistrationEnabled;
+use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -90,14 +91,19 @@ Route::middleware('throttle:60,1')->group(function () {
 });
 
 // Authentication routes (register disabled here, handled manually below with middleware)
-Auth::routes(['register' => false]);
+// Wrapped in ResolveTenant so LoginController knows which tenant subdomain the user is on
+// Rate limited: 5 login attempts per minute per IP (brute-force protection)
+Route::middleware([ResolveTenant::class, 'throttle:5,1'])->group(function () {
+    Auth::routes(['register' => false]);
+});
 
 // Registration routes with configurable toggle (admin can disable via Settings)
+// ResolveTenant needed to attach user to organization on subdomain registration
 Route::get('/register', [RegisterController::class, 'showRegistrationForm'])
-    ->middleware(['guest', CheckRegistrationEnabled::class])
+    ->middleware(['guest', ResolveTenant::class, CheckRegistrationEnabled::class])
     ->name('register');
 Route::post('/register', [RegisterController::class, 'register'])
-    ->middleware(['guest', CheckRegistrationEnabled::class]);
+    ->middleware(['guest', ResolveTenant::class, CheckRegistrationEnabled::class]);
 
 // Password Setup Routes (for admin-created users)
 Route::get('/password/setup/{token}', [App\Http\Controllers\Auth\SetPasswordController::class, 'show'])
@@ -115,8 +121,8 @@ Route::prefix('api/webhooks')->name('webhooks.')->middleware('throttle:120,1')->
         ->name('smsapi.incoming');
 });
 
-// Protected routes (require authentication)
-Route::middleware(['auth'])->group(function () {
+// Protected routes (require authentication + tenant resolution)
+Route::middleware(['auth', ResolveTenant::class])->group(function () {
     // Booking routes - protected by CheckBookingEnabled middleware
     // When booking is disabled, these redirect to home page
     Route::middleware([CheckBookingEnabled::class])->group(function () {
@@ -204,7 +210,7 @@ Route::middleware(['auth'])->group(function () {
     });
 });
 
-Route::prefix('api')->name('api.')->middleware(['auth'])->group(function () {
+Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->group(function () {
     Route::get('/vehicle-types', [VehicleDataController::class, 'vehicleTypes'])->name('vehicle-types');
     Route::get('/car-brands', [VehicleDataController::class, 'brands'])->name('car-brands');
     Route::get('/car-models', [VehicleDataController::class, 'models'])->name('car-models');
@@ -222,4 +228,4 @@ Route::prefix('api')->name('api.')->middleware(['auth'])->group(function () {
 // =============================================================================
 Route::get('/{slug}', [PageController::class, 'show'])
     ->name('page.show')
-    ->where('slug', '^(?!admin|api|livewire|filament|horizon|storage|sanctum).*$');
+    ->where('slug', '^(?!admin|platform|api|livewire|filament|horizon|storage|sanctum|health).*$');

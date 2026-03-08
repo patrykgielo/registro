@@ -6,6 +6,7 @@ use App\Filament\Resources\AppointmentResource\Pages;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Carbon\Carbon;
 use Filament\Actions;
@@ -133,6 +134,7 @@ class AppointmentResource extends BaseResource
                     ->columnSpanFull(),
 
                 Section::make('Lokalizacja')
+                    ->visible(fn () => TenantFeature::active('mobile_service') || TenantFeature::active('vehicles'))
                     ->schema([
                         Forms\Components\TextInput::make('service_location_type')
                             ->label('Typ lokalizacji usługi')
@@ -199,6 +201,7 @@ class AppointmentResource extends BaseResource
                     ->collapsed(),
 
                 Section::make('Pojazd')
+                    ->visible(fn () => TenantFeature::active('vehicles'))
                     ->schema([
                         Forms\Components\Select::make('vehicle_type_id')
                             ->label('Typ pojazdu')
@@ -309,7 +312,8 @@ class AppointmentResource extends BaseResource
                     ->getStateUsing(fn ($record) => $record->vehicle_display)
                     ->placeholder('—')
                     ->searchable()
-                    ->toggleable(),
+                    ->toggleable()
+                    ->visible(fn () => TenantFeature::active('vehicles')),
                 Tables\Columns\BadgeColumn::make('status')
                     ->label('Status')
                     ->colors([

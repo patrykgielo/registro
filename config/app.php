@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Domain (for multi-tenancy subdomain resolution)
+    |--------------------------------------------------------------------------
+    |
+    | The base domain without scheme or port. Used by ResolveTenant middleware
+    | to extract tenant slug from subdomain. Subdomains are resolved as:
+    | {slug}.{domain} → Organization::where('slug', $slug)
+    |
+    */
+
+    'domain' => env('APP_DOMAIN', 'registro.local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

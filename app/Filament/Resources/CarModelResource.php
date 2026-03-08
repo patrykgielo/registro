@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CarModelResource\Pages;
 use App\Models\CarModel;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -27,6 +28,11 @@ class CarModelResource extends BaseResource
     protected static string|UnitEnum|null $navigationGroup = 'vehicles';
 
     protected static ?int $navigationSort = 3;
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return TenantFeature::active('vehicles');
+    }
 
     public static function form(Schema $schema): Schema
     {

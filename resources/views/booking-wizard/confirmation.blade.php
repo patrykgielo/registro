@@ -70,7 +70,8 @@
                         </div>
                     </div>
 
-                    {{-- Location --}}
+                    {{-- Location (only when mobile_service feature active and data exists) --}}
+                    @if(($showMobileService ?? true) && $appointment->location_address)
                     <div class="confirmation-screen__detail-row flex items-start gap-4 pb-6 border-b border-gray-200">
                         <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center flex-shrink-0">
                             <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -103,8 +104,10 @@
                             @endif
                         </div>
                     </div>
+                    @endif
 
-                    {{-- Vehicle --}}
+                    {{-- Vehicle (only when vehicles feature active and data exists) --}}
+                    @if(($showVehicle ?? true) && ($appointment->vehicleType || $appointment->vehicle_custom_brand))
                     <div class="confirmation-screen__detail-row flex items-start gap-4 pb-6 border-b border-gray-200">
                         <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
                             <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -138,6 +141,7 @@
                             </div>
                         </div>
                     </div>
+                    @endif
 
                     {{-- Contact --}}
                     <div class="confirmation-screen__detail-row flex items-start gap-4 {{ $appointment->invoice_requested ? 'pb-6 border-b border-gray-200' : '' }}">

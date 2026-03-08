@@ -4,13 +4,15 @@
 ])
 
 @php
-    $steps = [
+    // Use dynamic step labels from controller (via view()->share), or fall back to defaults
+    $steps = $stepLabels ?? [
         1 => ['name' => 'Usługa', 'icon' => 'sparkles'],
         2 => ['name' => 'Termin', 'icon' => 'calendar'],
         3 => ['name' => 'Szczegóły', 'icon' => 'pencil'],
         4 => ['name' => 'Kontakt', 'icon' => 'user'],
         5 => ['name' => 'Podsumowanie', 'icon' => 'check-circle'],
     ];
+    $totalSteps = count($steps);
 @endphp
 
 <div class="progress-indicator bg-white border-b border-gray-200 py-4">

@@ -4,6 +4,7 @@ namespace App\Filament\Platform\Resources;
 
 use App\Filament\Platform\Resources\OrganizationResource\Pages;
 use App\Models\Organization;
+use App\Rules\ValidOrganizationSlug;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -35,9 +36,9 @@ class OrganizationResource extends Resource
 
                         Forms\Components\TextInput::make('slug')
                             ->required()
-                            ->maxLength(255)
+                            ->maxLength(63)
                             ->unique(ignoreRecord: true)
-                            ->alphaDash()
+                            ->rules([new ValidOrganizationSlug])
                             ->helperText('Used for subdomain: {slug}.registro.app'),
 
                         Forms\Components\Select::make('booking_type')
@@ -63,6 +64,23 @@ class OrganizationResource extends Resource
                             ->nullable(),
                     ])
                     ->columns(2),
+
+                Section::make('Features')
+                    ->description('Enable or disable features for this organization')
+                    ->schema([
+                        Forms\Components\Toggle::make('settings.features.vehicles')
+                            ->label('Vehicle Catalog')
+                            ->helperText('Vehicle type selection, brand/model catalog, registration number'),
+
+                        Forms\Components\Toggle::make('settings.features.mobile_service')
+                            ->label('Mobile Service (Location/Address)')
+                            ->helperText('Location picker, address input, Google Maps integration'),
+
+                        Forms\Components\Toggle::make('settings.features.service_area')
+                            ->label('Service Area Restrictions')
+                            ->helperText('Validate that customer location is within service area'),
+                    ])
+                    ->columns(3),
             ]);
     }
 

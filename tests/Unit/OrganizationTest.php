@@ -167,4 +167,98 @@ class OrganizationTest extends TestCase
             $this->assertEquals($type, $org->booking_type);
         }
     }
+
+    // ==========================================
+    // FEATURE FLAG TESTS
+    // ==========================================
+
+    public function test_has_feature_returns_default_based_on_booking_type(): void
+    {
+        $owner = User::factory()->create();
+
+        $org = Organization::create([
+            'name' => 'Salon',
+            'slug' => 'salon-feature-test',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        // All features default to false for time_slot
+        $this->assertFalse($org->hasFeature('vehicles'));
+        $this->assertFalse($org->hasFeature('mobile_service'));
+        $this->assertFalse($org->hasFeature('service_area'));
+    }
+
+    public function test_has_feature_respects_explicit_override(): void
+    {
+        $owner = User::factory()->create();
+
+        $org = Organization::create([
+            'name' => 'Detailing',
+            'slug' => 'detailing-feature-test',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+            'settings' => [
+                'features' => [
+                    'vehicles' => true,
+                    'mobile_service' => true,
+                ],
+            ],
+        ]);
+
+        $this->assertTrue($org->hasFeature('vehicles'));
+        $this->assertTrue($org->hasFeature('mobile_service'));
+        // service_area not overridden, uses default (false)
+        $this->assertFalse($org->hasFeature('service_area'));
+    }
+
+    public function test_has_feature_returns_false_for_unknown_feature(): void
+    {
+        $org = Organization::factory()->create();
+
+        $this->assertFalse($org->hasFeature('nonexistent_feature'));
+    }
+
+    public function test_enable_feature(): void
+    {
+        $org = Organization::factory()->create();
+
+        $this->assertFalse($org->hasFeature('vehicles'));
+
+        $org->enableFeature('vehicles');
+        $org->refresh();
+
+        $this->assertTrue($org->hasFeature('vehicles'));
+    }
+
+    public function test_disable_feature(): void
+    {
+        $org = Organization::factory()->create([
+            'settings' => ['features' => ['vehicles' => true]],
+        ]);
+
+        $this->assertTrue($org->hasFeature('vehicles'));
+
+        $org->disableFeature('vehicles');
+        $org->refresh();
+
+        $this->assertFalse($org->hasFeature('vehicles'));
+    }
+
+    public function test_enable_feature_preserves_other_settings(): void
+    {
+        $org = Organization::factory()->create([
+            'settings' => [
+                'theme' => 'dark',
+                'features' => ['mobile_service' => true],
+            ],
+        ]);
+
+        $org->enableFeature('vehicles');
+        $org->refresh();
+
+        $this->assertTrue($org->hasFeature('vehicles'));
+        $this->assertTrue($org->hasFeature('mobile_service'));
+        $this->assertEquals('dark', data_get($org->settings, 'theme'));
+    }
 }
