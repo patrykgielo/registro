@@ -2,7 +2,7 @@
     title="Dołącz do nas"
     subtitle="Stwórz konto i rozpocznij przygodę"
 >
-    <form method="POST" action="{{ route('register') }}" class="space-y-6">
+    <form method="POST" action="{{ route('customer.register') }}" class="space-y-6">
         @csrf
 
         {{-- First Name Input --}}

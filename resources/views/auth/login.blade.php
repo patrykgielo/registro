@@ -57,17 +57,23 @@
     </form>
 
     {{-- Footer Slot: Register Link --}}
-    @if($registrationEnabled)
-        <x-slot:footer>
+    <x-slot:footer>
+        @if($registrationEnabled)
             <p class="text-sm text-white/90">
                 Nie masz konta?
-                <a href="{{ route('register') }}"
+                <a href="{{ route('customer.register') }}"
                    class="font-semibold text-white hover:text-white/80 transition-colors ios-spring underline decoration-2 underline-offset-4">
                     Zarejestruj się
                 </a>
             </p>
-        </x-slot:footer>
-    @endif
+        @endif
+        <p class="text-sm text-white/70 mt-2">
+            Chcesz założyć firmę?
+            <a href="{{ route('register') }}" class="font-semibold text-white underline decoration-2 underline-offset-4 hover:text-white/80 transition-colors">
+                Wypróbuj za darmo
+            </a>
+        </p>
+    </x-slot:footer>
 </x-ios.auth-card>
 
 <style>

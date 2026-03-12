@@ -26,6 +26,21 @@ class RegisterController extends Controller
     }
 
     /**
+     * Show the customer registration form.
+     * On root domain (no tenant), redirect to business registration.
+     */
+    public function showRegistrationForm(Request $request)
+    {
+        $tenant = $request->attributes->get('tenant');
+
+        if (! $tenant) {
+            return redirect()->route('register');
+        }
+
+        return view('auth.register');
+    }
+
+    /**
      * Get a validator for an incoming registration request.
      *
      * @return \Illuminate\Contracts\Validation\Validator

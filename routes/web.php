@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\SmsApiIncomingController;
 use App\Http\Controllers\Api\SmsApiWebhookController;
 use App\Http\Controllers\Api\VehicleDataController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\Auth\BusinessRegisterController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\PageController;
@@ -97,13 +98,46 @@ Route::middleware([ResolveTenant::class, 'throttle:5,1'])->group(function () {
     Auth::routes(['register' => false]);
 });
 
-// Registration routes with configurable toggle (admin can disable via Settings)
+// Business registration (root domain: /register → 2-step wizard)
+Route::middleware(['guest'])->group(function () {
+    Route::get('/register', [BusinessRegisterController::class, 'showStep1'])
+        ->name('register');
+    Route::post('/register/step/1', [BusinessRegisterController::class, 'storeStep1'])
+        ->middleware('throttle:10,1')
+        ->name('register.step1.store');
+    Route::get('/register/step/2', [BusinessRegisterController::class, 'showStep2'])
+        ->name('register.step2');
+    Route::post('/register/step/2', [BusinessRegisterController::class, 'storeStep2'])
+        ->middleware('throttle:5,1')
+        ->name('register.step2.store');
+});
+
+// Business registration welcome (auth required)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/register/welcome', [BusinessRegisterController::class, 'welcome'])
+        ->name('register.welcome');
+});
+
+// Business registration AJAX (throttled)
+Route::middleware('throttle:30,1')->group(function () {
+    Route::get('/register/check-slug', [BusinessRegisterController::class, 'checkSlug'])
+        ->name('register.check-slug');
+    Route::get('/register/generate-slug', [BusinessRegisterController::class, 'generateSlug'])
+        ->name('register.generate-slug');
+});
+
+// Customer registration (tenant subdomain: /register → single-step)
 // ResolveTenant needed to attach user to organization on subdomain registration
-Route::get('/register', [RegisterController::class, 'showRegistrationForm'])
+Route::get('/customer/register', [RegisterController::class, 'showRegistrationForm'])
     ->middleware(['guest', ResolveTenant::class, CheckRegistrationEnabled::class])
-    ->name('register');
-Route::post('/register', [RegisterController::class, 'register'])
+    ->name('customer.register');
+Route::post('/customer/register', [RegisterController::class, 'register'])
     ->middleware(['guest', ResolveTenant::class, CheckRegistrationEnabled::class]);
+
+// Backwards compatibility: /get-started → /register
+Route::redirect('/get-started', '/register', 301);
+Route::redirect('/get-started/step/2', '/register/step/2', 301);
+Route::redirect('/get-started/welcome', '/register/welcome', 301);
 
 // Password Setup Routes (for admin-created users)
 Route::get('/password/setup/{token}', [App\Http\Controllers\Auth\SetPasswordController::class, 'show'])
@@ -228,4 +262,4 @@ Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->
 // =============================================================================
 Route::get('/{slug}', [PageController::class, 'show'])
     ->name('page.show')
-    ->where('slug', '^(?!admin|platform|api|livewire|filament|horizon|storage|sanctum|health).*$');
+    ->where('slug', '^(?!admin|platform|api|livewire|filament|horizon|storage|sanctum|health|register|customer|get-started).*$');

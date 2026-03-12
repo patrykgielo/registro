@@ -28,7 +28,7 @@ class RegisterTenantTest extends TestCase
         $user->assignRole('customer');
 
         // Simulate a request with tenant resolved by middleware
-        $request = Request::create('/register', 'POST');
+        $request = Request::create('/customer/register', 'POST');
         $request->attributes->set('tenant', $org);
 
         // Call the registered() hook directly
@@ -45,7 +45,7 @@ class RegisterTenantTest extends TestCase
         $user = User::factory()->create();
 
         // Request without tenant attribute (root domain)
-        $request = Request::create('/register', 'POST');
+        $request = Request::create('/customer/register', 'POST');
 
         $controller = new RegisterController;
         $controller->callAction('registered', [$request, $user]);
@@ -53,23 +53,11 @@ class RegisterTenantTest extends TestCase
         $this->assertEquals(0, $user->organizations()->count());
     }
 
-    public function test_registration_on_root_domain_creates_user(): void
+    public function test_customer_registration_on_root_domain_redirects_to_business_register(): void
     {
-        config(['app.domain' => 'registro.local']);
+        $response = $this->get('/customer/register');
 
-        $response = $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class)
-            ->post('/register', [
-                'first_name' => 'Root',
-                'last_name' => 'User',
-                'email' => 'root@example.com',
-                'password' => 'password123',
-                'password_confirmation' => 'password123',
-            ]);
-
-        $response->assertRedirect();
-
-        $user = User::where('email', 'root@example.com')->first();
-        $this->assertNotNull($user);
-        $this->assertEquals(0, $user->organizations()->count());
+        // Without a tenant, customer register redirects to business registration
+        $response->assertRedirect(route('register'));
     }
 }
