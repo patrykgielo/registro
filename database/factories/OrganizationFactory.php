@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\Industry;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -19,6 +20,7 @@ class OrganizationFactory extends Factory
             'name' => $name,
             'slug' => Str::slug($name).'-'.fake()->unique()->numberBetween(1, 9999),
             'booking_type' => 'time_slot',
+            'industry' => null,
             'owner_id' => User::factory(),
             'is_active' => true,
             'settings' => null,
@@ -30,6 +32,30 @@ class OrganizationFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'booking_type' => 'item_rental',
+        ]);
+    }
+
+    public function equipmentRental(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'booking_type' => 'item_rental',
+            'industry' => Industry::EquipmentRental,
+        ]);
+    }
+
+    public function autoDetailing(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'booking_type' => 'time_slot',
+            'industry' => Industry::AutoDetailing,
+        ]);
+    }
+
+    public function generalServices(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'booking_type' => 'time_slot',
+            'industry' => Industry::GeneralServices,
         ]);
     }
 

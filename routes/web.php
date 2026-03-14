@@ -112,8 +112,13 @@ Route::middleware(['guest'])->group(function () {
         ->name('register.step2.store');
 });
 
-// Business registration welcome (auth required)
+// Business registration step 3 + welcome (auth required)
 Route::middleware(['auth'])->group(function () {
+    Route::get('/register/step/3', [BusinessRegisterController::class, 'showStep3'])
+        ->name('register.step3');
+    Route::post('/register/step/3', [BusinessRegisterController::class, 'storeStep3'])
+        ->middleware('throttle:10,1')
+        ->name('register.step3.store');
     Route::get('/register/welcome', [BusinessRegisterController::class, 'welcome'])
         ->name('register.welcome');
 });

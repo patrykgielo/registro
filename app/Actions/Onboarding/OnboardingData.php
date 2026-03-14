@@ -10,6 +10,7 @@ readonly class OnboardingData
         public string $orgName,
         public string $slug,
         public string $bookingType,
+        public ?string $industry,
         public string $firstName,
         public string $lastName,
         public string $email,

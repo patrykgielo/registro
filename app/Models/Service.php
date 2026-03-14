@@ -41,6 +41,7 @@ class Service extends Model
         'is_popular',
         'booking_count_week',
         'features',
+        'metadata',
     ];
 
     protected $casts = [
@@ -57,6 +58,7 @@ class Service extends Model
         'is_popular' => 'boolean',
         'booking_count_week' => 'integer',
         'features' => 'array',
+        'metadata' => 'array',
     ];
 
     // Relationships

@@ -1,6 +1,6 @@
 <x-ios.auth-card
     title="Załóż swoją firmę"
-    subtitle="Krok 1 z 2 — 14 dni za darmo, bez karty"
+    subtitle="Krok 1 z 3 — 14 dni za darmo, bez karty"
 >
     <form method="POST" action="{{ route('register.step1.store') }}" class="space-y-6">
         @csrf
@@ -38,53 +38,33 @@
             <p class="mt-1 text-xs hidden" id="slug-status"></p>
         </div>
 
-        {{-- Booking Type --}}
+        {{-- Industry Selection --}}
         <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-3">Typ działalności</label>
-            @error('booking_type')
+            <label class="block text-sm font-semibold text-gray-700 mb-3">Branża</label>
+            @error('industry')
                 <p class="text-red-500 text-xs mb-2">{{ $message }}</p>
             @enderror
 
+            @php
+                $selectedIndustry = old('industry', $data['industry'] ?? '');
+            @endphp
+
             <div class="space-y-3">
-                @php
-                    $selectedType = old('booking_type', $data['booking_type'] ?? '');
-                @endphp
-
-                {{-- Time Slot --}}
-                <label class="flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
-                    {{ $selectedType === 'time_slot' ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300' }}">
-                    <input type="radio" name="booking_type" value="time_slot"
-                        class="mt-1 w-5 h-5 text-primary-500 focus:ring-primary-500"
-                        {{ $selectedType === 'time_slot' ? 'checked' : '' }}>
-                    <div>
-                        <span class="font-semibold text-gray-900">Rezerwacja terminów</span>
-                        <p class="text-sm text-gray-500 mt-0.5">Salon, klinika, warsztat — klienci rezerwują konkretne godziny</p>
-                    </div>
-                </label>
-
-                {{-- Item Rental --}}
-                <label class="flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
-                    {{ $selectedType === 'item_rental' ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300' }}">
-                    <input type="radio" name="booking_type" value="item_rental"
-                        class="mt-1 w-5 h-5 text-primary-500 focus:ring-primary-500"
-                        {{ $selectedType === 'item_rental' ? 'checked' : '' }}>
-                    <div>
-                        <span class="font-semibold text-gray-900">Wypożyczalnia</span>
-                        <p class="text-sm text-gray-500 mt-0.5">Sprzęt, pojazdy, narzędzia — klienci wypożyczają na określony czas</p>
-                    </div>
-                </label>
-
-                {{-- Both --}}
-                <label class="flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
-                    {{ $selectedType === 'both' ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300' }}">
-                    <input type="radio" name="booking_type" value="both"
-                        class="mt-1 w-5 h-5 text-primary-500 focus:ring-primary-500"
-                        {{ $selectedType === 'both' ? 'checked' : '' }}>
-                    <div>
-                        <span class="font-semibold text-gray-900">Oba modele</span>
-                        <p class="text-sm text-gray-500 mt-0.5">Rezerwacje terminów i wypożyczenia w jednym miejscu</p>
-                    </div>
-                </label>
+                @foreach($industries as $industry)
+                    <label class="flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
+                        {{ $selectedIndustry === $industry->value ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300' }}">
+                        <input type="radio" name="industry" value="{{ $industry->value }}"
+                            class="mt-1 w-5 h-5 text-primary-500 focus:ring-primary-500"
+                            {{ $selectedIndustry === $industry->value ? 'checked' : '' }}>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <x-dynamic-component :component="'heroicon-m-' . $industry->icon()" class="w-5 h-5 text-primary-500" />
+                                <span class="font-semibold text-gray-900">{{ $industry->label() }}</span>
+                            </div>
+                            <p class="text-sm text-gray-500 mt-0.5">{{ $industry->description() }}</p>
+                        </div>
+                    </label>
+                @endforeach
             </div>
         </div>
 
@@ -176,9 +156,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Radio button visual feedback
-    document.querySelectorAll('input[name="booking_type"]').forEach(radio => {
+    document.querySelectorAll('input[name="industry"]').forEach(radio => {
         radio.addEventListener('change', function() {
-            document.querySelectorAll('input[name="booking_type"]').forEach(r => {
+            document.querySelectorAll('input[name="industry"]').forEach(r => {
                 r.closest('label').classList.remove('border-primary-500', 'bg-primary-50');
                 r.closest('label').classList.add('border-gray-200');
             });

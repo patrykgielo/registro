@@ -257,6 +257,35 @@ WYMAGANE DODATKOWO:
 
 ---
 
+## ZASADA 8: ZAWSZE Agenci Przed Działaniem (CRITICAL)
+
+**NIGDY nie rozpoczynaj implementacji bez uprzedniego użycia agenta!**
+
+Pełne zasady: → `.claude/rules/agent-usage.md` (TIER 1)
+
+### Minimum:
+
+```
+1. STOP — nie pisz kodu!
+2. Uruchom agenta (Explore/Plan/laravel-senior-architect)
+3. Agent analizuje zależności, istniejący kod, edge cases
+4. Dopiero po raporcie agenta → implementuj
+```
+
+### Dlaczego:
+
+Agenci wychwytują zależności których nie widać na pierwszy rzut oka.
+Bez agenta łatwo pominąć wymagane setup (seedery, role, migracje).
+
+### Incident 2026-03-14: RoleDoesNotExist
+
+**Sytuacja:** Implementacja onboardingu bez agenta architektury.
+**Skutek:** `assignRole('admin')` crash bo tabela `roles` pusta na fresh DB.
+**Root cause:** Brak `Role::firstOrCreate()` — agent by to wychwycił analizując zależności Spatie.
+**Lekcja:** "Proste" zadanie miało ukrytą zależność. Agent = kontrola jakości.
+
+---
+
 ## Checklist po KAŻDYM rozwiązanym błędzie
 
 - [ ] Zrozumiałem ROOT CAUSE (nie tylko symptom)

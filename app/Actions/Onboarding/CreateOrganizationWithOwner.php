@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Actions\Onboarding;
 
+use App\Enums\Industry;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class CreateOrganizationWithOwner
 {
@@ -31,12 +33,17 @@ class CreateOrganizationWithOwner
                 'email_verified_at' => now(),
             ]);
 
+            Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
             $user->assignRole('admin');
+
+            $industry = $data->industry ? Industry::from($data->industry) : null;
+            $bookingType = $industry ? $industry->bookingType() : $data->bookingType;
 
             $org = Organization::create([
                 'name' => $data->orgName,
                 'slug' => $data->slug,
-                'booking_type' => $data->bookingType,
+                'booking_type' => $bookingType,
+                'industry' => $data->industry,
                 'owner_id' => $user->id,
                 'is_active' => true,
                 'trial_ends_at' => now()->addDays(14),

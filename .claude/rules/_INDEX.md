@@ -11,6 +11,7 @@
 | File | Purpose | When |
 |------|---------|------|
 | `self-improvement.md` | Error documentation, wait for deploy | ALWAYS (meta-rules) |
+| `agent-usage.md` | ZAWSZE agenci przed działaniem! | ALWAYS (before ANY action) |
 | `git-workflow.md` | Branch strategy, commit rules | Before ANY git operation |
 | `deployment.md` | Deploy safety, env validation | Before ANY deployment |
 | `security.md` | Auth, input validation, OWASP | Before writing ANY code |
@@ -25,7 +26,9 @@
 
 | File | Paths | Key Rules |
 |------|-------|-----------|
-| `models.md` | `app/Models/**` | User has first_name/last_name, NOT name |
+| `models.md` | `app/Models/**` | User first_name/last_name, Organization.industry, BelongsToOrganization |
+| `onboarding.md` | `app/Actions/Onboarding/**`, `app/Enums/Industry.php` | Industry enum, vertical seeders, registration flow |
+| `spatie-roles.md` | `app/Actions/**`, `app/Listeners/**` | ZAWSZE firstOrCreate przed assignRole! |
 | `services.md` | `app/Services/**` | DI, SettingsManager integration |
 | `controllers.md` | `app/Http/Controllers/**` | Thin controllers, delegate to services |
 | `filament.md` | `app/Filament/**` | v4 namespace changes (BREAKING!) |
@@ -50,7 +53,6 @@
 | `console-commands.md` | CLI structure |
 | `events-listeners.md` | Event patterns |
 | `api-endpoints.md` | REST security |
-| `agent-usage.md` | When to use which agent |
 | `dark-theme.md` | Dark = ciemne tło sekcji, NIE systemowy dark mode |
 
 ---

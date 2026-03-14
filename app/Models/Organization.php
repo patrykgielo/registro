@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\Industry;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -40,6 +41,7 @@ class Organization extends Model
         'name',
         'slug',
         'booking_type',
+        'industry',
         'owner_id',
         'is_active',
         'settings',
@@ -48,6 +50,7 @@ class Organization extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'industry' => Industry::class,
         'settings' => 'array',
         'trial_ends_at' => 'datetime',
     ];
@@ -162,7 +165,7 @@ class Organization extends Model
 
     /**
      * Check if a feature is enabled for this organization.
-     * Explicit override in settings JSON wins over booking_type defaults.
+     * Priority: explicit override > industry defaults > booking_type defaults.
      */
     public function hasFeature(string $feature): bool
     {
@@ -170,6 +173,13 @@ class Organization extends Model
 
         if ($override !== null) {
             return (bool) $override;
+        }
+
+        if ($this->industry !== null) {
+            $industryDefaults = $this->industry->defaultFeatures();
+            if (isset($industryDefaults[$feature])) {
+                return $industryDefaults[$feature];
+            }
         }
 
         return self::FEATURE_DEFAULTS[$this->booking_type][$feature] ?? false;
@@ -193,5 +203,24 @@ class Organization extends Model
         $settings = $this->settings ?? [];
         data_set($settings, "features.{$feature}", false);
         $this->update(['settings' => $settings]);
+    }
+
+    /**
+     * Get industry-specific terminology.
+     * Falls back to default terms if no industry set.
+     */
+    public function term(string $key): string
+    {
+        $defaults = [
+            'service' => 'usługa',
+            'booking' => 'rezerwacja',
+            'customer' => 'klient',
+        ];
+
+        if ($this->industry !== null) {
+            return $this->industry->terminology()[$key] ?? $defaults[$key] ?? $key;
+        }
+
+        return $defaults[$key] ?? $key;
     }
 }

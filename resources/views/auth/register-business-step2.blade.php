@@ -1,16 +1,16 @@
 <x-ios.auth-card
     title="Twoje konto"
-    subtitle="Krok 2 z 2 — Dane właściciela"
+    subtitle="Krok 2 z 3 — Dane właściciela"
 >
     {{-- Business info summary --}}
     <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-                <x-heroicon-m-building-office class="w-5 h-5 text-primary-600" />
+                <x-dynamic-component :component="'heroicon-m-' . $industry->icon()" class="w-5 h-5 text-primary-600" />
             </div>
             <div>
                 <p class="font-semibold text-gray-900">{{ $step1['org_name'] }}</p>
-                <p class="text-sm text-gray-500">{{ $step1['slug'] }}.registro.app</p>
+                <p class="text-sm text-gray-500">{{ $industry->label() }} &middot; {{ $step1['slug'] }}.registro.app</p>
             </div>
         </div>
     </div>
