@@ -23,6 +23,9 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 
+# Content creation (local only, never committed)
+/content/
+
 # Local Docker development files (not committed)
 /mysql/
 /php/
