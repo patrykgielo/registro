@@ -6,6 +6,7 @@ namespace App\Filament\Resources\Pages;
 
 use App\Enums\MenuLocation;
 use App\Enums\PageLayout;
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\Pages\Pages\CreatePage;
 use App\Filament\Resources\Pages\Pages\EditPage;
 use App\Filament\Resources\Pages\Pages\ListPages;
@@ -14,7 +15,6 @@ use App\Models\Page;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -23,9 +23,11 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class PageResource extends Resource
+class PageResource extends BaseResource
 {
     protected static ?string $model = Page::class;
+
+    protected static ?string $module = 'website';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
 

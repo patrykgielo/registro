@@ -48,6 +48,18 @@
                 @case('phone')
                     <x-heroicon-o-phone class="w-5 h-5 text-gray-400" />
                     @break
+                @case('map-pin')
+                    <x-heroicon-o-map-pin class="w-5 h-5 text-gray-400" />
+                    @break
+                @case('map')
+                    <x-heroicon-o-map class="w-5 h-5 text-gray-400" />
+                    @break
+                @case('building-office')
+                    <x-heroicon-o-building-office class="w-5 h-5 text-gray-400" />
+                    @break
+                @case('globe-alt')
+                    <x-heroicon-o-globe-alt class="w-5 h-5 text-gray-400" />
+                    @break
                 @default
                     <x-heroicon-o-information-circle class="w-5 h-5 text-gray-400" />
             @endswitch

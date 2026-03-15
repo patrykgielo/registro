@@ -1,10 +1,25 @@
-# Agent Usage Rules - OBOWIĄZKOWE
+# Agent Usage Rules - CRITICAL (TIER 1)
 
-## ZASADA GŁÓWNA
+## ZASADA GŁÓWNA — BEZWZGLĘDNA
 
-**ZAWSZE używaj agentów z `.claude/agents/` do KAŻDEGO zadania.**
+**NIGDY nie rozpoczynaj żadnego działania bez uprzedniego użycia agenta.**
 
-Nawet do najmniejszych zadań - agenci mają specjalistyczną wiedzę i kontrolują jakość.
+Dotyczy WSZYSTKIEGO: implementacji, diagnozowania, refactoringu, zmian konfiguracji, nawet "prostych" zmian.
+
+**Naruszenie = przerwanie pracy.**
+
+### Incident 2026-03-14: RoleDoesNotExist
+Implementacja onboardingu bez agenta architektury → pominięto zależność Spatie roles → crash na produkcji.
+Testy przeszły bo TestCase seeduje role, ale fresh DB nie ma ról. Agent by to wychwycił.
+
+### Workflow PRZED każdym zadaniem:
+
+```
+1. STOP — nie pisz kodu!
+2. Uruchom agenta (Explore/Plan/laravel-senior-architect)
+3. Agent analizuje zależności, istniejący kod, edge cases
+4. Dopiero po raporcie agenta → implementuj
+```
 
 ## Kiedy używać którego agenta
 
@@ -52,8 +67,21 @@ Gdy coś nie działa (staging vs production):
 - Nie pisz kodu bez agenta
 - Nie zmieniaj konfiguracji bez agenta
 - Nie badaj problemu bez agenta
+- Nie twórz dokumentacji bez agenta (Explore do audytu stanu)
+- **Nie zakładaj "to proste"** — agent sprawdza zależności których nie widać
 
 **Agenci = kontrola jakości + specjalistyczna wiedza**
+
+### Minimalny agent per typ zadania
+
+| Akcja | Minimum | Dlaczego |
+|-------|---------|----------|
+| Nowy kod / feature | `Explore` → `laravel-senior-architect` | Sprawdzi istniejące wzorce, zależności |
+| Bug fix | `Explore` (root cause) → fix | Nie zgaduj, zbadaj |
+| Refactoring | `Explore` → `Plan` | Znajdzie użycia, wpływ zmian |
+| Frontend/UI | `Explore` → `frontend-ui-architect` | Sprawdzi komponenty, a11y |
+| Dokumentacja | `Explore` (audit stanu) → pisanie | Sprawdzi co jest, czego brakuje |
+| Security | `agent-security-audit-specialist` | Pełny OWASP check |
 
 ## ClickUp Ticket Rules
 

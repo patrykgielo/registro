@@ -68,7 +68,7 @@ class SystemSettings extends Page implements HasForms
     /**
      * Permission required to access this page.
      */
-    protected static ?string $permission = 'manage settings';
+    protected static ?string $permission = 'settings.manage';
 
     /**
      * Restrict access to admins and super-admins only.

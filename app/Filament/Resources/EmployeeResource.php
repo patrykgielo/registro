@@ -5,10 +5,10 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\EmployeeResource\Pages;
 use App\Filament\Resources\EmployeeResource\RelationManagers;
 use App\Models\User;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -17,9 +17,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 use UnitEnum;
 
-class EmployeeResource extends Resource
+class EmployeeResource extends BaseResource
 {
     protected static ?string $model = User::class;
+
+    protected static ?string $module = 'staff';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-user-circle';
 
@@ -33,9 +35,14 @@ class EmployeeResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->whereHas('roles', function ($query) {
-            $query->where('name', 'staff');
-        });
+        $tenant = TenantFeature::currentTenant();
+
+        return parent::getEloquentQuery()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'staff'))
+            ->when($tenant, fn ($q) => $q->whereHas(
+                'organizations',
+                fn ($q2) => $q2->where('organizations.id', $tenant->id)
+            ));
     }
 
     public static function form(Schema $schema): Schema

@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class UserAddress extends Model
 {
-    use HasFactory;
+    use BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'user_id',
         'address',
         'latitude',

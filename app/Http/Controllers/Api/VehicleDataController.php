@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CarBrand;
 use App\Models\CarModel;
 use App\Models\VehicleType;
+use App\Support\TenantFeature;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,10 @@ class VehicleDataController extends Controller
      */
     public function vehicleTypes(): JsonResponse
     {
+        if (! TenantFeature::active('vehicles')) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
         $types = VehicleType::active()
             ->ordered()
             ->get(['id', 'name', 'slug', 'description', 'examples']);
@@ -32,6 +37,10 @@ class VehicleDataController extends Controller
      */
     public function brands(Request $request): JsonResponse
     {
+        if (! TenantFeature::active('vehicles')) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
         // Return all active brands - vehicle type is customer's declaration
         $brands = CarBrand::active()
             ->orderBy('name')
@@ -49,6 +58,10 @@ class VehicleDataController extends Controller
      */
     public function models(Request $request): JsonResponse
     {
+        if (! TenantFeature::active('vehicles')) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
         $request->validate([
             'car_brand_id' => 'required|exists:car_brands,id',
         ]);
@@ -71,6 +84,10 @@ class VehicleDataController extends Controller
      */
     public function years(): JsonResponse
     {
+        if (! TenantFeature::active('vehicles')) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
         $currentYear = (int) date('Y');
         $startYear = 1990;
         $years = range($currentYear, $startYear);

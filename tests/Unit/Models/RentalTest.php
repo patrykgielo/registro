@@ -1,0 +1,148 @@
+<?php
+
+namespace Tests\Unit\Models;
+
+use App\Models\Rental;
+use App\Models\RentalItem;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Tests\TestCase;
+
+class RentalTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_rental_can_be_created(): void
+    {
+        $rental = Rental::factory()->create();
+
+        $this->assertDatabaseHas('rentals', [
+            'id' => $rental->id,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_rental_belongs_to_item(): void
+    {
+        $rental = Rental::factory()->create();
+
+        $this->assertInstanceOf(RentalItem::class, $rental->rentalItem);
+    }
+
+    public function test_rental_belongs_to_customer(): void
+    {
+        $rental = Rental::factory()->create();
+
+        $this->assertInstanceOf(User::class, $rental->customer);
+    }
+
+    public function test_duration_days_accessor(): void
+    {
+        $rental = Rental::factory()->create([
+            'start_date' => Carbon::parse('2026-03-01'),
+            'end_date' => Carbon::parse('2026-03-05'),
+        ]);
+
+        // 5 days inclusive (March 1-5)
+        $this->assertEquals(5, $rental->duration_days);
+    }
+
+    public function test_is_overdue_accessor(): void
+    {
+        $rental = Rental::factory()->create([
+            'status' => 'active',
+            'start_date' => Carbon::today()->subDays(5),
+            'end_date' => Carbon::today()->subDay(),
+        ]);
+
+        $this->assertTrue($rental->is_overdue);
+    }
+
+    public function test_is_not_overdue_when_end_date_future(): void
+    {
+        $rental = Rental::factory()->create([
+            'status' => 'active',
+            'start_date' => Carbon::today(),
+            'end_date' => Carbon::today()->addDays(3),
+        ]);
+
+        $this->assertFalse($rental->is_overdue);
+    }
+
+    public function test_is_not_overdue_when_returned(): void
+    {
+        $rental = Rental::factory()->create([
+            'status' => 'returned',
+            'start_date' => Carbon::today()->subDays(5),
+            'end_date' => Carbon::today()->subDay(),
+        ]);
+
+        $this->assertFalse($rental->is_overdue);
+    }
+
+    public function test_status_transition_sets_confirmed_at(): void
+    {
+        $rental = Rental::factory()->create(['status' => 'pending']);
+
+        $rental->update(['status' => 'confirmed']);
+        $rental->refresh();
+
+        $this->assertNotNull($rental->confirmed_at);
+    }
+
+    public function test_status_transition_sets_picked_up_at(): void
+    {
+        $rental = Rental::factory()->confirmed()->create();
+
+        $rental->update(['status' => 'active']);
+        $rental->refresh();
+
+        $this->assertNotNull($rental->picked_up_at);
+    }
+
+    public function test_status_transition_sets_returned_at(): void
+    {
+        $rental = Rental::factory()->active()->create();
+
+        $rental->update(['status' => 'returned']);
+        $rental->refresh();
+
+        $this->assertNotNull($rental->returned_at);
+    }
+
+    public function test_status_transition_sets_cancelled_at(): void
+    {
+        $rental = Rental::factory()->create(['status' => 'pending']);
+
+        $rental->update(['status' => 'cancelled']);
+        $rental->refresh();
+
+        $this->assertNotNull($rental->cancelled_at);
+    }
+
+    public function test_customer_name_accessor(): void
+    {
+        $rental = Rental::factory()->create([
+            'first_name' => 'Jan',
+            'last_name' => 'Kowalski',
+        ]);
+
+        $this->assertEquals('Jan Kowalski', $rental->customer_name);
+    }
+
+    public function test_scopes(): void
+    {
+        Rental::factory()->create(['status' => 'pending']);
+        Rental::factory()->create(['status' => 'confirmed']);
+        Rental::factory()->create(['status' => 'active']);
+        Rental::factory()->create(['status' => 'returned']);
+        Rental::factory()->create(['status' => 'cancelled']);
+
+        $this->assertCount(1, Rental::pending()->get());
+        $this->assertCount(1, Rental::confirmed()->get());
+        $this->assertCount(1, Rental::active()->get());
+        $this->assertCount(1, Rental::returned()->get());
+        $this->assertCount(1, Rental::cancelled()->get());
+    }
+}

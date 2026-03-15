@@ -7,15 +7,16 @@ use App\Models\VehicleType;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class VehicleTypeResource extends Resource
+class VehicleTypeResource extends BaseResource
 {
     protected static ?string $model = VehicleType::class;
+
+    protected static ?string $module = 'vehicles';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cube';
 
@@ -130,12 +131,19 @@ class VehicleTypeResource extends Resource
 
     public static function canCreate(): bool
     {
-        return false; // Types are seeded, not created manually
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
-    /**
-     * Restrict access to admins and super-admins only.
-     */
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;

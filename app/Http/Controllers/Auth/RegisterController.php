@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Events\UserRegistered;
 use App\Http\Controllers\Controller;
+use App\Models\Organization;
 use App\Models\User;
-use Illuminate\Auth\Events\Registered;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -13,35 +13,31 @@ use Illuminate\Support\Facades\Validator;
 
 class RegisterController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Register Controller
-    |--------------------------------------------------------------------------
-    |
-    | This controller handles the registration of new users as well as their
-    | validation and creation. By default this controller uses a trait to
-    | provide this functionality without requiring any additional code.
-    |
-    */
-
     use RegistersUsers;
 
     /**
      * Where to redirect users after registration.
-     * Redirect to home page (/) instead of /home.
-     *
-     * @var string
      */
     protected $redirectTo = '/';
 
-    /**
-     * Create a new controller instance.
-     *
-     * @return void
-     */
     public function __construct()
     {
         $this->middleware('guest');
+    }
+
+    /**
+     * Show the customer registration form.
+     * On root domain (no tenant), redirect to business registration.
+     */
+    public function showRegistrationForm(Request $request)
+    {
+        $tenant = $request->attributes->get('tenant');
+
+        if (! $tenant) {
+            return redirect()->route('register');
+        }
+
+        return view('auth.register');
     }
 
     /**
@@ -77,20 +73,23 @@ class RegisterController extends Controller
     /**
      * The user has been registered.
      *
-     * This method is called by the RegistersUsers trait after a user is created
-     * and logged in. We use it to assign the 'customer' role and dispatch the
-     * UserRegistered event for welcome email notification.
+     * Assigns 'customer' role, attaches to tenant organization (if on subdomain),
+     * and dispatches UserRegistered event for welcome email.
      *
      * @return void
      */
     protected function registered(Request $request, User $user)
     {
-        // Assign 'customer' role to newly registered user
-        // This must happen before any other operations that check user permissions
         $user->assignRole('customer');
 
-        // Dispatch UserRegistered event
-        // This triggers the welcome email notification via UserRegisteredNotification
+        // Attach user to tenant organization when registering on a subdomain
+        $tenant = $request->attributes->get('tenant');
+        if ($tenant instanceof Organization) {
+            $user->organizations()->syncWithoutDetaching([
+                $tenant->id => ['role' => 'customer'],
+            ]);
+        }
+
         event(new UserRegistered($user));
     }
 }

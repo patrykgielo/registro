@@ -9,15 +9,16 @@ use App\Filament\Resources\SmsSendResource\Pages;
 use App\Models\SmsSend;
 use BackedEnum;
 use Filament\Actions;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class SmsSendResource extends Resource
+class SmsSendResource extends BaseResource
 {
     protected static ?string $model = SmsSend::class;
+
+    protected static ?string $module = 'communication';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-device-phone-mobile';
 

@@ -146,6 +146,185 @@ class User extends Authenticatable implements FilamentUser, HasName
 }
 ```
 
+## Multi-Tenant Models (BelongsToOrganization)
+
+Modele tenant-aware MUSZĄ używać trait `BelongsToOrganization`:
+
+```php
+use App\Traits\BelongsToOrganization;
+
+class Service extends Model
+{
+    use BelongsToOrganization, HasFactory;
+}
+```
+
+**Trait automatycznie:**
+- Dodaje global scope filtrujący po `organization_id`
+- Auto-assigns `organization_id` z `TenantFeature::currentTenant()` przy tworzeniu
+- Pomija scope w console (bez testów)
+
+**Aby ominąć scope (np. w seederach):**
+```php
+Service::withoutGlobalScope('organization')->create([...]);
+```
+
+## Organization Model — kluczowe pola i metody
+
+```php
+// Pola
+'name', 'slug', 'booking_type', 'industry', 'owner_id', 'is_active', 'settings', 'trial_ends_at'
+
+// Casts
+'industry' => Industry::class  // App\Enums\Industry (backed enum, nullable)
+'settings' => 'array'          // JSON z features, modules, location, itp.
+
+// Kluczowe metody — FEATURES (boolean toggles)
+$org->hasFeature('vehicles')   // Priorytet: override > industry > booking_type
+$org->enableFeature('x')       // Zapisuje override w settings.features
+$org->disableFeature('x')
+
+// Kluczowe metody — MODULES (Phase 6, feature sets)
+$org->hasModule('services')    // Priorytet: override > industry > booking_type
+$org->enableModule('staff')    // Zapisuje override w settings.modules
+$org->disableModule('staff')
+
+// Inne metody
+$org->term('service')          // Terminologia branżowa (np. "przedmiot" dla rental)
+$org->supportsRentals()        // booking_type in [item_rental, both]
+$org->supportsAppointments()   // booking_type in [time_slot, both]
+```
+
+**Industry vs booking_type:**
+- `booking_type` = techniczny typ rezerwacji (time_slot, item_rental, both)
+- `industry` = branża biznesowa (equipment_rental, auto_detailing, general_services)
+- Industry DERIVE'uje booking_type — nie ustawiaj booking_type ręcznie jeśli jest industry
+
+## Module System (Phase 6) — gating widoczności zasobów
+
+**Moduły vs Feature flags — TO SĄ DWA RÓŻNE SYSTEMY:**
+
+| System | Metoda | Cel | Przykłady |
+|--------|--------|-----|-----------|
+| **Modules** | `hasModule()` | Włączanie/wyłączanie CAŁYCH grup zasobów | services, bookings, rentals, staff, customers, communication, website, service_area, vehicles |
+| **Features** | `hasFeature()` | Boolean toggles na POLA w formularzach | vehicles, mobile_service, service_area |
+
+### MODULE_DEFAULTS per booking_type
+
+```php
+private const MODULE_DEFAULTS = [
+    'time_slot' => ['services', 'bookings'],
+    'item_rental' => ['rentals'],
+    'both' => ['services', 'bookings', 'rentals'],
+];
+```
+
+### hasModule() — 3-level priority (identycznie jak hasFeature)
+
+```
+1. Explicit override → settings.modules.{module}  (najwyższy priorytet)
+2. Industry defaults → $this->industry->defaultModules()
+3. booking_type defaults → MODULE_DEFAULTS[booking_type]
+```
+
+### Industry::defaultModules()
+
+```php
+EquipmentRental  → ['rentals']
+AutoDetailing    → ['services', 'bookings']
+GeneralServices  → ['services', 'bookings']
+```
+
+**Wszystko poza core jest OFF domyślnie.** Super-admin włącza moduły per tenant w Platform panel.
+
+### BaseResource.$module — gating w Filament
+
+```php
+// Każdy Resource ma property $module:
+protected static ?string $module = 'services';  // gated
+protected static ?string $module = null;          // zawsze widoczny (core)
+
+// BaseResource::shouldRegisterNavigation() automatycznie sprawdza hasModule()
+```
+
+### Mapowanie modułów → Resources
+
+| Moduł | Resources |
+|-------|-----------|
+| `services` | ServiceResource |
+| `bookings` | AppointmentResource |
+| `rentals` | RentalCategoryResource, RentalItemResource, RentalResource |
+| `staff` | EmployeeResource, StaffScheduleResource, StaffVacationPeriodResource, StaffDateExceptionResource |
+| `customers` | CustomerResource |
+| `vehicles` | VehicleTypeResource, CarBrandResource, CarModelResource |
+| `communication` | EmailTemplateResource, SmsTemplateResource, EmailSendResource, SmsSendResource, ReminderConfigResource |
+| `website` | PageResource, PostResource, PortfolioItemResource, PromotionResource, CategoryResource |
+| `service_area` | ServiceAreaResource, ServiceAreaWaitlistResource |
+| `null` (core) | Dashboard, SystemSettings, MaintenanceSettings |
+
+### Security — tenant isolation (Phase 6)
+
+```php
+// EmployeeResource — scoped via organizations pivot
+->when($tenant, fn ($q) => $q->whereHas('organizations', fn ($q2) => $q2->where('organizations.id', $tenant->id)))
+
+// CustomerResource — scoped via appointments/rentals
+->when($tenant, fn ($q) => $q->where(function ($q2) use ($tenant) {
+    $q2->whereHas('customerAppointments', fn ($q3) => $q3->where('organization_id', $tenant->id))
+       ->orWhereHas('rentalsAsCustomer', fn ($q3) => $q3->where('organization_id', $tenant->id));
+}))
+
+// UserResource, RoleResource → super-admin only
+// SmsEvent, EmailEvent, Suppressions, MaintenanceEvent → super-admin only
+// VehicleType/CarBrand/CarModel → read-only dla non-super-admin
+```
+
+## Industry Enum (`app/Enums/Industry.php`)
+
+```php
+Industry::EquipmentRental  // → booking_type: item_rental
+Industry::AutoDetailing    // → booking_type: time_slot, features: vehicles+mobile+area
+Industry::GeneralServices  // → booking_type: time_slot
+
+// Metody na każdym case:
+$industry->bookingType()      // string
+$industry->defaultFeatures()  // array<string, bool>
+$industry->defaultModules()   // array<int, string> (Phase 6)
+$industry->label()            // PL label
+$industry->terminology()      // ['service' => 'przedmiot', ...]
+$industry->seederClass()      // FQCN vertical seedera
+```
+
+## RentalItem — tiered pricing (standard PL rynku)
+
+```php
+// Istniejące
+'price_per_day', 'price_per_hour', 'price_per_week', 'deposit_amount'
+
+// Nowe (2026-03-14)
+'price_per_day_long'     // Stawka po przekroczeniu progu (nullable)
+'price_threshold_days'   // Próg dni dla niższej ceny (nullable)
+'brand'                  // Marka/producent (nullable, osobna kolumna — filtrowalne)
+
+// Hybrid specifications JSON
+'specifications' => [
+    'specs' => ['power_w' => 800, 'weight_kg' => 4.2],      // Suggested keys per kategoria
+    'custom_specs' => [['key' => 'Kolor', 'value' => 'Red']] // Repeater key:value
+]
+```
+
+## Service — metadata JSON (per-industry)
+
+```php
+// Nowe (2026-03-14) — używane przez auto detailing
+'metadata' => [
+    'prices_by_size' => ['A' => 150, 'B' => 180, 'C' => 220, 'D' => 270],
+    'durations_by_size' => ['A' => 60, 'B' => 70, 'C' => 80, 'D' => 90],
+    'available_for_mobile' => true,
+]
+// price = cena bazowa (kat. A), duration_minutes = czas bazowy (kat. A)
+```
+
 ## Factory Reference
 
 Każdy model powinien mieć factory w `database/factories/`:
@@ -154,6 +333,15 @@ Każdy model powinien mieć factory w `database/factories/`:
 // W modelu:
 /** @use HasFactory<\Database\Factories\UserFactory> */
 use HasFactory;
+```
+
+**OrganizationFactory states:**
+```php
+Organization::factory()->equipmentRental()->create();  // industry + booking_type
+Organization::factory()->autoDetailing()->create();
+Organization::factory()->generalServices()->create();
+Organization::factory()->onTrial()->create();
+Organization::factory()->inactive()->create();
 ```
 
 ## Soft Deletes (jeśli potrzebne)

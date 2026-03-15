@@ -13,10 +13,11 @@ class RolePermissionSeeder extends Seeder
      *
      * Creates 4 roles with hierarchical permissions:
      * - super-admin: Full system access (all permissions)
-     * - admin: Business operations (users, bookings, content, reports)
-     * - staff: Service delivery (appointments, customers, schedules)
-     * - customer: Self-service (own bookings, profile, notifications)
+     * - admin: Business operations (modules, bookings, content)
+     * - staff: Service delivery (appointments, own availability)
+     * - customer: Self-service (own bookings)
      *
+     * Permissions are module-namespaced (e.g. services.view, bookings.create).
      * This seeder is idempotent - can be run multiple times safely.
      */
     public function run(): void
@@ -24,40 +25,65 @@ class RolePermissionSeeder extends Seeder
         // Reset cached roles and permissions
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Create permissions
+        // Create permissions (module-namespaced)
         $permissions = [
-            // User management
-            'view users',
-            'create users',
-            'edit users',
-            'delete users',
+            // Settings (core — always available)
+            'settings.manage',
 
-            // Service management
-            'view services',
-            'create services',
-            'edit services',
-            'delete services',
+            // Services module
+            'services.view',
+            'services.create',
+            'services.edit',
+            'services.delete',
 
-            // Appointment management
-            'view appointments',
-            'create appointments',
-            'edit appointments',
-            'delete appointments',
-            'view own appointments',
-            'cancel own appointments',
+            // Bookings module
+            'bookings.view',
+            'bookings.create',
+            'bookings.edit',
+            'bookings.delete',
+            'bookings.view_own',
+            'bookings.cancel_own',
 
-            // Availability management
-            'manage availability',
-            'view availability',
+            // Rentals module
+            'rentals.view',
+            'rentals.create',
+            'rentals.edit',
+            'rentals.delete',
 
-            // Email management
-            'manage email templates',
-            'view email logs',
-            'view email events',
-            'manage suppressions',
+            // Staff module
+            'staff.view',
+            'staff.create',
+            'staff.edit',
+            'staff.delete',
+            'staff.manage_availability',
+            'staff.view_availability',
 
-            // Settings
-            'manage settings',
+            // Customers module
+            'customers.view',
+            'customers.create',
+            'customers.edit',
+            'customers.delete',
+
+            // Communication module
+            'communication.manage_templates',
+            'communication.view_logs',
+            'communication.view_events',
+            'communication.manage_suppressions',
+
+            // Website module
+            'website.manage',
+
+            // Vehicles module (lookup tables)
+            'vehicles.view',
+
+            // Service area module
+            'service_area.manage',
+
+            // User management (super-admin only)
+            'users.view',
+            'users.create',
+            'users.edit',
+            'users.delete',
         ];
 
         foreach ($permissions as $permission) {
@@ -70,47 +96,37 @@ class RolePermissionSeeder extends Seeder
         $superAdmin = Role::firstOrCreate(['name' => 'super-admin']);
         $superAdmin->syncPermissions(Permission::all());
 
-        // Admin - most permissions except user management
+        // Admin - business operations (no user management)
         $admin = Role::firstOrCreate(['name' => 'admin']);
         $admin->syncPermissions([
-            'view users',
-            'view services',
-            'create services',
-            'edit services',
-            'delete services',
-            'view appointments',
-            'create appointments',
-            'edit appointments',
-            'delete appointments',
-            'manage availability',
-            'view availability',
-            'manage email templates',
-            'view email logs',
-            'view email events',
-            'manage suppressions',
-            'manage settings',
+            'settings.manage',
+            'services.view', 'services.create', 'services.edit', 'services.delete',
+            'bookings.view', 'bookings.create', 'bookings.edit', 'bookings.delete',
+            'rentals.view', 'rentals.create', 'rentals.edit', 'rentals.delete',
+            'customers.view', 'customers.create', 'customers.edit', 'customers.delete',
+            'staff.view', 'staff.create', 'staff.edit', 'staff.delete',
+            'staff.manage_availability', 'staff.view_availability',
+            'communication.manage_templates', 'communication.view_logs',
+            'website.manage',
+            'vehicles.view',
+            'service_area.manage',
         ]);
 
         // Staff - can manage own availability and appointments
         $staff = Role::firstOrCreate(['name' => 'staff']);
         $staff->syncPermissions([
-            'view services',
-            'view appointments',
-            'create appointments',
-            'edit appointments',
-            'manage availability',
-            'view availability',
-            // REMOVED: 'view email logs' - staff should not access email logs
-            // REMOVED: 'view email events' - staff should not access email events
+            'services.view',
+            'bookings.view', 'bookings.create', 'bookings.edit',
+            'staff.manage_availability', 'staff.view_availability',
         ]);
 
         // Customer - can only view and book appointments
         $customer = Role::firstOrCreate(['name' => 'customer']);
         $customer->syncPermissions([
-            'view services',
-            'view own appointments',
-            'create appointments',
-            'cancel own appointments',
+            'services.view',
+            'bookings.view_own',
+            'bookings.create',
+            'bookings.cancel_own',
         ]);
 
         // Create default admin user if doesn't exist

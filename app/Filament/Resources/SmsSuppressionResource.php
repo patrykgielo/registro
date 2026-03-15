@@ -9,14 +9,13 @@ use App\Models\SmsSuppression;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class SmsSuppressionResource extends Resource
+class SmsSuppressionResource extends BaseResource
 {
     protected static ?string $model = SmsSuppression::class;
 
@@ -132,10 +131,10 @@ class SmsSuppressionResource extends Resource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

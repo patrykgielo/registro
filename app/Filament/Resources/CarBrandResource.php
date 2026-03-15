@@ -7,15 +7,16 @@ use App\Models\CarBrand;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class CarBrandResource extends Resource
+class CarBrandResource extends BaseResource
 {
     protected static ?string $model = CarBrand::class;
+
+    protected static ?string $module = 'vehicles';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-building-office';
 
@@ -136,9 +137,21 @@ class CarBrandResource extends Resource
         ];
     }
 
-    /**
-     * Restrict access to admins and super-admins only.
-     */
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;

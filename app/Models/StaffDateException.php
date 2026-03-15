@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StaffDateException extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * Exception types.
      */
@@ -22,6 +25,7 @@ class StaffDateException extends Model
      * @var array<string>
      */
     protected $fillable = [
+        'organization_id',
         'user_id',
         'exception_date',
         'exception_type',

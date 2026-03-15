@@ -8,7 +8,6 @@ use App\Models\Service;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -17,9 +16,11 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class ServiceResource extends Resource
+class ServiceResource extends BaseResource
 {
     protected static ?string $model = Service::class;
+
+    protected static ?string $module = 'services';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-wrench-screwdriver';
 
@@ -433,47 +434,6 @@ class ServiceResource extends Resource
             'create' => Pages\CreateService::route('/create'),
             'edit' => Pages\EditService::route('/{record}/edit'),
         ];
-    }
-
-    /**
-     * Get available Heroicon solid icons for selection.
-     *
-     * Dynamically scans blade-heroicons package for s-* (solid) icons.
-     * Auto-updates when package is updated.
-     *
-     * @return array<string, string> Icon name => Human-readable label
-     */
-    protected static function getHeroiconOptions(): array
-    {
-        $iconPath = base_path('vendor/blade-ui-kit/blade-heroicons/resources/svg');
-        $files = glob($iconPath.'/s-*.svg');
-
-        if (empty($files)) {
-            // Fallback to common icons if scan fails
-            return [
-                'sparkles' => 'Sparkles',
-                'rectangle-stack' => 'Rectangle Stack',
-                'paint-brush' => 'Paint Brush',
-                'sun' => 'Sun',
-                'squares-plus' => 'Squares Plus',
-                'swatch' => 'Swatch',
-                'beaker' => 'Beaker',
-                'shield-check' => 'Shield Check',
-            ];
-        }
-
-        $icons = [];
-        foreach ($files as $file) {
-            $name = str_replace('.svg', '', basename($file));
-            $name = str_replace('s-', '', $name);
-
-            // Format: "arrow-down" => "Arrow Down"
-            $icons[$name] = ucwords(str_replace('-', ' ', $name));
-        }
-
-        asort($icons);
-
-        return $icons;
     }
 
     /**

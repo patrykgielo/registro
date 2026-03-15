@@ -14,11 +14,13 @@ use App\Services\CalendarService;
 use App\Services\ServiceAreaValidator;
 // use App\Services\Email\EmailService; // TODO: Add when sendAppointmentConfirmation is implemented
 use App\Support\Settings\SettingsManager;
+use App\Support\TenantFeature;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
 {
@@ -38,6 +40,125 @@ class BookingController extends Controller
         $this->settings = $settings;
         $this->serviceAreaValidator = $serviceAreaValidator;
     }
+
+    // ==========================================
+    // DYNAMIC STEP MAPPING
+    // ==========================================
+
+    /**
+     * Get the active steps based on tenant feature flags.
+     *
+     * @return array<int, string> 0-indexed array of step keys
+     */
+    private function getActiveSteps(): array
+    {
+        $steps = ['service', 'datetime'];
+
+        $needsVehicleLocation = TenantFeature::active('vehicles')
+            || TenantFeature::active('mobile_service');
+
+        if ($needsVehicleLocation) {
+            $steps[] = 'vehicle-location';
+        }
+
+        $steps[] = 'contact';
+        $steps[] = 'review';
+
+        return $steps;
+    }
+
+    /**
+     * Get total number of active steps.
+     */
+    private function getTotalSteps(): int
+    {
+        return count($this->getActiveSteps());
+    }
+
+    /**
+     * Get step key for a given URL step number (1-indexed).
+     */
+    private function getStepKey(int $stepNumber): ?string
+    {
+        $steps = $this->getActiveSteps();
+
+        return $steps[$stepNumber - 1] ?? null;
+    }
+
+    /**
+     * Get URL step number (1-indexed) for a given step key.
+     */
+    private function getStepNumber(string $key): ?int
+    {
+        $steps = $this->getActiveSteps();
+        $index = array_search($key, $steps);
+
+        return $index !== false ? $index + 1 : null;
+    }
+
+    /**
+     * Check if a step is in the active flow.
+     */
+    private function hasStep(string $key): bool
+    {
+        return in_array($key, $this->getActiveSteps());
+    }
+
+    /**
+     * Get step labels for the progress indicator.
+     *
+     * @return array<int, array{name: string, icon: string}>
+     */
+    private function getStepLabels(): array
+    {
+        $labelMap = [
+            'service' => ['name' => 'Usługa', 'icon' => 'sparkles'],
+            'datetime' => ['name' => 'Termin', 'icon' => 'calendar'],
+            'vehicle-location' => ['name' => 'Szczegóły', 'icon' => 'pencil'],
+            'contact' => ['name' => 'Kontakt', 'icon' => 'user'],
+            'review' => ['name' => 'Podsumowanie', 'icon' => 'check-circle'],
+        ];
+
+        $labels = [];
+        foreach ($this->getActiveSteps() as $index => $key) {
+            $labels[$index + 1] = $labelMap[$key];
+        }
+
+        return $labels;
+    }
+
+    /**
+     * Get step key → step number mapping.
+     *
+     * @return array<string, int>
+     */
+    private function getStepMap(): array
+    {
+        $map = [];
+        foreach ($this->getActiveSteps() as $index => $key) {
+            $map[$key] = $index + 1;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Share common wizard data with all views.
+     */
+    private function shareWizardData(int $currentStep, string $currentStepKey): void
+    {
+        view()->share('totalSteps', $this->getTotalSteps());
+        view()->share('currentStep', $currentStep);
+        view()->share('currentStepKey', $currentStepKey);
+        view()->share('stepLabels', $this->getStepLabels());
+        view()->share('stepMap', $this->getStepMap());
+        view()->share('showVehicle', TenantFeature::active('vehicles'));
+        view()->share('showMobileService', TenantFeature::active('mobile_service'));
+    }
+
+    // ==========================================
+    // ROUTES
+    // ==========================================
 
     public function create(Service $service)
     {
@@ -92,7 +213,7 @@ class BookingController extends Controller
     }
 
     // ==========================================
-    // BOOKING WIZARD - NEW MULTI-STEP FLOW
+    // BOOKING WIZARD - MULTI-STEP FLOW
     // ==========================================
 
     /**
@@ -100,8 +221,16 @@ class BookingController extends Controller
      */
     public function showStep(int $step)
     {
+        $totalSteps = $this->getTotalSteps();
+
         // Validate step number
-        if ($step < 1 || $step > 5) {
+        if ($step < 1 || $step > $totalSteps) {
+            return redirect()->route('booking.step', 1);
+        }
+
+        $stepKey = $this->getStepKey($step);
+
+        if (! $stepKey) {
             return redirect()->route('booking.step', 1);
         }
 
@@ -109,113 +238,145 @@ class BookingController extends Controller
         if ($step > 1) {
             $booking = session('booking', []);
 
-            // Validate previous step data exists
-            if ($step === 2 && empty($booking['service_id'])) {
-                return redirect()->route('booking.step', 1)->with('error', 'Najpierw wybierz usługę');
+            // Service data required for all steps after service
+            if ($stepKey !== 'service' && empty($booking['service_id'])) {
+                return redirect()->route('booking.step', 1)
+                    ->with('error', 'Najpierw wybierz usługę');
             }
 
-            if ($step === 3 && (empty($booking['date']) || empty($booking['time_slot']))) {
-                return redirect()->route('booking.step', 2)->with('error', 'Najpierw wybierz datę i godzinę');
+            // Datetime data required for vehicle-location, contact, review
+            if (in_array($stepKey, ['vehicle-location', 'contact', 'review'])) {
+                if (empty($booking['date']) || empty($booking['time_slot'])) {
+                    return redirect()->route('booking.step', $this->getStepNumber('datetime'))
+                        ->with('error', 'Najpierw wybierz datę i godzinę');
+                }
             }
 
-            if ($step === 4 && (empty($booking['vehicle_type_id']) || empty($booking['location_address']))) {
-                return redirect()->route('booking.step', 3)->with('error', 'Najpierw uzupełnij dane pojazdu i lokalizacji');
+            // Vehicle data required for contact/review (only when vehicle step exists)
+            if (in_array($stepKey, ['contact', 'review']) && $this->hasStep('vehicle-location')) {
+                $needsVehicleData = TenantFeature::active('vehicles')
+                    && (empty($booking['vehicle_type_id']));
+                $needsLocationData = TenantFeature::active('mobile_service')
+                    && (empty($booking['location_address']));
+
+                if ($needsVehicleData || $needsLocationData) {
+                    return redirect()->route('booking.step', $this->getStepNumber('vehicle-location'))
+                        ->with('error', 'Najpierw uzupełnij dane pojazdu i lokalizacji');
+                }
             }
 
-            if ($step === 5 && (empty($booking['first_name']) || empty($booking['email']))) {
-                return redirect()->route('booking.step', 4)->with('error', 'Najpierw uzupełnij dane kontaktowe');
+            // Contact data required for review
+            if ($stepKey === 'review' && (empty($booking['first_name']) || empty($booking['email']))) {
+                return redirect()->route('booking.step', $this->getStepNumber('contact'))
+                    ->with('error', 'Najpierw uzupełnij dane kontaktowe');
             }
         }
 
-        // Load data based on step
-        switch ($step) {
-            case 1: // Service Selection
-                // If service already selected (e.g., from service page), skip to step 2
-                $existingServiceId = session('booking.service_id');
-                if ($existingServiceId && Service::find($existingServiceId)) {
-                    return redirect()->route('booking.step', 2);
-                }
+        // Share wizard data with all views
+        $this->shareWizardData($step, $stepKey);
 
-                return view('booking-wizard.steps.service', [
-                    'services' => Service::active()->orderBy('sort_order')->get(),
-                    'totalBookings' => Appointment::where('status', '!=', 'cancelled')->count(),
-                ]);
+        // Load data based on step key
+        return match ($stepKey) {
+            'service' => $this->showServiceStep(),
+            'datetime' => $this->showDatetimeStep(),
+            'vehicle-location' => $this->showVehicleLocationStep(),
+            'contact' => $this->showContactStep(),
+            'review' => $this->showReviewStep(),
+            default => redirect()->route('booking.step', 1),
+        };
+    }
 
-            case 2: // Date & Time
-                $serviceId = session('booking.service_id');
-                $service = Service::findOrFail($serviceId);
-
-                return view('booking-wizard.steps.datetime', [
-                    'service' => $service,
-                ]);
-
-            case 3: // Vehicle & Location
-                return view('booking-wizard.steps.vehicle-location', [
-                    'vehicleTypes' => VehicleType::active()->orderBy('sort_order')->get(),
-                    'googleMapsApiKey' => config('services.google_maps.api_key'),
-                    'googleMapsMapId' => config('services.google_maps.map_id'),
-                    'serviceLocationTypes' => $this->settings->serviceLocationTypes(),
-                ]);
-
-            case 4: // Contact Information
-                // Pre-fill contact data from user profile (only if not already in session)
-                $booking = session('booking', []);
-
-                if (auth()->check()) {
-                    $user = auth()->user();
-
-                    // Only pre-fill empty fields (preserve session data if user went back)
-                    // FIXED: Treat empty strings as empty (use ?? instead of empty() to handle null)
-                    if (! isset($booking['first_name']) || $booking['first_name'] === '' || $booking['first_name'] === null) {
-                        $booking['first_name'] = $user->first_name;
-                    }
-                    if (! isset($booking['last_name']) || $booking['last_name'] === '' || $booking['last_name'] === null) {
-                        $booking['last_name'] = $user->last_name;
-                    }
-                    if (! isset($booking['email']) || $booking['email'] === '' || $booking['email'] === null) {
-                        $booking['email'] = $user->email;
-                    }
-                    if ((! isset($booking['phone']) || $booking['phone'] === '' || $booking['phone'] === null) && $user->phone) {
-                        $booking['phone'] = $user->phone;
-                    }
-
-                    // CRITICAL FIX: Update session with pre-filled data
-                    // This ensures Alpine.js gets user data on init and after navigation
-                    session(['booking' => $booking]);
-                }
-
-                $emailReminders = ReminderConfig::enabled()
-                    ->byChannel('email')
-                    ->before()
-                    ->orderByDesc('trigger_hours')
-                    ->get();
-
-                $smsReminders = ReminderConfig::enabled()
-                    ->byChannel('sms')
-                    ->before()
-                    ->orderByDesc('trigger_hours')
-                    ->get();
-
-                return view('booking-wizard.steps.contact', [
-                    'bookingData' => $booking,
-                    'emailReminders' => $emailReminders,
-                    'smsReminders' => $smsReminders,
-                ]);
-
-            case 5: // Review & Confirm
-                $booking = session('booking');
-                $service = Service::findOrFail($booking['service_id']);
-                $vehicleType = VehicleType::find($booking['vehicle_type_id']);
-
-                return view('booking-wizard.steps.review', [
-                    'service' => $service,
-                    'vehicleType' => $vehicleType,
-                    'serviceFee' => 0, // Optional service fee
-                ]);
-
-            default:
-                return redirect()->route('booking.step', 1);
+    private function showServiceStep()
+    {
+        // If service already selected (e.g., from service page), skip to step 2
+        $existingServiceId = session('booking.service_id');
+        if ($existingServiceId && Service::find($existingServiceId)) {
+            return redirect()->route('booking.step', 2);
         }
+
+        return view('booking-wizard.steps.service', [
+            'services' => Service::active()->orderBy('sort_order')->get(),
+            'totalBookings' => Appointment::where('status', '!=', 'cancelled')->count(),
+        ]);
+    }
+
+    private function showDatetimeStep()
+    {
+        $serviceId = session('booking.service_id');
+        $service = Service::findOrFail($serviceId);
+
+        return view('booking-wizard.steps.datetime', [
+            'service' => $service,
+        ]);
+    }
+
+    private function showVehicleLocationStep()
+    {
+        return view('booking-wizard.steps.vehicle-location', [
+            'vehicleTypes' => VehicleType::active()->orderBy('sort_order')->get(),
+            'googleMapsApiKey' => config('services.google_maps.api_key'),
+            'googleMapsMapId' => config('services.google_maps.map_id'),
+            'serviceLocationTypes' => $this->settings->serviceLocationTypes(),
+        ]);
+    }
+
+    private function showContactStep()
+    {
+        $booking = session('booking', []);
+
+        if (auth()->check()) {
+            $user = auth()->user();
+
+            // Only pre-fill empty fields (preserve session data if user went back)
+            if (! isset($booking['first_name']) || $booking['first_name'] === '' || $booking['first_name'] === null) {
+                $booking['first_name'] = $user->first_name;
+            }
+            if (! isset($booking['last_name']) || $booking['last_name'] === '' || $booking['last_name'] === null) {
+                $booking['last_name'] = $user->last_name;
+            }
+            if (! isset($booking['email']) || $booking['email'] === '' || $booking['email'] === null) {
+                $booking['email'] = $user->email;
+            }
+            if ((! isset($booking['phone']) || $booking['phone'] === '' || $booking['phone'] === null) && $user->phone) {
+                $booking['phone'] = $user->phone;
+            }
+
+            // CRITICAL FIX: Update session with pre-filled data
+            session(['booking' => $booking]);
+        }
+
+        $emailReminders = ReminderConfig::enabled()
+            ->byChannel('email')
+            ->before()
+            ->orderByDesc('trigger_hours')
+            ->get();
+
+        $smsReminders = ReminderConfig::enabled()
+            ->byChannel('sms')
+            ->before()
+            ->orderByDesc('trigger_hours')
+            ->get();
+
+        return view('booking-wizard.steps.contact', [
+            'bookingData' => $booking,
+            'emailReminders' => $emailReminders,
+            'smsReminders' => $smsReminders,
+        ]);
+    }
+
+    private function showReviewStep()
+    {
+        $booking = session('booking');
+        $service = Service::findOrFail($booking['service_id']);
+        $vehicleType = TenantFeature::active('vehicles')
+            ? VehicleType::find($booking['vehicle_type_id'] ?? null)
+            : null;
+
+        return view('booking-wizard.steps.review', [
+            'service' => $service,
+            'vehicleType' => $vehicleType,
+            'serviceFee' => 0,
+        ]);
     }
 
     /**
@@ -239,167 +400,203 @@ class BookingController extends Controller
      */
     public function storeStep(int $step, Request $request)
     {
-        // Validate and store based on step
-        switch ($step) {
-            case 1: // Service Selection
-                $validated = $request->validate([
-                    'service_id' => 'required|exists:services,id',
-                ]);
+        $stepKey = $this->getStepKey($step);
 
-                session(['booking.service_id' => $validated['service_id']]);
-                session(['booking.current_step' => 1]);
-
-                return redirect()->route('booking.step', 2);
-
-            case 2: // Date & Time
-                $validated = $request->validate([
-                    'date' => 'required|date|after_or_equal:today',
-                    'time_slot' => 'required|regex:/^\d{2}:\d{2}$/',
-                ]);
-
-                session(['booking.date' => $validated['date']]);
-                session(['booking.time_slot' => $validated['time_slot']]);
-                session(['booking.current_step' => 2]);
-
-                return redirect()->route('booking.step', 3);
-
-            case 3: // Vehicle & Location
-                $validated = $request->validate([
-                    'vehicle_type_id' => 'required|exists:vehicle_types,id',
-                    'vehicle_brand' => 'required|string|max:100',
-                    'vehicle_model' => 'required|string|max:100',
-                    'vehicle_year' => 'required|integer|min:1900|max:'.(date('Y') + 1),
-                    'registration_number' => ['required', 'string', 'max:15', 'regex:/^[A-Z]{2,3}[\s-]?[A-Z0-9]{4,5}$/i'],
-                    'location_address' => 'required|string|max:255',
-                    'location_latitude' => 'required|numeric|between:-90,90',
-                    'location_longitude' => 'required|numeric|between:-180,180',
-                    'location_place_id' => 'nullable|string|max:255',
-                    'location_components' => 'nullable|string',
-                    'service_location_type' => [
-                        Rule::requiredIf(fn () => ! empty($this->settings->serviceLocationTypes())),
-                        'nullable',
-                        'string',
-                        'max:100',
-                    ],
-                ], [
-                    // Service location type message
-                    'service_location_type.required' => 'Wybierz typ lokalizacji.',
-                    // Vehicle fields messages
-                    'vehicle_type_id.required' => 'Wybierz typ pojazdu.',
-                    'vehicle_brand.required' => 'Podaj markę pojazdu.',
-                    'vehicle_model.required' => 'Podaj model pojazdu.',
-                    'vehicle_year.required' => 'Podaj rok produkcji.',
-                    'vehicle_year.integer' => 'Rok produkcji musi być liczbą.',
-                    'vehicle_year.min' => 'Rok produkcji musi być większy niż 1900.',
-                    'vehicle_year.max' => 'Rok produkcji nie może być z przyszłości.',
-                    'registration_number.required' => 'Podaj numer rejestracyjny.',
-                    'registration_number.regex' => 'Nieprawidłowy format numeru rejestracyjnego (np. WA 12345).',
-                    // Location fields messages
-                    'location_address.required' => 'Podaj adres lokalizacji.',
-                    'location_latitude.required' => 'Wybierz adres z listy podpowiedzi.',
-                    'location_longitude.required' => 'Wybierz adres z listy podpowiedzi.',
-                ]);
-
-                // ===== SERVICE AREA VALIDATION =====
-                $areaValidation = $this->serviceAreaValidator->validate(
-                    $validated['location_latitude'],
-                    $validated['location_longitude']
-                );
-
-                if (! $areaValidation['valid']) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => $areaValidation['message'] ?? trans('service_area.validation.not_available'),
-                        'nearest_area' => $areaValidation['nearest'],
-                        'show_waitlist' => true,
-                    ], 422);
-                }
-                // ===== END SERVICE AREA VALIDATION =====
-
-                session([
-                    'booking.vehicle_type_id' => $validated['vehicle_type_id'],
-                    'booking.vehicle_brand' => $validated['vehicle_brand'] ?? null,
-                    'booking.vehicle_model' => $validated['vehicle_model'] ?? null,
-                    'booking.vehicle_year' => $validated['vehicle_year'] ?? null,
-                    'booking.registration_number' => $validated['registration_number'] ?? null,
-                    'booking.location_address' => $validated['location_address'],
-                    'booking.location_latitude' => $validated['location_latitude'],
-                    'booking.location_longitude' => $validated['location_longitude'],
-                    'booking.location_place_id' => $validated['location_place_id'] ?? null,
-                    'booking.location_components' => $validated['location_components'] ?? null,
-                    'booking.service_location_type' => $validated['service_location_type'] ?? null,
-                    'booking.current_step' => 3,
-                    // Cache service area validation to avoid repeated API calls on page refresh
-                    'booking.service_area_valid' => true,
-                    'booking.service_area_coords' => [
-                        'lat' => (float) $validated['location_latitude'],
-                        'lng' => (float) $validated['location_longitude'],
-                    ],
-                ]);
-
-                return redirect()->route('booking.step', 4);
-
-            case 4: // Contact Information
-                $validated = $request->validate([
-                    'first_name' => 'required|string|min:2|max:100',
-                    'last_name' => 'required|string|min:2|max:100',
-                    'email' => 'required|email|max:255',
-                    'phone' => ['required', 'regex:/^(\+48)?[\s-]?\d{9}$/'],
-                    'notify_email' => 'nullable|boolean',
-                    'notify_sms' => 'nullable|boolean',
-                    'terms_accepted' => 'required|accepted',
-                    // Invoice fields
-                    'invoice_requested' => 'nullable|boolean',
-                    'invoice_company_name' => 'required_if:invoice_requested,1,true|nullable|string|max:255',
-                    'invoice_nip' => ['required_if:invoice_requested,1,true', 'nullable', 'string', 'max:13', new ValidPolishNIP],
-                    'invoice_street' => 'required_if:invoice_requested,1,true|nullable|string|max:255',
-                    'invoice_street_number' => 'required_if:invoice_requested,1,true|nullable|string|max:20',
-                    'invoice_postal_code' => 'required_if:invoice_requested,1,true|nullable|string|max:6',
-                    'invoice_city' => 'required_if:invoice_requested,1,true|nullable|string|max:100',
-                ], [
-                    // Personal info messages
-                    'first_name.required' => 'Podaj imię.',
-                    'first_name.min' => 'Imię musi mieć co najmniej 2 znaki.',
-                    'last_name.required' => 'Podaj nazwisko.',
-                    'last_name.min' => 'Nazwisko musi mieć co najmniej 2 znaki.',
-                    'email.required' => 'Podaj adres e-mail.',
-                    'email.email' => 'Podaj prawidłowy adres e-mail.',
-                    'phone.required' => 'Podaj numer telefonu.',
-                    'phone.regex' => 'Podaj prawidłowy numer telefonu (9 cyfr).',
-                    'terms_accepted.required' => 'Musisz zaakceptować regulamin.',
-                    'terms_accepted.accepted' => 'Musisz zaakceptować regulamin.',
-                    // Invoice fields messages
-                    'invoice_company_name.required_if' => 'Podaj nazwę firmy lub imię i nazwisko.',
-                    'invoice_nip.required_if' => 'Podaj NIP.',
-                    'invoice_street.required_if' => 'Podaj ulicę.',
-                    'invoice_street_number.required_if' => 'Podaj numer budynku/lokalu.',
-                    'invoice_postal_code.required_if' => 'Podaj kod pocztowy.',
-                    'invoice_city.required_if' => 'Podaj miasto.',
-                ]);
-
-                session([
-                    'booking.first_name' => $validated['first_name'],
-                    'booking.last_name' => $validated['last_name'],
-                    'booking.email' => $validated['email'],
-                    'booking.phone' => $validated['phone'],
-                    'booking.notify_email' => $request->has('notify_email'),
-                    'booking.notify_sms' => $request->has('notify_sms'),
-                    // Invoice fields
-                    'booking.invoice_requested' => $request->boolean('invoice_requested'),
-                    'booking.invoice_company_name' => $validated['invoice_company_name'] ?? null,
-                    'booking.invoice_nip' => $validated['invoice_nip'] ?? null,
-                    'booking.invoice_street' => $validated['invoice_street'] ?? null,
-                    'booking.invoice_street_number' => $validated['invoice_street_number'] ?? null,
-                    'booking.invoice_postal_code' => $validated['invoice_postal_code'] ?? null,
-                    'booking.invoice_city' => $validated['invoice_city'] ?? null,
-                    'booking.current_step' => 4,
-                ]);
-
-                return redirect()->route('booking.step', 5);
-
-            default:
-                return redirect()->route('booking.step', 1);
+        if (! $stepKey) {
+            return redirect()->route('booking.step', 1);
         }
+
+        return match ($stepKey) {
+            'service' => $this->storeServiceStep($step, $request),
+            'datetime' => $this->storeDatetimeStep($step, $request),
+            'vehicle-location' => $this->storeVehicleLocationStep($step, $request),
+            'contact' => $this->storeContactStep($step, $request),
+            default => redirect()->route('booking.step', 1),
+        };
+    }
+
+    private function storeServiceStep(int $step, Request $request)
+    {
+        $validated = $request->validate([
+            'service_id' => 'required|exists:services,id',
+        ]);
+
+        session(['booking.service_id' => $validated['service_id']]);
+        session(['booking.current_step' => $step]);
+
+        return redirect()->route('booking.step', $step + 1);
+    }
+
+    private function storeDatetimeStep(int $step, Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date|after_or_equal:today',
+            'time_slot' => 'required|regex:/^\d{2}:\d{2}$/',
+        ]);
+
+        session(['booking.date' => $validated['date']]);
+        session(['booking.time_slot' => $validated['time_slot']]);
+        session(['booking.current_step' => $step]);
+
+        return redirect()->route('booking.step', $step + 1);
+    }
+
+    private function storeVehicleLocationStep(int $step, Request $request)
+    {
+        $rules = [];
+        $messages = [];
+
+        // Vehicle rules (only when vehicles feature active)
+        if (TenantFeature::active('vehicles')) {
+            $rules = array_merge($rules, [
+                'vehicle_type_id' => 'required|exists:vehicle_types,id',
+                'vehicle_brand' => 'required|string|max:100',
+                'vehicle_model' => 'required|string|max:100',
+                'vehicle_year' => 'required|integer|min:1900|max:'.(date('Y') + 1),
+                'registration_number' => ['required', 'string', 'max:15', 'regex:/^[A-Z]{2,3}[\s-]?[A-Z0-9]{4,5}$/i'],
+            ]);
+            $messages = array_merge($messages, [
+                'vehicle_type_id.required' => 'Wybierz typ pojazdu.',
+                'vehicle_brand.required' => 'Podaj markę pojazdu.',
+                'vehicle_model.required' => 'Podaj model pojazdu.',
+                'vehicle_year.required' => 'Podaj rok produkcji.',
+                'vehicle_year.integer' => 'Rok produkcji musi być liczbą.',
+                'vehicle_year.min' => 'Rok produkcji musi być większy niż 1900.',
+                'vehicle_year.max' => 'Rok produkcji nie może być z przyszłości.',
+                'registration_number.required' => 'Podaj numer rejestracyjny.',
+                'registration_number.regex' => 'Nieprawidłowy format numeru rejestracyjnego (np. WA 12345).',
+            ]);
+        }
+
+        // Location rules (only when mobile_service feature active)
+        if (TenantFeature::active('mobile_service')) {
+            $rules = array_merge($rules, [
+                'location_address' => 'required|string|max:255',
+                'location_latitude' => 'required|numeric|between:-90,90',
+                'location_longitude' => 'required|numeric|between:-180,180',
+                'location_place_id' => 'nullable|string|max:255',
+                'location_components' => 'nullable|string',
+                'service_location_type' => [
+                    Rule::requiredIf(fn () => ! empty($this->settings->serviceLocationTypes())),
+                    'nullable',
+                    'string',
+                    'max:100',
+                ],
+            ]);
+            $messages = array_merge($messages, [
+                'service_location_type.required' => 'Wybierz typ lokalizacji.',
+                'location_address.required' => 'Podaj adres lokalizacji.',
+                'location_latitude.required' => 'Wybierz adres z listy podpowiedzi.',
+                'location_longitude.required' => 'Wybierz adres z listy podpowiedzi.',
+            ]);
+        }
+
+        $validated = $request->validate($rules, $messages);
+
+        // ===== SERVICE AREA VALIDATION =====
+        if (TenantFeature::active('service_area') && ! empty($validated['location_latitude'])) {
+            $areaValidation = $this->serviceAreaValidator->validate(
+                $validated['location_latitude'],
+                $validated['location_longitude']
+            );
+
+            if (! $areaValidation['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $areaValidation['message'] ?? trans('service_area.validation.not_available'),
+                    'nearest_area' => $areaValidation['nearest'],
+                    'show_waitlist' => true,
+                ], 422);
+            }
+        }
+        // ===== END SERVICE AREA VALIDATION =====
+
+        $sessionData = [
+            'booking.current_step' => $step,
+        ];
+
+        if (TenantFeature::active('vehicles')) {
+            $sessionData['booking.vehicle_type_id'] = $validated['vehicle_type_id'];
+            $sessionData['booking.vehicle_brand'] = $validated['vehicle_brand'] ?? null;
+            $sessionData['booking.vehicle_model'] = $validated['vehicle_model'] ?? null;
+            $sessionData['booking.vehicle_year'] = $validated['vehicle_year'] ?? null;
+            $sessionData['booking.registration_number'] = $validated['registration_number'] ?? null;
+        }
+
+        if (TenantFeature::active('mobile_service')) {
+            $sessionData['booking.location_address'] = $validated['location_address'];
+            $sessionData['booking.location_latitude'] = $validated['location_latitude'];
+            $sessionData['booking.location_longitude'] = $validated['location_longitude'];
+            $sessionData['booking.location_place_id'] = $validated['location_place_id'] ?? null;
+            $sessionData['booking.location_components'] = $validated['location_components'] ?? null;
+            $sessionData['booking.service_location_type'] = $validated['service_location_type'] ?? null;
+            $sessionData['booking.service_area_valid'] = true;
+            $sessionData['booking.service_area_coords'] = [
+                'lat' => (float) $validated['location_latitude'],
+                'lng' => (float) $validated['location_longitude'],
+            ];
+        }
+
+        session($sessionData);
+
+        return redirect()->route('booking.step', $step + 1);
+    }
+
+    private function storeContactStep(int $step, Request $request)
+    {
+        $validated = $request->validate([
+            'first_name' => 'required|string|min:2|max:100',
+            'last_name' => 'required|string|min:2|max:100',
+            'email' => 'required|email|max:255',
+            'phone' => ['required', 'regex:/^(\+48)?[\s-]?\d{9}$/'],
+            'notify_email' => 'nullable|boolean',
+            'notify_sms' => 'nullable|boolean',
+            'terms_accepted' => 'required|accepted',
+            // Invoice fields
+            'invoice_requested' => 'nullable|boolean',
+            'invoice_company_name' => 'required_if:invoice_requested,1,true|nullable|string|max:255',
+            'invoice_nip' => ['required_if:invoice_requested,1,true', 'nullable', 'string', 'max:13', new ValidPolishNIP],
+            'invoice_street' => 'required_if:invoice_requested,1,true|nullable|string|max:255',
+            'invoice_street_number' => 'required_if:invoice_requested,1,true|nullable|string|max:20',
+            'invoice_postal_code' => 'required_if:invoice_requested,1,true|nullable|string|max:6',
+            'invoice_city' => 'required_if:invoice_requested,1,true|nullable|string|max:100',
+        ], [
+            'first_name.required' => 'Podaj imię.',
+            'first_name.min' => 'Imię musi mieć co najmniej 2 znaki.',
+            'last_name.required' => 'Podaj nazwisko.',
+            'last_name.min' => 'Nazwisko musi mieć co najmniej 2 znaki.',
+            'email.required' => 'Podaj adres e-mail.',
+            'email.email' => 'Podaj prawidłowy adres e-mail.',
+            'phone.required' => 'Podaj numer telefonu.',
+            'phone.regex' => 'Podaj prawidłowy numer telefonu (9 cyfr).',
+            'terms_accepted.required' => 'Musisz zaakceptować regulamin.',
+            'terms_accepted.accepted' => 'Musisz zaakceptować regulamin.',
+            'invoice_company_name.required_if' => 'Podaj nazwę firmy lub imię i nazwisko.',
+            'invoice_nip.required_if' => 'Podaj NIP.',
+            'invoice_street.required_if' => 'Podaj ulicę.',
+            'invoice_street_number.required_if' => 'Podaj numer budynku/lokalu.',
+            'invoice_postal_code.required_if' => 'Podaj kod pocztowy.',
+            'invoice_city.required_if' => 'Podaj miasto.',
+        ]);
+
+        session([
+            'booking.first_name' => $validated['first_name'],
+            'booking.last_name' => $validated['last_name'],
+            'booking.email' => $validated['email'],
+            'booking.phone' => $validated['phone'],
+            'booking.notify_email' => $request->has('notify_email'),
+            'booking.notify_sms' => $request->has('notify_sms'),
+            'booking.invoice_requested' => $request->boolean('invoice_requested'),
+            'booking.invoice_company_name' => $validated['invoice_company_name'] ?? null,
+            'booking.invoice_nip' => $validated['invoice_nip'] ?? null,
+            'booking.invoice_street' => $validated['invoice_street'] ?? null,
+            'booking.invoice_street_number' => $validated['invoice_street_number'] ?? null,
+            'booking.invoice_postal_code' => $validated['invoice_postal_code'] ?? null,
+            'booking.invoice_city' => $validated['invoice_city'] ?? null,
+            'booking.current_step' => $step,
+        ]);
+
+        return redirect()->route('booking.step', $step + 1);
     }
 
     /**
@@ -409,31 +606,17 @@ class BookingController extends Controller
     {
         $step = $request->input('step');
         $data = $request->input('data', []);
+        $stepKey = $this->getStepKey($step);
 
-        // Validate based on step
+        // Validate based on step key
         try {
-            switch ($step) {
-                case 1: // Service Selection
-                    $validated = $this->validateStep1($data);
-                    break;
-
-                case 2: // Date & Time
-                    $validated = $this->validateStep2($data);
-                    break;
-
-                case 3: // Vehicle & Location
-                    $validated = $this->validateStep3($data);
-                    break;
-
-                case 4: // Contact Information
-                    $validated = $this->validateStep4($data);
-                    break;
-
-                default:
-                    // For incremental saves (e.g., calendar date selection), no strict validation
-                    $validated = $data;
-                    break;
-            }
+            $validated = match ($stepKey) {
+                'service' => $this->validateStepService($data),
+                'datetime' => $this->validateStepDatetime($data),
+                'vehicle-location' => $this->validateStepVehicleLocation($data),
+                'contact' => $this->validateStepContact($data),
+                default => $data,
+            };
 
             // Merge new data into existing session
             $booking = session('booking', []);
@@ -454,26 +637,25 @@ class BookingController extends Controller
     }
 
     /**
-     * Validation helpers for each step
+     * Validation helpers for each step key
      */
-    private function validateStep1(array $data)
+    private function validateStepService(array $data)
     {
         return validator($data, [
             'service_id' => 'required|exists:services,id',
         ])->validate();
     }
 
-    private function validateStep2(array $data)
+    private function validateStepDatetime(array $data)
     {
         // Allow partial saves (just date OR just time_slot)
-        // Full validation happens on form submit in storeStep()
         return validator($data, [
             'date' => 'nullable|date|after_or_equal:today',
             'time_slot' => 'nullable|regex:/^\d{2}:\d{2}$/',
         ])->validate();
     }
 
-    private function validateStep3(array $data)
+    private function validateStepVehicleLocation(array $data)
     {
         return validator($data, [
             'vehicle_type_id' => 'required|exists:vehicle_types,id',
@@ -489,7 +671,7 @@ class BookingController extends Controller
         ])->validate();
     }
 
-    private function validateStep4(array $data)
+    private function validateStepContact(array $data)
     {
         return validator($data, [
             'first_name' => 'required|string|min:2|max:100',
@@ -499,7 +681,6 @@ class BookingController extends Controller
             'notify_email' => 'nullable|boolean',
             'notify_sms' => 'nullable|boolean',
             'terms_accepted' => 'required|accepted',
-            // Invoice fields
             'invoice_requested' => 'nullable|boolean',
             'invoice_company_name' => 'required_if:invoice_requested,1,true|nullable|string|max:255',
             'invoice_nip' => ['nullable', 'string', 'max:13', new ValidPolishNIP],
@@ -508,7 +689,6 @@ class BookingController extends Controller
             'invoice_postal_code' => 'required_if:invoice_requested,1,true|nullable|string|max:6',
             'invoice_city' => 'required_if:invoice_requested,1,true|nullable|string|max:100',
         ], [
-            // Personal info messages
             'first_name.required' => 'Podaj imię.',
             'first_name.min' => 'Imię musi mieć co najmniej 2 znaki.',
             'last_name.required' => 'Podaj nazwisko.',
@@ -519,7 +699,6 @@ class BookingController extends Controller
             'phone.regex' => 'Podaj prawidłowy numer telefonu (9 cyfr).',
             'terms_accepted.required' => 'Musisz zaakceptować regulamin.',
             'terms_accepted.accepted' => 'Musisz zaakceptować regulamin.',
-            // Invoice fields messages
             'invoice_company_name.required_if' => 'Podaj nazwę firmy lub imię i nazwisko.',
             'invoice_street.required_if' => 'Podaj ulicę.',
             'invoice_street_number.required_if' => 'Podaj numer budynku/lokalu.',
@@ -540,12 +719,6 @@ class BookingController extends Controller
 
     /**
      * Get unavailable dates for calendar (OPTIMIZED with bulk queries + cache)
-     *
-     * Performance improvements:
-     * - OLD: 60 iterations × N queries = 100-200+ queries (2-4 seconds)
-     * - NEW: 3-5 bulk queries + cache = <100ms for cached requests
-     *
-     * Cache TTL: 15 minutes (staff schedules don't change frequently)
      */
     public function getUnavailableDates(Request $request)
     {
@@ -640,20 +813,22 @@ class BookingController extends Controller
         // ===== END IDEMPOTENCY =====
 
         // ===== CRITICAL: RE-VALIDATE SERVICE AREA =====
-        // This prevents bypass attacks where user dismisses frontend validation
-        if (empty($booking['location_latitude']) || empty($booking['location_longitude'])) {
-            return redirect()->route('booking.step', 3)
-                ->with('error', 'Brak danych lokalizacji. Wybierz adres z listy podpowiedzi.');
-        }
+        // Only when mobile_service or service_area feature is active
+        if (TenantFeature::active('service_area') && $this->hasStep('vehicle-location')) {
+            if (empty($booking['location_latitude']) || empty($booking['location_longitude'])) {
+                return redirect()->route('booking.step', $this->getStepNumber('vehicle-location'))
+                    ->with('error', 'Brak danych lokalizacji. Wybierz adres z listy podpowiedzi.');
+            }
 
-        $areaValidation = $this->serviceAreaValidator->validate(
-            (float) $booking['location_latitude'],
-            (float) $booking['location_longitude']
-        );
+            $areaValidation = $this->serviceAreaValidator->validate(
+                (float) $booking['location_latitude'],
+                (float) $booking['location_longitude']
+            );
 
-        if (! $areaValidation['valid']) {
-            return redirect()->route('booking.step', 3)
-                ->with('error', $areaValidation['message'] ?? 'Przepraszamy, nie obsługujemy tej lokalizacji. Wybierz adres z dostępnego obszaru.');
+            if (! $areaValidation['valid']) {
+                return redirect()->route('booking.step', $this->getStepNumber('vehicle-location'))
+                    ->with('error', $areaValidation['message'] ?? 'Przepraszamy, nie obsługujemy tej lokalizacji. Wybierz adres z dostępnego obszaru.');
+            }
         }
         // ===== END SERVICE AREA VALIDATION =====
 
@@ -713,8 +888,8 @@ class BookingController extends Controller
                     $user->update($profileUpdates);
                 }
 
-                // Create appointment
-                $appointment = Appointment::create([
+                // Create appointment - vehicle fields are nullable, only set when feature is active
+                $appointmentData = [
                     'customer_id' => $user->id,
                     'service_id' => $booking['service_id'],
                     'service_price_at_booking' => $service->price,
@@ -725,17 +900,6 @@ class BookingController extends Controller
                     'start_time' => $appointmentDateTime->format('H:i:s'),
                     'end_time' => $appointmentDateTime->copy()->addMinutes($service->duration_minutes)->format('H:i:s'),
                     'status' => 'pending',
-                    'vehicle_type_id' => $booking['vehicle_type_id'],
-                    'vehicle_custom_brand' => $booking['vehicle_brand'] ?? null,
-                    'vehicle_custom_model' => $booking['vehicle_model'] ?? null,
-                    'vehicle_year' => $booking['vehicle_year'] ?? null,
-                    'registration_number' => $booking['registration_number'] ?? null,
-                    'location_address' => $booking['location_address'],
-                    'location_latitude' => $booking['location_latitude'],
-                    'location_longitude' => $booking['location_longitude'],
-                    'location_place_id' => $booking['location_place_id'] ?? null,
-                    'location_components' => $booking['location_components'] ?? null,
-                    'service_location_type' => $booking['service_location_type'] ?? null,
                     // Contact information (captured at time of booking for historical accuracy)
                     'first_name' => $booking['first_name'],
                     'last_name' => $booking['last_name'],
@@ -751,7 +915,28 @@ class BookingController extends Controller
                     'invoice_street_number' => $booking['invoice_street_number'] ?? null,
                     'invoice_postal_code' => $booking['invoice_postal_code'] ?? null,
                     'invoice_city' => $booking['invoice_city'] ?? null,
-                ]);
+                ];
+
+                // Vehicle fields (only when feature active, columns are nullable)
+                if (TenantFeature::active('vehicles')) {
+                    $appointmentData['vehicle_type_id'] = $booking['vehicle_type_id'] ?? null;
+                    $appointmentData['vehicle_custom_brand'] = $booking['vehicle_brand'] ?? null;
+                    $appointmentData['vehicle_custom_model'] = $booking['vehicle_model'] ?? null;
+                    $appointmentData['vehicle_year'] = $booking['vehicle_year'] ?? null;
+                    $appointmentData['registration_number'] = $booking['registration_number'] ?? null;
+                }
+
+                // Location fields (only when feature active, columns are nullable)
+                if (TenantFeature::active('mobile_service')) {
+                    $appointmentData['location_address'] = $booking['location_address'] ?? null;
+                    $appointmentData['location_latitude'] = $booking['location_latitude'] ?? null;
+                    $appointmentData['location_longitude'] = $booking['location_longitude'] ?? null;
+                    $appointmentData['location_place_id'] = $booking['location_place_id'] ?? null;
+                    $appointmentData['location_components'] = $booking['location_components'] ?? null;
+                    $appointmentData['service_location_type'] = $booking['service_location_type'] ?? null;
+                }
+
+                $appointment = Appointment::create($appointmentData);
 
                 // Sync SMS consent to user profile (GDPR compliance)
                 if ($booking['notify_sms'] ?? false) {
@@ -775,7 +960,9 @@ class BookingController extends Controller
                 'ip' => request()->ip(),
             ]);
 
-            return redirect()->route('booking.step', 5)
+            $reviewStep = $this->getStepNumber('review');
+
+            return redirect()->route('booking.step', $reviewStep)
                 ->with('error', 'Wystąpił błąd podczas tworzenia rezerwacji. Spróbuj ponownie.');
         }
 
@@ -828,6 +1015,8 @@ class BookingController extends Controller
             'googleCalendarUrl' => $googleCalendarUrl,
             'appleCalendarUrl' => $appleCalendarUrl,
             'outlookCalendarUrl' => $outlookCalendarUrl,
+            'showVehicle' => TenantFeature::active('vehicles'),
+            'showMobileService' => TenantFeature::active('mobile_service'),
         ]);
     }
 

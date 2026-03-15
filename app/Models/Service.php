@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Service extends Model
 {
-    use HasFactory;
+    use BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         // Existing fields
         'name',
         'description',
@@ -39,6 +41,7 @@ class Service extends Model
         'is_popular',
         'booking_count_week',
         'features',
+        'metadata',
     ];
 
     protected $casts = [
@@ -55,6 +58,7 @@ class Service extends Model
         'is_popular' => 'boolean',
         'booking_count_week' => 'integer',
         'features' => 'array',
+        'metadata' => 'array',
     ];
 
     // Relationships

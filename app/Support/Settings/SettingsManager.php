@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Settings;
 
 use App\Models\Setting;
+use App\Support\TenantFeature;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
@@ -29,6 +30,8 @@ class SettingsManager
     /**
      * Get a setting value by dot notation path.
      *
+     * Tenant-aware: checks tenant-specific setting first, falls back to global default.
+     *
      * Example: get('booking.business_hours_start', '09:00')
      *
      * @param  string  $path  Dot notation path (group.key)
@@ -41,22 +44,33 @@ class SettingsManager
         $cacheKey = $this->getCacheKey($group, $key);
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default) {
-            $setting = Setting::group($group)->key($key)->first();
+            $tenantId = $this->getCurrentTenantId();
+
+            // Try tenant-specific setting first
+            if ($tenantId) {
+                $setting = Setting::withoutGlobalScope('organization')
+                    ->where('organization_id', $tenantId)
+                    ->group($group)
+                    ->key($key)
+                    ->first();
+
+                if ($setting) {
+                    return $this->unwrapValue($setting->value);
+                }
+            }
+
+            // Fall back to global default (organization_id IS NULL)
+            $setting = Setting::withoutGlobalScope('organization')
+                ->whereNull('organization_id')
+                ->group($group)
+                ->key($key)
+                ->first();
 
             if (! $setting) {
                 return $default;
             }
 
-            // If value is an array with single scalar element, return the element.
-            // Preserve arrays (Repeater data) even if they have one item.
-            $value = $setting->value;
-
-            // Unwrap single-element arrays only if the element is a scalar (not an array).
-            if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
-                return $value[0];
-            }
-
-            return $value;
+            return $this->unwrapValue($setting->value);
         });
     }
 
@@ -75,8 +89,14 @@ class SettingsManager
         // Wrap scalar values in array for JSON storage
         $jsonValue = is_array($value) ? $value : [$value];
 
-        Setting::updateOrCreate(
-            ['group' => $group, 'key' => $key],
+        $tenantId = $this->getCurrentTenantId();
+
+        Setting::withoutGlobalScope('organization')->updateOrCreate(
+            [
+                'organization_id' => $tenantId,
+                'group' => $group,
+                'key' => $key,
+            ],
             ['value' => $jsonValue]
         );
 
@@ -113,20 +133,30 @@ class SettingsManager
      */
     public function all(): array
     {
-        $settings = Setting::all();
+        $tenantId = $this->getCurrentTenantId();
+        $query = Setting::withoutGlobalScope('organization');
 
+        if ($tenantId) {
+            // Get global defaults + tenant overrides (tenant wins)
+            $query->where(function ($q) use ($tenantId) {
+                $q->whereNull('organization_id')
+                    ->orWhere('organization_id', $tenantId);
+            });
+        } else {
+            $query->whereNull('organization_id');
+        }
+
+        $settings = $query->get();
         $grouped = [];
 
         foreach ($settings as $setting) {
-            $value = $setting->value;
+            $value = $this->unwrapValue($setting->value);
+            $groupKey = $setting->group.'.'.$setting->key;
 
-            // Unwrap single-element arrays only if the element is a scalar (not an array).
-            // This preserves Repeater data with one item (e.g., [{"name": "X"}]).
-            if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
-                $value = $value[0];
+            // Tenant setting overrides global
+            if ($setting->organization_id !== null || ! isset($grouped[$setting->group][$setting->key])) {
+                $grouped[$setting->group][$setting->key] = $value;
             }
-
-            $grouped[$setting->group][$setting->key] = $value;
         }
 
         return $grouped;
@@ -145,20 +175,28 @@ class SettingsManager
         $cacheKey = $this->getCacheKey($group);
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group) {
-            $settings = Setting::group($group)->get();
+            $tenantId = $this->getCurrentTenantId();
+            $query = Setting::withoutGlobalScope('organization')->group($group);
 
+            if ($tenantId) {
+                $query->where(function ($q) use ($tenantId) {
+                    $q->whereNull('organization_id')
+                        ->orWhere('organization_id', $tenantId);
+                });
+            } else {
+                $query->whereNull('organization_id');
+            }
+
+            $settings = $query->get();
             $result = [];
 
             foreach ($settings as $setting) {
-                $value = $setting->value;
+                $value = $this->unwrapValue($setting->value);
 
-                // Unwrap single-element arrays only if the element is a scalar (not an array).
-                // This preserves Repeater data with one item (e.g., [{"name": "X"}]).
-                if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
-                    $value = $value[0];
+                // Tenant setting overrides global
+                if ($setting->organization_id !== null || ! isset($result[$setting->key])) {
+                    $result[$setting->key] = $value;
                 }
-
-                $result[$setting->key] = $value;
             }
 
             return $result;
@@ -192,13 +230,37 @@ class SettingsManager
      * @param  string  $group  Group name
      * @param  string|null  $key  Setting key (optional)
      */
-    private function getCacheKey(string $group, ?string $key = null): string
+    /**
+     * Unwrap single-element scalar arrays for consistency.
+     * Preserves arrays (Repeater data) even if they have one item.
+     */
+    private function unwrapValue(mixed $value): mixed
     {
-        if ($key === null) {
-            return self::CACHE_PREFIX.":{$group}";
+        if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
+            return $value[0];
         }
 
-        return self::CACHE_PREFIX.":{$group}:{$key}";
+        return $value;
+    }
+
+    /**
+     * Get current tenant ID from Filament or public request context.
+     */
+    private function getCurrentTenantId(): ?int
+    {
+        return TenantFeature::currentTenant()?->id;
+    }
+
+    private function getCacheKey(string $group, ?string $key = null): string
+    {
+        $tenantId = $this->getCurrentTenantId() ?? 'global';
+        $prefix = self::CACHE_PREFIX.":tenant:{$tenantId}";
+
+        if ($key === null) {
+            return "{$prefix}:{$group}";
+        }
+
+        return "{$prefix}:{$group}:{$key}";
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\Categories;
 
+use App\Filament\Resources\BaseResource;
 use App\Filament\Resources\Categories\Pages\ManageCategories;
 use App\Models\Category;
 use BackedEnum;
@@ -13,7 +14,6 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
@@ -21,9 +21,11 @@ use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class CategoryResource extends Resource
+class CategoryResource extends BaseResource
 {
     protected static ?string $model = Category::class;
+
+    protected static ?string $module = 'website';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedFolderOpen;
 

@@ -8,13 +8,12 @@ use App\Filament\Resources\SmsEventResource\Pages;
 use App\Models\SmsEvent;
 use BackedEnum;
 use Filament\Actions;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class SmsEventResource extends Resource
+class SmsEventResource extends BaseResource
 {
     protected static ?string $model = SmsEvent::class;
 
@@ -100,10 +99,10 @@ class SmsEventResource extends Resource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

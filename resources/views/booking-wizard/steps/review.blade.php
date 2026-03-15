@@ -1,8 +1,8 @@
 @extends('booking-wizard.layout', [
-    'currentStep' => 5,
+    'currentStep' => $currentStep,
     'nextButtonText' => 'Potwierdź rezerwację',
     'formId' => 'review-booking-form',
-    'backUrl' => route('booking.step', ['step' => 4]),
+    'backUrl' => route('booking.step', ['step' => $currentStep - 1]),
 ])
 
 @section('step-content')
@@ -121,7 +121,8 @@
             </div>
         </div>
 
-        {{-- Section 3: Vehicle & Location --}}
+        {{-- Section 3: Vehicle & Location (conditional) --}}
+        @if($showVehicle || ($showMobileService ?? false))
         <div class="review-booking__section mb-6">
             <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200">
                 <div class="flex items-center justify-between mb-4">
@@ -131,10 +132,16 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                             </svg>
                         </div>
-                        Pojazd i Lokalizacja
+                        @if($showVehicle && ($showMobileService ?? false))
+                            Pojazd i Lokalizacja
+                        @elseif($showVehicle)
+                            Pojazd
+                        @else
+                            Lokalizacja
+                        @endif
                     </h3>
                     <a
-                        href="{{ route('booking.step', ['step' => 3]) }}"
+                        href="{{ route('booking.step', ['step' => $stepMap['vehicle-location']]) }}"
                         class="review-booking__edit-link text-sm font-medium text-orange-600 hover:text-orange-700 flex items-center gap-1"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -145,7 +152,8 @@
                 </div>
 
                 <div class="review-booking__detail-row space-y-4">
-                    {{-- Vehicle Type --}}
+                    {{-- Vehicle Type (only when vehicles feature active) --}}
+                    @if($showVehicle)
                     <div class="flex items-start gap-3">
                         <svg class="w-5 h-5 text-gray-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -168,8 +176,10 @@
                             @endif
                         </div>
                     </div>
+                    @endif
 
-                    {{-- Location --}}
+                    {{-- Location (only when mobile_service feature active) --}}
+                    @if($showMobileService ?? false)
                     <div class="flex items-start gap-3">
                         <svg class="w-5 h-5 text-gray-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -191,9 +201,11 @@
                         </div>
                     </div>
                     @endif
+                    @endif
                 </div>
             </div>
         </div>
+        @endif
 
         {{-- Section 4: Contact Information --}}
         <div class="review-booking__section mb-6">
@@ -208,7 +220,7 @@
                         Dane Kontaktowe
                     </h3>
                     <a
-                        href="{{ route('booking.step', ['step' => 4]) }}"
+                        href="{{ route('booking.step', ['step' => $stepMap['contact']]) }}"
                         class="review-booking__edit-link text-sm font-medium text-orange-600 hover:text-orange-700 flex items-center gap-1"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,7 +358,7 @@
                 <x-heroicon-m-check class="w-5 h-5" />
             </button>
 
-            <a href="{{ route('booking.step', ['step' => 4]) }}"
+            <a href="{{ route('booking.step', ['step' => $currentStep - 1]) }}"
                class="w-full min-h-11 px-6 py-3 bg-gray-100 hover:bg-gray-200
                       text-gray-700 font-medium rounded-xl
                       transition-all duration-200 ease-out

@@ -9,7 +9,6 @@ use App\Models\AuditLog;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -28,7 +27,7 @@ use UnitEnum;
  *
  * Access: Super-admin only - contains sensitive security information.
  */
-class AuditLogResource extends Resource
+class AuditLogResource extends BaseResource
 {
     protected static ?string $model = AuditLog::class;
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Blade;
@@ -27,12 +28,15 @@ use Illuminate\Support\Facades\Blade;
  */
 class EmailTemplate extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
     protected $fillable = [
+        'organization_id',
         'key',
         'language',
         'subject',
