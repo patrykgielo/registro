@@ -22,8 +22,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
-// Public routes
-Route::middleware('web')->get('/', function () {
+// Public routes (ResolveTenant needed for tenant-scoped settings and CMS pages)
+Route::middleware([ResolveTenant::class])->get('/', function () {
     $settingsManager = app(\App\Support\Settings\SettingsManager::class);
     $pageId = $settingsManager->get('cms.homepage_page_id');
 
@@ -34,7 +34,7 @@ Route::middleware('web')->get('/', function () {
     $page = \App\Models\Page::find($pageId);
 
     if (! $page || ! $page->isPublished()) {
-        abort(404, 'Homepage not found or not published');
+        return view('home-fallback');
     }
 
     return view('pages.show', [
@@ -76,9 +76,12 @@ Route::get('/health', function () {
 })->name('health');
 
 // CMS Content routes - Posts, Promotions, Portfolio (with prefixes)
-Route::get('/aktualnosci/{slug}', [PostController::class, 'show'])->name('post.show');
-Route::get('/promocje/{slug}', [PromotionController::class, 'show'])->name('promotion.show');
-Route::get('/portfolio/{slug}', [PortfolioController::class, 'show'])->name('portfolio.show');
+// ResolveTenant needed for BelongsToOrganization scope on content models
+Route::middleware([ResolveTenant::class])->group(function () {
+    Route::get('/aktualnosci/{slug}', [PostController::class, 'show'])->name('post.show');
+    Route::get('/promocje/{slug}', [PromotionController::class, 'show'])->name('promotion.show');
+    Route::get('/portfolio/{slug}', [PortfolioController::class, 'show'])->name('portfolio.show');
+});
 
 // Legacy redirect: /strona/{slug} -> /{slug} (SEO 301 permanent redirect)
 Route::get('/strona/{slug}', function (string $slug) {
@@ -86,7 +89,7 @@ Route::get('/strona/{slug}', function (string $slug) {
 })->name('page.legacy');
 
 // Service Pages routes (P0: SEO-friendly Polish URLs with rate limiting)
-Route::middleware('throttle:60,1')->group(function () {
+Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
     Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('service.show');
 });
@@ -265,6 +268,6 @@ Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->
 // This route MUST be defined LAST to prevent matching other routes.
 // Reserved slugs are blocked in Page model validation.
 // =============================================================================
-Route::get('/{slug}', [PageController::class, 'show'])
+Route::middleware([ResolveTenant::class])->get('/{slug}', [PageController::class, 'show'])
     ->name('page.show')
     ->where('slug', '^(?!admin|platform|api|livewire|filament|horizon|storage|sanctum|health|register|customer|get-started).*$');

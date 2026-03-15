@@ -94,7 +94,9 @@ Request (Host: demo.registro.local)
 $request->attributes->set('tenant', $tenant);  // request-scoped, safe
 ```
 
-**Applied to routes:** auth login, customer registration, all authenticated routes, API routes.
+**Applied to routes:** homepage `/`, CMS pages `/{slug}`, CMS content (`/aktualnosci/`, `/promocje/`, `/portfolio/`), service pages (`/uslugi/`), auth login, customer registration, all authenticated routes, API routes.
+
+**CRITICAL:** ALL public routes that render tenant-scoped content (pages, posts, services) MUST have `ResolveTenant` middleware. Without it, `BelongsToOrganization` scope returns no tenant, `SettingsManager` reads global settings instead of tenant settings, and CMS pages may leak across tenants.
 
 ---
 
