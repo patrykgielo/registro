@@ -37,9 +37,12 @@ general_services                →  time_slot
 
 Industry DERIVE'uje booking_type. Nie ustawiaj booking_type ręcznie.
 
-### Feature flags
+### Feature flags & Modules
 
-Priorytet: `settings.features.X` (explicit) > `industry.defaultFeatures()` > `FEATURE_DEFAULTS[booking_type]`
+**Features** (boolean toggles): `settings.features.X` — priorytet: explicit > industry > booking_type
+**Modules** (resource groups, Phase 6): `settings.modules.X` — priorytet: explicit > industry > booking_type
+
+Modules gatują widoczność Resources w Filament, Features gatują pola w formularzach.
 
 ---
 
@@ -85,9 +88,10 @@ Priorytet: `settings.features.X` (explicit) > `industry.defaultFeatures()` > `FE
 | 3. Item Rental Models | ✅ Complete | RentalCategory, RentalItem, Rental |
 | 4. Subdomain Resolution | ✅ Complete | ResolveTenant, auth flow, EnsureSuperAdmin |
 | 5. Onboarding + Verticals | ✅ Complete | Industry enum, 3-step wizard, vertical seeders |
-| 6. Public Rental Booking | 🔲 Future | UI for item_rental tenants |
-| 7. Marketplace | 🔲 Future | Root domain tenant listings |
-| 8. Billing | 🔲 Future | Stripe, subscriptions, trials |
-| 9. Branding | 🔲 Future | Custom logos, colors, domains |
+| 6. Module System + Security | ✅ Complete | Module gating, permission namespacing, tenant isolation |
+| 7. Public Rental Booking | 🔲 Future | UI for item_rental tenants |
+| 8. Marketplace | 🔲 Future | Root domain tenant listings |
+| 9. Billing | 🔲 Future | Stripe, subscriptions, trials |
+| 10. Branding | 🔲 Future | Custom logos, colors, domains |
 
 See `memory/phases-roadmap.md` for details.

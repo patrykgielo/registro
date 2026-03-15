@@ -241,16 +241,16 @@ class EmailEventResource extends BaseResource
     }
 
     /**
-     * Check if user can access this resource
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('view email events') ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->can('view email events') ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
     public static function canCreate(): bool

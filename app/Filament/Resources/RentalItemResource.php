@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\RentalItemResource\Pages;
 use App\Models\RentalItem;
-use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -19,6 +18,8 @@ class RentalItemResource extends BaseResource
 {
     protected static ?string $model = RentalItem::class;
 
+    protected static ?string $module = 'rentals';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cube';
 
     protected static string|UnitEnum|null $navigationGroup = 'rentals';
@@ -28,13 +29,6 @@ class RentalItemResource extends BaseResource
     protected static ?string $modelLabel = 'Przedmiot';
 
     protected static ?string $pluralModelLabel = 'Przedmioty do wypożyczenia';
-
-    public static function shouldRegisterNavigation(): bool
-    {
-        $tenant = TenantFeature::currentTenant();
-
-        return $tenant?->supportsRentals() ?? false;
-    }
 
     public static function form(Schema $schema): Schema
     {

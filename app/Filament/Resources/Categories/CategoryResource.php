@@ -25,6 +25,8 @@ class CategoryResource extends BaseResource
 {
     protected static ?string $model = Category::class;
 
+    protected static ?string $module = 'website';
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedFolderOpen;
 
     protected static string|UnitEnum|null $navigationGroup = 'content';

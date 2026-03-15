@@ -52,6 +52,34 @@ $user->assignRole('admin');  // RoleDoesNotExist exception!
 | `app/Listeners/AssignCustomerRole.php` | customer | ✅ Zabezpieczone |
 | `database/seeders/RolePermissionSeeder.php` | all | ✅ Seeder (firstOrCreate) |
 
+## Permissions — module-namespaced (Phase 6)
+
+Od Phase 6 permissions używają formatu `module.action`:
+
+| Moduł | Permissions |
+|-------|-------------|
+| `settings` | settings.manage |
+| `services` | services.view, services.create, services.edit, services.delete |
+| `bookings` | bookings.view, bookings.create, bookings.edit, bookings.delete, bookings.view_own, bookings.cancel_own |
+| `rentals` | rentals.view, rentals.create, rentals.edit, rentals.delete |
+| `staff` | staff.view, staff.create, staff.edit, staff.delete, staff.manage_availability, staff.view_availability |
+| `customers` | customers.view, customers.create, customers.edit, customers.delete |
+| `communication` | communication.manage_templates, communication.view_logs, communication.view_events, communication.manage_suppressions |
+| `website` | website.manage |
+| `vehicles` | vehicles.view |
+| `service_area` | service_area.manage |
+| `users` | users.view, users.create, users.edit, users.delete |
+
+**Migracja:** `2026_03_15_000001_rename_permissions_to_module_namespaced.php` automatycznie rename'uje stare nazwy.
+
+**Stary → Nowy:**
+```
+'view services' → 'services.view'
+'create appointments' → 'bookings.create'
+'manage email templates' → 'communication.manage_templates'
+// itd. — pełne mapowanie w migracji
+```
+
 ## Kiedy seedować role na dev
 
 ```bash

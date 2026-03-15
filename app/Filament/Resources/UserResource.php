@@ -298,10 +298,11 @@ class UserResource extends BaseResource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Restrict access to super-admins only.
+     * Tenant admins should use CustomerResource and EmployeeResource.
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

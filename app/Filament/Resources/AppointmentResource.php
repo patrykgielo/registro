@@ -22,6 +22,8 @@ class AppointmentResource extends BaseResource
 {
     protected static ?string $model = Appointment::class;
 
+    protected static ?string $module = 'bookings';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-calendar';
 
     protected static ?string $navigationLabel = 'Wizyty';

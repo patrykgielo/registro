@@ -28,7 +28,9 @@ Organization is the central tenant entity. Every tenant-scoped model belongs to 
 | Method | Purpose |
 |--------|---------|
 | `hasFeature(string)` | Check feature flag (3-level priority chain) |
-| `enableFeature(string)` / `disableFeature(string)` | Write explicit override |
+| `enableFeature(string)` / `disableFeature(string)` | Write explicit feature override |
+| `hasModule(string)` | Check module activation (3-level priority chain, Phase 6) |
+| `enableModule(string)` / `disableModule(string)` | Write explicit module override |
 | `getSetting(string, mixed)` | Read from settings JSON |
 | `supportsRentals()` | booking_type in [item_rental, both] |
 | `supportsAppointments()` | booking_type in [time_slot, both] |
@@ -170,6 +172,66 @@ Used in `BusinessRegisterController` for post-onboarding redirects and welcome s
 
 ---
 
+## Module System (Phase 6)
+
+Modules are feature **sets** that control visibility of entire resource groups in Filament.
+
+### Organization::hasModule()
+
+Same 3-level priority as `hasFeature()`:
+
+```
+1. Explicit override  → settings.modules.{module}  (highest priority)
+2. Industry defaults  → $this->industry->defaultModules()
+3. booking_type defaults → MODULE_DEFAULTS[booking_type]  (lowest priority)
+```
+
+### MODULE_DEFAULTS
+
+```php
+private const MODULE_DEFAULTS = [
+    'time_slot' => ['services', 'bookings'],
+    'item_rental' => ['rentals'],
+    'both' => ['services', 'bookings', 'rentals'],
+];
+```
+
+### Industry Default Modules
+
+| Industry | Modules |
+|----------|---------|
+| EquipmentRental | `['rentals']` |
+| AutoDetailing | `['services', 'bookings']` |
+| GeneralServices | `['services', 'bookings']` |
+
+All other modules (staff, customers, vehicles, communication, website, service_area) are OFF by default. Super-admin enables them per tenant in Platform panel.
+
+### Modules vs Features
+
+| Aspect | Modules (`hasModule`) | Features (`hasFeature`) |
+|--------|----------------------|------------------------|
+| **Purpose** | Enable/disable entire resource groups | Toggle specific fields/behaviors |
+| **Examples** | services, bookings, rentals, staff | vehicles, mobile_service, service_area |
+| **Filament** | Gates `shouldRegisterNavigation()` | Gates field `->visible()` |
+| **Storage** | `settings.modules.*` | `settings.features.*` |
+
+### Permission Naming (Phase 6)
+
+Permissions follow `module.action` format:
+
+```
+services.view, services.create, services.edit, services.delete
+bookings.view, bookings.create, bookings.edit, bookings.delete
+bookings.view_own, bookings.cancel_own
+staff.manage_availability, staff.view_availability
+communication.manage_templates, communication.view_logs
+settings.manage
+```
+
+Migration `2026_03_15_000001_rename_permissions_to_module_namespaced.php` renamed old flat format automatically.
+
+---
+
 ## Filament Panels
 
 ### Admin Panel (`/admin`)
@@ -190,30 +252,46 @@ Used in `BusinessRegisterController` for post-onboarding redirects and welcome s
 - Resources from `app/Filament/Platform/Resources`
 - Color: Indigo (vs Teal for Admin)
 
-### Resource Gating
+### Resource Gating (Phase 6 — Module System)
 
-Resources control their visibility based on tenant features:
+Resources control their visibility via `$module` property on BaseResource:
 
 ```php
-// VehicleTypeResource, CarBrandResource, CarModelResource:
-public static function shouldRegisterNavigation(): bool
-{
-    return TenantFeature::active('vehicles');
-}
+// BaseResource auto-gates navigation:
+protected static ?string $module = 'services';  // gated by hasModule()
+protected static ?string $module = null;          // always visible (core)
 
-// RentalResource, RentalCategoryResource, RentalItemResource:
-public static function shouldRegisterNavigation(): bool
-{
-    $tenant = TenantFeature::currentTenant();
-    return $tenant?->supportsRentals() ?? false;
-}
+// shouldRegisterNavigation() in BaseResource checks:
+// 1. $module === null → always visible
+// 2. No tenant context (Platform/CLI) → always visible
+// 3. Tenant context → $tenant->hasModule(static::$module)
 ```
 
-Form fields also use conditional visibility:
+**Module assignments:**
+| Module | Resources |
+|--------|-----------|
+| `services` | ServiceResource |
+| `bookings` | AppointmentResource |
+| `rentals` | RentalCategoryResource, RentalItemResource, RentalResource |
+| `staff` | EmployeeResource, StaffScheduleResource, StaffVacationPeriodResource |
+| `customers` | CustomerResource |
+| `vehicles` | VehicleTypeResource, CarBrandResource, CarModelResource |
+| `communication` | EmailTemplateResource, SmsTemplateResource, EmailSendResource, SmsSendResource, ReminderConfigResource |
+| `website` | PageResource, PostResource, PortfolioItemResource, PromotionResource, CategoryResource |
+| `service_area` | ServiceAreaResource, ServiceAreaWaitlistResource |
+
+Form fields still use feature flags for conditional visibility:
 ```php
 TextInput::make('vehicle_type_id')
     ->visible(fn () => TenantFeature::active('vehicles'));
 ```
+
+**Security hardening (Phase 6):**
+- UserResource, RoleResource → super-admin only (`canViewAny`)
+- SmsEvent, EmailEvent, Suppressions, MaintenanceEvent → super-admin only
+- EmployeeResource — scoped via `organizations` pivot
+- CustomerResource — scoped via `customerAppointments` / `rentalsAsCustomer`
+- VehicleType/CarBrand/CarModel — read-only for non-super-admin
 
 ---
 

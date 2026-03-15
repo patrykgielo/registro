@@ -20,6 +20,8 @@ class ReminderConfigResource extends BaseResource
 {
     protected static ?string $model = ReminderConfig::class;
 
+    protected static ?string $module = 'communication';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-bell-alert';
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';

@@ -25,6 +25,8 @@ class EmailTemplateResource extends BaseResource
 {
     protected static ?string $model = EmailTemplate::class;
 
+    protected static ?string $module = 'communication';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-envelope';
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
@@ -321,22 +323,22 @@ class EmailTemplateResource extends BaseResource
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     public static function canCreate(): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     public static function canEdit($record): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     public static function canDelete($record): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     /**

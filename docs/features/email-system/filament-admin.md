@@ -106,18 +106,20 @@ Tables\Actions\Action::make('testSend')
 Defined in `RolePermissionSeeder`:
 
 ```php
-'manage email templates' → super-admin, admin
-'view email logs'        → super-admin, admin, staff
-'view email events'      → super-admin, admin, staff
-'manage suppressions'    → super-admin, admin
+'communication.manage_templates'      → super-admin, admin
+'communication.view_logs'             → super-admin, admin
+'communication.view_events'           → super-admin, admin
+'communication.manage_suppressions'   → super-admin, admin
 ```
+
+Note: Phase 6 restricted EmailEvent/SmsEvent/Suppressions to super-admin only (global models, not tenant-scoped).
 
 **Apply in Resource:**
 
 ```php
 public static function canViewAny(): bool
 {
-    return auth()->user()?->can('manage email templates') ?? false;
+    return auth()->user()?->can('communication.manage_templates') ?? false;
 }
 ```
 

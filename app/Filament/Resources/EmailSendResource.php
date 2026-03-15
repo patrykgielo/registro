@@ -23,6 +23,8 @@ class EmailSendResource extends BaseResource
 {
     protected static ?string $model = EmailSend::class;
 
+    protected static ?string $module = 'communication';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-paper-airplane';
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
@@ -374,12 +376,12 @@ class EmailSendResource extends BaseResource
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('view email logs') ?? false;
+        return auth()->user()?->can('communication.view_logs') ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->can('view email logs') ?? false;
+        return auth()->user()?->can('communication.view_logs') ?? false;
     }
 
     public static function canCreate(): bool

@@ -317,6 +317,14 @@ Actions\Action::make('details')
 
 ---
 
+## Module System Integration (Phase 6)
+
+Resources dziedziczą automatyczny `shouldRegisterNavigation()` z `BaseResource` który sprawdza `Organization.hasModule()`.
+
+**Pattern:** `protected static ?string $module = 'services';` na Resource class.
+
+Szczegóły: → `filament-resources.md` sekcja "Module Visibility Gating"
+
 ## Documentation References
 
 - [Component Architecture](docs/guides/filament-v4-component-architecture.md)

@@ -84,6 +84,56 @@ Traity są przeznaczone dla Content Management. Inne Resources (np. Customer, Em
 
 ---
 
+## Module Visibility Gating (Phase 6)
+
+**BaseResource auto-gatuje widoczność Resources na podstawie modułów organizacji.**
+
+### Pattern: `$module` property
+
+```php
+// Resource z modułem — widoczny tylko gdy moduł aktywny
+protected static ?string $module = 'services';
+
+// Core resource — zawsze widoczny
+protected static ?string $module = null;
+```
+
+### `shouldRegisterNavigation()` w BaseResource
+
+```php
+public static function shouldRegisterNavigation(): bool
+{
+    if (static::$module === null) return true;        // core = always
+    $tenant = TenantFeature::currentTenant();
+    if ($tenant === null) return true;                // platform/CLI = show all
+    return $tenant->hasModule(static::$module);       // tenant = check module
+}
+```
+
+### NIGDY nie override'uj `shouldRegisterNavigation()` na Resource
+
+```php
+// ❌ ŹLE — stary pattern (Phase 2-5), USUNIĘTY w Phase 6
+public static function shouldRegisterNavigation(): bool
+{
+    return TenantFeature::active('vehicles');
+}
+
+// ✅ DOBRZE — Phase 6: użyj $module property
+protected static ?string $module = 'vehicles';
+```
+
+### Moduły vs Features (WAŻNE ROZRÓŻNIENIE)
+
+| System | Gating | Użycie |
+|--------|--------|--------|
+| `$module` | Widoczność CAŁEGO Resource w nawigacji | `protected static ?string $module = 'staff';` |
+| `TenantFeature::active()` | Widoczność POLA w formularzu | `->visible(fn () => TenantFeature::active('vehicles'))` |
+
+Moduły nie zastępują feature flags — oba systemy współistnieją.
+
+---
+
 ## Warunkowa Walidacja: Create vs Edit (Bug z 2026-02-16)
 
 **Filament waliduje WSZYSTKIE pola formularza przy zapisie, nie tylko zmienione!**

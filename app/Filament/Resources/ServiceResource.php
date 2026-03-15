@@ -20,6 +20,8 @@ class ServiceResource extends BaseResource
 {
     protected static ?string $model = Service::class;
 
+    protected static ?string $module = 'services';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-wrench-screwdriver';
 
     protected static string|UnitEnum|null $navigationGroup = 'content';

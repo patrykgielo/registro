@@ -19,6 +19,8 @@ class StaffVacationPeriodResource extends BaseResource
 {
     protected static ?string $model = StaffVacationPeriod::class;
 
+    protected static ?string $module = 'staff';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-sun';
 
     protected static string|UnitEnum|null $navigationGroup = 'staff';

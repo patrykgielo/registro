@@ -2,7 +2,9 @@
 
 namespace App\Filament\Platform\Resources;
 
+use App\Enums\Industry;
 use App\Filament\Platform\Resources\OrganizationResource\Pages;
+use App\Filament\Platform\Resources\OrganizationResource\RelationManagers;
 use App\Models\Organization;
 use App\Rules\ValidOrganizationSlug;
 use BackedEnum;
@@ -50,6 +52,10 @@ class OrganizationResource extends Resource
                             ->required()
                             ->default('time_slot'),
 
+                        Forms\Components\Select::make('industry')
+                            ->options(Industry::class)
+                            ->helperText('Zmiana branży NIE resetuje seed data'),
+
                         Forms\Components\Select::make('owner_id')
                             ->relationship('owner', 'email')
                             ->searchable()
@@ -65,20 +71,44 @@ class OrganizationResource extends Resource
                     ])
                     ->columns(2),
 
-                Section::make('Features')
-                    ->description('Enable or disable features for this organization')
+                Section::make('Moduły')
+                    ->description('Włączanie/wyłączanie modułów nadpisuje domyślne ustawienia branży')
+                    ->schema([
+                        Forms\Components\Toggle::make('settings.modules.services')
+                            ->label('Usługi'),
+                        Forms\Components\Toggle::make('settings.modules.bookings')
+                            ->label('Rezerwacje'),
+                        Forms\Components\Toggle::make('settings.modules.rentals')
+                            ->label('Wypożyczenia'),
+                        Forms\Components\Toggle::make('settings.modules.staff')
+                            ->label('Kadra'),
+                        Forms\Components\Toggle::make('settings.modules.customers')
+                            ->label('Klienci'),
+                        Forms\Components\Toggle::make('settings.modules.vehicles')
+                            ->label('Pojazdy'),
+                        Forms\Components\Toggle::make('settings.modules.communication')
+                            ->label('Komunikacja'),
+                        Forms\Components\Toggle::make('settings.modules.website')
+                            ->label('Strona WWW'),
+                        Forms\Components\Toggle::make('settings.modules.service_area')
+                            ->label('Obszary usług'),
+                    ])
+                    ->columns(3),
+
+                Section::make('Feature Flags')
+                    ->description('Feature flags within modules')
                     ->schema([
                         Forms\Components\Toggle::make('settings.features.vehicles')
                             ->label('Vehicle Catalog')
-                            ->helperText('Vehicle type selection, brand/model catalog, registration number'),
+                            ->helperText('Vehicle type selection, brand/model catalog'),
 
                         Forms\Components\Toggle::make('settings.features.mobile_service')
                             ->label('Mobile Service (Location/Address)')
-                            ->helperText('Location picker, address input, Google Maps integration'),
+                            ->helperText('Location picker, address input, Google Maps'),
 
                         Forms\Components\Toggle::make('settings.features.service_area')
                             ->label('Service Area Restrictions')
-                            ->helperText('Validate that customer location is within service area'),
+                            ->helperText('Validate customer location is within service area'),
                     ])
                     ->columns(3),
             ]);
@@ -103,6 +133,17 @@ class OrganizationResource extends Resource
                         'item_rental' => 'warning',
                         'both' => 'success',
                     }),
+
+                Tables\Columns\TextColumn::make('industry')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => $state?->label())
+                    ->color(fn ($state) => match ($state) {
+                        Industry::EquipmentRental => 'warning',
+                        Industry::AutoDetailing => 'info',
+                        Industry::GeneralServices => 'gray',
+                        default => 'gray',
+                    })
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('owner.email')
                     ->label('Owner')
@@ -131,10 +172,20 @@ class OrganizationResource extends Resource
                         'item_rental' => 'Item Rental',
                         'both' => 'Both',
                     ]),
+                Tables\Filters\SelectFilter::make('industry')
+                    ->options(Industry::class),
                 Tables\Filters\TernaryFilter::make('is_active'),
             ])
             ->actions([
                 Actions\EditAction::make(),
+
+                Actions\Action::make('extendTrial')
+                    ->label('+14 dni trial')
+                    ->icon('heroicon-o-clock')
+                    ->action(fn (Organization $record) => $record->update([
+                        'trial_ends_at' => ($record->trial_ends_at ?? now())->addDays(14),
+                    ]))
+                    ->requiresConfirmation(),
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
@@ -145,7 +196,9 @@ class OrganizationResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            RelationManagers\MembersRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

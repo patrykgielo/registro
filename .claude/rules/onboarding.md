@@ -108,6 +108,21 @@ RentalItem::create([...]);
 - **`npm run dev`** — TYLKO do hot-reload podczas aktywnego developmentu CSS/JS
 - NIGDY nie sugeruj `npm run dev` jako rozwiązania problemu z assetami
 
+## Moduły — automatyczna inicjalizacja (Phase 6)
+
+Nowa organizacja NIE wymaga ręcznego ustawiania modułów. System hasModule() automatycznie resolve'uje domyślne moduły z Industry:
+
+```php
+// EquipmentRental → ['rentals']
+// AutoDetailing → ['services', 'bookings']
+// GeneralServices → ['services', 'bookings']
+
+// Seedery NIE piszą do settings.modules — priority chain to załatwia
+$org->hasModule('services')  // true jeśli industry to umożliwia
+```
+
+Super-admin może nadpisać moduły w Platform panel (zapisuje do `settings.modules.*`).
+
 ## Seed data — referencja
 
 | Industry | Seed | Ilość |

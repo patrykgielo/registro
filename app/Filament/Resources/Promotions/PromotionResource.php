@@ -26,6 +26,8 @@ class PromotionResource extends BaseResource
 {
     protected static ?string $model = Promotion::class;
 
+    protected static ?string $module = 'website';
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTag;
 
     protected static string|UnitEnum|null $navigationGroup = 'content';

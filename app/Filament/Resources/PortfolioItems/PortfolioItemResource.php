@@ -26,6 +26,8 @@ class PortfolioItemResource extends BaseResource
 {
     protected static ?string $model = PortfolioItem::class;
 
+    protected static ?string $module = 'website';
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquares2x2;
 
     protected static string|UnitEnum|null $navigationGroup = 'content';

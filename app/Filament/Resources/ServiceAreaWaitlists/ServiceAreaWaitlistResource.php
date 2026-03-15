@@ -17,6 +17,8 @@ class ServiceAreaWaitlistResource extends BaseResource
 {
     protected static ?string $model = ServiceAreaWaitlist::class;
 
+    protected static ?string $module = 'service_area';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-list';
 
     protected static ?string $navigationLabel = 'Lista Oczekujących';

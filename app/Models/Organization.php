@@ -16,6 +16,16 @@ class Organization extends Model
     use HasFactory;
 
     /**
+     * Default modules per booking_type.
+     * Override per-tenant via settings.modules JSON.
+     */
+    private const MODULE_DEFAULTS = [
+        'time_slot' => ['services', 'bookings'],
+        'item_rental' => ['rentals'],
+        'both' => ['services', 'bookings', 'rentals'],
+    ];
+
+    /**
      * Default feature flags per booking_type.
      * Override per-tenant via settings.features JSON.
      */
@@ -202,6 +212,45 @@ class Organization extends Model
     {
         $settings = $this->settings ?? [];
         data_set($settings, "features.{$feature}", false);
+        $this->update(['settings' => $settings]);
+    }
+
+    /**
+     * Check if a module is enabled for this organization.
+     * Priority: explicit override > industry defaults > booking_type defaults.
+     */
+    public function hasModule(string $module): bool
+    {
+        $override = data_get($this->settings, "modules.{$module}");
+
+        if ($override !== null) {
+            return (bool) $override;
+        }
+
+        if ($this->industry !== null) {
+            return in_array($module, $this->industry->defaultModules(), true);
+        }
+
+        return in_array($module, self::MODULE_DEFAULTS[$this->booking_type] ?? [], true);
+    }
+
+    /**
+     * Enable a module for this organization.
+     */
+    public function enableModule(string $module): void
+    {
+        $settings = $this->settings ?? [];
+        data_set($settings, "modules.{$module}", true);
+        $this->update(['settings' => $settings]);
+    }
+
+    /**
+     * Disable a module for this organization.
+     */
+    public function disableModule(string $module): void
+    {
+        $settings = $this->settings ?? [];
+        data_set($settings, "modules.{$module}", false);
         $this->update(['settings' => $settings]);
     }
 

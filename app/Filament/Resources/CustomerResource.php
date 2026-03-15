@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\CustomerResource\Pages;
 use App\Filament\Resources\CustomerResource\RelationManagers;
 use App\Models\User;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -20,6 +21,8 @@ class CustomerResource extends BaseResource
 {
     protected static ?string $model = User::class;
 
+    protected static ?string $module = 'customers';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-user-group';
 
     protected static string|UnitEnum|null $navigationGroup = 'users';
@@ -32,9 +35,19 @@ class CustomerResource extends BaseResource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->whereHas('roles', function ($query) {
-            $query->where('name', 'customer');
-        });
+        $tenant = TenantFeature::currentTenant();
+
+        return parent::getEloquentQuery()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'customer'))
+            ->when($tenant, fn ($q) => $q->where(function ($q2) use ($tenant) {
+                $q2->whereHas(
+                    'customerAppointments',
+                    fn ($q3) => $q3->where('organization_id', $tenant->id)
+                )->orWhereHas(
+                    'rentalsAsCustomer',
+                    fn ($q3) => $q3->where('organization_id', $tenant->id)
+                );
+            }));
     }
 
     public static function form(Schema $schema): Schema

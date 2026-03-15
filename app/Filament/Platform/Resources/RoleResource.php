@@ -1,11 +1,12 @@
 <?php
 
-namespace App\Filament\Resources;
+namespace App\Filament\Platform\Resources;
 
-use App\Filament\Resources\RoleResource\Pages;
+use App\Filament\Platform\Resources\RoleResource\Pages;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -14,19 +15,21 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use UnitEnum;
 
-class RoleResource extends BaseResource
+class RoleResource extends Resource
 {
     protected static ?string $model = Role::class;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-shield-check';
 
-    protected static string|UnitEnum|null $navigationGroup = 'users';
+    protected static string|UnitEnum|null $navigationGroup = 'system';
+
+    protected static ?string $navigationLabel = 'Role';
 
     protected static ?string $modelLabel = 'Rola';
 
     protected static ?string $pluralModelLabel = 'Role';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 2;
 
     public static function form(Schema $schema): Schema
     {
@@ -37,14 +40,12 @@ class RoleResource extends BaseResource
                         ->label('Nazwa roli')
                         ->required()
                         ->unique(ignoreRecord: true)
-                        ->maxLength(255)
-                        ->helperText('Np. admin, staff, customer'),
+                        ->maxLength(255),
                     Forms\Components\TextInput::make('guard_name')
                         ->label('Guard')
                         ->default('web')
                         ->required()
-                        ->maxLength(255)
-                        ->helperText('Zazwyczaj "web" dla standardowych użytkowników'),
+                        ->maxLength(255),
                 ])->columns(2),
 
             Section::make('Uprawnienia')
@@ -55,8 +56,7 @@ class RoleResource extends BaseResource
                         ->options(Permission::all()->pluck('name', 'id'))
                         ->columns(3)
                         ->searchable()
-                        ->bulkToggleable()
-                        ->helperText('Wybierz uprawnienia dla tej roli'),
+                        ->bulkToggleable(),
                 ]),
         ]);
     }
@@ -77,63 +77,30 @@ class RoleResource extends BaseResource
                         'info' => 'customer',
                     ]),
                 Tables\Columns\TextColumn::make('permissions_count')
-                    ->label('Liczba uprawnień')
+                    ->label('Uprawnienia')
                     ->counts('permissions')
                     ->sortable()
                     ->badge()
                     ->color('primary'),
                 Tables\Columns\TextColumn::make('users_count')
-                    ->label('Liczba użytkowników')
+                    ->label('Użytkownicy')
                     ->counts('users')
                     ->sortable()
                     ->badge()
                     ->color('success'),
                 Tables\Columns\TextColumn::make('guard_name')
                     ->label('Guard')
-                    ->searchable()
-                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->label('Data utworzenia')
-                    ->dateTime('d.m.Y H:i')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->label('Data aktualizacji')
-                    ->dateTime('d.m.Y H:i')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-            ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('guard_name')
-                    ->label('Guard')
-                    ->options([
-                        'web' => 'Web',
-                        'api' => 'API',
-                    ]),
             ])
             ->recordActions([
-                Actions\EditAction::make()
-                    ->label('Edytuj'),
-                Actions\DeleteAction::make()
-                    ->label('Usuń'),
+                Actions\EditAction::make(),
+                Actions\DeleteAction::make(),
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make()
-                        ->label('Usuń zaznaczone'),
+                    Actions\DeleteBulkAction::make(),
                 ]),
-            ])
-            ->emptyStateHeading('Brak ról')
-            ->emptyStateDescription('Dodaj pierwszą rolę klikając przycisk poniżej.')
-            ->emptyStateIcon('heroicon-o-shield-check');
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
+            ]);
     }
 
     public static function getPages(): array
@@ -143,18 +110,5 @@ class RoleResource extends BaseResource
             'create' => Pages\CreateRole::route('/create'),
             'edit' => Pages\EditRole::route('/{record}/edit'),
         ];
-    }
-
-    public static function getNavigationBadge(): ?string
-    {
-        return static::getModel()::count();
-    }
-
-    /**
-     * Restrict access to super-admins only.
-     */
-    public static function canViewAny(): bool
-    {
-        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

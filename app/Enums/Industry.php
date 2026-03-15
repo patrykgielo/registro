@@ -90,6 +90,20 @@ enum Industry: string
         };
     }
 
+    /**
+     * Default modules enabled for this industry.
+     *
+     * @return array<int, string>
+     */
+    public function defaultModules(): array
+    {
+        return match ($this) {
+            self::EquipmentRental => ['rentals'],
+            self::AutoDetailing => ['services', 'bookings'],
+            self::GeneralServices => ['services', 'bookings'],
+        };
+    }
+
     public function seederClass(): string
     {
         return match ($this) {

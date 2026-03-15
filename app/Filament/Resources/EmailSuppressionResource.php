@@ -220,25 +220,25 @@ class EmailSuppressionResource extends BaseResource
     }
 
     /**
-     * Check if user can access this resource
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
     public static function canCreate(): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->can('communication.manage_suppressions') ?? false;
     }
 
     public static function canEdit($record): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->can('communication.manage_suppressions') ?? false;
     }
 
     public static function canDelete($record): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->can('communication.manage_suppressions') ?? false;
     }
 }

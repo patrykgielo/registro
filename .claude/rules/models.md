@@ -177,20 +177,107 @@ Service::withoutGlobalScope('organization')->create([...]);
 
 // Casts
 'industry' => Industry::class  // App\Enums\Industry (backed enum, nullable)
-'settings' => 'array'          // JSON z features, location, itp.
+'settings' => 'array'          // JSON z features, modules, location, itp.
 
-// Kluczowe metody
+// Kluczowe metody — FEATURES (boolean toggles)
 $org->hasFeature('vehicles')   // Priorytet: override > industry > booking_type
+$org->enableFeature('x')       // Zapisuje override w settings.features
+$org->disableFeature('x')
+
+// Kluczowe metody — MODULES (Phase 6, feature sets)
+$org->hasModule('services')    // Priorytet: override > industry > booking_type
+$org->enableModule('staff')    // Zapisuje override w settings.modules
+$org->disableModule('staff')
+
+// Inne metody
 $org->term('service')          // Terminologia branżowa (np. "przedmiot" dla rental)
 $org->supportsRentals()        // booking_type in [item_rental, both]
 $org->supportsAppointments()   // booking_type in [time_slot, both]
-$org->enableFeature('x')       // Zapisuje override w settings.features
 ```
 
 **Industry vs booking_type:**
 - `booking_type` = techniczny typ rezerwacji (time_slot, item_rental, both)
 - `industry` = branża biznesowa (equipment_rental, auto_detailing, general_services)
 - Industry DERIVE'uje booking_type — nie ustawiaj booking_type ręcznie jeśli jest industry
+
+## Module System (Phase 6) — gating widoczności zasobów
+
+**Moduły vs Feature flags — TO SĄ DWA RÓŻNE SYSTEMY:**
+
+| System | Metoda | Cel | Przykłady |
+|--------|--------|-----|-----------|
+| **Modules** | `hasModule()` | Włączanie/wyłączanie CAŁYCH grup zasobów | services, bookings, rentals, staff, customers, communication, website, service_area, vehicles |
+| **Features** | `hasFeature()` | Boolean toggles na POLA w formularzach | vehicles, mobile_service, service_area |
+
+### MODULE_DEFAULTS per booking_type
+
+```php
+private const MODULE_DEFAULTS = [
+    'time_slot' => ['services', 'bookings'],
+    'item_rental' => ['rentals'],
+    'both' => ['services', 'bookings', 'rentals'],
+];
+```
+
+### hasModule() — 3-level priority (identycznie jak hasFeature)
+
+```
+1. Explicit override → settings.modules.{module}  (najwyższy priorytet)
+2. Industry defaults → $this->industry->defaultModules()
+3. booking_type defaults → MODULE_DEFAULTS[booking_type]
+```
+
+### Industry::defaultModules()
+
+```php
+EquipmentRental  → ['rentals']
+AutoDetailing    → ['services', 'bookings']
+GeneralServices  → ['services', 'bookings']
+```
+
+**Wszystko poza core jest OFF domyślnie.** Super-admin włącza moduły per tenant w Platform panel.
+
+### BaseResource.$module — gating w Filament
+
+```php
+// Każdy Resource ma property $module:
+protected static ?string $module = 'services';  // gated
+protected static ?string $module = null;          // zawsze widoczny (core)
+
+// BaseResource::shouldRegisterNavigation() automatycznie sprawdza hasModule()
+```
+
+### Mapowanie modułów → Resources
+
+| Moduł | Resources |
+|-------|-----------|
+| `services` | ServiceResource |
+| `bookings` | AppointmentResource |
+| `rentals` | RentalCategoryResource, RentalItemResource, RentalResource |
+| `staff` | EmployeeResource, StaffScheduleResource, StaffVacationPeriodResource, StaffDateExceptionResource |
+| `customers` | CustomerResource |
+| `vehicles` | VehicleTypeResource, CarBrandResource, CarModelResource |
+| `communication` | EmailTemplateResource, SmsTemplateResource, EmailSendResource, SmsSendResource, ReminderConfigResource |
+| `website` | PageResource, PostResource, PortfolioItemResource, PromotionResource, CategoryResource |
+| `service_area` | ServiceAreaResource, ServiceAreaWaitlistResource |
+| `null` (core) | Dashboard, SystemSettings, MaintenanceSettings |
+
+### Security — tenant isolation (Phase 6)
+
+```php
+// EmployeeResource — scoped via organizations pivot
+->when($tenant, fn ($q) => $q->whereHas('organizations', fn ($q2) => $q2->where('organizations.id', $tenant->id)))
+
+// CustomerResource — scoped via appointments/rentals
+->when($tenant, fn ($q) => $q->where(function ($q2) use ($tenant) {
+    $q2->whereHas('customerAppointments', fn ($q3) => $q3->where('organization_id', $tenant->id))
+       ->orWhereHas('rentalsAsCustomer', fn ($q3) => $q3->where('organization_id', $tenant->id));
+}))
+
+// UserResource, RoleResource → super-admin only
+// SmsEvent, EmailEvent, Suppressions, MaintenanceEvent → super-admin only
+// VehicleType/CarBrand/CarModel → read-only dla non-super-admin
+```
 
 ## Industry Enum (`app/Enums/Industry.php`)
 
@@ -202,6 +289,7 @@ Industry::GeneralServices  // → booking_type: time_slot
 // Metody na każdym case:
 $industry->bookingType()      // string
 $industry->defaultFeatures()  // array<string, bool>
+$industry->defaultModules()   // array<int, string> (Phase 6)
 $industry->label()            // PL label
 $industry->terminology()      // ['service' => 'przedmiot', ...]
 $industry->seederClass()      // FQCN vertical seedera

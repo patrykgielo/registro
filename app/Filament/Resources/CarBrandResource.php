@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CarBrandResource\Pages;
 use App\Models\CarBrand;
-use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -17,6 +16,8 @@ class CarBrandResource extends BaseResource
 {
     protected static ?string $model = CarBrand::class;
 
+    protected static ?string $module = 'vehicles';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-building-office';
 
     protected static ?string $navigationLabel = 'Marki';
@@ -28,11 +29,6 @@ class CarBrandResource extends BaseResource
     protected static string|UnitEnum|null $navigationGroup = 'vehicles';
 
     protected static ?int $navigationSort = 2;
-
-    public static function shouldRegisterNavigation(): bool
-    {
-        return TenantFeature::active('vehicles');
-    }
 
     public static function form(Schema $schema): Schema
     {
@@ -141,9 +137,21 @@ class CarBrandResource extends BaseResource
         ];
     }
 
-    /**
-     * Restrict access to admins and super-admins only.
-     */
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;

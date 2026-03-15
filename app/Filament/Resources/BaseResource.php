@@ -2,11 +2,37 @@
 
 namespace App\Filament\Resources;
 
+use App\Support\TenantFeature;
 use App\Traits\BelongsToOrganization;
 use Filament\Resources\Resource;
 
 abstract class BaseResource extends Resource
 {
+    /**
+     * The module this resource belongs to.
+     * null = core resource, always visible.
+     */
+    protected static ?string $module = null;
+
+    /**
+     * Conditionally show/hide navigation based on module activation.
+     * Core resources ($module = null) are always visible.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        if (static::$module === null) {
+            return true;
+        }
+
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant === null) {
+            return true; // Platform panel / CLI — show all
+        }
+
+        return $tenant->hasModule(static::$module);
+    }
+
     /**
      * Auto-detect tenant scoping based on whether the model uses BelongsToOrganization trait.
      *

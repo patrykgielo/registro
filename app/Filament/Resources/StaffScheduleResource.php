@@ -19,6 +19,8 @@ class StaffScheduleResource extends BaseResource
 {
     protected static ?string $model = StaffSchedule::class;
 
+    protected static ?string $module = 'staff';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-calendar-days';
 
     protected static string|UnitEnum|null $navigationGroup = 'staff';

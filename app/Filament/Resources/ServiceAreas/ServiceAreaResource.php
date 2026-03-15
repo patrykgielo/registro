@@ -18,6 +18,8 @@ class ServiceAreaResource extends BaseResource
 {
     protected static ?string $model = ServiceArea::class;
 
+    protected static ?string $module = 'service_area';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-map-pin';
 
     protected static ?string $navigationLabel = 'Obszary Obsługi';

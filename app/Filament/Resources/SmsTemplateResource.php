@@ -25,6 +25,8 @@ class SmsTemplateResource extends BaseResource
 {
     protected static ?string $model = SmsTemplate::class;
 
+    protected static ?string $module = 'communication';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-chat-bubble-left-right';
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';

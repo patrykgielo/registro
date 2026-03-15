@@ -1,15 +1,32 @@
 # CLAUDE.md - Registro Project
 
+## MANDATORY PROCESS (enforced by hooks)
+
+**EVERY implementation task — hooks WILL block you if you skip:**
+
+1. **AGENT FIRST** — `laravel-senior-architect` (PHP) or `frontend-ui-architect` (UI) before ANY code
+2. **feature/* branch ONLY** — PreToolUse hook blocks commits to develop/main
+3. **Pint + tests** — before commit: `./vendor/bin/pint --test && php artisan test`
+4. **Docs/rules AFTER** — Stop hook blocks completion if 5+ source files changed with 0 docs/rules updates
+
+**Use `/implement <task>` for guided workflow with mandatory gates.**
+
+---
+
 ## Rules System
 
 **BEFORE starting ANY work:** Read `.claude/rules/_INDEX.md`
 
 Rules are organized in TIERs:
-- **TIER 1** (CRITICAL): self-improvement, git-workflow, deployment, security
+- **TIER 1** (CRITICAL): self-improvement, git-workflow, deployment, security, agent-usage
 - **TIER 2** (Implementation): models, services, filament, tests
 - **TIER 3** (Enhancement): frontend, animations, api
 
-**PreToolUse Hook** automatically blocks dangerous git operations.
+**Hooks (deterministic enforcement):**
+- **PreToolUse** — blocks dangerous git operations
+- **UserPromptSubmit** — injects agent-first reminder on implementation tasks
+- **Stop** — blocks completion without documentation updates
+- **Notification** — re-injects TIER 1 rules after context compaction
 
 **Self-Learning Rules:**
 - DOCUMENT every resolved error immediately (rules/docs)
@@ -98,6 +115,16 @@ feature/* → develop (PR) → main (PR)
 
 ## Definition of Done
 
+- [ ] Agent used BEFORE implementation
 - [ ] Tests pass: `./vendor/bin/pint --test && php artisan test`
 - [ ] Created feature branch (NOT direct to develop)
-- [ ] Documentation updated if needed
+- [ ] Documentation/rules updated (Stop hook enforces this)
+
+---
+
+## REMINDER (bottom anchor — do not remove)
+
+- **AGENT FIRST** before any code
+- **DOCS/RULES AFTER** every implementation (Stop hook blocks you otherwise)
+- **FILESYSTEM_DISK=public** always (never local)
+- **User model:** first_name/last_name (no `name` column)
