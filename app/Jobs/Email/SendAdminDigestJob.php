@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs\Email;
 
+use App\Enums\AppointmentStatus;
 use App\Enums\TemplateKey;
 use App\Models\Appointment;
 use App\Models\EmailSend;
@@ -83,18 +84,18 @@ class SendAdminDigestJob implements ShouldBeUnique, ShouldQueue
         $stats = [
             // Appointment stats (created yesterday)
             'new_appointments' => Appointment::whereBetween('created_at', [$yesterday, $today])->count(),
-            'confirmed_appointments' => Appointment::where('status', 'confirmed')
+            'confirmed_appointments' => Appointment::where('status', AppointmentStatus::Confirmed)
                 ->whereBetween('created_at', [$yesterday, $today])
                 ->count(),
-            'cancelled_appointments' => Appointment::where('status', 'cancelled')
+            'cancelled_appointments' => Appointment::where('status', AppointmentStatus::Cancelled)
                 ->whereBetween('updated_at', [$yesterday, $today])
                 ->count(),
-            'completed_appointments' => Appointment::where('status', 'completed')
+            'completed_appointments' => Appointment::where('status', AppointmentStatus::Completed)
                 ->whereBetween('updated_at', [$yesterday, $today])
                 ->count(),
 
             // Upcoming appointments for today
-            'today_appointments' => Appointment::whereIn('status', ['confirmed', 'pending'])
+            'today_appointments' => Appointment::whereIn('status', [AppointmentStatus::Confirmed, AppointmentStatus::Pending])
                 ->whereDate('appointment_date', $today)
                 ->count(),
 
@@ -130,7 +131,7 @@ class SendAdminDigestJob implements ShouldBeUnique, ShouldQueue
 
         // Get today's appointments
         $todayAppointments = Appointment::with(['customer', 'service'])
-            ->whereIn('status', ['confirmed', 'pending'])
+            ->whereIn('status', [AppointmentStatus::Confirmed, AppointmentStatus::Pending])
             ->whereDate('appointment_date', $today)
             ->orderBy('start_time')
             ->get()

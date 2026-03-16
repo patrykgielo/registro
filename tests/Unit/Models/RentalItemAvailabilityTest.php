@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Models;
 
+use App\Enums\RentalStatus;
 use App\Models\Organization;
 use App\Models\Rental;
 use App\Models\RentalItem;
@@ -55,7 +56,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 2,
             'start_date' => Carbon::today(),
             'end_date' => Carbon::today()->addDays(5),
-            'status' => 'confirmed',
+            'status' => RentalStatus::Confirmed,
         ]);
 
         $available = $item->availableQuantity(
@@ -80,7 +81,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 2,
             'start_date' => Carbon::today(),
             'end_date' => Carbon::today()->addDays(3),
-            'status' => 'cancelled',
+            'status' => RentalStatus::Cancelled,
         ]);
 
         $available = $item->availableQuantity(
@@ -105,7 +106,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 2,
             'start_date' => Carbon::today()->subDays(5),
             'end_date' => Carbon::today()->subDay(),
-            'status' => 'returned',
+            'status' => RentalStatus::Returned,
         ]);
 
         $available = $item->availableQuantity(
@@ -130,7 +131,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 2,
             'start_date' => Carbon::today()->addDays(10),
             'end_date' => Carbon::today()->addDays(15),
-            'status' => 'confirmed',
+            'status' => RentalStatus::Confirmed,
         ]);
 
         $available = $item->availableQuantity(
@@ -165,7 +166,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 2,
             'start_date' => Carbon::today(),
             'end_date' => Carbon::today()->addDays(5),
-            'status' => 'active',
+            'status' => RentalStatus::Active,
         ]);
 
         $this->assertFalse($item->isAvailable(Carbon::today(), Carbon::today()->addDays(3)));
@@ -186,7 +187,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 2,
             'start_date' => Carbon::today(),
             'end_date' => Carbon::today()->addDays(5),
-            'status' => 'confirmed',
+            'status' => RentalStatus::Confirmed,
         ]);
 
         // Rental 2: 1 unit
@@ -197,7 +198,7 @@ class RentalItemAvailabilityTest extends TestCase
             'quantity' => 1,
             'start_date' => Carbon::today()->addDay(),
             'end_date' => Carbon::today()->addDays(3),
-            'status' => 'active',
+            'status' => RentalStatus::Active,
         ]);
 
         $available = $item->availableQuantity(

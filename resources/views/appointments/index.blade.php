@@ -21,16 +21,12 @@
                                 <div class="flex items-center mb-2">
                                     <h3 class="text-xl font-bold mr-3">{{ $appointment->service->name }}</h3>
                                     <span class="px-3 py-1 rounded-full text-sm font-semibold
-                                        @if($appointment->status === 'pending') bg-yellow-100 text-yellow-800
-                                        @elseif($appointment->status === 'confirmed') bg-green-100 text-green-800
-                                        @elseif($appointment->status === 'cancelled') bg-red-100 text-red-800
-                                        @elseif($appointment->status === 'completed') bg-gray-100 text-gray-800
+                                        @if($appointment->status === \App\Enums\AppointmentStatus::Pending) bg-yellow-100 text-yellow-800
+                                        @elseif($appointment->status === \App\Enums\AppointmentStatus::Confirmed) bg-green-100 text-green-800
+                                        @elseif($appointment->status === \App\Enums\AppointmentStatus::Cancelled) bg-red-100 text-red-800
+                                        @elseif($appointment->status === \App\Enums\AppointmentStatus::Completed) bg-gray-100 text-gray-800
                                         @endif">
-                                        @if($appointment->status === 'pending') Oczekująca
-                                        @elseif($appointment->status === 'confirmed') Potwierdzona
-                                        @elseif($appointment->status === 'cancelled') Anulowana
-                                        @elseif($appointment->status === 'completed') Zakończona
-                                        @endif
+                                        {{ $appointment->status->label() }}
                                     </span>
                                 </div>
 

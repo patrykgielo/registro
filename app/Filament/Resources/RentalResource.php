@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\RentalStatus;
 use App\Filament\Resources\RentalResource\Pages;
 use App\Models\Rental;
 use BackedEnum;
@@ -80,15 +81,9 @@ class RentalResource extends BaseResource
 
                         Forms\Components\Select::make('status')
                             ->label('Status')
-                            ->options([
-                                'pending' => 'Oczekujące',
-                                'confirmed' => 'Potwierdzone',
-                                'active' => 'Wydane',
-                                'returned' => 'Zwrócone',
-                                'cancelled' => 'Anulowane',
-                            ])
+                            ->options(RentalStatus::options())
                             ->required()
-                            ->default('pending'),
+                            ->default(RentalStatus::Pending->value),
                     ])
                     ->columns(2),
 
@@ -147,7 +142,7 @@ class RentalResource extends BaseResource
                             ->label('Powód anulowania')
                             ->rows(2)
                             ->columnSpanFull()
-                            ->visible(fn (?Model $record): bool => $record?->status === 'cancelled'),
+                            ->visible(fn (?Model $record): bool => $record?->status === RentalStatus::Cancelled),
                     ])
                     ->collapsed(),
             ]);
@@ -189,20 +184,8 @@ class RentalResource extends BaseResource
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'pending' => 'warning',
-                        'confirmed' => 'info',
-                        'active' => 'success',
-                        'returned' => 'gray',
-                        'cancelled' => 'danger',
-                    })
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'pending' => 'Oczekujące',
-                        'confirmed' => 'Potwierdzone',
-                        'active' => 'Wydane',
-                        'returned' => 'Zwrócone',
-                        'cancelled' => 'Anulowane',
-                    }),
+                    ->color(fn (string $state): string => RentalStatus::tryFrom($state)?->color() ?? 'gray')
+                    ->formatStateUsing(fn (string $state): string => RentalStatus::tryFrom($state)?->label() ?? $state),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Utworzono')
@@ -214,13 +197,7 @@ class RentalResource extends BaseResource
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
-                    ->options([
-                        'pending' => 'Oczekujące',
-                        'confirmed' => 'Potwierdzone',
-                        'active' => 'Wydane',
-                        'returned' => 'Zwrócone',
-                        'cancelled' => 'Anulowane',
-                    ]),
+                    ->options(RentalStatus::options()),
 
                 Tables\Filters\SelectFilter::make('rental_item_id')
                     ->label('Przedmiot')
