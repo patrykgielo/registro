@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\AppointmentResource\RelationManagers;
 
+use App\Enums\AppointmentStatus;
 use App\Models\AuditLog;
 use App\Models\Service;
 use App\Models\User;
@@ -44,6 +45,7 @@ class AuditLogsRelationManager extends RelationManager
         'cancelled_at' => 'Anulowano',
     ];
 
+    /** @deprecated Use AppointmentStatus enum instead. Kept for reference only. */
     private const STATUS_LABELS = [
         'pending' => 'Oczekująca',
         'confirmed' => 'Potwierdzona',
@@ -429,7 +431,7 @@ class AuditLogsRelationManager extends RelationManager
 
     private static function formatStatus(string $value): string
     {
-        return self::STATUS_LABELS[$value] ?? htmlspecialchars($value);
+        return AppointmentStatus::tryFrom($value)?->label() ?? htmlspecialchars($value);
     }
 
     private static function formatServiceLocationType(mixed $value): string

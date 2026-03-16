@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Models\ReminderConfig;
 use App\Models\Service;
@@ -296,7 +297,7 @@ class BookingController extends Controller
 
         return view('booking-wizard.steps.service', [
             'services' => Service::active()->orderBy('sort_order')->get(),
-            'totalBookings' => Appointment::where('status', '!=', 'cancelled')->count(),
+            'totalBookings' => Appointment::where('status', '!=', AppointmentStatus::Cancelled)->count(),
         ]);
     }
 
@@ -796,7 +797,7 @@ class BookingController extends Controller
             ->where('service_id', $booking['service_id'])
             ->where('appointment_date', $booking['date'] ?? null)
             ->where('start_time', ($booking['time_slot'] ?? null) ? Carbon::parse($booking['time_slot'])->format('H:i:s') : null)
-            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereIn('status', [AppointmentStatus::Pending, AppointmentStatus::Confirmed])
             ->first();
 
         if ($existingAppointment) {
@@ -899,7 +900,7 @@ class BookingController extends Controller
                     'appointment_date' => $appointmentDateTime->format('Y-m-d'),
                     'start_time' => $appointmentDateTime->format('H:i:s'),
                     'end_time' => $appointmentDateTime->copy()->addMinutes($service->duration_minutes)->format('H:i:s'),
-                    'status' => 'pending',
+                    'status' => AppointmentStatus::Pending,
                     // Contact information (captured at time of booking for historical accuracy)
                     'first_name' => $booking['first_name'],
                     'last_name' => $booking['last_name'],

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RentalStatus;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -72,7 +73,7 @@ class RentalItem extends Model
     public function availableQuantity(Carbon $startDate, Carbon $endDate): int
     {
         $reserved = Rental::where('rental_item_id', $this->id)
-            ->whereIn('status', ['pending', 'confirmed', 'active'])
+            ->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
             ->where('start_date', '<=', $endDate)
             ->where('end_date', '>=', $startDate)
             ->sum('quantity');
@@ -105,7 +106,7 @@ class RentalItem extends Model
     {
         return $query->where('quantity_total', '>=', $quantity)
             ->whereDoesntHave('rentals', function ($q) use ($startDate, $endDate, $quantity) {
-                $q->whereIn('status', ['pending', 'confirmed', 'active'])
+                $q->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
                     ->where('start_date', '<=', $endDate)
                     ->where('end_date', '>=', $startDate)
                     ->havingRaw('SUM(quantity) > ?', [$quantity - 1]);

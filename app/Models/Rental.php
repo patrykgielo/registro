@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RentalStatus;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -57,6 +58,7 @@ class Rental extends Model
         'picked_up_at' => 'datetime',
         'returned_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'status' => RentalStatus::class,
     ];
 
     protected static function booted(): void
@@ -64,10 +66,10 @@ class Rental extends Model
         static::updating(function (Rental $rental) {
             if ($rental->isDirty('status')) {
                 match ($rental->status) {
-                    'confirmed' => $rental->confirmed_at = now(),
-                    'active' => $rental->picked_up_at = now(),
-                    'returned' => $rental->returned_at = now(),
-                    'cancelled' => $rental->cancelled_at = now(),
+                    RentalStatus::Confirmed => $rental->confirmed_at = now(),
+                    RentalStatus::Active => $rental->picked_up_at = now(),
+                    RentalStatus::Returned => $rental->returned_at = now(),
+                    RentalStatus::Cancelled => $rental->cancelled_at = now(),
                     default => null,
                 };
             }
@@ -92,39 +94,39 @@ class Rental extends Model
 
     public function scopePending($query)
     {
-        return $query->where('status', 'pending');
+        return $query->where('status', RentalStatus::Pending);
     }
 
     public function scopeConfirmed($query)
     {
-        return $query->where('status', 'confirmed');
+        return $query->where('status', RentalStatus::Confirmed);
     }
 
     public function scopeActive($query)
     {
-        return $query->where('status', 'active');
+        return $query->where('status', RentalStatus::Active);
     }
 
     public function scopeReturned($query)
     {
-        return $query->where('status', 'returned');
+        return $query->where('status', RentalStatus::Returned);
     }
 
     public function scopeCancelled($query)
     {
-        return $query->where('status', 'cancelled');
+        return $query->where('status', RentalStatus::Cancelled);
     }
 
     public function scopeUpcoming($query)
     {
-        return $query->whereIn('status', ['pending', 'confirmed'])
+        return $query->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed])
             ->where('start_date', '>=', now()->toDateString())
             ->orderBy('start_date');
     }
 
     public function scopeOverdue($query)
     {
-        return $query->where('status', 'active')
+        return $query->where('status', RentalStatus::Active)
             ->where('end_date', '<', now()->toDateString());
     }
 
@@ -136,7 +138,7 @@ class Rental extends Model
 
     public function getIsOverdueAttribute(): bool
     {
-        return $this->status === 'active' && $this->end_date->isPast();
+        return $this->status === RentalStatus::Active && $this->end_date->isPast();
     }
 
     public function getCustomerNameAttribute(): string

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\User;
@@ -55,7 +56,7 @@ class AppointmentStaffValidationTest extends TestCase
             'appointment_date' => $this->getNextWorkingDay(),
             'start_time' => '10:00:00',
             'end_time' => '11:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
         ]);
 
         $this->assertDatabaseHas('appointments', [
@@ -85,7 +86,7 @@ class AppointmentStaffValidationTest extends TestCase
             'appointment_date' => $this->getNextWorkingDay(),
             'start_time' => '10:00:00',
             'end_time' => '11:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
         ]);
     }
 
@@ -109,7 +110,7 @@ class AppointmentStaffValidationTest extends TestCase
             'appointment_date' => $this->getNextWorkingDay(),
             'start_time' => '10:00:00',
             'end_time' => '11:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
         ]);
     }
 
@@ -136,7 +137,7 @@ class AppointmentStaffValidationTest extends TestCase
             'appointment_date' => $this->getNextWorkingDay(),
             'start_time' => '10:00:00',
             'end_time' => '11:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
         ]);
 
         // Try to update to admin - should fail

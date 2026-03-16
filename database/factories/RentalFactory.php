@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\RentalStatus;
 use App\Models\Organization;
 use App\Models\RentalItem;
 use App\Models\User;
@@ -30,7 +31,7 @@ class RentalFactory extends Factory
             'unit_price_at_booking' => $unitPrice,
             'total_price' => $unitPrice * $days,
             'deposit_amount' => fake()->optional(0.5)->randomFloat(2, 100, 1000),
-            'status' => 'pending',
+            'status' => RentalStatus::Pending,
             'notes' => fake()->optional()->sentence(),
             'first_name' => fake()->firstName(),
             'last_name' => fake()->lastName(),
@@ -42,7 +43,7 @@ class RentalFactory extends Factory
     public function confirmed(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'confirmed',
+            'status' => RentalStatus::Confirmed,
             'confirmed_at' => now(),
         ]);
     }
@@ -50,7 +51,7 @@ class RentalFactory extends Factory
     public function active(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'active',
+            'status' => RentalStatus::Active,
             'confirmed_at' => now()->subDay(),
             'picked_up_at' => now(),
         ]);
@@ -59,7 +60,7 @@ class RentalFactory extends Factory
     public function returned(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'returned',
+            'status' => RentalStatus::Returned,
             'confirmed_at' => now()->subDays(3),
             'picked_up_at' => now()->subDays(2),
             'returned_at' => now(),
@@ -69,7 +70,7 @@ class RentalFactory extends Factory
     public function cancelled(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'cancelled',
+            'status' => RentalStatus::Cancelled,
             'cancelled_at' => now(),
             'cancellation_reason' => fake()->sentence(),
         ]);

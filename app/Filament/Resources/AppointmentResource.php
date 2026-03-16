@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\AppointmentStatus;
 use App\Filament\Resources\AppointmentResource\Pages;
 use App\Models\Appointment;
 use App\Models\Service;
@@ -114,13 +115,8 @@ class AppointmentResource extends BaseResource
 
                 Forms\Components\Select::make('status')
                     ->label('Status')
-                    ->options([
-                        'pending' => 'Oczekująca',
-                        'confirmed' => 'Potwierdzona',
-                        'cancelled' => 'Anulowana',
-                        'completed' => 'Zakończona',
-                    ])
-                    ->default('pending')
+                    ->options(AppointmentStatus::options())
+                    ->default(AppointmentStatus::Pending->value)
                     ->required()
                     ->native(false),
 
@@ -132,7 +128,7 @@ class AppointmentResource extends BaseResource
                 Forms\Components\Textarea::make('cancellation_reason')
                     ->label('Powód anulowania')
                     ->rows(3)
-                    ->visible(fn (callable $get) => $get('status') === 'cancelled')
+                    ->visible(fn (callable $get) => $get('status') === AppointmentStatus::Cancelled->value)
                     ->columnSpanFull(),
 
                 Section::make('Lokalizacja')
@@ -318,19 +314,8 @@ class AppointmentResource extends BaseResource
                     ->visible(fn () => TenantFeature::active('vehicles')),
                 Tables\Columns\BadgeColumn::make('status')
                     ->label('Status')
-                    ->colors([
-                        'warning' => 'pending',
-                        'success' => 'confirmed',
-                        'danger' => 'cancelled',
-                        'secondary' => 'completed',
-                    ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'pending' => 'Oczekująca',
-                        'confirmed' => 'Potwierdzona',
-                        'cancelled' => 'Anulowana',
-                        'completed' => 'Zakończona',
-                        default => $state,
-                    }),
+                    ->colors(AppointmentStatus::colorMap())
+                    ->formatStateUsing(fn (string $state): string => AppointmentStatus::tryFrom($state)?->label() ?? $state),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Utworzono')
                     ->dateTime('d.m.Y H:i')
@@ -341,12 +326,7 @@ class AppointmentResource extends BaseResource
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
-                    ->options([
-                        'pending' => 'Oczekująca',
-                        'confirmed' => 'Potwierdzona',
-                        'cancelled' => 'Anulowana',
-                        'completed' => 'Zakończona',
-                    ]),
+                    ->options(AppointmentStatus::options()),
                 Tables\Filters\SelectFilter::make('service')
                     ->label('Usługa')
                     ->relationship('service', 'name'),

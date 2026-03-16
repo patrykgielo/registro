@@ -29,7 +29,7 @@
         $upcomingAppointmentsCount = 0;
         if (Auth::check()) {
             $upcomingAppointmentsCount = Auth::user()->customerAppointments()
-                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereIn('status', [\App\Enums\AppointmentStatus::Pending, \App\Enums\AppointmentStatus::Confirmed])
                 ->where('appointment_date', '>=', now()->toDateString())
                 ->count();
         }

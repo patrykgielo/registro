@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\User;
@@ -57,7 +58,7 @@ class BookingConfirmationSecurityMinimalTest extends TestCase
             'appointment_date' => now()->addDays(2)->format('Y-m-d'),
             'start_time' => '10:00:00',
             'end_time' => '12:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
             'vehicle_type_id' => VehicleType::first()->id,
             'location_address' => 'Test Address 123',
             'location_latitude' => 52.2297,
@@ -131,7 +132,7 @@ class BookingConfirmationSecurityMinimalTest extends TestCase
             'appointment_date' => now()->addDays(2)->format('Y-m-d'),
             'start_time' => '10:00:00',
             'end_time' => '12:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
             'vehicle_type_id' => VehicleType::first()->id,
             'location_address' => 'Test Address 123',
             'location_latitude' => 52.2297,
@@ -180,7 +181,7 @@ class BookingConfirmationSecurityMinimalTest extends TestCase
             'appointment_date' => now()->addDays(2)->format('Y-m-d'),
             'start_time' => '10:00:00',
             'end_time' => '12:00:00',
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
             'vehicle_type_id' => VehicleType::first()->id,
             'location_address' => 'Test Address 123',
             'location_latitude' => 52.2297,

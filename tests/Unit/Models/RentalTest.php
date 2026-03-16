@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Models;
 
+use App\Enums\RentalStatus;
 use App\Models\Rental;
 use App\Models\RentalItem;
 use App\Models\User;
@@ -51,7 +52,7 @@ class RentalTest extends TestCase
     public function test_is_overdue_accessor(): void
     {
         $rental = Rental::factory()->create([
-            'status' => 'active',
+            'status' => RentalStatus::Active,
             'start_date' => Carbon::today()->subDays(5),
             'end_date' => Carbon::today()->subDay(),
         ]);
@@ -62,7 +63,7 @@ class RentalTest extends TestCase
     public function test_is_not_overdue_when_end_date_future(): void
     {
         $rental = Rental::factory()->create([
-            'status' => 'active',
+            'status' => RentalStatus::Active,
             'start_date' => Carbon::today(),
             'end_date' => Carbon::today()->addDays(3),
         ]);
@@ -73,7 +74,7 @@ class RentalTest extends TestCase
     public function test_is_not_overdue_when_returned(): void
     {
         $rental = Rental::factory()->create([
-            'status' => 'returned',
+            'status' => RentalStatus::Returned,
             'start_date' => Carbon::today()->subDays(5),
             'end_date' => Carbon::today()->subDay(),
         ]);
@@ -83,9 +84,9 @@ class RentalTest extends TestCase
 
     public function test_status_transition_sets_confirmed_at(): void
     {
-        $rental = Rental::factory()->create(['status' => 'pending']);
+        $rental = Rental::factory()->create(['status' => RentalStatus::Pending]);
 
-        $rental->update(['status' => 'confirmed']);
+        $rental->update(['status' => RentalStatus::Confirmed]);
         $rental->refresh();
 
         $this->assertNotNull($rental->confirmed_at);
@@ -95,7 +96,7 @@ class RentalTest extends TestCase
     {
         $rental = Rental::factory()->confirmed()->create();
 
-        $rental->update(['status' => 'active']);
+        $rental->update(['status' => RentalStatus::Active]);
         $rental->refresh();
 
         $this->assertNotNull($rental->picked_up_at);
@@ -105,7 +106,7 @@ class RentalTest extends TestCase
     {
         $rental = Rental::factory()->active()->create();
 
-        $rental->update(['status' => 'returned']);
+        $rental->update(['status' => RentalStatus::Returned]);
         $rental->refresh();
 
         $this->assertNotNull($rental->returned_at);
@@ -113,9 +114,9 @@ class RentalTest extends TestCase
 
     public function test_status_transition_sets_cancelled_at(): void
     {
-        $rental = Rental::factory()->create(['status' => 'pending']);
+        $rental = Rental::factory()->create(['status' => RentalStatus::Pending]);
 
-        $rental->update(['status' => 'cancelled']);
+        $rental->update(['status' => RentalStatus::Cancelled]);
         $rental->refresh();
 
         $this->assertNotNull($rental->cancelled_at);
@@ -133,11 +134,11 @@ class RentalTest extends TestCase
 
     public function test_scopes(): void
     {
-        Rental::factory()->create(['status' => 'pending']);
-        Rental::factory()->create(['status' => 'confirmed']);
-        Rental::factory()->create(['status' => 'active']);
-        Rental::factory()->create(['status' => 'returned']);
-        Rental::factory()->create(['status' => 'cancelled']);
+        Rental::factory()->create(['status' => RentalStatus::Pending]);
+        Rental::factory()->create(['status' => RentalStatus::Confirmed]);
+        Rental::factory()->create(['status' => RentalStatus::Active]);
+        Rental::factory()->create(['status' => RentalStatus::Returned]);
+        Rental::factory()->create(['status' => RentalStatus::Cancelled]);
 
         $this->assertCount(1, Rental::pending()->get());
         $this->assertCount(1, Rental::confirmed()->get());

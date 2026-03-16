@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Models\User;
 use App\Support\Settings\SettingsManager;
@@ -53,7 +54,7 @@ class AppointmentService
         $hasConflict = Appointment::query()
             ->where('staff_id', $staffId)
             ->where('appointment_date', $date->format('Y-m-d'))
-            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereIn('status', [AppointmentStatus::Pending, AppointmentStatus::Confirmed])
             ->when($excludeAppointmentId, fn ($q) => $q->where('id', '!=', $excludeAppointmentId))
             ->where(function ($query) use ($startTime, $endTime) {
                 $query->where(function ($q) use ($startTime) {
@@ -370,7 +371,7 @@ class AppointmentService
                 $startDate->format('Y-m-d'),
                 $endDate->format('Y-m-d'),
             ])
-            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereIn('status', [AppointmentStatus::Pending, AppointmentStatus::Confirmed])
             ->get()
             ->groupBy(function ($appointment) {
                 return $appointment->appointment_date->format('Y-m-d');

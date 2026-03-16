@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\AppointmentStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -23,7 +24,7 @@ class AppointmentFactory extends Factory
             'appointment_date' => $appointmentDate->format('Y-m-d'),
             'start_time' => $startTime,
             'end_time' => date('H:i:s', strtotime($startTime) + 3600),
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
             'vehicle_type_id' => \App\Models\VehicleType::factory(),
             'location_address' => fake()->address(),
             'location_latitude' => fake()->latitude(),

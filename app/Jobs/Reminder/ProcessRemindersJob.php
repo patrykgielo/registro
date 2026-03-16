@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs\Reminder;
 
+use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Models\EmailSuppression;
 use App\Models\ReminderConfig;
@@ -175,13 +176,13 @@ class ProcessRemindersJob implements ShouldBeUnique, ShouldQueue
             // e.g., 24h before with 60min buffer = appointments between 23h and 25h from now
             $windowStart = $now->copy()->addMinutes($offsetMinutes - $bufferMinutes);
             $windowEnd = $now->copy()->addMinutes($offsetMinutes + $bufferMinutes);
-            $statusFilter = ['confirmed']; // Only confirmed appointments get reminders
+            $statusFilter = [AppointmentStatus::Confirmed]; // Only confirmed appointments get reminders
         } else {
             // After appointment (follow-up): look for completed appointments in the past
             // e.g., 24h after with 60min buffer = appointments between 23h and 25h ago
             $windowStart = $now->copy()->subMinutes($offsetMinutes + $bufferMinutes);
             $windowEnd = $now->copy()->subMinutes($offsetMinutes - $bufferMinutes);
-            $statusFilter = ['completed']; // Only completed appointments get follow-ups
+            $statusFilter = [AppointmentStatus::Completed]; // Only completed appointments get follow-ups
         }
 
         $query = Appointment::query()
