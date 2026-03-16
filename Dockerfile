@@ -24,9 +24,9 @@ RUN npm run build
 FROM php:8.3-fpm
 
 # Build argument to control OPcache configuration
-# Default: production (validate_timestamps=Off for performance)
-# Local: development (validate_timestamps=On for instant file changes)
-ARG OPCACHE_MODE=production
+# Default: dev (safe for local development with bind mounts)
+# Production/staging CI must pass --build-arg OPCACHE_MODE=production
+ARG OPCACHE_MODE=dev
 
 # Build argument to enable browser testing support (Playwright + Chromium)
 # Default: false (production) - keeps image small
