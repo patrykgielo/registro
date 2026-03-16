@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Support;
 
-use App\Models\PortfolioItem;
-use App\Models\Post;
-use App\Models\Promotion;
-use App\Models\Service;
+use App\Support\ContentGridResolver;
+use App\Support\TenantFeature;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Schemas\Components\Section;
@@ -526,33 +524,20 @@ class BuilderBlocks
                                 ->schema([
                                     Forms\Components\Select::make('content_type')
                                         ->label('Typ treści')
-                                        ->options([
-                                            'services' => 'Usługi',
-                                            'posts' => 'Posty',
-                                            'promotions' => 'Promocje',
-                                            'portfolio' => 'Portfolio',
-                                        ])
+                                        ->options(fn () => ContentGridResolver::availableContentTypes(TenantFeature::currentTenant()))
                                         ->required()
                                         ->live()
                                         ->afterStateUpdated(fn ($set) => $set('content_items', [])),
 
                                     Forms\Components\Select::make('content_items')
                                         ->label('Wybierz elementy')
-                                        ->options(function ($get) {
-                                            return match ($get('content_type')) {
-                                                'services' => Service::where('is_active', true)->pluck('name', 'id'),
-                                                'posts' => Post::whereNotNull('published_at')->pluck('title', 'id'),
-                                                'promotions' => Promotion::where('active', true)->pluck('title', 'id'),
-                                                'portfolio' => PortfolioItem::whereNotNull('published_at')->pluck('title', 'id'),
-                                                default => [],
-                                            };
-                                        })
+                                        ->options(fn ($get) => ContentGridResolver::optionsForType($get('content_type')))
                                         ->multiple()
                                         ->searchable()
                                         ->required(),
 
                                     Forms\Components\Select::make('service_card_variant')
-                                        ->label('Styl kart usług')
+                                        ->label('Styl kart')
                                         ->options([
                                             'auto' => 'Automatyczny (z tła)',
                                             'default' => 'Jasny',
@@ -560,8 +545,8 @@ class BuilderBlocks
                                         ])
                                         ->default('auto')
                                         ->selectablePlaceholder(false)
-                                        ->helperText('Wybierz styl kart usług lub pozostaw automatyczny')
-                                        ->visible(fn ($get) => $get('content_type') === 'services'),
+                                        ->helperText('Wybierz styl kart lub pozostaw automatyczny')
+                                        ->visible(fn ($get) => in_array($get('content_type'), ['services', 'rental_items'])),
 
                                     Forms\Components\Select::make('columns')
                                         ->label('Kolumny')

@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        OPCACHE_MODE: dev
     container_name: registro-app
     restart: unless-stopped
     working_dir: /var/www/

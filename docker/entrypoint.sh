@@ -13,6 +13,12 @@ if [ "$CURRENT_USER" != "$EXPECTED_USER" ]; then
 fi
 echo "✅ Container user: $CURRENT_USER"
 
+# Clear OPcache file cache to prevent stale bytecode
+if [ -d /tmp/opcache ]; then
+    rm -rf /tmp/opcache/*
+    echo "✅ OPcache file cache cleared"
+fi
+
 # Wait for database with timeout
 # Use DB_HOST from environment (defaults to 'mysql' - Docker service name)
 DB_HOST="${DB_HOST:-mysql}"
