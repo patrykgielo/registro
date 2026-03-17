@@ -98,7 +98,7 @@ enum Industry: string
     public function defaultModules(): array
     {
         return match ($this) {
-            self::EquipmentRental => ['rentals'],
+            self::EquipmentRental => ['services', 'rentals'],
             self::AutoDetailing => ['services', 'bookings'],
             self::GeneralServices => ['services', 'bookings'],
         };

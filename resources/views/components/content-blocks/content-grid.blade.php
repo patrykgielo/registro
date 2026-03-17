@@ -104,39 +104,6 @@
                 @foreach($items as $item)
                     @if($contentType === 'services')
                         <x-ios.service-card :service="$item" :variant="$serviceCardVariant" />
-                    @elseif($contentType === 'rental_items')
-                        {{-- Rental Item Card --}}
-                        <article class="cms-content-card {{ $isDark
-                            ? 'service-card-dark shadow-dark-glow hover:shadow-dark-glow-hover'
-                            : 'bg-white shadow-md hover:shadow-xl' }}">
-
-                            @if($item->featured_image)
-                                <div class="overflow-hidden">
-                                    <img src="{{ Storage::url($item->featured_image) }}"
-                                         alt="{{ $item->name }}"
-                                         class="cms-card-image"
-                                         loading="lazy">
-                                </div>
-                            @endif
-
-                            <div class="p-6 flex flex-col flex-1">
-                                <h3 class="text-xl font-bold mb-2 {{ $isDark ? 'text-white' : 'text-gray-900' }}">
-                                    {{ $item->name }}
-                                </h3>
-
-                                @if($item->description)
-                                    <p class="text-sm mb-4 flex-1 {{ $isDark ? 'text-white/70' : 'text-gray-600' }}">
-                                        {{ Str::limit($item->description, 120) }}
-                                    </p>
-                                @endif
-
-                                @if($item->price_per_day)
-                                    <p class="font-semibold {{ $isDark ? 'text-[#0AB1EA]' : 'text-primary-600' }}">
-                                        {{ $item->formatted_price }}
-                                    </p>
-                                @endif
-                            </div>
-                        </article>
                     @else
                         {{-- CMS Content Card for posts, promotions, portfolio --}}
                         @php

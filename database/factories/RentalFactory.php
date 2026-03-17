@@ -4,7 +4,7 @@ namespace Database\Factories;
 
 use App\Enums\RentalStatus;
 use App\Models\Organization;
-use App\Models\RentalItem;
+use App\Models\Service;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -22,7 +22,7 @@ class RentalFactory extends Factory
 
         return [
             'organization_id' => Organization::factory(),
-            'rental_item_id' => RentalItem::factory(),
+            'service_id' => Service::factory()->itemRental(),
             'customer_id' => User::factory(),
             'quantity' => 1,
             'start_date' => $startDate,

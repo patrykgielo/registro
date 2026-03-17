@@ -4,7 +4,7 @@ namespace Tests\Unit\Models;
 
 use App\Enums\RentalStatus;
 use App\Models\Rental;
-use App\Models\RentalItem;
+use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -24,11 +24,11 @@ class RentalTest extends TestCase
         ]);
     }
 
-    public function test_rental_belongs_to_item(): void
+    public function test_rental_belongs_to_service(): void
     {
         $rental = Rental::factory()->create();
 
-        $this->assertInstanceOf(RentalItem::class, $rental->rentalItem);
+        $this->assertInstanceOf(Service::class, $rental->service);
     }
 
     public function test_rental_belongs_to_customer(): void

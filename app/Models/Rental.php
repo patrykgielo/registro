@@ -14,7 +14,7 @@ class Rental extends Model
 
     protected $fillable = [
         'organization_id',
-        'rental_item_id',
+        'service_id',
         'customer_id',
         'quantity',
         'start_date',
@@ -76,9 +76,9 @@ class Rental extends Model
         });
     }
 
-    public function rentalItem(): BelongsTo
+    public function service(): BelongsTo
     {
-        return $this->belongsTo(RentalItem::class);
+        return $this->belongsTo(Service::class);
     }
 
     public function customer(): BelongsTo

@@ -5,7 +5,7 @@ namespace Tests\Unit\Models;
 use App\Enums\RentalStatus;
 use App\Models\Organization;
 use App\Models\Rental;
-use App\Models\RentalItem;
+use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -29,7 +29,7 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_available_quantity_with_no_rentals(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 5,
         ]);
@@ -44,14 +44,14 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_available_quantity_with_overlapping_rental(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 3,
         ]);
 
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 2,
             'start_date' => Carbon::today(),
@@ -69,14 +69,14 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_available_quantity_ignores_cancelled_rentals(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 2,
         ]);
 
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 2,
             'start_date' => Carbon::today(),
@@ -94,14 +94,14 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_available_quantity_ignores_returned_rentals(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 2,
         ]);
 
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 2,
             'start_date' => Carbon::today()->subDays(5),
@@ -119,14 +119,14 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_available_quantity_with_non_overlapping_rental(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 2,
         ]);
 
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 2,
             'start_date' => Carbon::today()->addDays(10),
@@ -144,7 +144,7 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_is_available_returns_true_when_enough_quantity(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 3,
         ]);
@@ -154,14 +154,14 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_is_available_returns_false_when_not_enough_quantity(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 2,
         ]);
 
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 2,
             'start_date' => Carbon::today(),
@@ -174,7 +174,7 @@ class RentalItemAvailabilityTest extends TestCase
 
     public function test_multiple_rentals_reduce_availability(): void
     {
-        $item = RentalItem::factory()->create([
+        $item = Service::factory()->itemRental()->create([
             'organization_id' => $this->org->id,
             'quantity_total' => 5,
         ]);
@@ -182,7 +182,7 @@ class RentalItemAvailabilityTest extends TestCase
         // Rental 1: 2 units
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 2,
             'start_date' => Carbon::today(),
@@ -193,7 +193,7 @@ class RentalItemAvailabilityTest extends TestCase
         // Rental 2: 1 unit
         Rental::factory()->create([
             'organization_id' => $this->org->id,
-            'rental_item_id' => $item->id,
+            'service_id' => $item->id,
             'customer_id' => $this->customer->id,
             'quantity' => 1,
             'start_date' => Carbon::today()->addDay(),

@@ -3,9 +3,9 @@
 namespace Tests\Feature\Auth;
 
 use App\Enums\Industry;
+use App\Enums\ServiceType;
 use App\Models\Organization;
 use App\Models\RentalCategory;
-use App\Models\RentalItem;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -236,8 +236,9 @@ class BusinessRegistrationTest extends TestCase
             ->count();
         $this->assertEquals(7, $categories);
 
-        $items = RentalItem::withoutGlobalScope('organization')
+        $items = Service::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)
+            ->where('service_type', ServiceType::ItemRental)
             ->count();
         $this->assertEquals(13, $items);
     }

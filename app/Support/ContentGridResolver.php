@@ -8,7 +8,6 @@ use App\Models\Organization;
 use App\Models\PortfolioItem;
 use App\Models\Post;
 use App\Models\Promotion;
-use App\Models\RentalItem;
 use App\Models\Service;
 use Illuminate\Support\Collection;
 
@@ -21,7 +20,6 @@ class ContentGridResolver
      */
     private const CONTENT_TYPES = [
         'services' => ['label' => 'Usługi', 'module' => 'services', 'model' => Service::class],
-        'rental_items' => ['label' => 'Wypożyczenia', 'module' => 'rentals', 'model' => RentalItem::class],
         'posts' => ['label' => 'Posty', 'module' => 'website', 'model' => Post::class],
         'promotions' => ['label' => 'Promocje', 'module' => 'website', 'model' => Promotion::class],
         'portfolio' => ['label' => 'Portfolio', 'module' => 'website', 'model' => PortfolioItem::class],
@@ -62,7 +60,6 @@ class ContentGridResolver
 
         return match ($type) {
             'services' => Service::where('is_active', true)->pluck('name', 'id')->all(),
-            'rental_items' => RentalItem::where('is_active', true)->pluck('name', 'id')->all(),
             'posts' => Post::whereNotNull('published_at')->pluck('title', 'id')->all(),
             'promotions' => Promotion::where('active', true)->pluck('title', 'id')->all(),
             'portfolio' => PortfolioItem::whereNotNull('published_at')->pluck('title', 'id')->all(),

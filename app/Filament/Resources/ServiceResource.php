@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Support\BuilderBlocks;
 use App\Models\Service;
@@ -13,6 +14,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use UnitEnum;
 
@@ -40,6 +42,17 @@ class ServiceResource extends BaseResource
                 // Sekcja 1: Podstawowe Informacje
                 Section::make('Podstawowe informacje')
                     ->schema([
+                        Forms\Components\Select::make('service_type')
+                            ->label('Typ usługi')
+                            ->options(ServiceType::class)
+                            ->required()
+                            ->default(ServiceType::TimeSlot)
+                            ->live()
+                            ->disabled(fn (?Model $record): bool => $record !== null)
+                            ->dehydrated()
+                            ->helperText('Typ usługi nie może być zmieniony po utworzeniu')
+                            ->columnSpanFull(),
+
                         Forms\Components\TextInput::make('name')
                             ->label('Nazwa usługi')
                             ->required()
@@ -71,6 +84,7 @@ class ServiceResource extends BaseResource
                             ->helperText('Wyświetlany na liście usług (max 500 znaków)')
                             ->columnSpanFull(),
 
+                        // Duration fields (time_slot only)
                         Grid::make(3)
                             ->schema([
                                 Forms\Components\TextInput::make('duration_days')
@@ -121,15 +135,14 @@ class ServiceResource extends BaseResource
                                     })
                                     ->dehydrated(false),
                             ])
-                            ->columnSpanFull(),
+                            ->columnSpanFull()
+                            ->visible(fn (callable $get): bool => $get('service_type') !== ServiceType::ItemRental->value),
 
                         Forms\Components\Hidden::make('duration_minutes')
-                            ->default(60)
-                            ->required(),
+                            ->default(60),
 
                         Forms\Components\TextInput::make('price')
                             ->label('Cena bazowa')
-                            ->required()
                             ->numeric()
                             ->default(0.00)
                             ->prefix('PLN')
@@ -139,7 +152,8 @@ class ServiceResource extends BaseResource
                             ->label('Cena "od" (opcjonalnie)')
                             ->numeric()
                             ->prefix('PLN')
-                            ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)'),
+                            ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)')
+                            ->visible(fn (callable $get): bool => $get('service_type') !== ServiceType::ItemRental->value),
 
                         Forms\Components\Toggle::make('is_active')
                             ->label('Aktywna')
@@ -154,6 +168,69 @@ class ServiceResource extends BaseResource
                             ->helperText('Niższe wartości = wyżej na liście'),
                     ])
                     ->columns(2),
+
+                // Sekcja: Cennik wypożyczenia (item_rental only)
+                Section::make('Cennik wypożyczenia')
+                    ->schema([
+                        Forms\Components\TextInput::make('price_per_day')
+                            ->label('Cena za dzień')
+                            ->required()
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\TextInput::make('price_per_hour')
+                            ->label('Cena za godzinę')
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\TextInput::make('price_per_week')
+                            ->label('Cena za tydzień')
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\TextInput::make('price_per_day_long')
+                            ->label('Cena po przekroczeniu progu')
+                            ->numeric()
+                            ->prefix('PLN')
+                            ->helperText('Niższa stawka dzienna po przekroczeniu progu dni'),
+
+                        Forms\Components\TextInput::make('price_threshold_days')
+                            ->label('Próg dni')
+                            ->numeric()
+                            ->minValue(1)
+                            ->suffix('dni')
+                            ->helperText('Po ilu dniach obowiązuje niższa stawka'),
+
+                        Forms\Components\TextInput::make('deposit_amount')
+                            ->label('Kaucja')
+                            ->numeric()
+                            ->prefix('PLN'),
+                    ])
+                    ->columns(3)
+                    ->visible(fn (callable $get): bool => $get('service_type') === ServiceType::ItemRental->value),
+
+                // Sekcja: Magazyn (item_rental only)
+                Section::make('Magazyn i identyfikacja')
+                    ->schema([
+                        Forms\Components\TextInput::make('quantity_total')
+                            ->label('Ilość w magazynie')
+                            ->required()
+                            ->numeric()
+                            ->minValue(1)
+                            ->default(1),
+
+                        Forms\Components\Select::make('rental_category_id')
+                            ->label('Kategoria')
+                            ->relationship('category', 'name')
+                            ->searchable()
+                            ->preload(),
+
+                        Forms\Components\TextInput::make('brand')
+                            ->label('Marka / producent')
+                            ->maxLength(255),
+                    ])
+                    ->columns(3)
+                    ->visible(fn (callable $get): bool => $get('service_type') === ServiceType::ItemRental->value),
 
                 // Sekcja 2: Zdjęcie wyróżniające
                 Section::make('Zdjęcie wyróżniające')
@@ -343,6 +420,16 @@ class ServiceResource extends BaseResource
                     ->sortable()
                     ->weight('bold'),
 
+                Tables\Columns\TextColumn::make('service_type')
+                    ->label('Typ')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => ServiceType::tryFrom($state)?->label() ?? $state)
+                    ->color(fn (string $state): string => match ($state) {
+                        'time_slot' => 'info',
+                        'item_rental' => 'warning',
+                        default => 'gray',
+                    }),
+
                 Tables\Columns\TextColumn::make('slug')
                     ->label('Slug')
                     ->searchable()
@@ -354,7 +441,9 @@ class ServiceResource extends BaseResource
                     ->label('Czas trwania')
                     ->sortable(query: function ($query, $direction) {
                         return $query->orderBy('duration_minutes', $direction);
-                    }),
+                    })
+                    ->visible(fn (): bool => true)
+                    ->placeholder('-'),
 
                 Tables\Columns\TextColumn::make('price')
                     ->label('Cena')
@@ -388,6 +477,10 @@ class ServiceResource extends BaseResource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('service_type')
+                    ->label('Typ')
+                    ->options(ServiceType::class),
+
                 Tables\Filters\Filter::make('published')
                     ->label('Opublikowane')
                     ->query(fn ($query) => $query->published()),

@@ -108,11 +108,11 @@ class Organization extends Model
     }
 
     /**
-     * Get rental items belonging to this organization.
+     * Get rental services (item_rental type) belonging to this organization.
      */
     public function rentalItems(): HasMany
     {
-        return $this->hasMany(RentalItem::class);
+        return $this->hasMany(Service::class)->where('service_type', 'item_rental');
     }
 
     /**
