@@ -6,8 +6,8 @@ Registro supports two distinct reservation models based on the tenant's `booking
 
 | Model | booking_type | Use case | Key entity |
 |-------|-------------|----------|------------|
-| **Appointment** (time_slot) | `time_slot` | Staff-based services with calendar slots | Service → Appointment |
-| **Rental** (item_rental) | `item_rental` | Equipment/item rental with date ranges | RentalItem → Rental |
+| **Appointment** (time_slot) | `time_slot` | Staff-based services with calendar slots | Service (time_slot) → Appointment |
+| **Rental** (item_rental) | `item_rental` | Equipment/item rental with date ranges | Service (item_rental) → Rental |
 
 A tenant can also have `booking_type = both` to support both models simultaneously.
 
@@ -77,44 +77,57 @@ Each transition auto-sets timestamp (`confirmed_at`, `completed_at`, `cancelled_
 
 ## Rental Model (item_rental)
 
-**Files:** `app/Models/RentalCategory.php`, `app/Models/RentalItem.php`, `app/Models/Rental.php`
+**Files:** `app/Models/Service.php` (with `service_type = item_rental`), `app/Models/RentalCategory.php`, `app/Models/Rental.php`
+
+> **NOTE (2026-03-17):** RentalItem model was removed. Rental items are now `Service` records with `service_type = ServiceType::ItemRental`. This eliminates duplication in CMS blocks, cards, routes, and SEO — one universal model for all offerings.
 
 ### Concept
 
-A customer rents **physical items** for a **date range**. Think: equipment rental, tool rental, vehicle rental.
+A customer rents **physical items** for a **date range**. Think: equipment rental, tool rental, vehicle rental. Items are represented as `Service` records with `service_type = 'item_rental'`.
+
+### ServiceType Enum
+
+```php
+// app/Enums/ServiceType.php
+ServiceType::TimeSlot     // Classic appointment-based service
+ServiceType::ItemRental   // Inventory-based rental item
+```
 
 ### RentalCategory
 
 - Organizational grouping: `name`, `slug`, `description`, `icon`, `sort_order`
-- `rentalItems(): HasMany`
+- `services(): HasMany` — Service records linked via `rental_category_id`
 
-### RentalItem
+### Service (item_rental)
 
-- Belongs to `RentalCategory`
+- Has `service_type = ServiceType::ItemRental`
+- Optionally belongs to `RentalCategory` via `rental_category_id`
 - **Stock:** `quantity_total` — total units available
 - **Pricing:** `price_per_day`, `price_per_hour`, `price_per_week`, `deposit_amount`
 - **Tiered pricing (long rentals):** `price_per_day_long` (reduced rate) + `price_threshold_days` (e.g., 7 days)
 - **Brand:** separate column for filtering
-- **Specifications:** `specifications` JSON with `specs` (typed keys per category) + `custom_specs` (free-form key/value)
+- **Specifications:** stored in `metadata` JSON with `specs` key (e.g., `{'specs': {'power_w': 800}}`)
+- **Inherits all Service CMS fields:** `body`, `content`, `featured_image`, SEO fields, `published_at`
+- Scopes: `rentable()`, `active()`, `ordered()`, `availableBetween()`
 
 ### Availability Logic
 
 ```php
 // How many units are free in a date range?
-$item->availableQuantity(Carbon $start, Carbon $end): int
+$service->availableQuantity(Carbon $start, Carbon $end): int
 // Counts active/pending/confirmed rentals overlapping the range
 // Subtracts from quantity_total
 
 // Is at least 1 unit available?
-$item->isAvailable(Carbon $start, Carbon $end, int $quantity = 1): bool
+$service->isAvailable(Carbon $start, Carbon $end, int $quantity = 1): bool
 
 // Query scope for filtering
-RentalItem::availableBetween($start, $end)->get();
+Service::rentable()->availableBetween($start, $end)->get();
 ```
 
 ### Rental
 
-- Links: `rental_item_id`, `customer_id`
+- Links: `service_id`, `customer_id`
 - **Date range:** `start_date`, `end_date` (dates, not times)
 - **Quantity:** how many units rented
 - **Pricing snapshot:** `pricing_unit` (hourly/daily/weekly), `unit_price_at_booking`, `total_price`, `deposit_amount`
@@ -137,7 +150,7 @@ Each transition auto-sets timestamp. `is_overdue` accessor: status = `active` AN
 
 ### Database Indexes
 
-- Composite: `[rental_item_id, start_date, end_date]` — optimizes availability queries
+- Composite: `[service_id, start_date, end_date]` — optimizes availability queries
 - `[customer_id, start_date]`
 - `status`
 
@@ -153,7 +166,7 @@ Feature flags control which UI elements are visible per tenant:
 | `mobile_service` | Service location type visible | N/A |
 | `service_area` | Service area settings | N/A |
 
-Rental resources (RentalResource, RentalCategoryResource, RentalItemResource) are gated by `$tenant->supportsRentals()` — i.e., `booking_type` must be `item_rental` or `both`.
+Rental resources (RentalResource, RentalCategoryResource) are gated by `$module = 'rentals'`. ServiceResource (which manages both time_slot and item_rental services) is gated by `$module = 'services'`. Equipment rental tenants have both modules enabled by default.
 
 Appointment resources are always visible (all tenants can have appointments). Vehicle/mobile fields within appointments are conditionally shown via feature flags.
 
@@ -164,7 +177,7 @@ Appointment resources are always visible (all tenants can have appointments). Ve
 | Aspect | Appointment (time_slot) | Rental (item_rental) |
 |--------|------------------------|---------------------|
 | **Unit** | Time slot (date + start/end time) | Date range (start/end date) |
-| **Resource** | Service + Staff | RentalItem (physical stock) |
+| **Resource** | Service (time_slot) + Staff | Service (item_rental) + RentalCategory |
 | **Pricing** | Fixed per service | Per day/hour/week + tiered + deposit |
 | **Availability** | Staff calendar slots | Stock quantity minus active rentals |
 | **Vehicle data** | Optional (feature flag) | N/A |

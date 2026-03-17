@@ -85,7 +85,7 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 |-------|--------|------|
 | 1. Foundation | ✅ Complete | Organization model, tenant isolation, Platform panel |
 | 2. Feature Flags | ✅ Complete | hasFeature(), TenantFeature, conditional visibility |
-| 3. Item Rental Models | ✅ Complete | RentalCategory, RentalItem, Rental |
+| 3. Item Rental Models | ✅ Complete | RentalCategory, Service (item_rental), Rental |
 | 4. Subdomain Resolution | ✅ Complete | ResolveTenant, auth flow, EnsureSuperAdmin |
 | 5. Onboarding + Verticals | ✅ Complete | Industry enum, 3-step wizard, vertical seeders |
 | 6. Module System + Security | ✅ Complete | Module gating, permission namespacing, tenant isolation |

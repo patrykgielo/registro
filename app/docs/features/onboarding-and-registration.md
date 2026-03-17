@@ -44,7 +44,7 @@
 Interface: `app/Actions/Onboarding/Seeders/VerticalSeeder.php`
 
 ### SeedEquipmentRental
-- 7 kategorii RentalCategory + 13 RentalItem
+- 7 kategorii RentalCategory + 13 Service (service_type=item_rental)
 - Tiered pricing: `price_per_day` + `price_per_day_long` + `price_threshold_days`
 - Specs w `specifications` JSON (hybrid: `specs` + `custom_specs`)
 - Dane z researchu PL rynku (Mińsk Maz., Sed-Bruk, Rentbud, Ramirent)
