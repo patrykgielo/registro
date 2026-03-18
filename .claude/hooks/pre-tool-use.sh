@@ -47,12 +47,15 @@ EOF
 fi
 
 # =============================================================================
-# RULE 3: Block dangerous production commands
+# RULE 3: Block ALL destructive database commands (ANY environment)
+# Incident 2026-03-17: RefreshDatabase wiped dev MySQL via Docker test run.
+# Claude must NEVER run migrate:fresh, migrate:reset, db:wipe, or migrate:refresh.
+# Only the developer may run these manually if needed.
 # =============================================================================
-if [[ "$tool_name" == "Bash" && ("$command" == *"migrate:fresh"* || "$command" == *"migrate:reset"*) ]]; then
-    if [[ "${APP_ENV:-}" == "production" || "$command" == *"production"* ]]; then
+if [[ "$tool_name" == "Bash" ]]; then
+    if [[ "$command" == *"migrate:fresh"* || "$command" == *"migrate:reset"* || "$command" == *"migrate:refresh"* || "$command" == *"db:wipe"* ]]; then
         cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: migrate:fresh/reset is FORBIDDEN in production! Use: php artisan migrate --force. See: .claude/rules/deployment.md"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: migrate:fresh/reset/refresh/db:wipe is FORBIDDEN for Claude in ALL environments! These destroy data. Only the developer may run these manually. Incident 2026-03-17: RefreshDatabase wiped dev MySQL. See: .claude/rules/deployment.md"}}
 EOF
         exit 0
     fi
