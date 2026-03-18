@@ -62,9 +62,9 @@ class OrganizationModuleTest extends TestCase
             'industry' => Industry::EquipmentRental,
         ]);
 
-        // EquipmentRental defaults: only 'rentals'
+        // EquipmentRental defaults: ['services', 'rentals']
         $this->assertTrue($org->hasModule('rentals'));
-        $this->assertFalse($org->hasModule('services'));
+        $this->assertTrue($org->hasModule('services'));
         $this->assertFalse($org->hasModule('bookings'));
     }
 
@@ -115,7 +115,7 @@ class OrganizationModuleTest extends TestCase
 
     public function test_industry_default_modules_method(): void
     {
-        $this->assertEquals(['rentals'], Industry::EquipmentRental->defaultModules());
+        $this->assertEquals(['services', 'rentals'], Industry::EquipmentRental->defaultModules());
         $this->assertEquals(['services', 'bookings'], Industry::AutoDetailing->defaultModules());
         $this->assertEquals(['services', 'bookings'], Industry::GeneralServices->defaultModules());
     }
@@ -139,14 +139,14 @@ class OrganizationModuleTest extends TestCase
     public function test_industry_completely_replaces_booking_type_lookup(): void
     {
         // booking_type='both' would give [services, bookings, rentals]
-        // but EquipmentRental industry should give only [rentals]
+        // but EquipmentRental industry should give ['services', 'rentals']
         $org = Organization::factory()->create([
             'booking_type' => 'both',
             'industry' => Industry::EquipmentRental,
         ]);
 
         $this->assertTrue($org->hasModule('rentals'));
-        $this->assertFalse($org->hasModule('services'));
+        $this->assertTrue($org->hasModule('services'));
         $this->assertFalse($org->hasModule('bookings'));
     }
 

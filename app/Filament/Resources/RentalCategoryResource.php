@@ -86,8 +86,8 @@ class RentalCategoryResource extends BaseResource
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                Tables\Columns\TextColumn::make('rental_items_count')
-                    ->counts('rentalItems')
+                Tables\Columns\TextColumn::make('services_count')
+                    ->counts('services')
                     ->label('Przedmioty'),
 
                 Tables\Columns\IconColumn::make('is_active')

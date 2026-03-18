@@ -36,9 +36,9 @@ class RentalCategory extends Model
         });
     }
 
-    public function rentalItems(): HasMany
+    public function services(): HasMany
     {
-        return $this->hasMany(RentalItem::class);
+        return $this->hasMany(Service::class, 'rental_category_id');
     }
 
     public function scopeActive($query)

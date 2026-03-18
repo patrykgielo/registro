@@ -41,12 +41,16 @@ class SeedOrganizationDefaults
 
         foreach ($defaults as $group => $settings) {
             foreach ($settings as $key => $value) {
-                Setting::withoutGlobalScope('organization')->create([
-                    'organization_id' => $org->id,
-                    'group' => $group,
-                    'key' => $key,
-                    'value' => is_array($value) ? $value : [$value],
-                ]);
+                Setting::withoutGlobalScope('organization')->updateOrCreate(
+                    [
+                        'organization_id' => $org->id,
+                        'group' => $group,
+                        'key' => $key,
+                    ],
+                    [
+                        'value' => is_array($value) ? $value : [$value],
+                    ]
+                );
             }
         }
     }

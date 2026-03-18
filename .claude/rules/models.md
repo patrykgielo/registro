@@ -230,7 +230,7 @@ private const MODULE_DEFAULTS = [
 ### Industry::defaultModules()
 
 ```php
-EquipmentRental  → ['rentals']
+EquipmentRental  → ['services', 'rentals']
 AutoDetailing    → ['services', 'bookings']
 GeneralServices  → ['services', 'bookings']
 ```
@@ -253,7 +253,7 @@ protected static ?string $module = null;          // zawsze widoczny (core)
 |-------|-----------|
 | `services` | ServiceResource |
 | `bookings` | AppointmentResource |
-| `rentals` | RentalCategoryResource, RentalItemResource, RentalResource |
+| `rentals` | RentalCategoryResource, RentalResource |
 | `staff` | EmployeeResource, StaffScheduleResource, StaffVacationPeriodResource, StaffDateExceptionResource |
 | `customers` | CustomerResource |
 | `vehicles` | VehicleTypeResource, CarBrandResource, CarModelResource |
@@ -295,22 +295,41 @@ $industry->terminology()      // ['service' => 'przedmiot', ...]
 $industry->seederClass()      // FQCN vertical seedera
 ```
 
-## RentalItem — tiered pricing (standard PL rynku)
+## Service — unified model (time_slot + item_rental)
+
+**UWAGA: RentalItem model został usunięty!** Wypożyczenia to teraz Service z `service_type = 'item_rental'`.
 
 ```php
-// Istniejące
-'price_per_day', 'price_per_hour', 'price_per_week', 'deposit_amount'
+// ServiceType enum (app/Enums/ServiceType.php)
+ServiceType::TimeSlot     // Klasyczna usługa (detailing, fryzjer)
+ServiceType::ItemRental   // Wypożyczenie (sprzęt, narzędzia)
 
-// Nowe (2026-03-14)
+// Pola rental na Service (nullable, tylko dla item_rental)
+'service_type'           // ServiceType enum (default: time_slot)
+'rental_category_id'     // FK do rental_categories (nullable)
+'quantity_total'         // Ilość w magazynie
+'price_per_day'          // Stawka dzienna
+'price_per_hour'         // Stawka godzinowa (nullable)
+'price_per_week'         // Stawka tygodniowa (nullable)
 'price_per_day_long'     // Stawka po przekroczeniu progu (nullable)
 'price_threshold_days'   // Próg dni dla niższej ceny (nullable)
-'brand'                  // Marka/producent (nullable, osobna kolumna — filtrowalne)
+'deposit_amount'         // Kaucja (nullable)
+'brand'                  // Marka/producent (nullable)
 
-// Hybrid specifications JSON
-'specifications' => [
-    'specs' => ['power_w' => 800, 'weight_kg' => 4.2],      // Suggested keys per kategoria
-    'custom_specs' => [['key' => 'Kolor', 'value' => 'Red']] // Repeater key:value
-]
+// Specifications → metadata JSON
+'metadata' => ['specs' => ['power_w' => 800, 'weight_kg' => 4.2]]
+
+// Scopes
+Service::rentable()     // where service_type = item_rental
+Service::bookable()     // where service_type = time_slot
+
+// Availability (item_rental only)
+$service->availableQuantity(Carbon $start, Carbon $end): int
+$service->isAvailable(Carbon $start, Carbon $end, int $qty = 1): bool
+Service::availableBetween($start, $end, $qty)
+
+// Factory
+Service::factory()->itemRental()->create()
 ```
 
 ## Service — metadata JSON (per-industry)

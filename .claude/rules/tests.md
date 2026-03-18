@@ -88,13 +88,33 @@ User::factory()->unverified()->create();
 
 ## CI/CD Environment Rules
 
+### CRITICAL: .env.testing chroni dev MySQL (NIGDY nie usuwaj!)
+
+**Incident 2026-03-17:** `php artisan test` w Docker użył dev MySQL zamiast SQLite. `RefreshDatabase` zrobiło `migrate:fresh` na żywej bazie — utrata WSZYSTKICH danych.
+
+**Przyczyna:** Docker OS-level env vars (priorytet 3) nadpisują phpunit.xml `<env>` tagi (priorytet 4).
+
+**Rozwiązanie:** `.env.testing` — Laravel ładuje go ZAMIAST `.env` gdy `APP_ENV=testing`.
+
+```
+Priorytet env variables (od najwyższego):
+1. config()->set() w kodzie testu
+2. <server> tagi w phpunit.xml
+3. Docker/OS environment variables  ← TU JEST DB_HOST=mysql
+4. <env> tagi w phpunit.xml         ← TU JEST DB_CONNECTION=sqlite (PRZEGRYWA!)
+5. .env.testing                     ← ZASTĘPUJE CAŁY .env (WYGRYWA!)
+6. .env                             ← dev config (MySQL)
+```
+
+**NIGDY nie usuwaj `.env.testing`!** Bez niego testy ZNISZCZĄ bazę dev.
+
 ### CRITICAL: Tests MUST pass in CI environment
 
 **CI Environment Differences:**
-- Uses SQLite in-memory database (`phpunit.xml`)
+- Uses SQLite in-memory database (`.env.testing` + `phpunit.xml`)
 - Uses `APP_LOCALE=pl` (configured in phpunit.xml)
 - No Docker services (Redis may use `array` driver)
-- Copies `.env.example` to `.env` - do NOT rely on `.env` values!
+- `.env.testing` is committed to repo — provides safe test defaults
 
 ### Database Compatibility
 ```php

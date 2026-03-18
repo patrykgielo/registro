@@ -79,13 +79,14 @@ Seedery MUSZĄ używać `withoutGlobalScope('organization')`:
 
 ```php
 // ✅ PRAWIDŁOWO
-RentalItem::withoutGlobalScope('organization')->create([
+Service::withoutGlobalScope('organization')->create([
     'organization_id' => $organization->id,
+    'service_type' => ServiceType::ItemRental,
     ...
 ]);
 
 // ❌ ŹLE — BelongsToOrganization trait nadpisze organization_id
-RentalItem::create([...]);
+Service::create([...]);
 ```
 
 ## Session keys

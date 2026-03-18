@@ -274,7 +274,7 @@ protected static ?string $module = null;          // always visible (core)
 |--------|-----------|
 | `services` | ServiceResource |
 | `bookings` | AppointmentResource |
-| `rentals` | RentalCategoryResource, RentalItemResource, RentalResource |
+| `rentals` | RentalCategoryResource, RentalResource |
 | `staff` | EmployeeResource, StaffScheduleResource, StaffVacationPeriodResource |
 | `customers` | CustomerResource |
 | `vehicles` | VehicleTypeResource, CarBrandResource, CarModelResource |

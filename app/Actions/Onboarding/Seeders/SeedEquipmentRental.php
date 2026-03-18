@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Actions\Onboarding\Seeders;
 
+use App\Enums\ServiceType;
 use App\Models\Organization;
 use App\Models\RentalCategory;
-use App\Models\RentalItem;
+use App\Models\Service;
 
 class SeedEquipmentRental implements VerticalSeeder
 {
@@ -24,18 +25,20 @@ class SeedEquipmentRental implements VerticalSeeder
             ]);
 
             foreach ($categoryData['items'] as $itemSort => $item) {
-                RentalItem::withoutGlobalScope('organization')->create([
+                Service::withoutGlobalScope('organization')->create([
                     'organization_id' => $organization->id,
+                    'service_type' => ServiceType::ItemRental,
                     'rental_category_id' => $category->id,
                     'name' => $item['name'],
                     'brand' => $item['brand'] ?? null,
                     'description' => $item['description'] ?? null,
+                    'price' => $item['price_per_day'],
                     'quantity_total' => $item['quantity'] ?? 1,
                     'price_per_day' => $item['price_per_day'],
                     'price_per_day_long' => $item['price_per_day_long'] ?? null,
                     'price_threshold_days' => $item['price_threshold_days'] ?? null,
                     'deposit_amount' => $item['deposit'] ?? null,
-                    'specifications' => $item['specifications'] ?? null,
+                    'metadata' => $item['specifications'] ?? null,
                     'is_active' => true,
                     'sort_order' => $itemSort,
                 ]);

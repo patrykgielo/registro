@@ -132,6 +132,7 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+                \App\Http\Middleware\ResolveTenant::class, // Redirect unknown subdomains to root
             ])
             ->authMiddleware([
                 Authenticate::class,

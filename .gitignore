@@ -58,6 +58,7 @@ app/vendor/
 .env.*
 !.env.example
 !.env.staging.example
+!.env.testing
 .env.production
 .env.staging
 .env.local

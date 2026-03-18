@@ -3,8 +3,10 @@
 namespace App\Filament\Resources;
 
 use App\Enums\RentalStatus;
+use App\Enums\ServiceType;
 use App\Filament\Resources\RentalResource\Pages;
 use App\Models\Rental;
+use App\Models\Service;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -38,9 +40,10 @@ class RentalResource extends BaseResource
             ->components([
                 Section::make('Szczegóły wypożyczenia')
                     ->schema([
-                        Forms\Components\Select::make('rental_item_id')
+                        Forms\Components\Select::make('service_id')
                             ->label('Przedmiot')
-                            ->relationship('rentalItem', 'name')
+                            ->relationship('service', 'name')
+                            ->options(Service::where('service_type', ServiceType::ItemRental->value)->pluck('name', 'id'))
                             ->searchable()
                             ->preload()
                             ->required(),
@@ -152,7 +155,7 @@ class RentalResource extends BaseResource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('rentalItem.name')
+                Tables\Columns\TextColumn::make('service.name')
                     ->label('Przedmiot')
                     ->searchable()
                     ->sortable(),
@@ -199,9 +202,9 @@ class RentalResource extends BaseResource
                     ->label('Status')
                     ->options(RentalStatus::options()),
 
-                Tables\Filters\SelectFilter::make('rental_item_id')
+                Tables\Filters\SelectFilter::make('service_id')
                     ->label('Przedmiot')
-                    ->relationship('rentalItem', 'name'),
+                    ->relationship('service', 'name'),
             ])
             ->recordActions([
                 Actions\EditAction::make(),

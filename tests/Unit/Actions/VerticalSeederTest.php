@@ -5,9 +5,9 @@ namespace Tests\Unit\Actions;
 use App\Actions\Onboarding\Seeders\SeedAutoDetailing;
 use App\Actions\Onboarding\Seeders\SeedEquipmentRental;
 use App\Actions\Onboarding\Seeders\SeedGeneralServices;
+use App\Enums\ServiceType;
 use App\Models\Organization;
 use App\Models\RentalCategory;
-use App\Models\RentalItem;
 use App\Models\Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -43,15 +43,16 @@ class VerticalSeederTest extends TestCase
         $this->assertEquals(7, $categories->count());
     }
 
-    public function test_seed_equipment_rental_creates_items(): void
+    public function test_seed_equipment_rental_creates_services(): void
     {
         $org = $this->createOrganization('item_rental');
         $seeder = new SeedEquipmentRental;
 
         $seeder->seed($org);
 
-        $items = RentalItem::withoutGlobalScope('organization')
+        $items = Service::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)
+            ->where('service_type', ServiceType::ItemRental)
             ->get();
 
         $this->assertEquals(13, $items->count());
@@ -64,8 +65,9 @@ class VerticalSeederTest extends TestCase
 
         $seeder->seed($org);
 
-        $item = RentalItem::withoutGlobalScope('organization')
+        $item = Service::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)
+            ->where('service_type', ServiceType::ItemRental)
             ->first();
 
         $this->assertNotNull($item->price_per_day);
@@ -76,19 +78,20 @@ class VerticalSeederTest extends TestCase
         $this->assertLessThan((float) $item->price_per_day, (float) $item->price_per_day_long);
     }
 
-    public function test_seed_equipment_rental_items_have_specifications(): void
+    public function test_seed_equipment_rental_items_have_metadata(): void
     {
         $org = $this->createOrganization('item_rental');
         $seeder = new SeedEquipmentRental;
 
         $seeder->seed($org);
 
-        $item = RentalItem::withoutGlobalScope('organization')
+        $item = Service::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)
+            ->where('service_type', ServiceType::ItemRental)
             ->first();
 
-        $this->assertIsArray($item->specifications);
-        $this->assertArrayHasKey('specs', $item->specifications);
+        $this->assertIsArray($item->metadata);
+        $this->assertArrayHasKey('specs', $item->metadata);
     }
 
     public function test_seed_auto_detailing_creates_services(): void
