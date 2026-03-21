@@ -35,7 +35,7 @@ fi
 # =============================================================================
 # RULE 2: Block push to main without release/hotfix branch
 # =============================================================================
-if [[ "$tool_name" == "Bash" && "$command" == *"git push"* && "$command" == *"main"* ]]; then
+if [[ "$tool_name" == "Bash" && "$command" == *"git push"* && ("$command" == *"origin main"* || "$command" == *"push main"*) ]]; then
     branch=$(git branch --show-current 2>/dev/null || echo "unknown")
 
     if [[ "$branch" != release/* && "$branch" != hotfix/* ]]; then

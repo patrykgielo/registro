@@ -35,15 +35,9 @@ Testy przeszły bo TestCase seeduje role, ale fresh DB nie ma ról. Agent by to 
 | Design tokens, spójność UI | `design-system-guardian` |
 | Wyceny komercyjne | `commercial-estimate-specialist` |
 
-### Security Agents - Hierarchia
+### Security
 
-| Agent | Rozmiar | Użycie |
-|-------|---------|--------|
-| `agent-security-audit-specialist` | 54KB | **GŁÓWNY** - pełne audyty OWASP/GDPR |
-| `security-scanner` | 1.8KB | Legacy stub - użyj głównego |
-| `security-advisor` | 1.6KB | Legacy stub - użyj głównego |
-
-⭐ **Zawsze używaj `agent-security-audit-specialist`** dla zadań bezpieczeństwa.
+Jeden agent: `agent-security-audit-specialist` (54KB). Legacy stuby `security-scanner` i `security-advisor` zostały usunięte (2026-03-20).
 
 ## Research i braki wiedzy
 
