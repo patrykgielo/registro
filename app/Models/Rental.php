@@ -39,11 +39,8 @@ class Rental extends Model
         'invoice_street_number',
         'invoice_postal_code',
         'invoice_city',
-        // Status timestamps
-        'confirmed_at',
-        'picked_up_at',
-        'returned_at',
-        'cancelled_at',
+        // Status timestamps are NOT fillable — set automatically in booted()
+        // via status transition detection. See: static::updating() below.
     ];
 
     protected $casts = [

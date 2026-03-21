@@ -82,14 +82,18 @@ class ContentGridResolver
 
         $ids = array_map('intval', $ids);
 
-        $orderClauses = [];
+        $bindings = [];
+        $clauses = [];
         foreach ($ids as $index => $id) {
-            $orderClauses[] = "WHEN id = {$id} THEN {$index}";
+            $clauses[] = 'WHEN id = ? THEN ?';
+            $bindings[] = $id;
+            $bindings[] = $index;
         }
-        $orderByRaw = 'CASE '.implode(' ', $orderClauses).' ELSE '.count($ids).' END';
+        $bindings[] = count($ids);
+        $orderByRaw = 'CASE '.implode(' ', $clauses).' ELSE ? END';
 
         return $modelClass::whereIn('id', $ids)
-            ->orderByRaw($orderByRaw)
+            ->orderByRaw($orderByRaw, $bindings)
             ->get();
     }
 }

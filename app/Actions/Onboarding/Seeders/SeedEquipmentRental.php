@@ -39,6 +39,7 @@ class SeedEquipmentRental implements VerticalSeeder
                     'price_threshold_days' => $item['price_threshold_days'] ?? null,
                     'deposit_amount' => $item['deposit'] ?? null,
                     'metadata' => $item['specifications'] ?? null,
+                    'duration_minutes' => 0,
                     'is_active' => true,
                     'sort_order' => $itemSort,
                 ]);

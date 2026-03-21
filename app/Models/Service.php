@@ -181,17 +181,31 @@ class Service extends Model
     }
 
     /**
-     * Scope: Items available between given dates with given quantity.
+     * Scope: Rental items available between given dates with given quantity.
+     * Automatically filters to item_rental type. Uses correlated subquery
+     * compatible with MySQL 8 strict mode (ONLY_FULL_GROUP_BY).
      */
     public function scopeAvailableBetween($query, Carbon $startDate, Carbon $endDate, int $quantity = 1)
     {
-        return $query->where('quantity_total', '>=', $quantity)
-            ->whereDoesntHave('rentals', function ($q) use ($startDate, $endDate, $quantity) {
-                $q->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
-                    ->where('start_date', '<=', $endDate)
-                    ->where('end_date', '>=', $startDate)
-                    ->havingRaw('SUM(quantity) > ?', [$quantity - 1]);
-            });
+        return $query->where('service_type', ServiceType::ItemRental->value)
+            ->where('quantity_total', '>=', $quantity)
+            ->whereRaw(
+                'services.quantity_total - COALESCE((
+                    SELECT SUM(r.quantity) FROM rentals r
+                    WHERE r.service_id = services.id
+                    AND r.status IN (?, ?, ?)
+                    AND r.start_date <= ?
+                    AND r.end_date >= ?
+                ), 0) >= ?',
+                [
+                    RentalStatus::Pending->value,
+                    RentalStatus::Confirmed->value,
+                    RentalStatus::Active->value,
+                    $endDate->toDateString(),
+                    $startDate->toDateString(),
+                    $quantity,
+                ]
+            );
     }
 
     // Boot
@@ -205,6 +219,23 @@ class Service extends Model
             // Auto-generate slug from name if not provided
             if (empty($service->slug) && ! empty($service->name)) {
                 $service->slug = Str::slug($service->name);
+            }
+        });
+
+        static::updating(function (Service $service) {
+            // service_type is immutable after creation
+            if ($service->isDirty('service_type')) {
+                $service->service_type = $service->getOriginal('service_type');
+            }
+
+            // Cross-tenant guard: rental_category must belong to same org
+            if ($service->isDirty('rental_category_id') && $service->rental_category_id && $service->organization_id) {
+                $category = RentalCategory::withoutGlobalScope('organization')
+                    ->find($service->rental_category_id);
+
+                if ($category && $category->organization_id !== $service->organization_id) {
+                    throw new \InvalidArgumentException('Rental category does not belong to this organization.');
+                }
             }
         });
     }
@@ -231,20 +262,26 @@ class Service extends Model
 
     /**
      * Calculate how many units are available in a given date range.
+     * Only valid for item_rental services. Throws for time_slot.
      */
     public function availableQuantity(Carbon $startDate, Carbon $endDate): int
     {
+        if ($this->service_type !== ServiceType::ItemRental) {
+            throw new \LogicException('availableQuantity() can only be called on item_rental services.');
+        }
+
         $reserved = Rental::where('service_id', $this->id)
             ->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
             ->where('start_date', '<=', $endDate)
             ->where('end_date', '>=', $startDate)
             ->sum('quantity');
 
-        return max(0, $this->quantity_total - $reserved);
+        return max(0, ($this->quantity_total ?? 0) - $reserved);
     }
 
     /**
      * Check if a given quantity is available in a date range.
+     * Only valid for item_rental services. Throws for time_slot.
      */
     public function isAvailable(Carbon $startDate, Carbon $endDate, int $quantity = 1): bool
     {
@@ -253,9 +290,13 @@ class Service extends Model
 
     // Accessors
 
-    public function getFormattedDurationAttribute(): string
+    public function getFormattedDurationAttribute(): ?string
     {
         $totalMinutes = $this->duration_minutes;
+
+        if ($totalMinutes === null) {
+            return null;
+        }
 
         $days = floor($totalMinutes / 1440);
         $remainingAfterDays = $totalMinutes % 1440;
@@ -282,7 +323,7 @@ class Service extends Model
     /**
      * Alias for formatted_duration (used in Blade templates)
      */
-    public function getDurationDisplayAttribute(): string
+    public function getDurationDisplayAttribute(): ?string
     {
         return $this->formatted_duration;
     }
@@ -290,8 +331,12 @@ class Service extends Model
     /**
      * Formatted rental price summary for display (item_rental services).
      */
-    public function getFormattedRentalPriceAttribute(): string
+    public function getFormattedRentalPriceAttribute(): ?string
     {
+        if ($this->price_per_day === null) {
+            return null;
+        }
+
         $price = number_format((float) $this->price_per_day, 2, ',', ' ').' zł/dzień';
 
         if ($this->price_per_hour) {

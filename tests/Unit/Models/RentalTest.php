@@ -146,4 +146,31 @@ class RentalTest extends TestCase
         $this->assertCount(1, Rental::returned()->get());
         $this->assertCount(1, Rental::cancelled()->get());
     }
+
+    public function test_status_timestamps_not_mass_assignable(): void
+    {
+        $rental = Rental::factory()->create();
+
+        $rental->fill([
+            'confirmed_at' => '2026-01-01 00:00:00',
+            'picked_up_at' => '2026-01-02 00:00:00',
+            'returned_at' => '2026-01-03 00:00:00',
+            'cancelled_at' => '2026-01-04 00:00:00',
+        ]);
+
+        $this->assertNull($rental->confirmed_at);
+        $this->assertNull($rental->picked_up_at);
+        $this->assertNull($rental->returned_at);
+        $this->assertNull($rental->cancelled_at);
+    }
+
+    public function test_status_timestamps_still_set_by_transition(): void
+    {
+        $rental = Rental::factory()->create(['status' => RentalStatus::Pending]);
+
+        $rental->update(['status' => RentalStatus::Confirmed]);
+        $rental->refresh();
+
+        $this->assertNotNull($rental->confirmed_at);
+    }
 }

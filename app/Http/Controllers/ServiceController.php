@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ServiceType;
 use App\Models\Service;
 
 class ServiceController extends Controller
@@ -13,6 +14,7 @@ class ServiceController extends Controller
     {
         $services = Service::published()
             ->active()
+            ->bookable()
             ->ordered()
             ->get();
 
@@ -30,6 +32,7 @@ class ServiceController extends Controller
         // Get related services (same area, similar price, or random)
         $relatedServices = Service::published()
             ->active()
+            ->where('service_type', $service->service_type)
             ->where('id', '!=', $service->id)
             ->ordered()
             ->limit(3)
@@ -52,9 +55,11 @@ class ServiceController extends Controller
      */
     private function buildServiceSchema(Service $service): string
     {
+        $isRental = $service->service_type === ServiceType::ItemRental;
+
         $schema = [
             '@context' => 'https://schema.org',
-            '@type' => 'Service',
+            '@type' => $isRental ? 'Product' : 'Service',
             'name' => $service->name,
             'description' => $service->excerpt ?? $service->name,
             'provider' => [
@@ -65,7 +70,6 @@ class ServiceController extends Controller
                     'name' => $service->area_served ?? 'Poznań',
                 ],
             ],
-            'serviceType' => 'Car Detailing',
             'url' => route('service.show', $service),
         ];
 

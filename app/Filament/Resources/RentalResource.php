@@ -42,8 +42,11 @@ class RentalResource extends BaseResource
                     ->schema([
                         Forms\Components\Select::make('service_id')
                             ->label('Przedmiot')
-                            ->relationship('service', 'name')
-                            ->options(Service::where('service_type', ServiceType::ItemRental->value)->pluck('name', 'id'))
+                            ->relationship(
+                                name: 'service',
+                                titleAttribute: 'name',
+                                modifyQueryUsing: fn ($query) => $query->where('service_type', ServiceType::ItemRental->value)
+                            )
                             ->searchable()
                             ->preload()
                             ->required(),

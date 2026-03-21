@@ -38,7 +38,8 @@ class RentalCategory extends Model
 
     public function services(): HasMany
     {
-        return $this->hasMany(Service::class, 'rental_category_id');
+        return $this->hasMany(Service::class, 'rental_category_id')
+            ->where('service_type', \App\Enums\ServiceType::ItemRental->value);
     }
 
     public function scopeActive($query)

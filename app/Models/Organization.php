@@ -112,7 +112,7 @@ class Organization extends Model
      */
     public function rentalItems(): HasMany
     {
-        return $this->hasMany(Service::class)->where('service_type', 'item_rental');
+        return $this->hasMany(Service::class)->where('service_type', \App\Enums\ServiceType::ItemRental->value);
     }
 
     /**

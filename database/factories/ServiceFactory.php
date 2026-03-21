@@ -33,16 +33,7 @@ class ServiceFactory extends Factory
 
     public function itemRental(): static
     {
-        $name = fake()->unique()->randomElement([
-            'Wiertarka udarowa Bosch',
-            'Szlifierka kątowa Makita',
-            'Betoniarka 150L',
-            'Agregat prądotwórczy 5kW',
-            'Rusztowanie ramowe 6m',
-            'Piła tarczowa DeWalt',
-            'Zagęszczarka płytowa',
-            'Spawarka MIG 200A',
-        ]);
+        $name = fake()->words(3, true).' '.fake()->numberBetween(100, 999);
 
         $pricePerDay = fake()->randomFloat(2, 50, 500);
 
