@@ -423,11 +423,10 @@ class ServiceResource extends BaseResource
                 Tables\Columns\TextColumn::make('service_type')
                     ->label('Typ')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => ServiceType::tryFrom($state)?->label() ?? $state)
-                    ->color(fn (string $state): string => match ($state) {
-                        'time_slot' => 'info',
-                        'item_rental' => 'warning',
-                        default => 'gray',
+                    ->formatStateUsing(fn (ServiceType $state): string => $state->label())
+                    ->color(fn (ServiceType $state): string => match ($state) {
+                        ServiceType::TimeSlot => 'info',
+                        ServiceType::ItemRental => 'warning',
                     }),
 
                 Tables\Columns\TextColumn::make('slug')
