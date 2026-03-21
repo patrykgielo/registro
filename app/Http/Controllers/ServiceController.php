@@ -12,9 +12,16 @@ class ServiceController extends Controller
      */
     public function index()
     {
-        $services = Service::published()
-            ->active()
-            ->bookable()
+        $services = Service::active()
+            ->where(function ($query) {
+                // time_slot: must be published
+                // item_rental: only needs is_active (no published_at workflow)
+                $query->where(function ($q) {
+                    $q->bookable()->published();
+                })->orWhere(function ($q) {
+                    $q->rentable();
+                });
+            })
             ->ordered()
             ->get();
 
@@ -26,14 +33,21 @@ class ServiceController extends Controller
      */
     public function show(Service $service)
     {
-        // Only show published services (404 for drafts/scheduled)
-        abort_unless($service->isPublished(), 404);
+        // time_slot: must be published. item_rental: only needs is_active.
+        if ($service->service_type === ServiceType::TimeSlot) {
+            abort_unless($service->isPublished(), 404);
+        } else {
+            abort_unless($service->is_active, 404);
+        }
 
-        // Get related services (same area, similar price, or random)
-        $relatedServices = Service::published()
-            ->active()
+        // Get related services (same type, active)
+        $relatedServices = Service::active()
             ->where('service_type', $service->service_type)
             ->where('id', '!=', $service->id)
+            ->when(
+                $service->service_type === ServiceType::TimeSlot,
+                fn ($q) => $q->published()
+            )
             ->ordered()
             ->limit(3)
             ->get();
