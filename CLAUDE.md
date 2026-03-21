@@ -36,7 +36,7 @@ Rules are organized in TIERs:
 
 ## Project Stack
 
-- **Laravel 12**, PHP 8.2+, MySQL 8.0
+- **Laravel 12**, PHP 8.3+, MySQL 8.0
 - **Filament v4** (namespace breaking changes - see filament.md)
 - **Tailwind CSS 4.0**, Vite 7+
 - **Docker Compose** (9 services)
@@ -75,14 +75,26 @@ Archived legacy docs: docs/archive/
 
 ---
 
+## Skills (slash commands)
+
+| Skill | Purpose |
+|-------|---------|
+| `/implement <task>` | Gated workflow: agent → branch → code → test → docs |
+| `/commit [msg]` | Stage, Pint, test, conventional commit |
+| `/pr [title]` | Push + create PR to develop |
+| `/test [--filter]` | Run Pint + PHPUnit in Docker |
+| `/review [scope]` | Code review (architecture, security, docs) |
+| `/catchup` | Session start briefing (recent changes, PRs) |
+| `/deep-research <topic>` | Web research with Firecrawl |
+
 ## Quick Commands
 
 ```bash
 # Development
 composer run dev
 
-# Tests
-./vendor/bin/pint --test && php artisan test
+# Tests (in Docker — .env.testing forces SQLite)
+docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T app php artisan test
 ```
 
 ---
