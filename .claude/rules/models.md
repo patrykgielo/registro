@@ -323,10 +323,18 @@ ServiceType::ItemRental   // Wypożyczenie (sprzęt, narzędzia)
 Service::rentable()     // where service_type = item_rental
 Service::bookable()     // where service_type = time_slot
 
-// Availability (item_rental only)
+// Availability (item_rental only — throws LogicException on time_slot!)
 $service->availableQuantity(Carbon $start, Carbon $end): int
 $service->isAvailable(Carbon $start, Carbon $end, int $qty = 1): bool
-Service::availableBetween($start, $end, $qty)
+Service::availableBetween($start, $end, $qty) // auto-filters to item_rental
+
+// Immutability: service_type cannot be changed after creation (model guard)
+// Cross-tenant: rental_category_id validated against organization_id on update
+// FK: rentals.service_id uses restrictOnDelete (not cascade!)
+
+// Accessors return null safely:
+$service->formatted_rental_price  // null when price_per_day is null
+$service->formatted_duration      // null when duration_minutes is null
 
 // Factory
 Service::factory()->itemRental()->create()

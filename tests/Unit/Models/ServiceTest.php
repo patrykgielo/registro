@@ -161,4 +161,70 @@ class ServiceTest extends TestCase
 
         $this->assertEquals('slug', $service->getRouteKeyName());
     }
+
+    public function test_service_type_is_immutable_after_creation(): void
+    {
+        $service = Service::factory()->itemRental()->create();
+
+        $service->update(['service_type' => ServiceType::TimeSlot]);
+        $service->refresh();
+
+        $this->assertEquals(ServiceType::ItemRental, $service->service_type);
+    }
+
+    public function test_available_quantity_throws_on_time_slot(): void
+    {
+        $service = Service::factory()->create(['service_type' => ServiceType::TimeSlot]);
+
+        $this->expectException(\LogicException::class);
+        $service->availableQuantity(Carbon::today(), Carbon::today()->addDays(3));
+    }
+
+    public function test_formatted_duration_returns_null_when_duration_is_null(): void
+    {
+        $service = new Service;
+        $service->duration_minutes = null;
+
+        $this->assertNull($service->formatted_duration);
+    }
+
+    public function test_formatted_duration_returns_zero_min_for_rental(): void
+    {
+        $service = Service::factory()->itemRental()->create();
+
+        $this->assertEquals('0 min', $service->formatted_duration);
+    }
+
+    public function test_formatted_rental_price_returns_null_when_no_price(): void
+    {
+        $service = Service::factory()->itemRental()->create([
+            'price_per_day' => null,
+        ]);
+
+        $this->assertNull($service->formatted_rental_price);
+    }
+
+    public function test_scope_available_between_filters_by_item_rental(): void
+    {
+        Service::factory()->create(['service_type' => ServiceType::TimeSlot]);
+        Service::factory()->itemRental()->create(['quantity_total' => 5]);
+
+        $results = Service::availableBetween(Carbon::today(), Carbon::today()->addDays(3))->get();
+
+        $this->assertCount(1, $results);
+        $this->assertEquals(ServiceType::ItemRental, $results->first()->service_type);
+    }
+
+    public function test_service_type_immutability_does_not_block_other_updates(): void
+    {
+        $service = Service::factory()->itemRental()->create([
+            'name' => 'Original Name',
+        ]);
+
+        $service->update(['name' => 'Updated Name', 'service_type' => ServiceType::TimeSlot]);
+        $service->refresh();
+
+        $this->assertEquals('Updated Name', $service->name);
+        $this->assertEquals(ServiceType::ItemRental, $service->service_type);
+    }
 }

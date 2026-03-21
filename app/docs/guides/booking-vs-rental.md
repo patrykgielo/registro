@@ -114,20 +114,27 @@ ServiceType::ItemRental   // Inventory-based rental item
 
 ```php
 // How many units are free in a date range?
+// THROWS LogicException if called on time_slot service!
 $service->availableQuantity(Carbon $start, Carbon $end): int
-// Counts active/pending/confirmed rentals overlapping the range
-// Subtracts from quantity_total
 
 // Is at least 1 unit available?
 $service->isAvailable(Carbon $start, Carbon $end, int $quantity = 1): bool
 
-// Query scope for filtering
-Service::rentable()->availableBetween($start, $end)->get();
+// Query scope — auto-filters to item_rental, uses correlated subquery
+// Compatible with MySQL 8 strict mode (ONLY_FULL_GROUP_BY)
+Service::availableBetween($start, $end, $qty)->get();
 ```
+
+### Data Integrity Guards (added 2026-03-20)
+
+- **service_type immutable** — cannot be changed after creation (model `updating` guard)
+- **rentals.service_id** — `restrictOnDelete` (admin cannot delete Service with active Rentals)
+- **rental_category_id** — cross-tenant validation on update (category must belong to same org)
+- **Rental status timestamps** — NOT in `$fillable`, set automatically by status transitions only
 
 ### Rental
 
-- Links: `service_id`, `customer_id`
+- Links: `service_id` (NOT NULL, restrictOnDelete), `customer_id`
 - **Date range:** `start_date`, `end_date` (dates, not times)
 - **Quantity:** how many units rented
 - **Pricing snapshot:** `pricing_unit` (hourly/daily/weekly), `unit_price_at_booking`, `total_price`, `deposit_amount`

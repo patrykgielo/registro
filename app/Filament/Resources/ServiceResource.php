@@ -442,8 +442,8 @@ class ServiceResource extends BaseResource
                     ->sortable(query: function ($query, $direction) {
                         return $query->orderBy('duration_minutes', $direction);
                     })
-                    ->visible(fn (): bool => true)
-                    ->placeholder('-'),
+                    ->formatStateUsing(fn ($state, Service $record) => $record->service_type === ServiceType::ItemRental ? '—' : $state)
+                    ->placeholder('—'),
 
                 Tables\Columns\TextColumn::make('price')
                     ->label('Cena')
