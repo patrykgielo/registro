@@ -115,9 +115,9 @@ class OrganizationModuleTest extends TestCase
 
     public function test_industry_default_modules_method(): void
     {
-        $this->assertEquals(['services', 'rentals'], Industry::EquipmentRental->defaultModules());
-        $this->assertEquals(['services', 'bookings'], Industry::AutoDetailing->defaultModules());
-        $this->assertEquals(['services', 'bookings'], Industry::GeneralServices->defaultModules());
+        $this->assertEquals(['services', 'rentals', 'website'], Industry::EquipmentRental->defaultModules());
+        $this->assertEquals(['services', 'bookings', 'website'], Industry::AutoDetailing->defaultModules());
+        $this->assertEquals(['services', 'bookings', 'website'], Industry::GeneralServices->defaultModules());
     }
 
     public function test_non_default_modules_are_off_by_default(): void
@@ -132,7 +132,7 @@ class OrganizationModuleTest extends TestCase
         $this->assertFalse($org->hasModule('customers'));
         $this->assertFalse($org->hasModule('vehicles'));
         $this->assertFalse($org->hasModule('communication'));
-        $this->assertFalse($org->hasModule('website'));
+        $this->assertTrue($org->hasModule('website'));  // website is ON by default for all tenants
         $this->assertFalse($org->hasModule('service_area'));
     }
 

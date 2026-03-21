@@ -20,9 +20,9 @@ class Organization extends Model
      * Override per-tenant via settings.modules JSON.
      */
     private const MODULE_DEFAULTS = [
-        'time_slot' => ['services', 'bookings'],
-        'item_rental' => ['rentals'],
-        'both' => ['services', 'bookings', 'rentals'],
+        'time_slot' => ['services', 'bookings', 'website'],
+        'item_rental' => ['rentals', 'website'],
+        'both' => ['services', 'bookings', 'rentals', 'website'],
     ];
 
     /**
