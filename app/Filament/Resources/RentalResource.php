@@ -6,7 +6,6 @@ use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
 use App\Filament\Resources\RentalResource\Pages;
 use App\Models\Rental;
-use App\Models\Service;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
