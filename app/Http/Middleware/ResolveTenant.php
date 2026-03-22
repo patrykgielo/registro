@@ -8,6 +8,7 @@ use App\Models\Organization;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 class ResolveTenant
@@ -59,6 +60,12 @@ class ResolveTenant
         }
 
         $request->attributes->set('tenant', $tenant);
+
+        // Force URL generator to use tenant subdomain so route() generates correct URLs
+        $scheme = $request->isSecure() ? 'https' : 'http';
+        $port = $request->getPort();
+        $portSuffix = (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) ? ":{$port}" : '';
+        URL::forceRootUrl("{$scheme}://{$slug}.{$baseDomain}{$portSuffix}");
 
         return $next($request);
     }
