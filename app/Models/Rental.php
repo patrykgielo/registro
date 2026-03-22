@@ -26,6 +26,7 @@ class Rental extends Model
         'status',
         'notes',
         'cancellation_reason',
+        'held_until',
         // Contact info snapshot
         'first_name',
         'last_name',
@@ -55,6 +56,7 @@ class Rental extends Model
         'picked_up_at' => 'datetime',
         'returned_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'held_until' => 'datetime',
         'status' => RentalStatus::class,
     ];
 
@@ -112,6 +114,16 @@ class Rental extends Model
     public function scopeCancelled($query)
     {
         return $query->where('status', RentalStatus::Cancelled);
+    }
+
+    public function scopeHeld($query)
+    {
+        return $query->where('status', RentalStatus::Held);
+    }
+
+    public function scopeExpired($query)
+    {
+        return $query->where('status', RentalStatus::Expired);
     }
 
     public function scopeUpcoming($query)

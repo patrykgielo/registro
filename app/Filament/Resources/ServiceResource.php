@@ -136,7 +136,7 @@ class ServiceResource extends BaseResource
                                     ->dehydrated(false),
                             ])
                             ->columnSpanFull()
-                            ->visible(fn (callable $get): bool => $get('service_type') !== ServiceType::ItemRental->value),
+                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
 
                         Forms\Components\Hidden::make('duration_minutes')
                             ->default(60),
@@ -153,7 +153,7 @@ class ServiceResource extends BaseResource
                             ->numeric()
                             ->prefix('PLN')
                             ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)')
-                            ->visible(fn (callable $get): bool => $get('service_type') !== ServiceType::ItemRental->value),
+                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
 
                         Forms\Components\Toggle::make('is_active')
                             ->label('Aktywna')
@@ -207,7 +207,7 @@ class ServiceResource extends BaseResource
                             ->prefix('PLN'),
                     ])
                     ->columns(3)
-                    ->visible(fn (callable $get): bool => $get('service_type') === ServiceType::ItemRental->value),
+                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
 
                 // Sekcja: Magazyn (item_rental only)
                 Section::make('Magazyn i identyfikacja')
@@ -230,7 +230,62 @@ class ServiceResource extends BaseResource
                             ->maxLength(255),
                     ])
                     ->columns(3)
-                    ->visible(fn (callable $get): bool => $get('service_type') === ServiceType::ItemRental->value),
+                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
+
+                // Sekcja: Specyfikacja techniczna (item_rental only)
+                Section::make('Specyfikacja techniczna')
+                    ->schema([
+                        Forms\Components\Repeater::make('metadata.specs')
+                            ->label('Parametry techniczne')
+                            ->schema([
+                                Forms\Components\TextInput::make('label')
+                                    ->label('Parametr')
+                                    ->required()
+                                    ->placeholder('np. Moc')
+                                    ->maxLength(100),
+                                Forms\Components\TextInput::make('value')
+                                    ->label('Wartość')
+                                    ->required()
+                                    ->placeholder('np. 800')
+                                    ->maxLength(100),
+                                Forms\Components\TextInput::make('unit')
+                                    ->label('Jednostka')
+                                    ->placeholder('np. W')
+                                    ->maxLength(20),
+                            ])
+                            ->columns(3)
+                            ->reorderable()
+                            ->collapsible()
+                            ->itemLabel(fn (array $state): ?string => isset($state['label']) ? "{$state['label']}: {$state['value']} {$state['unit']}" : null)
+                            ->addActionLabel('Dodaj parametr')
+                            ->columnSpanFull()
+                            ->defaultItems(0)
+                            ->helperText('Wyświetlane na stronie produktowej jako tabela specyfikacji'),
+                    ])
+                    ->headerActions([
+                        Actions\Action::make('loadSpecTemplate')
+                            ->label('Wstaw z szablonu branżowego')
+                            ->icon('heroicon-o-clipboard-document-list')
+                            ->color('gray')
+                            ->action(function (callable $set) {
+                                $tenant = \App\Support\TenantFeature::currentTenant();
+                                $industry = $tenant?->industry;
+                                if (! $industry) {
+                                    return;
+                                }
+                                $template = $industry->defaultSpecDefinitions();
+                                $specs = array_map(fn ($def) => [
+                                    'label' => $def['label'],
+                                    'value' => '',
+                                    'unit' => $def['unit'],
+                                ], $template);
+                                $set('metadata.specs', $specs);
+                            })
+                            ->requiresConfirmation()
+                            ->modalHeading('Wstawić szablon specyfikacji?')
+                            ->modalDescription('Obecne parametry zostaną zastąpione szablonem branżowym. Uzupełnij wartości po wstawieniu.'),
+                    ])
+                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
 
                 // Sekcja 2: Zdjęcie wyróżniające
                 Section::make('Zdjęcie wyróżniające')
@@ -498,7 +553,9 @@ class ServiceResource extends BaseResource
                     ->icon('heroicon-o-eye')
                     ->url(fn (Service $record) => route('service.show', $record))
                     ->openUrlInNewTab()
-                    ->visible(fn (Service $record) => $record->published_at && $record->published_at->isPast()),
+                    ->visible(fn (Service $record) => $record->service_type === ServiceType::ItemRental
+                        ? $record->is_active
+                        : ($record->published_at && $record->published_at->isPast())),
                 Actions\EditAction::make()
                     ->label('Edytuj'),
                 Actions\DeleteAction::make()
@@ -526,6 +583,18 @@ class ServiceResource extends BaseResource
             'create' => Pages\CreateService::route('/create'),
             'edit' => Pages\EditService::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Check if service_type is ItemRental (handles both enum and string from $get()).
+     */
+    private static function isRentalType(mixed $value): bool
+    {
+        if ($value instanceof ServiceType) {
+            return $value === ServiceType::ItemRental;
+        }
+
+        return $value === ServiceType::ItemRental->value;
     }
 
     /**

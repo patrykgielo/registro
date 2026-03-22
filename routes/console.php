@@ -77,3 +77,17 @@ Schedule::job(new CleanupOldSmsLogsJob)
     ->withoutOverlapping()
     ->name('sms:cleanup-logs')
     ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Rental System
+|--------------------------------------------------------------------------
+*/
+
+// Release expired rental holds to free up inventory
+// Runs: Every 5 minutes
+Schedule::command('rentals:release-expired-holds')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->name('rentals:release-expired-holds')
+    ->onOneServer();
