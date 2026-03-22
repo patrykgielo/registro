@@ -53,9 +53,9 @@ class RentalResource extends BaseResource
                         Forms\Components\Select::make('customer_id')
                             ->label('Klient')
                             ->relationship('customer', 'email')
-                            ->searchable()
-                            ->preload()
-                            ->required(),
+                            ->getOptionLabelFromRecordUsing(fn (\App\Models\User $record): string => "{$record->name} ({$record->email})")
+                            ->searchable(['first_name', 'last_name', 'email'])
+                            ->preload(),
 
                         Forms\Components\TextInput::make('quantity')
                             ->label('Ilość')
@@ -136,6 +136,46 @@ class RentalResource extends BaseResource
                     ->columns(2)
                     ->collapsed(),
 
+                Section::make('Dane do faktury')
+                    ->schema([
+                        Forms\Components\Toggle::make('invoice_requested')
+                            ->label('Faktura VAT')
+                            ->live()
+                            ->columnSpanFull(),
+
+                        Forms\Components\TextInput::make('invoice_company_name')
+                            ->label('Nazwa firmy')
+                            ->maxLength(255)
+                            ->visible(fn (callable $get): bool => (bool) $get('invoice_requested')),
+
+                        Forms\Components\TextInput::make('invoice_nip')
+                            ->label('NIP')
+                            ->maxLength(13)
+                            ->visible(fn (callable $get): bool => (bool) $get('invoice_requested')),
+
+                        Forms\Components\TextInput::make('invoice_street')
+                            ->label('Ulica')
+                            ->maxLength(255)
+                            ->visible(fn (callable $get): bool => (bool) $get('invoice_requested')),
+
+                        Forms\Components\TextInput::make('invoice_street_number')
+                            ->label('Nr budynku')
+                            ->maxLength(20)
+                            ->visible(fn (callable $get): bool => (bool) $get('invoice_requested')),
+
+                        Forms\Components\TextInput::make('invoice_postal_code')
+                            ->label('Kod pocztowy')
+                            ->maxLength(10)
+                            ->visible(fn (callable $get): bool => (bool) $get('invoice_requested')),
+
+                        Forms\Components\TextInput::make('invoice_city')
+                            ->label('Miasto')
+                            ->maxLength(255)
+                            ->visible(fn (callable $get): bool => (bool) $get('invoice_requested')),
+                    ])
+                    ->columns(2)
+                    ->collapsed(),
+
                 Section::make('Notatki')
                     ->schema([
                         Forms\Components\Textarea::make('notes')
@@ -162,10 +202,20 @@ class RentalResource extends BaseResource
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('customer.email')
+                Tables\Columns\TextColumn::make('customer_name')
                     ->label('Klient')
+                    ->getStateUsing(fn (Rental $record): string => $record->customer_name)
+                    ->searchable(query: function ($query, string $search) {
+                        $query->where(function ($q) use ($search) {
+                            $q->where('first_name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%");
+                        });
+                    }),
+
+                Tables\Columns\TextColumn::make('email')
+                    ->label('Email')
                     ->searchable()
-                    ->sortable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('start_date')
                     ->label('Od')
@@ -189,8 +239,15 @@ class RentalResource extends BaseResource
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
-                    ->color(fn (string $state): string => RentalStatus::tryFrom($state)?->color() ?? 'gray')
-                    ->formatStateUsing(fn (string $state): string => RentalStatus::tryFrom($state)?->label() ?? $state),
+                    ->color(fn (string|RentalStatus $state): string => $state instanceof RentalStatus ? $state->color() : (RentalStatus::tryFrom($state)?->color() ?? 'gray'))
+                    ->formatStateUsing(fn (string|RentalStatus $state): string => $state instanceof RentalStatus ? $state->label() : (RentalStatus::tryFrom($state)?->label() ?? $state)),
+
+                Tables\Columns\TextColumn::make('held_until')
+                    ->label('Hold wygasa')
+                    ->dateTime('d.m.Y H:i')
+                    ->placeholder('—')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Utworzono')
@@ -209,6 +266,51 @@ class RentalResource extends BaseResource
                     ->relationship('service', 'name'),
             ])
             ->recordActions([
+                Actions\Action::make('confirm')
+                    ->label('Potwierdź')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Potwierdzić wypożyczenie?')
+                    ->action(fn (Rental $record) => $record->update(['status' => RentalStatus::Confirmed]))
+                    ->visible(fn (Rental $record): bool => in_array($record->status, [RentalStatus::Held, RentalStatus::Pending])),
+
+                Actions\Action::make('markPickedUp')
+                    ->label('Odebrane')
+                    ->icon('heroicon-o-truck')
+                    ->color('info')
+                    ->requiresConfirmation()
+                    ->modalHeading('Oznaczyć jako odebrane?')
+                    ->action(fn (Rental $record) => $record->update(['status' => RentalStatus::Active]))
+                    ->visible(fn (Rental $record): bool => $record->status === RentalStatus::Confirmed),
+
+                Actions\Action::make('markReturned')
+                    ->label('Zwrócone')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalHeading('Oznaczyć jako zwrócone?')
+                    ->action(fn (Rental $record) => $record->update(['status' => RentalStatus::Returned]))
+                    ->visible(fn (Rental $record): bool => $record->status === RentalStatus::Active),
+
+                Actions\Action::make('cancel')
+                    ->label('Anuluj')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('Anulować wypożyczenie?')
+                    ->form([
+                        Forms\Components\Textarea::make('cancellation_reason')
+                            ->label('Powód anulowania')
+                            ->required()
+                            ->rows(3),
+                    ])
+                    ->action(fn (Rental $record, array $data) => $record->update([
+                        'status' => RentalStatus::Cancelled,
+                        'cancellation_reason' => $data['cancellation_reason'],
+                    ]))
+                    ->visible(fn (Rental $record): bool => ! in_array($record->status, [RentalStatus::Returned, RentalStatus::Cancelled, RentalStatus::Expired])),
+
                 Actions\EditAction::make(),
             ])
             ->toolbarActions([

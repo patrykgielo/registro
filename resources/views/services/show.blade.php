@@ -92,14 +92,21 @@
                     <div>
                         <h2 class="text-lg font-semibold text-text-primary mb-4">Specyfikacja techniczna</h2>
                         <div class="rounded-xl border border-border overflow-hidden">
-                            @foreach($specs as $key => $value)
+                            @foreach($specs as $index => $spec)
+                                @php
+                                    // Support both new format [{label, value, unit}] and legacy {key: value}
+                                    $isNewFormat = is_array($spec) && isset($spec['label']);
+                                    $label = $isNewFormat ? $spec['label'] : ucfirst(str_replace('_', ' ', $index));
+                                    $value = $isNewFormat ? $spec['value'] : $spec;
+                                    $unit = $isNewFormat ? ($spec['unit'] ?? '') : '';
+                                @endphp
                                 <div @class([
                                     'flex items-center justify-between px-4 py-3 text-sm',
                                     'bg-surface-sunken' => $loop->even,
                                     'bg-surface-raised' => $loop->odd,
                                 ])>
-                                    <span class="text-text-secondary font-medium">{{ ucfirst(str_replace('_', ' ', $key)) }}</span>
-                                    <span class="text-text-primary font-semibold">{{ $value }}</span>
+                                    <span class="text-text-secondary font-medium">{{ $label }}</span>
+                                    <span class="text-text-primary font-semibold">{{ $value }}{{ $unit ? " {$unit}" : '' }}</span>
                                 </div>
                             @endforeach
                         </div>

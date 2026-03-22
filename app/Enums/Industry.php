@@ -104,6 +104,31 @@ enum Industry: string
         };
     }
 
+    /**
+     * Default spec template for rental items in this industry.
+     *
+     * @return array<int, array{label: string, unit: string}>
+     */
+    public function defaultSpecDefinitions(): array
+    {
+        return match ($this) {
+            self::EquipmentRental => [
+                ['label' => 'Moc', 'unit' => 'W'],
+                ['label' => 'Waga', 'unit' => 'kg'],
+                ['label' => 'Napięcie', 'unit' => 'V'],
+                ['label' => 'Prędkość obrotowa', 'unit' => 'obr/min'],
+                ['label' => 'Średnica tarczy', 'unit' => 'mm'],
+                ['label' => 'Pojemność', 'unit' => 'l'],
+                ['label' => 'Zasięg', 'unit' => 'm'],
+                ['label' => 'Głębokość cięcia', 'unit' => 'mm'],
+                ['label' => 'Poziom hałasu', 'unit' => 'dB'],
+                ['label' => 'Długość kabla', 'unit' => 'm'],
+            ],
+            self::AutoDetailing => [],
+            self::GeneralServices => [],
+        };
+    }
+
     public function seederClass(): string
     {
         return match ($this) {
