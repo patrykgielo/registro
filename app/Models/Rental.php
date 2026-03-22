@@ -142,7 +142,7 @@ class Rental extends Model
     // Accessors
     public function getDurationDaysAttribute(): int
     {
-        return $this->start_date->diffInDays($this->end_date) + 1;
+        return (int) $this->start_date->diffInDays($this->end_date) + 1;
     }
 
     public function getIsOverdueAttribute(): bool

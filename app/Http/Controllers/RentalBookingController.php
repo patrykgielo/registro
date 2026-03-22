@@ -138,7 +138,7 @@ class RentalBookingController extends Controller
 
         $startDate = Carbon::parse($step1['start_date']);
         $endDate = Carbon::parse($step1['end_date']);
-        $durationDays = $startDate->diffInDays($endDate) + 1;
+        $durationDays = (int) $startDate->diffInDays($endDate) + 1;
 
         return view('rental.step3', [
             'service' => $service,
