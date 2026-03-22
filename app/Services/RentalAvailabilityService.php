@@ -91,7 +91,7 @@ class RentalAvailabilityService
                 );
             }
 
-            $durationDays = $start->diffInDays($end) + 1;
+            $durationDays = (int) $start->diffInDays($end) + 1;
             $pricing = $this->calculatePricing($service, $durationDays, $quantity);
 
             return Rental::create([
