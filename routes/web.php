@@ -12,6 +12,7 @@ use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionController;
+use App\Http\Controllers\RentalBookingController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\UserAddressController;
 use App\Http\Controllers\UserVehicleController;
@@ -92,6 +93,39 @@ Route::get('/strona/{slug}', function (string $slug) {
 Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
     Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('service.show');
+});
+
+// Rental Booking routes (guest-accessible — contact info collected in step 2)
+Route::middleware([ResolveTenant::class])->prefix('wypozyczalnia')->name('rental.')->group(function () {
+    Route::get('/{service:slug}', [RentalBookingController::class, 'show'])
+        ->name('step1');
+    Route::post('/{service:slug}', [RentalBookingController::class, 'storeStep1'])
+        ->middleware('throttle:10,1')
+        ->name('step1.store');
+
+    Route::get('/{service:slug}/kontakt', [RentalBookingController::class, 'showStep2'])
+        ->name('step2');
+    Route::post('/{service:slug}/kontakt', [RentalBookingController::class, 'storeStep2'])
+        ->middleware('throttle:10,1')
+        ->name('step2.store');
+
+    Route::get('/{service:slug}/podsumowanie', [RentalBookingController::class, 'showStep3'])
+        ->name('step3');
+
+    Route::post('/{service:slug}/zatwierdz', [RentalBookingController::class, 'confirm'])
+        ->middleware('throttle:5,1')
+        ->name('confirm');
+
+    Route::get('/{service:slug}/potwierdzenie', [RentalBookingController::class, 'showConfirmation'])
+        ->name('confirmation');
+});
+
+// Rental availability AJAX endpoints (read-only, higher rate limit)
+Route::middleware([ResolveTenant::class, 'throttle:60,1'])->name('rental.')->group(function () {
+    Route::get('/api/rental/{service:slug}/dostepnosc', [RentalBookingController::class, 'checkAvailability'])
+        ->name('availability');
+    Route::get('/api/rental/{service:slug}/kalendarz', [RentalBookingController::class, 'monthlyAvailability'])
+        ->name('calendar');
 });
 
 // Authentication routes (register disabled here, handled manually below with middleware)
