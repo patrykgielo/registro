@@ -244,12 +244,10 @@ class ServiceResource extends BaseResource
                             ->schema([
                                 Forms\Components\TextInput::make('label')
                                     ->label('Parametr')
-                                    ->required()
                                     ->placeholder('np. Moc')
                                     ->maxLength(100),
                                 Forms\Components\TextInput::make('value')
                                     ->label('Wartość')
-                                    ->required()
                                     ->placeholder('np. 800')
                                     ->maxLength(100),
                                 Forms\Components\TextInput::make('unit')
