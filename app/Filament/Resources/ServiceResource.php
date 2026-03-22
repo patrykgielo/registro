@@ -192,14 +192,18 @@ class ServiceResource extends BaseResource
                             ->label('Cena po przekroczeniu progu')
                             ->numeric()
                             ->prefix('PLN')
-                            ->helperText('Niższa stawka dzienna po przekroczeniu progu dni'),
+                            ->requiredWith('price_threshold_days')
+                            ->lte('price_per_day')
+                            ->helperText('Niższa stawka dzienna po przekroczeniu progu dni (wymagane razem z progiem)'),
 
                         Forms\Components\TextInput::make('price_threshold_days')
                             ->label('Próg dni')
                             ->numeric()
                             ->minValue(1)
+                            ->maxValue(365)
                             ->suffix('dni')
-                            ->helperText('Po ilu dniach obowiązuje niższa stawka'),
+                            ->requiredWith('price_per_day_long')
+                            ->helperText('Po ilu dniach obowiązuje niższa stawka (wymagane razem z ceną)'),
 
                         Forms\Components\TextInput::make('deposit_amount')
                             ->label('Kaucja')

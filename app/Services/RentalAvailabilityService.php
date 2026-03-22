@@ -91,6 +91,9 @@ class RentalAvailabilityService
                 );
             }
 
+            $durationDays = $start->diffInDays($end) + 1;
+            $pricing = $this->calculatePricing($service, $durationDays, $quantity);
+
             return Rental::create([
                 'organization_id' => TenantFeature::currentTenant()?->id ?? $service->organization_id,
                 'service_id' => $service->id,
@@ -100,16 +103,17 @@ class RentalAvailabilityService
                 'end_date' => $end,
                 'status' => RentalStatus::Held,
                 'held_until' => now()->addMinutes(self::HOLD_TTL_MINUTES),
-                'pricing_unit' => 'daily',
-                'unit_price_at_booking' => $service->price_per_day,
-                'total_price' => 0, // Calculated on confirm
+                'pricing_unit' => $pricing['unit'],
+                'unit_price_at_booking' => $pricing['unit_price'],
+                'total_price' => $pricing['total'],
+                'deposit_amount' => $service->deposit_amount,
             ]);
         });
     }
 
     /**
-     * Confirm a held rental — sets contact info, calculates final price,
-     * transitions from held → pending.
+     * Confirm a held rental — sets contact info, transitions held → pending.
+     * Pricing is already snapshotted at hold creation time.
      */
     public function confirmHold(Rental $rental, array $contactData): Rental
     {
@@ -122,17 +126,9 @@ class RentalAvailabilityService
             throw new RentalUnavailableException('Twoja rezerwacja wygasła. Spróbuj ponownie.');
         }
 
-        $service = $rental->service;
-        $durationDays = $rental->start_date->diffInDays($rental->end_date) + 1;
-        $pricing = $this->calculatePricing($service, $durationDays, $rental->quantity);
-
         $rental->update(array_merge($contactData, [
             'status' => RentalStatus::Pending,
             'held_until' => null,
-            'pricing_unit' => $pricing['unit'],
-            'unit_price_at_booking' => $pricing['unit_price'],
-            'total_price' => $pricing['total'],
-            'deposit_amount' => $service->deposit_amount,
         ]));
 
         return $rental->fresh();
@@ -141,7 +137,7 @@ class RentalAvailabilityService
     /**
      * Calculate pricing based on duration and service rates.
      */
-    private function calculatePricing(Service $service, int $durationDays, int $quantity): array
+    public function calculatePricing(Service $service, int $durationDays, int $quantity): array
     {
         $unitPrice = (float) $service->price_per_day;
         $unit = 'daily';

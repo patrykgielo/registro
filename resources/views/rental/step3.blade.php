@@ -5,11 +5,17 @@
     $endDate = \Carbon\Carbon::parse($step1['end_date']);
     $quantity = (int) $step1['quantity'];
 
-    $unitPrice = (float) $service->price_per_day;
-    if ($service->price_per_day_long && $service->price_threshold_days && $durationDays >= $service->price_threshold_days) {
-        $unitPrice = (float) $service->price_per_day_long;
-    }
-    $totalPrice = $unitPrice * $durationDays * $quantity;
+    // Pricing comes from Rental snapshot (set at hold creation)
+    $unitPrice = (float) $rental->unit_price_at_booking;
+    $totalPrice = (float) $rental->total_price;
+    $pricingUnit = $rental->pricing_unit;
+    $depositAmount = (float) ($rental->deposit_amount ?? 0);
+
+    $rateLabel = match ($pricingUnit) {
+        'weekly' => 'zł/tydzień',
+        'hourly' => 'zł/godz',
+        default => 'zł/dzień',
+    };
 @endphp
 
 @section('content')
@@ -74,7 +80,7 @@
                 </div>
                 <div class="flex justify-between">
                     <span class="text-text-secondary">Stawka</span>
-                    <span class="font-medium text-text-primary">{{ number_format($unitPrice, 2, ',', ' ') }} zł/dzień</span>
+                    <span class="font-medium text-text-primary">{{ number_format($unitPrice, 2, ',', ' ') }} {{ $rateLabel }}</span>
                 </div>
 
                 <x-ui.separator />
@@ -84,14 +90,14 @@
                     <span class="font-bold text-text-primary">{{ number_format($totalPrice, 2, ',', ' ') }} zł</span>
                 </div>
 
-                @if($service->deposit_amount)
+                @if($depositAmount > 0)
                     <div class="flex justify-between">
                         <span class="text-text-secondary">Kaucja zwrotna</span>
-                        <span class="font-medium text-text-primary">{{ number_format($service->deposit_amount, 2, ',', ' ') }} zł</span>
+                        <span class="font-medium text-text-primary">{{ number_format($depositAmount, 2, ',', ' ') }} zł</span>
                     </div>
                     <div class="flex justify-between text-base pt-2 border-t border-border">
                         <span class="font-semibold text-text-primary">Łącznie przy odbiorze</span>
-                        <span class="font-bold text-brand">{{ number_format($totalPrice + (float) $service->deposit_amount, 2, ',', ' ') }} zł</span>
+                        <span class="font-bold text-brand">{{ number_format($totalPrice + $depositAmount, 2, ',', ' ') }} zł</span>
                     </div>
                 @endif
             </div>
