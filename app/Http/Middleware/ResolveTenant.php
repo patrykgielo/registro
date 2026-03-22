@@ -61,11 +61,9 @@ class ResolveTenant
 
         $request->attributes->set('tenant', $tenant);
 
-        // Force URL generator to use tenant subdomain so route() generates correct URLs
-        $scheme = $request->isSecure() ? 'https' : 'http';
-        $port = $request->getPort();
-        $portSuffix = (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) ? ":{$port}" : '';
-        URL::forceRootUrl("{$scheme}://{$slug}.{$baseDomain}{$portSuffix}");
+        // Force route() to generate URLs with tenant subdomain, not APP_URL
+        // This ensures form actions, redirects, and links point to correct tenant domain
+        URL::forceRootUrl($request->getSchemeAndHttpHost());
 
         return $next($request);
     }
