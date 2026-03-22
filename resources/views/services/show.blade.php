@@ -88,17 +88,26 @@
                 @endif
 
                 {{-- Technical Specifications --}}
-                @if(!empty($specs))
+                @php
+                    // Filter out empty repeater entries (null label/value)
+                    $filteredSpecs = collect($specs)->filter(function ($spec, $index) {
+                        if (is_array($spec)) {
+                            return !empty($spec['label']) || !empty($spec['value']);
+                        }
+                        return !empty($spec); // legacy format
+                    })->all();
+                @endphp
+                @if(!empty($filteredSpecs))
                     <div>
                         <h2 class="text-lg font-semibold text-text-primary mb-4">Specyfikacja techniczna</h2>
                         <div class="rounded-xl border border-border overflow-hidden">
-                            @foreach($specs as $index => $spec)
+                            @foreach($filteredSpecs as $index => $spec)
                                 @php
                                     // Support both new format [{label, value, unit}] and legacy {key: value}
                                     $isNewFormat = is_array($spec) && isset($spec['label']);
-                                    $label = $isNewFormat ? $spec['label'] : ucfirst(str_replace('_', ' ', $index));
-                                    $value = $isNewFormat ? $spec['value'] : $spec;
-                                    $unit = $isNewFormat ? ($spec['unit'] ?? '') : '';
+                                    $label = $isNewFormat ? (string) ($spec['label'] ?? '') : ucfirst(str_replace('_', ' ', $index));
+                                    $value = $isNewFormat ? (string) ($spec['value'] ?? '') : (string) $spec;
+                                    $unit = $isNewFormat ? (string) ($spec['unit'] ?? '') : '';
                                 @endphp
                                 <div @class([
                                     'flex items-center justify-between px-4 py-3 text-sm',
