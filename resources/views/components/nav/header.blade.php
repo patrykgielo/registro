@@ -43,7 +43,7 @@
                                 <x-heroicon-m-user class="h-4 w-4" /> Moje konto
                             </a>
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
-                                <x-heroicon-m-calendar class="h-4 w-4" /> Moje wizyty
+                                <x-heroicon-m-calendar class="h-4 w-4" /> Moje rezerwacje
                             </a>
                             @if(Auth::user()->hasAnyRole(['admin', 'super-admin', 'staff']))
                                 <a href="/admin" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
@@ -152,7 +152,7 @@
                                 <x-heroicon-m-user class="h-5 w-5" /> Moje konto
                             </a>
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                <x-heroicon-m-calendar class="h-5 w-5" /> Moje wizyty
+                                <x-heroicon-m-calendar class="h-5 w-5" /> Moje rezerwacje
                             </a>
                         @else
                             <x-ui.separator class="my-4" />
