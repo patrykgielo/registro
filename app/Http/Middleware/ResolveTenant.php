@@ -61,8 +61,10 @@ class ResolveTenant
 
         $request->attributes->set('tenant', $tenant);
 
-        // Force route() to generate URLs with tenant subdomain, not APP_URL
-        // This ensures form actions, redirects, and links point to correct tenant domain
+        // Force route() to generate URLs with tenant subdomain instead of APP_URL.
+        // Without this, form actions and redirects point to root domain → 404.
+        // Note: In dev mode (npm run dev), Vite HMR won't work on subdomains
+        // due to SSL cert mismatch. Use `npm run build` for subdomain testing.
         URL::forceRootUrl($request->getSchemeAndHttpHost());
 
         return $next($request);
