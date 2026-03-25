@@ -23,16 +23,37 @@ Testy przeszły bo TestCase seeduje role, ale fresh DB nie ma ról. Agent by to 
 
 ## Kiedy używać którego agenta
 
+### Implementation (piszą kod)
+
 | Zadanie | Agent |
 |---------|-------|
-| Laravel/PHP, architektura, refactoring | `laravel-senior-architect` |
-| Frontend, Blade, Tailwind, UI/UX | `frontend-ui-architect` |
-| Komponenty DaisyUI/iOS | `daisyui-ios-component-architect` |
-| **Security audit, OWASP, GDPR, pełny audyt** | `agent-security-audit-specialist` ⭐ |
+| Laravel/PHP, architektura, Filament (logic) | `laravel-senior-architect` |
+| Frontend, Blade, Tailwind, Alpine, Filament (UI) | `frontend-ui-architect` |
+| Testy, PHPUnit, factories, TDD | `test-engineer` |
+| CI/CD, Docker, deployment, .env | `devops-engineer` |
+
+### Quality Gates (read-only, sprawdzają)
+
+| Zadanie | Agent |
+|---------|-------|
+| **Post-implementation review** | `code-reviewer` (read-only, OBOWIĄZKOWY po implementacji) |
+| Security audit, OWASP, GDPR | `agent-security-audit-specialist` |
+| Frontend performance, a11y | `frontend-quality-auditor` |
+| Design token compliance | `design-system-guardian` |
+
+### Research & Support
+
+| Zadanie | Agent |
+|---------|-------|
 | Research, dokumentacja, nowa wiedza | `web-research-specialist` + firecrawl / browser-use |
-| ClickUp, task management | `clickup-task-manager` |
 | Koordynacja wielu agentów | `project-coordinator` |
-| Design tokens, spójność UI | `design-system-guardian` |
+| Content marketing (PL) | `content-strategist` |
+
+### Business Tools
+
+| Zadanie | Agent |
+|---------|-------|
+| ClickUp, task management | `clickup-task-manager` |
 | Wyceny komercyjne | `commercial-estimate-specialist` |
 
 ### Security

@@ -236,6 +236,157 @@
                             </div>
                         @endif
                     </x-ui.card>
+
+                    {{-- ─── Availability Calendar ─────────────────────────── --}}
+                    @php
+                        $calendarId = 'cal-heading-' . $service->id;
+                        $calApiUrl  = route('rental.calendar', $service);
+                        $todayStr   = now()->toDateString();
+                        $curYear    = (int) now()->year;
+                        $curMonth   = (int) now()->month;
+                    @endphp
+
+                    <div
+                        x-data="availabilityCalendar({
+                            apiUrl:       '{{ $calApiUrl }}',
+                            today:        '{{ $todayStr }}',
+                            currentYear:  {{ $curYear }},
+                            currentMonth: {{ $curMonth }},
+                        })"
+                        x-init="init()"
+                        class="rounded-xl border border-border bg-surface-raised shadow-xs overflow-hidden"
+                        role="region"
+                        aria-label="Kalendarz dostępności"
+                    >
+                        {{-- Header: month nav --}}
+                        <div class="flex items-center justify-between px-4 pt-4 pb-3">
+                            <div role="group" aria-label="Nawigacja kalendarza" class="flex items-center gap-1">
+                                <button
+                                    @click="prevMonth()"
+                                    :disabled="isPrevDisabled"
+                                    :aria-disabled="isPrevDisabled"
+                                    aria-label="Poprzedni miesiąc"
+                                    class="flex items-center justify-center w-9 h-9 rounded-lg text-text-muted
+                                           hover:text-text-primary hover:bg-surface-sunken
+                                           disabled:opacity-30 disabled:cursor-not-allowed
+                                           transition-colors duration-150 ease-out
+                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                                >
+                                    <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 12L6 8l4-4"/></svg>
+                                </button>
+
+                                <h3
+                                    :id="'{{ $calendarId }}'"
+                                    x-text="headingLabel"
+                                    aria-live="polite"
+                                    aria-atomic="true"
+                                    class="w-36 text-center text-sm font-semibold text-text-primary select-none"
+                                ></h3>
+
+                                <button
+                                    @click="nextMonth()"
+                                    aria-label="Następny miesiąc"
+                                    class="flex items-center justify-center w-9 h-9 rounded-lg text-text-muted
+                                           hover:text-text-primary hover:bg-surface-sunken
+                                           transition-colors duration-150 ease-out
+                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                                >
+                                    <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="px-4 pb-4">
+
+                            {{-- Day-of-week headers (Mon–Sun, Polish, Monday-first) --}}
+                            <div class="grid grid-cols-7 mb-1" role="row" aria-hidden="true">
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Poniedziałek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Pn</abbr>
+                                </div>
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Wtorek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Wt</abbr>
+                                </div>
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Środa" class="text-xs uppercase tracking-wide text-text-muted no-underline">Śr</abbr>
+                                </div>
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Czwartek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Cz</abbr>
+                                </div>
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Piątek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Pt</abbr>
+                                </div>
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Sobota" class="text-xs uppercase tracking-wide text-text-muted no-underline">Sb</abbr>
+                                </div>
+                                <div class="flex items-center justify-center h-7">
+                                    <abbr title="Niedziela" class="text-xs uppercase tracking-wide text-text-muted no-underline">Nd</abbr>
+                                </div>
+                            </div>
+
+                            {{-- Calendar grid — skeleton while loading --}}
+                            <div
+                                x-show="loading"
+                                role="status"
+                                :aria-busy="loading"
+                                aria-label="Ładowanie kalendarza"
+                                class="grid grid-cols-7 gap-1"
+                            >
+                                <template x-for="n in 42" :key="n">
+                                    <div class="aspect-square rounded-lg bg-surface-sunken animate-pulse"></div>
+                                </template>
+                            </div>
+
+                            {{-- Calendar grid — populated cells --}}
+                            <div
+                                x-show="!loading"
+                                x-transition:enter="transition ease-out duration-200"
+                                x-transition:enter-start="opacity-0"
+                                x-transition:enter-end="opacity-100"
+                                role="grid"
+                                :aria-labelledby="'{{ $calendarId }}'"
+                                class="grid grid-cols-7 gap-1"
+                            >
+                                <template x-for="(cell, idx) in dayCells" :key="idx">
+                                    <div
+                                        :role="cell.day ? 'gridcell' : 'presentation'"
+                                        :aria-label="cell.ariaLabel"
+                                        :aria-disabled="cell.ariaDisabled"
+                                        :aria-current="cell.ariaCurrent"
+                                        :class="cell.classes"
+                                        class="relative aspect-square flex items-center justify-center rounded-lg text-sm font-medium select-none"
+                                    >
+                                        <span x-text="cell.day" :class="cell.dayClasses"></span>
+
+                                        {{-- Partial: remaining units badge --}}
+                                        <template x-if="cell.showBadge">
+                                            <span
+                                                x-text="cell.availableQty"
+                                                class="absolute bottom-0.5 right-0.5 text-[9px] font-bold leading-none text-warning"
+                                                aria-hidden="true"
+                                            ></span>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+
+                            {{-- Legend --}}
+                            <div class="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border">
+                                <span class="flex items-center gap-1.5 text-xs text-text-muted">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-success/30 shrink-0" aria-hidden="true"></span>
+                                    Dostępne
+                                </span>
+                                <span class="flex items-center gap-1.5 text-xs text-text-muted">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-warning/30 shrink-0" aria-hidden="true"></span>
+                                    Ograniczone
+                                </span>
+                                <span class="flex items-center gap-1.5 text-xs text-text-muted">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-surface-sunken border border-border shrink-0" aria-hidden="true"></span>
+                                    Niedostępne
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {{-- ─── /Availability Calendar ─────────────────────────── --}}
                 </div>
             </div>
         </div>
@@ -389,3 +540,149 @@
 @endif
 
 @endsection
+
+@if($isRental)
+@push('scripts')
+<script>
+function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
+    return {
+        // ── State ─────────────────────────────────────────────────
+        year:         currentYear,
+        month:        currentMonth,   // 1-indexed
+        today:        today,          // "YYYY-MM-DD"
+        loading:      true,
+        data:         {},             // { "YYYY-MM-DD": { status, available_quantity } }
+
+        // ── Computed: heading label ────────────────────────────────
+        get headingLabel() {
+            const d = new Date(this.year, this.month - 1, 1);
+            const raw = d.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+            // Capitalise first letter (toLocaleDateString returns lowercase in pl)
+            return raw.charAt(0).toUpperCase() + raw.slice(1);
+        },
+
+        // ── Computed: disable prev nav when already at current month ─
+        get isPrevDisabled() {
+            const [ty, tm] = this.today.split('-').map(Number);
+            return this.year < ty || (this.year === ty && this.month <= tm);
+        },
+
+        // ── Computed: day cells for the grid ──────────────────────
+        get dayCells() {
+            const daysInMonth  = new Date(this.year, this.month, 0).getDate();
+            // Monday-first: 0=Mon … 6=Sun
+            const firstDayRaw  = new Date(this.year, this.month - 1, 1).getDay();
+            const leadingBlanks = (firstDayRaw + 6) % 7; // 0=Mon offset
+
+            const cells = [];
+
+            // Leading blank cells
+            for (let i = 0; i < leadingBlanks; i++) {
+                cells.push({ day: null, classes: '', dayClasses: '', ariaLabel: null, ariaDisabled: null, ariaCurrent: null, showBadge: false, availableQty: null });
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const mm   = String(this.month).padStart(2, '0');
+                const dd   = String(d).padStart(2, '0');
+                const key  = `${this.year}-${mm}-${dd}`;
+                const info = this.data[key] ?? null;
+
+                const isToday = key === this.today;
+                const isPast  = key < this.today;
+                const status  = info?.status ?? (isPast ? 'unavailable' : 'available');
+                const qty     = info?.available_quantity ?? null;
+
+                // Build classes
+                let cellCls = 'cursor-default ';
+                let dayTextCls = '';
+
+                if (isPast) {
+                    cellCls    += 'opacity-30 ';
+                    dayTextCls += 'line-through ';
+                }
+
+                if (status === 'available' && !isPast) {
+                    cellCls += 'bg-success/10 text-success ';
+                } else if (status === 'partial' && !isPast) {
+                    cellCls += 'bg-warning/10 text-warning ';
+                } else {
+                    // unavailable or past
+                    cellCls += 'bg-surface-sunken text-text-muted cursor-not-allowed ';
+                }
+
+                // Today ring is additive — wraps around the state colour
+                if (isToday) {
+                    cellCls += 'ring-1 ring-brand ring-offset-1 ';
+                }
+
+                // Aria
+                const polishMonths = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
+                const statusLabel = status === 'available' ? 'dostępny'
+                    : status === 'partial' ? `ograniczona dostępność, ${qty} szt.`
+                    : 'niedostępny';
+                const ariaLabel = `${d} ${polishMonths[this.month - 1]} ${this.year}, ${statusLabel}`;
+
+                cells.push({
+                    day:          d,
+                    classes:      cellCls.trim(),
+                    dayClasses:   dayTextCls.trim(),
+                    ariaLabel,
+                    ariaDisabled: status === 'unavailable' ? 'true' : null,
+                    ariaCurrent:  isToday ? 'date' : null,
+                    showBadge:    status === 'partial' && qty !== null && !isPast,
+                    availableQty: qty,
+                });
+            }
+
+            // Trailing blanks to complete last row (always render full 6-row grid for stable height)
+            const totalCells = 42;
+            while (cells.length < totalCells) {
+                cells.push({ day: null, classes: '', dayClasses: '', ariaLabel: null, ariaDisabled: null, ariaCurrent: null, showBadge: false, availableQty: null });
+            }
+
+            return cells;
+        },
+
+        // ── Lifecycle ─────────────────────────────────────────────
+        init() {
+            this.fetchMonth();
+        },
+
+        // ── Navigation ────────────────────────────────────────────
+        prevMonth() {
+            if (this.isPrevDisabled) return;
+            if (this.month === 1) { this.year--; this.month = 12; }
+            else                  { this.month--; }
+            this.fetchMonth();
+        },
+
+        nextMonth() {
+            if (this.month === 12) { this.year++; this.month = 1; }
+            else                   { this.month++; }
+            this.fetchMonth();
+        },
+
+        // ── Data fetch ────────────────────────────────────────────
+        async fetchMonth() {
+            this.loading = true;
+            const url = `${apiUrl}?year=${this.year}&month=${this.month}`;
+            try {
+                const res = await fetch(url, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const raw = await res.json();
+                // Normalise: handle both flat { "YYYY-MM-DD": {...} } response shapes
+                this.data = raw;
+            } catch (e) {
+                // Graceful degradation: leave data empty, cells render as default
+                this.data = {};
+            } finally {
+                this.loading = false;
+            }
+        },
+    };
+}
+</script>
+@endpush
+@endif
