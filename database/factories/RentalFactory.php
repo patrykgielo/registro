@@ -40,6 +40,18 @@ class RentalFactory extends Factory
         ];
     }
 
+    public function held(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => RentalStatus::Held,
+            'held_until' => now()->addMinutes(15),
+            'first_name' => null,
+            'last_name' => null,
+            'email' => null,
+            'phone' => null,
+        ]);
+    }
+
     public function confirmed(): static
     {
         return $this->state(fn (array $attributes) => [

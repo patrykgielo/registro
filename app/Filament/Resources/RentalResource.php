@@ -4,11 +4,14 @@ namespace App\Filament\Resources;
 
 use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
+use App\Exceptions\RentalUnavailableException;
 use App\Filament\Resources\RentalResource\Pages;
 use App\Models\Rental;
+use App\Services\RentalAvailabilityService;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -266,14 +269,45 @@ class RentalResource extends BaseResource
                     ->relationship('service', 'name'),
             ])
             ->recordActions([
-                Actions\Action::make('confirm')
+                Actions\Action::make('confirmHeld')
+                    ->label('Zatwierdź rezerwację')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Zatwierdzić rezerwację?')
+                    ->modalDescription(fn (Rental $record): string => $record->held_until
+                        ? 'Hold wygasa: '.$record->held_until->format('d.m.Y H:i').'. Zatwierdzenie przeniesie rezerwację do statusu Potwierdzone.'
+                        : 'Zatwierdzenie przeniesie rezerwację do statusu Potwierdzone.')
+                    ->action(function (Rental $record): void {
+                        $service = resolve(RentalAvailabilityService::class);
+                        try {
+                            $service->confirmHold($record, [
+                                'first_name' => $record->first_name,
+                                'last_name' => $record->last_name,
+                                'email' => $record->email,
+                                'phone' => $record->phone,
+                            ]);
+                            $record->refresh();
+                            $record->update(['status' => RentalStatus::Confirmed]);
+                        } catch (RentalUnavailableException $e) {
+                            Notification::make()
+                                ->title('Nie można zatwierdzić')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->visible(fn (Rental $record): bool => $record->status === RentalStatus::Held),
+
+                Actions\Action::make('confirmPending')
                     ->label('Potwierdź')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading('Potwierdzić wypożyczenie?')
+                    ->modalDescription('Rezerwacja zostanie oznaczona jako Potwierdzona.')
                     ->action(fn (Rental $record) => $record->update(['status' => RentalStatus::Confirmed]))
-                    ->visible(fn (Rental $record): bool => in_array($record->status, [RentalStatus::Held, RentalStatus::Pending])),
+                    ->visible(fn (Rental $record): bool => $record->status === RentalStatus::Pending),
 
                 Actions\Action::make('markPickedUp')
                     ->label('Odebrane')

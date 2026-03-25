@@ -236,6 +236,110 @@
                             </div>
                         @endif
                     </x-ui.card>
+
+                    {{-- Availability Calendar (rental only, requires stock) --}}
+                    @if($service->quantity_total && $service->quantity_total > 0)
+                        <x-ui.card class="mt-4"
+                            x-data="rentalCalendar({
+                                apiUrl: '{{ route('rental.calendar', $service) }}',
+                                today: '{{ now()->format('Y-m-d') }}',
+                                currentYear: {{ now()->year }},
+                                currentMonth: {{ now()->month }}
+                            })"
+                            x-init="init()"
+                        >
+                            {{-- Calendar header --}}
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider">
+                                    Dostępność
+                                </h3>
+                                <div class="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        @click="prevMonth()"
+                                        :disabled="isAtMinMonth"
+                                        :class="isAtMinMonth ? 'opacity-30 cursor-not-allowed' : 'hover:bg-surface-sunken'"
+                                        class="flex items-center justify-center w-8 h-8 rounded-lg text-text-secondary transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-1"
+                                        aria-label="Poprzedni miesiąc"
+                                    >
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                                        </svg>
+                                    </button>
+                                    <span
+                                        class="text-sm font-medium text-text-primary min-w-[7rem] text-center tabular-nums"
+                                        aria-live="polite"
+                                        x-text="monthLabel"
+                                    ></span>
+                                    <button
+                                        type="button"
+                                        @click="nextMonth()"
+                                        class="flex items-center justify-center w-8 h-8 rounded-lg text-text-secondary hover:bg-surface-sunken transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-1"
+                                        aria-label="Następny miesiąc"
+                                    >
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {{-- Day-of-week headers --}}
+                            <div class="grid grid-cols-7 mb-1" role="row" aria-label="Dni tygodnia">
+                                <template x-for="day in ['Pn','Wt','Śr','Cz','Pt','So','Nd']" :key="day">
+                                    <div class="text-center text-xs font-medium text-text-muted py-1" x-text="day" role="columnheader"></div>
+                                </template>
+                            </div>
+
+                            {{-- Loading skeleton --}}
+                            <div x-show="loading" class="grid grid-cols-7 gap-0.5" aria-label="Ładowanie kalendarza" aria-busy="true">
+                                <template x-for="n in 35" :key="n">
+                                    <div class="aspect-square rounded-md bg-surface-sunken animate-pulse"></div>
+                                </template>
+                            </div>
+
+                            {{-- Calendar grid --}}
+                            <div
+                                x-show="!loading"
+                                class="grid grid-cols-7 gap-0.5"
+                                role="grid"
+                                :aria-label="'Dostępność w ' + monthLabel"
+                            >
+                                {{-- Leading empty cells for first week offset --}}
+                                <template x-for="n in firstDayOffset" :key="'empty-' + n">
+                                    <div role="gridcell" aria-hidden="true"></div>
+                                </template>
+
+                                {{-- Day cells --}}
+                                <template x-for="cell in dayCells" :key="cell.date">
+                                    <div
+                                        role="gridcell"
+                                        :aria-label="cell.ariaLabel"
+                                        :class="cell.classes"
+                                        class="relative flex items-center justify-center aspect-square rounded-md text-xs font-medium select-none"
+                                    >
+                                        <span :class="cell.past ? 'line-through' : ''" x-text="cell.day"></span>
+                                    </div>
+                                </template>
+                            </div>
+
+                            {{-- Legend --}}
+                            <div class="flex items-center gap-3 mt-4 pt-3 border-t border-border flex-wrap">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="h-3 w-3 rounded-sm bg-success/20 border border-success/40 shrink-0"></span>
+                                    <span class="text-xs text-text-muted">Dostępny</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="h-3 w-3 rounded-sm bg-warning/20 border border-warning/40 shrink-0"></span>
+                                    <span class="text-xs text-text-muted">Częściowy</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="h-3 w-3 rounded-sm bg-error/20 border border-error/40 shrink-0"></span>
+                                    <span class="text-xs text-text-muted">Zajęty</span>
+                                </div>
+                            </div>
+                        </x-ui.card>
+                    @endif
                 </div>
             </div>
         </div>
@@ -389,3 +493,136 @@
 @endif
 
 @endsection
+
+@push('scripts')
+<script>
+function rentalCalendar({ apiUrl, today, currentYear, currentMonth }) {
+    return {
+        apiUrl,
+        today,
+        year: currentYear,
+        month: currentMonth,
+        minYear: currentYear,
+        minMonth: currentMonth,
+        loading: false,
+        availability: {},
+
+        get isAtMinMonth() {
+            return this.year === this.minYear && this.month === this.minMonth;
+        },
+
+        get monthLabel() {
+            const date = new Date(this.year, this.month - 1, 1);
+            return date.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+        },
+
+        get daysInMonth() {
+            return new Date(this.year, this.month, 0).getDate();
+        },
+
+        // ISO week starts Monday (1=Mon ... 7=Sun)
+        // We want col offset: Mon=0, Tue=1 ... Sun=6
+        get firstDayOffset() {
+            const dow = new Date(this.year, this.month - 1, 1).getDay();
+            // JS: 0=Sun, 1=Mon ... 6=Sat → convert to Mon-based
+            return dow === 0 ? 6 : dow - 1;
+        },
+
+        get dayCells() {
+            const cells = [];
+            const todayStr = this.today;
+            const todayDate = new Date(todayStr);
+
+            for (let d = 1; d <= this.daysInMonth; d++) {
+                const mm = String(this.month).padStart(2, '0');
+                const dd = String(d).padStart(2, '0');
+                const dateStr = `${this.year}-${mm}-${dd}`;
+                const cellDate = new Date(this.year, this.month - 1, d);
+                const isPast = cellDate < todayDate;
+                const isToday = dateStr === todayStr;
+                const info = this.availability[dateStr];
+                const status = info ? info.status : null;
+
+                let classes = [];
+                let ariaLabel = `${d} ${this.monthLabel}`;
+
+                if (isPast) {
+                    classes.push('text-text-muted bg-surface opacity-50 cursor-default');
+                    ariaLabel += ' — miniony';
+                } else if (!status) {
+                    classes.push('text-text-muted bg-surface-sunken cursor-default');
+                } else if (status === 'available') {
+                    classes.push('bg-success/15 text-success border border-success/30 cursor-default');
+                    ariaLabel += ' — dostępny';
+                } else if (status === 'partial') {
+                    classes.push('bg-warning/15 text-warning border border-warning/30 cursor-default');
+                    ariaLabel += ` — częściowo dostępny (${info.available_quantity} szt.)`;
+                } else if (status === 'unavailable') {
+                    classes.push('bg-error/10 text-error/70 border border-error/20 cursor-default');
+                    ariaLabel += ' — zajęty';
+                }
+
+                if (isToday) {
+                    classes.push('ring-2 ring-brand ring-offset-1');
+                }
+
+                cells.push({
+                    day: d,
+                    date: dateStr,
+                    past: isPast,
+                    status,
+                    classes: classes.join(' '),
+                    ariaLabel,
+                });
+            }
+            return cells;
+        },
+
+        async fetchMonth() {
+            this.loading = true;
+            this.availability = {};
+            try {
+                const url = new URL(this.apiUrl, window.location.origin);
+                url.searchParams.set('year', this.year);
+                url.searchParams.set('month', this.month);
+                const res = await fetch(url.toString(), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                if (res.ok) {
+                    this.availability = await res.json();
+                }
+            } catch (_) {
+                // Silently fail — calendar is non-critical UI
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        prevMonth() {
+            if (this.isAtMinMonth) return;
+            if (this.month === 1) {
+                this.year -= 1;
+                this.month = 12;
+            } else {
+                this.month -= 1;
+            }
+            this.fetchMonth();
+        },
+
+        nextMonth() {
+            if (this.month === 12) {
+                this.year += 1;
+                this.month = 1;
+            } else {
+                this.month += 1;
+            }
+            this.fetchMonth();
+        },
+
+        init() {
+            this.fetchMonth();
+        },
+    };
+}
+</script>
+@endpush
