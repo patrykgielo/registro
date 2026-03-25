@@ -87,7 +87,8 @@ Gdy coś nie działa (staging vs production):
 | Nowy kod / feature | `Explore` → `laravel-senior-architect` | Sprawdzi istniejące wzorce, zależności |
 | Bug fix | `Explore` (root cause) → fix | Nie zgaduj, zbadaj |
 | Refactoring | `Explore` → `Plan` | Znajdzie użycia, wpływ zmian |
-| Frontend/UI | `Explore` → `frontend-ui-architect` | Sprawdzi komponenty, a11y |
+| Frontend/UI (nowy komponent) | `web-research-specialist` → `frontend-ui-architect` | Research wzorców PRZED implementacją! |
+| Frontend/UI (modyfikacja) | `Explore` → `frontend-ui-architect` | Sprawdzi istniejące patterns, tokens |
 | Dokumentacja | `Explore` (audit stanu) → pisanie | Sprawdzi co jest, czego brakuje |
 | Security | `agent-security-audit-specialist` | Pełny OWASP check |
 
