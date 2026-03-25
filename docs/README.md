@@ -220,6 +220,8 @@ Complete architectural guides for Laravel Filament v4.2.3 admin panel developmen
 
 - **[Migration Guide](./guides/filament-v4-migration-guide.md)** - Complete v3 → v4 breaking changes checklist. Review if working with older code or Filament v3 examples.
 
+- **[Browser-use MCP](./guides/browser-use-mcp.md)** - Autonomous browser agent integration. Use when Firecrawl is insufficient (pages behind login, SPA, form interaction, UI testing).
+
 ### Quick Navigation
 
 **Widget Development:**

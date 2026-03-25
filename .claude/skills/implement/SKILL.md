@@ -3,6 +3,7 @@ name: implement
 description: Implement a feature/fix following mandatory Registro process with agent-first, docs-after gates.
 argument-hint: <task description>
 allowed-tools: Agent, Read, Grep, Glob, Edit, Write, Bash
+effort: high
 ---
 
 # /implement — Gated Workflow
@@ -13,6 +14,18 @@ Follow every step in sequence. Do not skip any step. Do not combine steps.
 **Task:** $ARGUMENTS
 
 ---
+
+## Current Context
+- Branch: !`git branch --show-current`
+- Status: !`git status --short | head -5`
+
+## Gotchas
+- **FILESYSTEM_DISK**: must be `public`, never `local` — breaks file uploads
+- **User model**: `first_name`/`last_name` — no `name` column, never `$user->name = "x"`
+- **Filament v4**: `Schema $schema` not `Form $form`, `Filament\Actions` not `Tables\Actions`
+- **Tests**: run in Docker only (PHP 8.3), `.env.testing` must exist or tests wipe dev MySQL
+- **Spatie roles**: always `Role::firstOrCreate()` before `assignRole()` — fresh DB has no roles
+- **Pre-existing failures**: 5 tests fail (BookingServiceArea + TenantFeature) — don't try to fix
 
 ## GATE 1: Rules Check
 

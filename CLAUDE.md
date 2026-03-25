@@ -77,15 +77,16 @@ Archived legacy docs: docs/archive/
 
 ## Skills (slash commands)
 
-| Skill | Purpose |
-|-------|---------|
-| `/implement <task>` | Gated workflow: agent → branch → code → test → docs |
-| `/commit [msg]` | Stage, Pint, test, conventional commit |
-| `/pr [title]` | Push + create PR to develop |
-| `/test [--filter]` | Run Pint + PHPUnit in Docker |
-| `/review [scope]` | Code review (architecture, security, docs) |
-| `/catchup` | Session start briefing (recent changes, PRs) |
-| `/deep-research <topic>` | Web research with Firecrawl |
+| Skill | Effort | Purpose |
+|-------|--------|---------|
+| `/implement <task>` | high | Gated workflow: agent → branch → code → test → docs |
+| `/review [scope]` | high | Code review (architecture, security, docs) |
+| `/deep-research <topic>` | high | Web research with Firecrawl |
+| `/commit [msg]` | low | Stage, Pint, test, conventional commit |
+| `/pr [title]` | low | Push + create PR to develop |
+| `/test [--filter]` | low | Run Pint + PHPUnit in Docker |
+| `/catchup` | low | Session start briefing (recent changes, PRs) |
+| `/browser-use` | — | Browser automation (visible Chrome, user profile) |
 
 ## Quick Commands
 

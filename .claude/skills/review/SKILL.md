@@ -4,9 +4,20 @@ description: Run code review on recent changes. Checks architecture, security, t
 argument-hint: "[specific files or scope to review]"
 disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Bash, Agent
+effort: high
 ---
 
 # /review — Code Review
+
+## Current Context
+- Branch: !`git branch --show-current`
+- Changed files: !`git diff --name-only HEAD | head -20`
+
+## Gotchas
+- Filament v4: `form(Schema $schema): Schema` NOT `form(Form $form): Form`
+- FILESYSTEM_DISK: must be `public` — flag any `local` usage
+- User model: no `name` column — flag any `$user->name = ...` writes
+- Admin form changes may crash frontend views if new fields return null — verify both sides
 
 ## Step 1: Identify Scope
 

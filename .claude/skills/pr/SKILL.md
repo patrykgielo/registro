@@ -4,6 +4,7 @@ description: Push branch and create Pull Request to develop with standardized te
 argument-hint: "[PR title override]"
 disable-model-invocation: true
 allowed-tools: Bash, Read, Grep, Glob
+effort: low
 ---
 
 # /pr — Create Pull Request

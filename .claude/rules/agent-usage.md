@@ -29,7 +29,7 @@ Testy przeszły bo TestCase seeduje role, ale fresh DB nie ma ról. Agent by to 
 | Frontend, Blade, Tailwind, UI/UX | `frontend-ui-architect` |
 | Komponenty DaisyUI/iOS | `daisyui-ios-component-architect` |
 | **Security audit, OWASP, GDPR, pełny audyt** | `agent-security-audit-specialist` ⭐ |
-| Research, dokumentacja, nowa wiedza | `web-research-specialist` + firecrawl |
+| Research, dokumentacja, nowa wiedza | `web-research-specialist` + firecrawl / browser-use |
 | ClickUp, task management | `clickup-task-manager` |
 | Koordynacja wielu agentów | `project-coordinator` |
 | Design tokens, spójność UI | `design-system-guardian` |
@@ -41,13 +41,27 @@ Jeden agent: `agent-security-audit-specialist` (54KB). Legacy stuby `security-sc
 
 ## Research i braki wiedzy
 
-**KAŻDY brak wiedzy → `web-research-specialist` + firecrawl MCP**
+**KAŻDY brak wiedzy → `web-research-specialist` + firecrawl MCP / browser-use MCP**
+
+### Firecrawl vs Browser-use
+
+| Scenariusz | Narzędzie |
+|------------|-----------|
+| Statyczna strona, scraping, bulk URL | **Firecrawl** (szybszy, 2-5s) |
+| Strona za loginem, SPA, multi-step | **Browser-use** (agent przeglądarkowy, 60-120s) |
+| Wypełnianie formularzy, testowanie UI | **Browser-use** |
+| Proste wyszukiwanie | **Firecrawl** (`firecrawl_search`) |
+
+**Zasada:** Firecrawl = domyślne. Browser-use = gdy Firecrawl nie wystarczy (interakcja, login, JS rendering).
+
+**Docs:** `app/docs/guides/browser-use-mcp.md`
 
 Przykłady:
-- Nie wiesz jak coś działa → research agent
-- Potrzebujesz aktualnej dokumentacji → research agent
-- Konfiguracja zewnętrznego serwisu → research agent
-- Porównanie rozwiązań → research agent
+- Nie wiesz jak coś działa → research agent + firecrawl
+- Strona wymaga kliknięć/logowania → research agent + browser-use
+- Potrzebujesz aktualnej dokumentacji → research agent + firecrawl
+- Konfiguracja zewnętrznego serwisu → research agent + firecrawl
+- Porównanie rozwiązań → research agent + firecrawl
 
 ## Wyrównanie konfiguracji
 
