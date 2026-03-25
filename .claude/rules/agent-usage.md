@@ -91,6 +91,27 @@ Gdy coś nie działa (staging vs production):
 | Dokumentacja | `Explore` (audit stanu) → pisanie | Sprawdzi co jest, czego brakuje |
 | Security | `agent-security-audit-specialist` | Pełny OWASP check |
 
+## Agent Teams (Experimental)
+
+**Włączone** w settings — `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+
+Osobne instancje Claude Code pracujące równolegle. Używaj dla:
+- Dużych feature'ów (backend + frontend + testy jednocześnie)
+- Research + implementation równolegle
+- Code review + fix jednocześnie
+
+**Limit:** max 3 teammates (tokeny rosną liniowo).
+**Docs:** `app/docs/guides/agent-teams.md`
+
+## Agent Memory & Effort
+
+Kluczowe agenty mają `memory: project` — uczą się między sesjami:
+- `laravel-senior-architect` → `.claude/agent-memory/laravel-senior-architect/`
+- `frontend-ui-architect` → `.claude/agent-memory/frontend-ui-architect/`
+- `agent-security-audit-specialist` → `.claude/agent-memory/agent-security-audit-specialist/`
+
+Effort levels zoptymalizowane per agent (high/medium/low) — mniejszy koszt tokenów.
+
 ## ClickUp Ticket Rules
 
 ### ZAKAZ tworzenia ticketów dla:

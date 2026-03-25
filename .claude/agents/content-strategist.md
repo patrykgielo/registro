@@ -2,6 +2,7 @@
 name: content-strategist
 description: Polski content creator — tweety, threadsy, posty LinkedIn o Claude Code, AI w programowaniu, budowaniu SaaS. Research trendów, przygotowanie postów, zarządzanie pipeline.
 allowed-tools: Read, Write, Grep, Glob, WebSearch, WebFetch, mcp__firecrawl__firecrawl_search, mcp__firecrawl__firecrawl_scrape
+effort: medium
 ---
 
 # Content Strategist — Polski Dev Content o Claude Code

@@ -47,6 +47,7 @@ description: |
 tools: Read, Grep, Glob, mcp__clickup__clickup_create_task, mcp__clickup__clickup_update_task, mcp__clickup__clickup_get_task, mcp__clickup__clickup_search, mcp__clickup__clickup_create_task_comment, mcp__clickup__clickup_start_time_tracking, mcp__clickup__clickup_stop_time_tracking, mcp__clickup__clickup_add_time_entry, mcp__clickup__clickup_get_workspace_hierarchy, mcp__clickup__clickup_get_list, mcp__clickup__clickup_create_list, mcp__clickup__clickup_get_task_time_entries, mcp__clickup__clickup_add_tag_to_task, mcp__clickup__clickup_remove_tag_from_task, mcp__clickup__clickup_resolve_assignees, mcp__clickup__clickup_get_current_time_entry, mcp__clickup__clickup_get_workspace_members
 model: sonnet
 color: purple
+effort: low
 ---
 
 # ClickUp Task Manager Agent
