@@ -4,11 +4,18 @@ description: Stage changes, run Pint + tests, create conventional commit. Use af
 argument-hint: "[optional commit message override]"
 disable-model-invocation: true
 allowed-tools: Bash, Read, Grep, Glob
+effort: low
 ---
 
 # /commit — Safe Commit Workflow
 
 **MANDATORY** sequence. Do not skip steps.
+
+## Gotchas
+- NEVER `git add -A` or `git add .` — may include .env, credentials, large binaries
+- NEVER commit to `develop` or `main` — PreToolUse hook blocks this
+- Pre-existing test failures (5): BookingServiceArea(4) + TenantFeature(1) — ignore these
+- If Pint fails, the commit did NOT happen — fix style, then create NEW commit (don't amend)
 
 ## Step 1: Branch Check
 

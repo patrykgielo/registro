@@ -6,6 +6,7 @@ disable-model-invocation: true
 allowed-tools: Agent, Read, Grep, Glob
 context: fork
 agent: web-research-specialist
+effort: high
 ---
 
 # /deep-research — Thorough Web Research

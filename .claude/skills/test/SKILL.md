@@ -4,6 +4,7 @@ description: Run Pint + PHPUnit tests in Docker. Reports results and identifies 
 argument-hint: "[optional --filter pattern]"
 disable-model-invocation: true
 allowed-tools: Bash, Read
+effort: low
 ---
 
 # /test — Run Tests

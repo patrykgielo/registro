@@ -3,9 +3,15 @@ name: catchup
 description: Show what changed since last session — recent commits, branch state, pending changes. Use at start of new conversation.
 disable-model-invocation: true
 allowed-tools: Bash, Read, Grep
+effort: low
 ---
 
 # /catchup — Session Start Briefing
+
+## Quick Snapshot
+- Branch: !`git branch --show-current`
+- Dirty files: !`git status --short | wc -l`
+- Last commit: !`git log --oneline -1`
 
 ## Step 1: Branch & Status
 
