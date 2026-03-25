@@ -80,6 +80,32 @@ Gdy coś nie działa (staging vs production):
 
 **Agenci = kontrola jakości + specjalistyczna wiedza**
 
+### WAŻNE: Subagenty NIE widzą .claude/rules/
+
+Subagenty dostają TYLKO swój AGENT.md + prompt od callera. Kluczowe rules muszą być:
+1. Wbudowane w body AGENT.md (sekcja "CRITICAL PROCESS RULES")
+2. Przekazane w prompcie przy spawnie agenta
+
+### WAŻNE: Orchestrator MUSI reviewować output agenta
+
+**Incident 2026-03-25:** frontend-ui-architect dostarczył niedopracowany kalendarz, orchestrator commitnął i pushnął BEZ review.
+
+**Obowiązkowy flow PO agencie:**
+1. Agent kończy pracę → czytam co zmienił (`git diff`)
+2. Pokazuję użytkownikowi kluczowe zmiany
+3. Dopiero po akceptacji → commit + push
+4. **Accept Edits ≠ push na ślepo** — Accept Edits = agent może edytować pliki bez pytania, ale JA muszę zweryfikować wynik
+
+### WAŻNE: Frontend UI = RESEARCH FIRST
+
+**Incident 2026-03-25:** Kalendarz bez researchu — brak styli, brak wzorców, byle jak.
+
+**Obowiązkowy flow dla UI komponentów:**
+1. `web-research-specialist` → szukaj wzorców, referencji, best practices
+2. Przekaż wyniki researchu do `frontend-ui-architect` w prompcie
+3. Agent implementuje na podstawie researchu, NIE z głowy
+4. Review output → diff → pokaż użytkownikowi
+
 ### Minimalny agent per typ zadania
 
 | Akcja | Minimum | Dlaczego |
