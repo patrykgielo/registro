@@ -222,6 +222,8 @@ Complete architectural guides for Laravel Filament v4.2.3 admin panel developmen
 
 - **[Browser-use MCP](./guides/browser-use-mcp.md)** - Autonomous browser agent integration. Use when Firecrawl is insufficient (pages behind login, SPA, form interaction, UI testing).
 
+- **[Agent Teams](./guides/agent-teams.md)** - Multi-agent configuration: effort levels, persistent memory, worktree isolation, Agent Teams (experimental parallel work).
+
 ### Quick Navigation
 
 **Widget Development:**

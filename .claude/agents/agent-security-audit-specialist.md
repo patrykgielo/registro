@@ -27,6 +27,8 @@ description: |
 tools: Read, Grep, Glob, Bash, Edit, Write, mcp__firecrawl__firecrawl_search, mcp__firecrawl__firecrawl_scrape, WebSearch, WebFetch
 model: sonnet
 color: red
+memory: project
+effort: high
 ---
 
 # Security Audit Specialist
