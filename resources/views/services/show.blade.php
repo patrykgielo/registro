@@ -233,10 +233,18 @@
                         @endif
 
                         {{-- CTA --}}
+                        <p x-show="!selectedStart" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu poniżej</p>
                         <div class="space-y-3">
-                            <x-ui.button href="{{ route('rental.step1', $service) }}" size="lg" icon-right="arrow-right" class="w-full">
-                                Zarezerwuj online
-                            </x-ui.button>
+                            <a
+                                :href="bookingUrl"
+                                :class="canBook
+                                    ? 'bg-brand text-white hover:bg-brand-hover'
+                                    : 'bg-surface-sunken text-text-muted pointer-events-none'"
+                                class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full"
+                                :aria-disabled="!canBook"
+                            >
+                                <span x-text="selectedStart && selectedEnd ? 'Zarezerwuj online' : 'Zarezerwuj online'"></span>
+                            </a>
                             @if($contactPhone)
                                 <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
                                     Lub zadzwoń: {{ $contactPhone }}
@@ -569,6 +577,15 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         selectedEnd:   null,          // "YYYY-MM-DD" or null
         rangeAvailableQty: null,      // int or null (from AJAX)
         rangeChecking: false,         // loading state
+
+        get canBook() {
+            return this.selectedStart && this.selectedEnd && this.rangeAvailableQty > 0 && !this.rangeChecking;
+        },
+        get bookingUrl() {
+            const base = '{{ route("rental.step1", $service) }}';
+            if (!this.selectedStart || !this.selectedEnd) return base;
+            return base + '?start_date=' + this.selectedStart + '&end_date=' + this.selectedEnd;
+        },
 
         // ── Date selection ───────────────────────────────────────
         selectDate(dateStr) {
