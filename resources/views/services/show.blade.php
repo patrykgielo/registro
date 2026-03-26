@@ -181,6 +181,11 @@
                         today:        '{{ $todayStr }}',
                         currentYear:  {{ $curYear }},
                         currentMonth: {{ $curMonth }},
+                        pricePerDay:  {{ (float) $service->price_per_day }},
+                        pricePerDayLong: {{ (float) ($service->price_per_day_long ?? 0) }},
+                        thresholdDays: {{ (int) ($service->price_threshold_days ?? 0) }},
+                        pricePerWeek: {{ (float) ($service->price_per_week ?? 0) }},
+                        depositAmount: {{ (float) ($service->deposit_amount ?? 0) }},
                     })"
                     x-init="init()"
                 >
@@ -231,6 +236,26 @@
                                 <span class="text-sm font-semibold text-text-primary">{{ number_format($service->deposit_amount, 0, ',', ' ') }} zł</span>
                             </div>
                         @endif
+
+                        {{-- Price breakdown (when dates selected) --}}
+                        <div x-show="rentalDays > 0" x-transition class="rounded-lg bg-surface-sunken p-4 space-y-1.5 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-text-secondary">
+                                    <span x-text="rentalDays"></span> <span x-text="rentalDays === 1 ? 'dzień' : 'dni'"></span>
+                                    &times; <span x-text="formatPrice(unitPrice)"></span> zł
+                                </span>
+                                <span class="font-medium text-text-primary" x-text="formatPrice(totalPrice) + ' zł'"></span>
+                            </div>
+                            <template x-if="isDiscounted">
+                                <div class="text-xs text-success">Rabat długoterminowy aktywny</div>
+                            </template>
+                            @if($service->deposit_amount)
+                            <div class="flex justify-between text-text-secondary">
+                                <span>Kaucja zwrotna</span>
+                                <span>+ {{ number_format($service->deposit_amount, 2, ',', ' ') }} zł</span>
+                            </div>
+                            @endif
+                        </div>
 
                         {{-- CTA --}}
                         <p x-show="!selectedStart" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu poniżej</p>
@@ -565,7 +590,7 @@
 @if($isRental)
 @push('scripts')
 <script>
-function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
+function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, pricePerDay, pricePerDayLong, thresholdDays, pricePerWeek, depositAmount }) {
     return {
         // ── State ─────────────────────────────────────────────────
         year:         currentYear,
@@ -577,6 +602,37 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         selectedEnd:   null,          // "YYYY-MM-DD" or null
         rangeAvailableQty: null,      // int or null (from AJAX)
         rangeChecking: false,         // loading state
+
+        pricePerDay:     pricePerDay ?? 0,
+        pricePerDayLong: pricePerDayLong ?? 0,
+        thresholdDays:   thresholdDays ?? 0,
+        pricePerWeek:    pricePerWeek ?? 0,
+        depositAmount:   depositAmount ?? 0,
+
+        get rentalDays() {
+            if (!this.selectedStart || !this.selectedEnd) return 0;
+            const s = new Date(this.selectedStart + 'T00:00:00');
+            const e = new Date(this.selectedEnd + 'T00:00:00');
+            return Math.max(0, Math.round((e - s) / 86400000) + 1);
+        },
+        get unitPrice() {
+            if (this.pricePerDayLong > 0 && this.thresholdDays > 0 && this.rentalDays >= this.thresholdDays) return this.pricePerDayLong;
+            return this.pricePerDay;
+        },
+        get totalPrice() {
+            if (this.rentalDays <= 0) return 0;
+            if (this.pricePerWeek > 0 && this.rentalDays >= 7) {
+                const wpd = this.pricePerWeek / 7;
+                if (wpd < this.unitPrice) {
+                    return Math.floor(this.rentalDays / 7) * this.pricePerWeek + (this.rentalDays % 7) * this.unitPrice;
+                }
+            }
+            return this.unitPrice * this.rentalDays;
+        },
+        get isDiscounted() {
+            return this.pricePerDayLong > 0 && this.thresholdDays > 0 && this.rentalDays >= this.thresholdDays;
+        },
+        formatPrice(v) { return v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' '); },
 
         get canBook() {
             return this.selectedStart && this.selectedEnd && this.rangeAvailableQty > 0 && !this.rangeChecking;
