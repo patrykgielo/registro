@@ -385,7 +385,7 @@
                                         :aria-disabled="cell.ariaDisabled"
                                         :aria-current="cell.ariaCurrent"
                                         @click="cell.clickable && selectDate(cell.dateStr)"
-                                        :class="[cell.classes, selectionClass(cell.dateStr) || 'rounded-lg']"
+                                        :class="selectionClass(cell.dateStr) ? [selectionClass(cell.dateStr)] : [cell.classes, 'rounded-lg']"
                                         class="relative aspect-square flex items-center justify-center text-sm font-medium select-none transition-all duration-150"
                                     >
                                         <span x-text="cell.day" :class="cell.dayClasses"></span>
@@ -674,8 +674,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
             if (isStart) return 'bg-brand text-white rounded-l-lg shadow-sm';
             // End of range
             if (isEnd) return 'bg-brand text-white rounded-r-lg shadow-sm';
-            // Mid range — must be CLEARLY visible, not transparent
-            return 'bg-brand/40 text-brand rounded-none';
+            // Mid range — solid visible band
+            return 'bg-brand/50 text-white font-bold rounded-none';
         },
 
         // ── Computed: heading label ────────────────────────────────
