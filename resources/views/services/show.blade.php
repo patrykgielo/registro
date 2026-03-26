@@ -235,31 +235,29 @@
                                 Dostępny ({{ $service->quantity_total }} szt.)
                             </div>
                         @endif
-                    </x-ui.card>
+                        {{-- ─── Availability Calendar (inside same card) ─── --}}
+                        @php
+                            $calendarId = 'cal-heading-' . $service->id;
+                            $calApiUrl  = route('rental.calendar', $service);
+                            $todayStr   = now()->toDateString();
+                            $curYear    = (int) now()->year;
+                            $curMonth   = (int) now()->month;
+                        @endphp
 
-                    {{-- ─── Availability Calendar ─────────────────────────── --}}
-                    @php
-                        $calendarId = 'cal-heading-' . $service->id;
-                        $calApiUrl  = route('rental.calendar', $service);
-                        $todayStr   = now()->toDateString();
-                        $curYear    = (int) now()->year;
-                        $curMonth   = (int) now()->month;
-                    @endphp
-
-                    <div
-                        x-data="availabilityCalendar({
-                            apiUrl:       '{{ $calApiUrl }}',
-                            today:        '{{ $todayStr }}',
-                            currentYear:  {{ $curYear }},
-                            currentMonth: {{ $curMonth }},
-                        })"
-                        x-init="init()"
-                        class="rounded-xl border border-border bg-surface-raised shadow-xs overflow-hidden"
-                        role="region"
-                        aria-label="Kalendarz dostępności"
-                    >
+                        <div
+                            class="border-t border-border pt-5 -mx-6 px-6"
+                            x-data="availabilityCalendar({
+                                apiUrl:       '{{ $calApiUrl }}',
+                                today:        '{{ $todayStr }}',
+                                currentYear:  {{ $curYear }},
+                                currentMonth: {{ $curMonth }},
+                            })"
+                            x-init="init()"
+                            role="region"
+                            aria-label="Kalendarz dostępności"
+                        >
                         {{-- Header: month nav --}}
-                        <div class="flex items-center justify-between px-4 pt-4 pb-3">
+                        <div class="flex items-center justify-between pb-3">
                             <div role="group" aria-label="Nawigacja kalendarza" class="flex items-center gap-1">
                                 <button
                                     @click="prevMonth()"
@@ -385,8 +383,9 @@
                                 </span>
                             </div>
                         </div>
-                    </div>
-                    {{-- ─── /Availability Calendar ─────────────────────────── --}}
+                        </div>
+                        {{-- ─── /Availability Calendar ─── --}}
+                    </x-ui.card>
                 </div>
             </div>
         </div>
