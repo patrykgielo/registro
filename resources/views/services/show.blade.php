@@ -167,7 +167,23 @@
 
             {{-- RIGHT COLUMN: Sticky Sidebar (pricing + CTA) --}}
             <div class="lg:col-span-1">
-                <div class="sticky top-20">
+                @php
+                    $calendarId = 'cal-heading-' . $service->id;
+                    $calApiUrl  = route('rental.calendar', $service);
+                    $todayStr   = now()->toDateString();
+                    $curYear    = (int) now()->year;
+                    $curMonth   = (int) now()->month;
+                @endphp
+                <div
+                    class="sticky top-20"
+                    x-data="availabilityCalendar({
+                        apiUrl:       '{{ $calApiUrl }}',
+                        today:        '{{ $todayStr }}',
+                        currentYear:  {{ $curYear }},
+                        currentMonth: {{ $curMonth }},
+                    })"
+                    x-init="init()"
+                >
                     <x-ui.card class="space-y-6">
 
                         {{-- Tiered Pricing Grid --}}
@@ -236,23 +252,8 @@
                             </div>
                         @endif
                         {{-- ─── Availability Calendar (inside same card) ─── --}}
-                        @php
-                            $calendarId = 'cal-heading-' . $service->id;
-                            $calApiUrl  = route('rental.calendar', $service);
-                            $todayStr   = now()->toDateString();
-                            $curYear    = (int) now()->year;
-                            $curMonth   = (int) now()->month;
-                        @endphp
-
                         <div
                             class="border-t border-border pt-5 -mx-6 px-6"
-                            x-data="availabilityCalendar({
-                                apiUrl:       '{{ $calApiUrl }}',
-                                today:        '{{ $todayStr }}',
-                                currentYear:  {{ $curYear }},
-                                currentMonth: {{ $curMonth }},
-                            })"
-                            x-init="init()"
                             role="region"
                             aria-label="Kalendarz dostępności"
                         >
