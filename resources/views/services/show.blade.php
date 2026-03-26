@@ -385,6 +385,18 @@
                                 </span>
                             </div>
                         </div>
+                        {{-- Availability result for selected range --}}
+                        <div x-show="selectedStart && selectedEnd && !rangeChecking && rangeAvailableQty !== null" x-transition class="mt-4 text-sm" aria-live="polite">
+                            <p x-show="rangeAvailableQty > 0" class="text-success flex items-center gap-1.5">
+                                <span class="h-2 w-2 rounded-full bg-success shrink-0"></span>
+                                Dostępnych: <span x-text="rangeAvailableQty"></span> szt.
+                            </p>
+                            <p x-show="rangeAvailableQty === 0" class="text-error flex items-center gap-1.5">
+                                <span class="h-2 w-2 rounded-full bg-error shrink-0"></span>
+                                Brak dostępności w wybranym terminie
+                            </p>
+                        </div>
+                        <div x-show="rangeChecking" class="mt-4 text-sm text-text-muted">Sprawdzam dostępność...</div>
                         </div>
                         {{-- ─── /Availability Calendar ─── --}}
                     </x-ui.card>
@@ -555,6 +567,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         data:         {},             // { "YYYY-MM-DD": { status, available_quantity } }
         selectedStart: null,          // "YYYY-MM-DD" or null
         selectedEnd:   null,          // "YYYY-MM-DD" or null
+        rangeAvailableQty: null,      // int or null (from AJAX)
+        rangeChecking: false,         // loading state
 
         // ── Date selection ───────────────────────────────────────
         selectDate(dateStr) {
@@ -672,6 +686,24 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         // ── Lifecycle ─────────────────────────────────────────────
         init() {
             this.fetchMonth();
+            this.$watch('selectedEnd', (val) => {
+                if (val) this.checkRangeAvailability();
+                else this.rangeAvailableQty = null;
+            });
+        },
+
+        async checkRangeAvailability() {
+            if (!this.selectedStart || !this.selectedEnd) return;
+            this.rangeChecking = true;
+            this.rangeAvailableQty = null;
+            try {
+                const url = `{{ route('rental.availability', $service) }}?start_date=${this.selectedStart}&end_date=${this.selectedEnd}`;
+                const res = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!res.ok) throw new Error();
+                const json = await res.json();
+                this.rangeAvailableQty = json.available_quantity;
+            } catch { this.rangeAvailableQty = 0; }
+            finally { this.rangeChecking = false; }
         },
 
         // ── Navigation ────────────────────────────────────────────
