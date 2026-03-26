@@ -405,15 +405,15 @@
                             {{-- Legend --}}
                             <div class="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border">
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-success/30 shrink-0" aria-hidden="true"></span>
+                                    <span class="w-3 h-3 rounded-full bg-success/60 shrink-0" aria-hidden="true"></span>
                                     Dostępne
                                 </span>
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-warning/30 shrink-0" aria-hidden="true"></span>
+                                    <span class="w-3 h-3 rounded-full bg-warning/60 shrink-0" aria-hidden="true"></span>
                                     Ograniczone
                                 </span>
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-surface-sunken border border-border shrink-0" aria-hidden="true"></span>
+                                    <span class="w-3 h-3 rounded-full bg-border-strong shrink-0" aria-hidden="true"></span>
                                     Niedostępne
                                 </span>
                             </div>
@@ -669,13 +669,13 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
             const inRange = this.isInRange(dateStr);
             if (!inRange) return '';
             // Single day (start === end or no end yet)
-            if (isStart && (!this.selectedEnd || isEnd)) return 'bg-brand text-white rounded-lg shadow-sm';
+            if (isStart && (!this.selectedEnd || isEnd)) return 'bg-brand text-white rounded-lg shadow-md';
             // Start of range
-            if (isStart) return 'bg-brand text-white rounded-l-lg';
+            if (isStart) return 'bg-brand text-white rounded-l-lg shadow-sm';
             // End of range
-            if (isEnd) return 'bg-brand text-white rounded-r-lg';
-            // Mid range
-            return 'bg-brand/15 text-text-primary rounded-none';
+            if (isEnd) return 'bg-brand text-white rounded-r-lg shadow-sm';
+            // Mid range — must be CLEARLY visible, not transparent
+            return 'bg-brand/40 text-brand rounded-none';
         },
 
         // ── Computed: heading label ────────────────────────────────
@@ -723,22 +723,23 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
                 let dayTextCls = '';
 
                 if (isPast) {
-                    cellCls    += 'opacity-30 ';
+                    cellCls    += 'opacity-40 ';
                     dayTextCls += 'line-through ';
                 }
 
                 if (status === 'available' && !isPast) {
-                    cellCls += 'bg-success/10 text-success ';
+                    cellCls += 'bg-success/30 text-success font-semibold ';
                 } else if (status === 'partial' && !isPast) {
-                    cellCls += 'bg-warning/10 text-warning ';
-                } else {
-                    // unavailable or past
+                    cellCls += 'bg-warning/30 text-warning font-semibold ';
+                } else if (!isPast) {
                     cellCls += 'bg-surface-sunken text-text-muted cursor-not-allowed ';
+                } else {
+                    cellCls += 'text-text-muted ';
                 }
 
-                // Today ring is additive — wraps around the state colour
+                // Today — thick ring, clearly visible
                 if (isToday) {
-                    cellCls += 'ring-1 ring-brand ring-offset-1 ';
+                    cellCls += 'ring-2 ring-brand ring-offset-2 ';
                 }
 
                 // Aria
