@@ -94,6 +94,11 @@ Archived legacy docs: docs/archive/
 # Development
 composer run dev
 
+# OBOWIĄZKOWE po każdej zmianie Blade/CSS/JS — bez wyjątków!
+docker compose exec -T app npm run build
+# Jeśli po build nadal są stare style → plik public/hot blokuje → usuń go:
+docker compose exec -T app rm -f public/hot
+
 # Tests (in Docker — .env.testing forces SQLite)
 docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T app php artisan test
 ```

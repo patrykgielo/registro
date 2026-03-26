@@ -7,6 +7,25 @@ paths:
 
 # Frontend Code Quality Rules
 
+## CRITICAL: Rebuild Assets After EVERY Frontend Change
+
+**Po każdej zmianie w `resources/views/**`, `resources/css/**`, `resources/js/**` — OBOWIĄZKOWO:**
+
+```bash
+docker compose exec -T app npm run build
+```
+
+**Zasady:**
+- ZAWSZE `npm run build` po modyfikacji Blade/CSS/JS — bez wyjątków
+- NIGDY nie zostawiaj zmian bez przebudowania assetów
+- `npm run dev` (HMR server) = TYLKO aktywne pisanie z live-reload, NIGDY jako "gotowe"
+- Jeśli assety nie są przebudowane → użytkownik widzi stare style → "brak zmian w UI"
+
+**Incident 2026-03-26:** Zmiany frontendowe commitowane bez `npm run build` → użytkownik widzi stare style.
+**Incident 2026-03-26b:** `public/hot` plik pozostał po `npm run dev` → `@vite` directive serwowało dev URL zamiast build assets → brak stylów na subdomenie. Fix: `rm public/hot`.
+
+---
+
 ## CRITICAL: Animation Performance
 
 ### MUST ONLY Animate These Properties (GPU-accelerated, 60fps):
