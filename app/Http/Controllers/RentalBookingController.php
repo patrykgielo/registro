@@ -22,7 +22,7 @@ class RentalBookingController extends Controller
         protected RentalAvailabilityService $availabilityService
     ) {}
 
-    public function show(Service $service)
+    public function show(Request $request, Service $service)
     {
         $this->guardRentalService($service);
 
@@ -38,6 +38,26 @@ class RentalBookingController extends Controller
                 'end_date' => $existingHold->end_date->format('Y-m-d'),
                 'quantity' => $existingHold->quantity,
             ];
+        }
+
+        // Fallback: pre-fill from query params when no active hold
+        if (empty($step1) && $request->has('start_date') && $request->has('end_date')) {
+            $startRaw = $request->query('start_date');
+            $endRaw = $request->query('end_date');
+
+            if (is_string($startRaw) && is_string($endRaw)
+                && Carbon::hasFormat($startRaw, 'Y-m-d') && Carbon::hasFormat($endRaw, 'Y-m-d')) {
+                $start = Carbon::parse($startRaw);
+                $end = Carbon::parse($endRaw);
+
+                if ($start->gte(today()) && $end->gte($start)) {
+                    $step1 = [
+                        'start_date' => $startRaw,
+                        'end_date' => $endRaw,
+                        'quantity' => min(max(1, (int) $request->query('quantity', 1)), $service->quantity_total ?? 100),
+                    ];
+                }
+            }
         }
 
         return view('rental.step1', [

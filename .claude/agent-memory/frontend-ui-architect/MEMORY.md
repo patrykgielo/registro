@@ -27,3 +27,8 @@
 - 44px minimum touch targets
 - reduced-motion support required
 - GPU-only animations: transform/opacity (never width/height/margin)
+
+## Alpine Patterns
+- x-ui.button is static Blade — NO Alpine bindings on it
+- Multi-card shared state: lift x-data to common ancestor, use raw HTML styled with button utility classes
+- See: feedback_alpine_scope.md

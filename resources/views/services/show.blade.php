@@ -167,7 +167,28 @@
 
             {{-- RIGHT COLUMN: Sticky Sidebar (pricing + CTA) --}}
             <div class="lg:col-span-1">
-                <div class="sticky top-20">
+                @php
+                    $calendarId = 'cal-heading-' . $service->id;
+                    $calApiUrl  = route('rental.calendar', $service);
+                    $todayStr   = now()->toDateString();
+                    $curYear    = (int) now()->year;
+                    $curMonth   = (int) now()->month;
+                @endphp
+                <div
+                    class="sticky top-20"
+                    x-data="availabilityCalendar({
+                        apiUrl:       '{{ $calApiUrl }}',
+                        today:        '{{ $todayStr }}',
+                        currentYear:  {{ $curYear }},
+                        currentMonth: {{ $curMonth }},
+                        pricePerDay:  {{ (float) $service->price_per_day }},
+                        pricePerDayLong: {{ (float) ($service->price_per_day_long ?? 0) }},
+                        thresholdDays: {{ (int) ($service->price_threshold_days ?? 0) }},
+                        pricePerWeek: {{ (float) ($service->price_per_week ?? 0) }},
+                        depositAmount: {{ (float) ($service->deposit_amount ?? 0) }},
+                    })"
+                    x-init="init()"
+                >
                     <x-ui.card class="space-y-6">
 
                         {{-- Tiered Pricing Grid --}}
@@ -216,11 +237,39 @@
                             </div>
                         @endif
 
+                        {{-- Price breakdown (when dates selected) --}}
+                        <div x-show="rentalDays > 0" x-transition class="rounded-lg bg-surface-sunken p-4 space-y-1.5 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-text-secondary">
+                                    <span x-text="rentalDays"></span> <span x-text="rentalDays === 1 ? 'dzień' : 'dni'"></span>
+                                    &times; <span x-text="formatPrice(unitPrice)"></span> zł
+                                </span>
+                                <span class="font-medium text-text-primary" x-text="formatPrice(totalPrice) + ' zł'"></span>
+                            </div>
+                            <template x-if="isDiscounted">
+                                <div class="text-xs text-success">Rabat długoterminowy aktywny</div>
+                            </template>
+                            @if($service->deposit_amount)
+                            <div class="flex justify-between text-text-secondary">
+                                <span>Kaucja zwrotna</span>
+                                <span>+ {{ number_format($service->deposit_amount, 2, ',', ' ') }} zł</span>
+                            </div>
+                            @endif
+                        </div>
+
                         {{-- CTA --}}
+                        <p x-show="!selectedStart" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu poniżej</p>
                         <div class="space-y-3">
-                            <x-ui.button href="{{ route('rental.step1', $service) }}" size="lg" icon-right="arrow-right" class="w-full">
-                                Zarezerwuj online
-                            </x-ui.button>
+                            <a
+                                :href="bookingUrl"
+                                :class="canBook
+                                    ? 'bg-brand text-white hover:bg-brand-hover'
+                                    : 'bg-surface-sunken text-text-muted pointer-events-none'"
+                                class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full"
+                                :aria-disabled="!canBook"
+                            >
+                                <span x-text="selectedStart && selectedEnd ? 'Zarezerwuj online' : 'Zarezerwuj online'"></span>
+                            </a>
                             @if($contactPhone)
                                 <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
                                     Lub zadzwoń: {{ $contactPhone }}
@@ -235,31 +284,14 @@
                                 Dostępny ({{ $service->quantity_total }} szt.)
                             </div>
                         @endif
-                    </x-ui.card>
-
-                    {{-- ─── Availability Calendar ─────────────────────────── --}}
-                    @php
-                        $calendarId = 'cal-heading-' . $service->id;
-                        $calApiUrl  = route('rental.calendar', $service);
-                        $todayStr   = now()->toDateString();
-                        $curYear    = (int) now()->year;
-                        $curMonth   = (int) now()->month;
-                    @endphp
-
-                    <div
-                        x-data="availabilityCalendar({
-                            apiUrl:       '{{ $calApiUrl }}',
-                            today:        '{{ $todayStr }}',
-                            currentYear:  {{ $curYear }},
-                            currentMonth: {{ $curMonth }},
-                        })"
-                        x-init="init()"
-                        class="rounded-xl border border-border bg-surface-raised shadow-xs overflow-hidden"
-                        role="region"
-                        aria-label="Kalendarz dostępności"
-                    >
+                        {{-- ─── Availability Calendar (inside same card) ─── --}}
+                        <div
+                            class="border-t border-border pt-5 -mx-6 px-6"
+                            role="region"
+                            aria-label="Kalendarz dostępności"
+                        >
                         {{-- Header: month nav --}}
-                        <div class="flex items-center justify-between px-4 pt-4 pb-3">
+                        <div class="flex items-center justify-between pb-3">
                             <div role="group" aria-label="Nawigacja kalendarza" class="flex items-center gap-1">
                                 <button
                                     @click="prevMonth()"
@@ -352,8 +384,9 @@
                                         :aria-label="cell.ariaLabel"
                                         :aria-disabled="cell.ariaDisabled"
                                         :aria-current="cell.ariaCurrent"
-                                        :class="cell.classes"
-                                        class="relative aspect-square flex items-center justify-center rounded-lg text-sm font-medium select-none"
+                                        @click="cell.clickable && selectDate(cell.dateStr)"
+                                        :class="selectionClass(cell.dateStr) ? [selectionClass(cell.dateStr)] : [cell.classes, 'rounded-lg']"
+                                        class="relative aspect-square flex items-center justify-center text-sm font-medium select-none transition-all duration-150"
                                     >
                                         <span x-text="cell.day" :class="cell.dayClasses"></span>
 
@@ -372,21 +405,34 @@
                             {{-- Legend --}}
                             <div class="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border">
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-success/30 shrink-0" aria-hidden="true"></span>
+                                    <span class="w-3 h-3 rounded-full bg-success/60 shrink-0" aria-hidden="true"></span>
                                     Dostępne
                                 </span>
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-warning/30 shrink-0" aria-hidden="true"></span>
+                                    <span class="w-3 h-3 rounded-full bg-warning/60 shrink-0" aria-hidden="true"></span>
                                     Ograniczone
                                 </span>
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-surface-sunken border border-border shrink-0" aria-hidden="true"></span>
+                                    <span class="w-3 h-3 rounded-full bg-border-strong shrink-0" aria-hidden="true"></span>
                                     Niedostępne
                                 </span>
                             </div>
                         </div>
-                    </div>
-                    {{-- ─── /Availability Calendar ─────────────────────────── --}}
+                        {{-- Availability result for selected range --}}
+                        <div x-show="selectedStart && selectedEnd && !rangeChecking && rangeAvailableQty !== null" x-transition class="mt-4 text-sm" aria-live="polite">
+                            <p x-show="rangeAvailableQty > 0" class="text-success flex items-center gap-1.5">
+                                <span class="h-2 w-2 rounded-full bg-success shrink-0"></span>
+                                Dostępnych: <span x-text="rangeAvailableQty"></span> szt.
+                            </p>
+                            <p x-show="rangeAvailableQty === 0" class="text-error flex items-center gap-1.5">
+                                <span class="h-2 w-2 rounded-full bg-error shrink-0"></span>
+                                Brak dostępności w wybranym terminie
+                            </p>
+                        </div>
+                        <div x-show="rangeChecking" class="mt-4 text-sm text-text-muted">Sprawdzam dostępność...</div>
+                        </div>
+                        {{-- ─── /Availability Calendar ─── --}}
+                    </x-ui.card>
                 </div>
             </div>
         </div>
@@ -544,7 +590,7 @@
 @if($isRental)
 @push('scripts')
 <script>
-function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
+function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, pricePerDay, pricePerDayLong, thresholdDays, pricePerWeek, depositAmount }) {
     return {
         // ── State ─────────────────────────────────────────────────
         year:         currentYear,
@@ -552,6 +598,85 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         today:        today,          // "YYYY-MM-DD"
         loading:      true,
         data:         {},             // { "YYYY-MM-DD": { status, available_quantity } }
+        selectedStart: null,          // "YYYY-MM-DD" or null
+        selectedEnd:   null,          // "YYYY-MM-DD" or null
+        rangeAvailableQty: null,      // int or null (from AJAX)
+        rangeChecking: false,         // loading state
+
+        pricePerDay:     pricePerDay ?? 0,
+        pricePerDayLong: pricePerDayLong ?? 0,
+        thresholdDays:   thresholdDays ?? 0,
+        pricePerWeek:    pricePerWeek ?? 0,
+        depositAmount:   depositAmount ?? 0,
+
+        get rentalDays() {
+            if (!this.selectedStart || !this.selectedEnd) return 0;
+            const s = new Date(this.selectedStart + 'T00:00:00');
+            const e = new Date(this.selectedEnd + 'T00:00:00');
+            return Math.max(0, Math.round((e - s) / 86400000) + 1);
+        },
+        get unitPrice() {
+            if (this.pricePerDayLong > 0 && this.thresholdDays > 0 && this.rentalDays >= this.thresholdDays) return this.pricePerDayLong;
+            return this.pricePerDay;
+        },
+        get totalPrice() {
+            if (this.rentalDays <= 0) return 0;
+            if (this.pricePerWeek > 0 && this.rentalDays >= 7) {
+                const wpd = this.pricePerWeek / 7;
+                if (wpd < this.unitPrice) {
+                    return Math.floor(this.rentalDays / 7) * this.pricePerWeek + (this.rentalDays % 7) * this.unitPrice;
+                }
+            }
+            return this.unitPrice * this.rentalDays;
+        },
+        get isDiscounted() {
+            return this.pricePerDayLong > 0 && this.thresholdDays > 0 && this.rentalDays >= this.thresholdDays;
+        },
+        formatPrice(v) { return v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' '); },
+
+        get canBook() {
+            return this.selectedStart && this.selectedEnd && this.rangeAvailableQty > 0 && !this.rangeChecking;
+        },
+        get bookingUrl() {
+            const base = '{{ route("rental.step1", $service) }}';
+            if (!this.selectedStart || !this.selectedEnd) return base;
+            return base + '?start_date=' + this.selectedStart + '&end_date=' + this.selectedEnd;
+        },
+
+        // ── Date selection ───────────────────────────────────────
+        selectDate(dateStr) {
+            if (!this.selectedStart || (this.selectedStart && this.selectedEnd)) {
+                this.selectedStart = dateStr;
+                this.selectedEnd = null;
+            } else if (dateStr === this.selectedStart) {
+                this.selectedEnd = dateStr; // single-day rental
+            } else if (dateStr < this.selectedStart) {
+                this.selectedEnd = this.selectedStart;
+                this.selectedStart = dateStr;
+            } else {
+                this.selectedEnd = dateStr;
+            }
+        },
+        isInRange(dateStr) {
+            if (!this.selectedStart) return false;
+            if (!this.selectedEnd) return dateStr === this.selectedStart;
+            return dateStr >= this.selectedStart && dateStr <= this.selectedEnd;
+        },
+        selectionClass(dateStr) {
+            if (!dateStr || !this.selectedStart) return '';
+            const isStart = dateStr === this.selectedStart;
+            const isEnd   = dateStr === this.selectedEnd;
+            const inRange = this.isInRange(dateStr);
+            if (!inRange) return '';
+            // Single day (start === end or no end yet)
+            if (isStart && (!this.selectedEnd || isEnd)) return 'bg-brand text-white rounded-lg shadow-md';
+            // Start of range
+            if (isStart) return 'bg-brand text-white rounded-l-lg shadow-sm';
+            // End of range
+            if (isEnd) return 'bg-brand text-white rounded-r-lg shadow-sm';
+            // Mid range — solid visible band
+            return 'bg-brand/50 text-white font-bold rounded-none';
+        },
 
         // ── Computed: heading label ────────────────────────────────
         get headingLabel() {
@@ -593,26 +718,28 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
                 const qty     = info?.available_quantity ?? null;
 
                 // Build classes
-                let cellCls = 'cursor-default ';
+                const clickable = !isPast && status !== 'unavailable';
+                let cellCls = clickable ? 'cursor-pointer ' : 'cursor-default ';
                 let dayTextCls = '';
 
                 if (isPast) {
-                    cellCls    += 'opacity-30 ';
+                    cellCls    += 'opacity-40 ';
                     dayTextCls += 'line-through ';
                 }
 
                 if (status === 'available' && !isPast) {
-                    cellCls += 'bg-success/10 text-success ';
+                    cellCls += 'bg-success/30 text-success font-semibold ';
                 } else if (status === 'partial' && !isPast) {
-                    cellCls += 'bg-warning/10 text-warning ';
-                } else {
-                    // unavailable or past
+                    cellCls += 'bg-warning/30 text-warning font-semibold ';
+                } else if (!isPast) {
                     cellCls += 'bg-surface-sunken text-text-muted cursor-not-allowed ';
+                } else {
+                    cellCls += 'text-text-muted ';
                 }
 
-                // Today ring is additive — wraps around the state colour
+                // Today — thick ring, clearly visible
                 if (isToday) {
-                    cellCls += 'ring-1 ring-brand ring-offset-1 ';
+                    cellCls += 'ring-2 ring-brand ring-offset-2 ';
                 }
 
                 // Aria
@@ -624,6 +751,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
 
                 cells.push({
                     day:          d,
+                    dateStr:      key,
+                    clickable,
                     classes:      cellCls.trim(),
                     dayClasses:   dayTextCls.trim(),
                     ariaLabel,
@@ -646,6 +775,24 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         // ── Lifecycle ─────────────────────────────────────────────
         init() {
             this.fetchMonth();
+            this.$watch('selectedEnd', (val) => {
+                if (val) this.checkRangeAvailability();
+                else this.rangeAvailableQty = null;
+            });
+        },
+
+        async checkRangeAvailability() {
+            if (!this.selectedStart || !this.selectedEnd) return;
+            this.rangeChecking = true;
+            this.rangeAvailableQty = null;
+            try {
+                const url = `{{ route('rental.availability', $service) }}?start_date=${this.selectedStart}&end_date=${this.selectedEnd}`;
+                const res = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!res.ok) throw new Error();
+                const json = await res.json();
+                this.rangeAvailableQty = json.available_quantity;
+            } catch { this.rangeAvailableQty = 0; }
+            finally { this.rangeChecking = false; }
         },
 
         // ── Navigation ────────────────────────────────────────────
