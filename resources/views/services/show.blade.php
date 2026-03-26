@@ -385,8 +385,8 @@
                                         :aria-disabled="cell.ariaDisabled"
                                         :aria-current="cell.ariaCurrent"
                                         @click="cell.clickable && selectDate(cell.dateStr)"
-                                        :class="[cell.classes, isInRange(cell.dateStr) ? 'ring-2 ring-brand ring-offset-1 bg-brand/10' : '']"
-                                        class="relative aspect-square flex items-center justify-center rounded-lg text-sm font-medium select-none transition-all duration-150"
+                                        :class="[cell.classes, selectionClass(cell.dateStr) || 'rounded-lg']"
+                                        class="relative aspect-square flex items-center justify-center text-sm font-medium select-none transition-all duration-150"
                                     >
                                         <span x-text="cell.day" :class="cell.dayClasses"></span>
 
@@ -661,6 +661,21 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
             if (!this.selectedStart) return false;
             if (!this.selectedEnd) return dateStr === this.selectedStart;
             return dateStr >= this.selectedStart && dateStr <= this.selectedEnd;
+        },
+        selectionClass(dateStr) {
+            if (!dateStr || !this.selectedStart) return '';
+            const isStart = dateStr === this.selectedStart;
+            const isEnd   = dateStr === this.selectedEnd;
+            const inRange = this.isInRange(dateStr);
+            if (!inRange) return '';
+            // Single day (start === end or no end yet)
+            if (isStart && (!this.selectedEnd || isEnd)) return 'bg-brand text-white rounded-lg shadow-sm';
+            // Start of range
+            if (isStart) return 'bg-brand text-white rounded-l-lg';
+            // End of range
+            if (isEnd) return 'bg-brand text-white rounded-r-lg';
+            // Mid range
+            return 'bg-brand/15 text-text-primary rounded-none';
         },
 
         // ── Computed: heading label ────────────────────────────────
