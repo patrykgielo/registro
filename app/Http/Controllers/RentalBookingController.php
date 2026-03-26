@@ -50,7 +50,7 @@ class RentalBookingController extends Controller
                 $start = Carbon::parse($startRaw);
                 $end = Carbon::parse($endRaw);
 
-                if (! $start->isPast() && $end->gte($start)) {
+                if ($start->gte(today()) && $end->gte($start)) {
                     $step1 = [
                         'start_date' => $startRaw,
                         'end_date' => $endRaw,
