@@ -351,8 +351,9 @@
                                         :aria-label="cell.ariaLabel"
                                         :aria-disabled="cell.ariaDisabled"
                                         :aria-current="cell.ariaCurrent"
-                                        :class="cell.classes"
-                                        class="relative aspect-square flex items-center justify-center rounded-lg text-sm font-medium select-none"
+                                        @click="cell.clickable && selectDate(cell.dateStr)"
+                                        :class="[cell.classes, isInRange(cell.dateStr) ? 'ring-2 ring-brand ring-offset-1 bg-brand/10' : '']"
+                                        class="relative aspect-square flex items-center justify-center rounded-lg text-sm font-medium select-none transition-all duration-150"
                                     >
                                         <span x-text="cell.day" :class="cell.dayClasses"></span>
 
@@ -552,6 +553,28 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
         today:        today,          // "YYYY-MM-DD"
         loading:      true,
         data:         {},             // { "YYYY-MM-DD": { status, available_quantity } }
+        selectedStart: null,          // "YYYY-MM-DD" or null
+        selectedEnd:   null,          // "YYYY-MM-DD" or null
+
+        // ── Date selection ───────────────────────────────────────
+        selectDate(dateStr) {
+            if (!this.selectedStart || (this.selectedStart && this.selectedEnd)) {
+                this.selectedStart = dateStr;
+                this.selectedEnd = null;
+            } else if (dateStr === this.selectedStart) {
+                this.selectedEnd = dateStr; // single-day rental
+            } else if (dateStr < this.selectedStart) {
+                this.selectedEnd = this.selectedStart;
+                this.selectedStart = dateStr;
+            } else {
+                this.selectedEnd = dateStr;
+            }
+        },
+        isInRange(dateStr) {
+            if (!this.selectedStart) return false;
+            if (!this.selectedEnd) return dateStr === this.selectedStart;
+            return dateStr >= this.selectedStart && dateStr <= this.selectedEnd;
+        },
 
         // ── Computed: heading label ────────────────────────────────
         get headingLabel() {
@@ -593,7 +616,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
                 const qty     = info?.available_quantity ?? null;
 
                 // Build classes
-                let cellCls = 'cursor-default ';
+                const clickable = !isPast && status !== 'unavailable';
+                let cellCls = clickable ? 'cursor-pointer ' : 'cursor-default ';
                 let dayTextCls = '';
 
                 if (isPast) {
@@ -624,6 +648,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth }) {
 
                 cells.push({
                     day:          d,
+                    dateStr:      key,
+                    clickable,
                     classes:      cellCls.trim(),
                     dayClasses:   dayTextCls.trim(),
                     ariaLabel,
