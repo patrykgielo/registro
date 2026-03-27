@@ -36,7 +36,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             /**
              * Expose private method for testing.
              */
-            public function testNormalize(mixed $value): mixed
+            public function normalize(mixed $value): mixed
             {
                 return $this->normalizeFileUploadValue($value);
             }
@@ -58,7 +58,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'b2c3d4e5-f6a7-8901-bcde-f12345678901' => ['item' => 'Text 2'],
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals(['Text 1', 'Text 2'], $result);
     }
@@ -78,7 +78,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'b2c3d4e5-f6a7-8901-bcde-f12345678901' => ['name' => 'Type 2', 'icon' => 'moon'],
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals([
             ['name' => 'Type 1', 'icon' => 'sun'],
@@ -100,7 +100,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'a1b2c3d4-e5f6-7890-abcd-ef1234567890' => 'settings/logos/logo.svg',
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals('settings/logos/logo.svg', $result);
     }
@@ -114,7 +114,7 @@ class HasGroupedSettingsTraitTest extends TestCase
 
         $input = ['Item 1', 'Item 2', 'Item 3'];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals(['Item 1', 'Item 2', 'Item 3'], $result);
     }
@@ -126,7 +126,7 @@ class HasGroupedSettingsTraitTest extends TestCase
     {
         $mock = $this->getTraitMock();
 
-        $result = $mock->testNormalize([]);
+        $result = $mock->normalize([]);
 
         $this->assertNull($result);
     }
@@ -138,10 +138,10 @@ class HasGroupedSettingsTraitTest extends TestCase
     {
         $mock = $this->getTraitMock();
 
-        $this->assertEquals('string value', $mock->testNormalize('string value'));
-        $this->assertEquals(123, $mock->testNormalize(123));
-        $this->assertTrue($mock->testNormalize(true));
-        $this->assertNull($mock->testNormalize(null));
+        $this->assertEquals('string value', $mock->normalize('string value'));
+        $this->assertEquals(123, $mock->normalize(123));
+        $this->assertTrue($mock->normalize(true));
+        $this->assertNull($mock->normalize(null));
     }
 
     /**
@@ -155,7 +155,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'a1b2c3d4-e5f6-7890-abcd-ef1234567890' => ['item' => 'Only Item'],
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals(['Only Item'], $result);
     }
@@ -175,7 +175,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'b2c3d4e5-f6a7-8901-bcde-f12345678901' => ['name' => 'Name', 'icon' => 'star'],
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         // Since not ALL items have exactly 1 key, keep structure
         $this->assertEquals([
@@ -198,7 +198,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'b2c3d4e5-f6a7-8901-bcde-f12345678901' => ['text' => 'Second'],
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals(['First', 'Second'], $result);
     }
@@ -212,11 +212,11 @@ class HasGroupedSettingsTraitTest extends TestCase
 
         // settings/ prefix
         $input1 = ['a1b2c3d4-e5f6-7890-abcd-ef1234567890' => 'settings/logos/test.svg'];
-        $this->assertEquals('settings/logos/test.svg', $mock->testNormalize($input1));
+        $this->assertEquals('settings/logos/test.svg', $mock->normalize($input1));
 
         // Other path with extension
         $input2 = ['a1b2c3d4-e5f6-7890-abcd-ef1234567890' => 'uploads/images/photo.jpg'];
-        $this->assertEquals('uploads/images/photo.jpg', $mock->testNormalize($input2));
+        $this->assertEquals('uploads/images/photo.jpg', $mock->normalize($input2));
     }
 
     /**
@@ -232,7 +232,7 @@ class HasGroupedSettingsTraitTest extends TestCase
             'b2c3d4e5-f6a7-8901-bcde-f12345678901' => 'More text',
         ];
 
-        $result = $mock->testNormalize($input);
+        $result = $mock->normalize($input);
 
         $this->assertEquals(['Just text', 'More text'], $result);
     }
