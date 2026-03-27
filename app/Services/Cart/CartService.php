@@ -100,14 +100,7 @@ class CartService
                 throw CartNotActiveException::make();
             }
 
-            $orderNumber = 'ORG'.$cart->organization_id.'-'.now()->year.'-'.str_pad(
-                (string) (Order::where('organization_id', $cart->organization_id)
-                    ->whereYear('created_at', now()->year)
-                    ->count() + 1),
-                5,
-                '0',
-                STR_PAD_LEFT
-            );
+            $orderNumber = $this->generateOrderNumber($cart->organization_id);
 
             $subtotal = $cart->items->sum('total_price');
 
@@ -156,6 +149,25 @@ class CartService
 
             return $order;
         });
+    }
+
+    /**
+     * Generates a unique, sequential order number for the given organisation and current year.
+     *
+     * Must be called inside a DB transaction. lockForUpdate() on the latest order row
+     * serialises concurrent checkouts so that count() + 1 races are impossible.
+     */
+    private function generateOrderNumber(int $organizationId): string
+    {
+        $last = Order::where('organization_id', $organizationId)
+            ->whereYear('created_at', now()->year)
+            ->lockForUpdate()
+            ->orderByDesc('id')
+            ->first();
+
+        $seq = $last ? ((int) substr($last->order_number, -5)) + 1 : 1;
+
+        return 'ORG'.$organizationId.'-'.now()->year.'-'.str_pad((string) $seq, 5, '0', STR_PAD_LEFT);
     }
 
     /**
