@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Enums\RentalStatus;
 use App\Exceptions\RentalUnavailableException;
+use App\Models\OrderItem;
 use App\Models\Rental;
 use App\Models\Service;
 use App\Support\TenantFeature;
@@ -19,6 +20,8 @@ class RentalAvailabilityService
     /**
      * Get available quantity for a service during a date range.
      * NOT thread-safe on its own — call inside lockForUpdate() transaction for writes.
+     *
+     * Sprint 2: dual-source — accounts for both legacy Rentals and new OrderItems.
      */
     public function getAvailableQuantity(Service $service, Carbon $start, Carbon $end): int
     {
@@ -28,13 +31,20 @@ class RentalAvailabilityService
             ->values()
             ->all();
 
-        $reserved = Rental::where('service_id', $service->id)
+        // Legacy: reservations via old Rental flow
+        $reservedViaRentals = (int) Rental::where('service_id', $service->id)
             ->whereIn('status', $blockedStatuses)
             ->where('start_date', '<=', $end)
             ->where('end_date', '>=', $start)
             ->sum('quantity');
 
-        return max(0, ($service->quantity_total ?? 0) - (int) $reserved);
+        // New: reservations via Cart → Order flow (Sprint 2+)
+        $reservedViaOrders = (int) OrderItem::where('service_id', $service->id)
+            ->overlappingDates($start, $end)
+            ->blockingAvailability()
+            ->sum('quantity');
+
+        return max(0, ($service->quantity_total ?? 0) - $reservedViaRentals - $reservedViaOrders);
     }
 
     /**
@@ -69,6 +79,8 @@ class RentalAvailabilityService
     /**
      * Create a temporary hold with pessimistic locking.
      * Blocks inventory for HOLD_TTL_MINUTES.
+     *
+     * @deprecated Sprint 4 — use CartService::addItem() + OrderService instead. Will be removed.
      *
      * @throws RentalUnavailableException
      */
@@ -114,6 +126,8 @@ class RentalAvailabilityService
     /**
      * Confirm a held rental — sets contact info, transitions held → pending.
      * Pricing is already snapshotted at hold creation time.
+     *
+     * @deprecated Sprint 4 — use CheckoutController + Przelewy24Service instead. Will be removed.
      */
     public function confirmHold(Rental $rental, array $contactData): Rental
     {

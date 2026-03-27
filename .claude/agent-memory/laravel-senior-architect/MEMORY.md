@@ -29,3 +29,6 @@
 - Tests run in Docker only (PHP 8.3, local=8.2)
 - .env.testing MUST exist → DB_CONNECTION=sqlite, DB_DATABASE=:memory:
 - 5 pre-existing failures: BookingServiceArea(4) + TenantFeature(1)
+
+## Hooks
+- [feedback_stop_hook_stderr.md](feedback_stop_hook_stderr.md) — Stop/SubagentStop hooks capture stderr only; all echo must use >&2

@@ -21,8 +21,9 @@
 - `OrderItem::factory()` — creates order + itemRental service automatically
 
 ## Test Count (as of 2026-03-26)
-- Total: 285 passed, 5 failed (pre-existing)
-- New Sprint 1 model tests: 41 (Cart: 9, CartItem: 10, OrderItem: 13, Order: 19)
+- Total: 329 passed, 5 failed (pre-existing)
+- Sprint 1 model tests: 41 (Cart: 9, CartItem: 10, OrderItem: 13, Order: 19)
+- Sprint 2 service tests: 43 (CartService: 13, RentalAvailabilityService: 11, OrderService: 12, Przelewy24Service: 7)
 
 ## SQLite Gotchas
 - No ENUM column type — use string (SQLite accepts enums as varchar, no crash)
@@ -34,6 +35,31 @@
 
 ## Models Requiring HasFactory
 - Order model was missing `HasFactory` — added 2026-03-26. Always check new models for this trait before writing factories.
+
+## SQLite lockForUpdate() Behaviour
+- SQLite silently ignores `lockForUpdate()` inside DB transactions — does not throw
+- CartService::convertToOrder() calls it — tests work fine without mocking
+
+## PHP 8.3 Carbon::diffInDays() Type Change
+- `Carbon::diffInDays($other)` now returns `float` in PHP 8.3
+- Passing result directly to `int $param` causes TypeError in strict-typed services
+- Fix: cast with `(int) $start->diffInDays($end)`
+- Also: argument order matters — `$end->diffInDays($start)` returns negative when end > start; always use `$start->diffInDays($end)`
+- Bug found and fixed in CartService.php line 54 during Sprint 2 testing
+
+## Przelewy24Service Testing Pattern
+- `client()` must be `protected` (not `private`) to allow test subclassing
+- Use anonymous subclass pattern to override `client()`:
+  `new class($p24Mock) extends Przelewy24Service { protected function client(): Przelewy24 { return $this->mockedClient; } }`
+- `TransactionStatusNotification` can be built from real payload array + real `Config` object
+- `isSignValid()` can be tested with `Przelewy24::createSignature()` — no real API needed
+- `Przelewy24Exception` extends GuzzleHttp's `BadResponseException` (needs PSR-7 objects)
+  Use `$this->createMock(\Psr\Http\Message\RequestInterface::class)` + `ResponseInterface::class` to build it
+- Service file: app/Services/Payment/Przelewy24Service.php
+
+## Service Bug Fixes Found During Sprint 2 Testing
+- CartService.php:54 — `$end->diffInDays($start)` was wrong direction AND missing `(int)` cast
+  Fixed to: `(int) $start->diffInDays($end) + 1`
 
 ## State Machine Testing Pattern
 - Use `$order->status()->transitionTo('target')` — calls State::transitionTo()
