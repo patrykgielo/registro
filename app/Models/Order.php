@@ -8,13 +8,14 @@ use App\StateMachines\OrderStatusStateMachine;
 use App\Traits\BelongsToOrganization;
 use Asantibanez\LaravelEloquentStateMachines\Traits\HasStateMachines;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
-    use BelongsToOrganization, HasStateMachines;
+    use BelongsToOrganization, HasFactory, HasStateMachines;
 
     /** @var array<string, class-string> */
     public $stateMachines = [

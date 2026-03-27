@@ -25,8 +25,11 @@ return new class extends Migration
             $table->index('service_id');
         });
 
-        DB::statement('ALTER TABLE cart_items ADD CONSTRAINT chk_cart_items_end_date CHECK (end_date >= start_date)');
-        DB::statement('ALTER TABLE cart_items ADD CONSTRAINT chk_cart_items_quantity CHECK (quantity >= 1)');
+        // SQLite does not support ALTER TABLE ... ADD CONSTRAINT — skip in test environment
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE cart_items ADD CONSTRAINT chk_cart_items_end_date CHECK (end_date >= start_date)');
+            DB::statement('ALTER TABLE cart_items ADD CONSTRAINT chk_cart_items_quantity CHECK (quantity >= 1)');
+        }
     }
 
     public function down(): void
