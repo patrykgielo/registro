@@ -51,7 +51,7 @@ class CartService
             throw new \Exception("Dostępnych tylko {$available} szt.");
         }
 
-        $rentalDays = $end->diffInDays($start) + 1;
+        $rentalDays = (int) $start->diffInDays($end) + 1;
         $pricing = $this->availability->calculatePricing($service, $rentalDays, $quantity);
 
         return CartItem::create([

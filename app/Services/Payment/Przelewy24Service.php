@@ -12,7 +12,7 @@ use Przelewy24\Przelewy24;
 
 class Przelewy24Service
 {
-    private function client(): Przelewy24
+    protected function client(): Przelewy24
     {
         return new Przelewy24(
             merchantId: config('przelewy24.merchant_id'),
