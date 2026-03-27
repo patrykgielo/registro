@@ -11,12 +11,12 @@ class OrderService
     /**
      * Cancels an order by transitioning its status via the state machine.
      *
-     * @throws \Exception when order status does not allow cancellation
+     * @throws \LogicException when order status does not allow cancellation
      */
     public function cancel(Order $order, string $reason): Order
     {
         if (! in_array($order->status, ['pending_payment', 'paid'], strict: true)) {
-            throw new \Exception("Zamówienie o statusie '{$order->status}' nie może zostać anulowane");
+            throw new \LogicException("Zamówienie o statusie '{$order->status}' nie może zostać anulowane");
         }
 
         $order->status()->transitionTo('cancelled', ['reason' => $reason]);
