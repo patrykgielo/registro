@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Exclude webhook routes from CSRF protection
         $middleware->validateCsrfTokens(except: [
             'api/webhooks/*',
+            'webhooks/przelewy24',
         ]);
 
         // Add maintenance mode check to web middleware group
