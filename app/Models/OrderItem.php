@@ -67,12 +67,14 @@ class OrderItem extends Model
 
     public function scopeBlockingAvailability(Builder $query): Builder
     {
-        return $query->whereHas('order', function (Builder $q): void {
-            $q->whereIn('status', ['paid', 'confirmed', 'in_progress'])
-                ->where(function (Builder $q2): void {
-                    $q2->whereNotIn('status', ['pending_payment'])
-                        ->orWhere('expires_at', '>', now());
-                });
+        return $query->whereHas('order', function (Builder $q) {
+            $q->where(function (Builder $inner) {
+                $inner->whereIn('status', ['paid', 'confirmed', 'in_progress'])
+                    ->orWhere(function (Builder $pending) {
+                        $pending->where('status', 'pending_payment')
+                            ->where('expires_at', '>', now());
+                    });
+            });
         });
     }
 }

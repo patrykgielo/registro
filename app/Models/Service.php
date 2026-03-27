@@ -270,13 +270,21 @@ class Service extends Model
             throw new \LogicException('availableQuantity() can only be called on item_rental services.');
         }
 
-        $reserved = Rental::where('service_id', $this->id)
+        $reservedByRentals = Rental::where('service_id', $this->id)
             ->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
             ->where('start_date', '<=', $endDate)
             ->where('end_date', '>=', $startDate)
             ->sum('quantity');
 
-        return max(0, ($this->quantity_total ?? 0) - $reserved);
+        // Also deduct order items that block availability (paid/confirmed/in_progress
+        // orders, plus pending_payment orders with an active hold TTL).
+        // Full migration to RentalAvailabilityService happens in Sprint 2 (step 2.1).
+        $reservedByOrders = OrderItem::where('service_id', $this->id)
+            ->overlappingDates($startDate, $endDate)
+            ->blockingAvailability()
+            ->sum('quantity');
+
+        return max(0, ($this->quantity_total ?? 0) - $reservedByRentals - $reservedByOrders);
     }
 
     /**

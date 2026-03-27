@@ -125,12 +125,22 @@ class OrderItemTest extends TestCase
         $this->assertCount(0, OrderItem::blockingAvailability()->get());
     }
 
-    public function test_scope_blocking_availability_does_not_return_items_from_pending_payment_orders(): void
+    public function test_scope_blocking_availability_does_not_return_items_from_expired_pending_payment_orders(): void
     {
-        $order = Order::factory()->pendingPayment()->create();
+        // An expired pending_payment order (TTL elapsed) should NOT block.
+        $order = Order::factory()->expired()->create();
         OrderItem::factory()->create(['order_id' => $order->id]);
 
         $this->assertCount(0, OrderItem::blockingAvailability()->get());
+    }
+
+    public function test_scope_blocking_availability_returns_items_from_pending_payment_orders_with_active_ttl(): void
+    {
+        // A pending_payment order with an active hold TTL DOES block availability.
+        $order = Order::factory()->pendingPayment()->create(); // expires_at = now()+30min
+        OrderItem::factory()->create(['order_id' => $order->id]);
+
+        $this->assertCount(1, OrderItem::blockingAvailability()->get());
     }
 
     public function test_scope_blocking_availability_only_returns_blocking_statuses_in_mixed_set(): void
@@ -140,23 +150,28 @@ class OrderItemTest extends TestCase
         $inProgress = Order::factory()->inProgress()->create();
         $cancelled = Order::factory()->cancelled()->create();
         $completed = Order::factory()->completed()->create();
-        $pending = Order::factory()->pendingPayment()->create();
+        // expired() → pending_payment with expires_at in the past → NOT blocking
+        $expiredPending = Order::factory()->expired()->create();
+        // pendingPayment() → pending_payment with active TTL → IS blocking
+        $activePending = Order::factory()->pendingPayment()->create();
 
         OrderItem::factory()->create(['order_id' => $paid->id]);
         OrderItem::factory()->create(['order_id' => $confirmed->id]);
         OrderItem::factory()->create(['order_id' => $inProgress->id]);
         OrderItem::factory()->create(['order_id' => $cancelled->id]);
         OrderItem::factory()->create(['order_id' => $completed->id]);
-        OrderItem::factory()->create(['order_id' => $pending->id]);
+        OrderItem::factory()->create(['order_id' => $expiredPending->id]);
+        OrderItem::factory()->create(['order_id' => $activePending->id]);
 
         $blocking = OrderItem::blockingAvailability()->get();
 
-        $this->assertCount(3, $blocking);
+        $this->assertCount(4, $blocking);
 
         $orderIds = $blocking->pluck('order_id')->all();
         $this->assertContains($paid->id, $orderIds);
         $this->assertContains($confirmed->id, $orderIds);
         $this->assertContains($inProgress->id, $orderIds);
+        $this->assertContains($activePending->id, $orderIds);
     }
 
     public function test_order_item_belongs_to_order(): void
