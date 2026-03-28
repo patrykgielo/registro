@@ -7,6 +7,9 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\Auth\BusinessRegisterController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PostController;
@@ -16,6 +19,7 @@ use App\Http\Controllers\RentalBookingController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\UserAddressController;
 use App\Http\Controllers\UserVehicleController;
+use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\CheckBookingEnabled;
 use App\Http\Middleware\CheckRegistrationEnabled;
 use App\Http\Middleware\ResolveTenant;
@@ -127,6 +131,26 @@ Route::middleware([ResolveTenant::class, 'throttle:60,1'])->name('rental.')->gro
     Route::get('/api/rental/{service:slug}/kalendarz', [RentalBookingController::class, 'monthlyAvailability'])
         ->name('calendar');
 });
+
+// Cart & Checkout routes (Sprint 2+ — new e-commerce flow, requires auth + tenant)
+Route::middleware([ResolveTenant::class, 'auth'])->group(function () {
+    Route::get('/koszyk', [CartController::class, 'show'])->name('cart.show');
+    Route::post('/koszyk/dodaj', [CartController::class, 'add'])->name('cart.add');
+    Route::delete('/koszyk/usun/{item}', [CartController::class, 'remove'])->name('cart.remove');
+    Route::patch('/koszyk/ilosc/{item}', [CartController::class, 'updateQuantity'])->name('cart.update');
+    Route::get('/koszyk/zamowienie', [CheckoutController::class, 'show'])->name('checkout.show');
+    Route::post('/koszyk/zamowienie', [CheckoutController::class, 'submit'])
+        ->middleware('throttle:10,1')
+        ->name('checkout.submit');
+    Route::get('/koszyk/powrot', [CheckoutController::class, 'return'])->name('checkout.return');
+    Route::get('/moje-zamowienia', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/moje-zamowienia/{order}', [OrderController::class, 'show'])->name('orders.show');
+});
+
+// Przelewy24 webhook (no auth, no CSRF — excluded in bootstrap/app.php)
+Route::post('/webhooks/przelewy24', [WebhookController::class, 'przelewy24'])
+    ->middleware([ResolveTenant::class, 'throttle:60,1'])
+    ->name('webhooks.p24');
 
 // Authentication routes (register disabled here, handled manually below with middleware)
 // Wrapped in ResolveTenant so LoginController knows which tenant subdomain the user is on

@@ -258,18 +258,35 @@
                         </div>
 
                         {{-- CTA --}}
-                        <p x-show="!selectedStart" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu poniżej</p>
                         <div class="space-y-3">
-                            <a
-                                :href="bookingUrl"
-                                :class="canBook
-                                    ? 'bg-brand text-white hover:bg-brand-hover'
-                                    : 'bg-surface-sunken text-text-muted pointer-events-none'"
-                                class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full"
-                                :aria-disabled="!canBook"
-                            >
-                                <span x-text="selectedStart && selectedEnd ? 'Zarezerwuj online' : 'Zarezerwuj online'"></span>
-                            </a>
+                            @auth
+                                <form method="POST" action="{{ route('cart.add') }}" x-show="canBook" x-transition>
+                                    @csrf
+                                    <input type="hidden" name="service_id" value="{{ $service->id }}">
+                                    <input type="hidden" name="start_date" :value="selectedStart">
+                                    <input type="hidden" name="end_date" :value="selectedEnd">
+                                    <input type="hidden" name="quantity" value="1">
+                                    <button
+                                        type="submit"
+                                        class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        :disabled="!canBook"
+                                        :aria-disabled="!canBook"
+                                    >
+                                        <svg class="w-5 h-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                                        </svg>
+                                        Dodaj do koszyka
+                                    </button>
+                                </form>
+                                <p x-show="!canBook" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu poniżej</p>
+                            @else
+                                <a
+                                    href="{{ route('login') }}"
+                                    class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 cursor-pointer"
+                                >
+                                    Zaloguj się, aby zarezerwować
+                                </a>
+                            @endauth
                             @if($contactPhone)
                                 <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
                                     Lub zadzwoń: {{ $contactPhone }}

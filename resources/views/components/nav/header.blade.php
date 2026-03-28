@@ -30,6 +30,33 @@
                 {{-- Desktop Actions --}}
                 <div class="hidden md:flex items-center gap-3">
                     @auth
+                        @php
+                            $cartCount = 0;
+                            $cartOrg = \App\Support\TenantFeature::currentTenant();
+                            if ($cartOrg) {
+                                $cartModel = \App\Models\Cart::active()
+                                    ->forUser(Auth::user())
+                                    ->where('organization_id', $cartOrg->id)
+                                    ->first();
+                                $cartCount = $cartModel ? $cartModel->items()->count() : 0;
+                            }
+                        @endphp
+
+                        {{-- Cart Icon --}}
+                        <a
+                            href="{{ route('cart.show') }}"
+                            class="relative flex items-center justify-center min-h-11 min-w-11 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                            aria-label="{{ $cartCount > 0 ? 'Twój koszyk (' . $cartCount . ' ' . ($cartCount === 1 ? 'pozycja' : ($cartCount < 5 ? 'pozycje' : 'pozycji')) . ')' : 'Twój koszyk' }}"
+                        >
+                            <x-heroicon-m-shopping-cart class="h-5 w-5" />
+                            @if($cartCount > 0)
+                                <span
+                                    class="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-text-inverse text-[10px] font-semibold leading-none"
+                                    aria-hidden="true"
+                                >{{ $cartCount > 99 ? '99+' : $cartCount }}</span>
+                            @endif
+                        </a>
+
                         <x-interactive.dropdown align="right">
                             <x-slot:trigger>
                                 <button class="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors py-2">
@@ -75,7 +102,7 @@
                 {{-- Mobile Hamburger --}}
                 <button
                     @click="mobileOpen = true"
-                    class="md:hidden flex items-center justify-center w-10 h-10 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
+                    class="md:hidden flex items-center justify-center min-h-11 min-w-11 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
                     aria-label="Otwórz menu"
                 >
                     <x-heroicon-m-bars-3 class="h-6 w-6" />
@@ -153,6 +180,22 @@
                             </a>
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
                                 <x-heroicon-m-calendar class="h-5 w-5" /> Moje rezerwacje
+                            </a>
+                            <a
+                                href="{{ route('cart.show') }}"
+                                class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                                aria-label="{{ isset($cartCount) && $cartCount > 0 ? 'Twój koszyk (' . $cartCount . ' ' . ($cartCount === 1 ? 'pozycja' : ($cartCount < 5 ? 'pozycje' : 'pozycji')) . ')' : 'Twój koszyk' }}"
+                            >
+                                <span class="relative flex-shrink-0">
+                                    <x-heroicon-m-shopping-cart class="h-5 w-5" />
+                                    @if(isset($cartCount) && $cartCount > 0)
+                                        <span
+                                            class="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 rounded-full bg-brand text-text-inverse text-[9px] font-semibold leading-none"
+                                            aria-hidden="true"
+                                        >{{ $cartCount > 99 ? '99+' : $cartCount }}</span>
+                                    @endif
+                                </span>
+                                Koszyk
                             </a>
                         @else
                             <x-ui.separator class="my-4" />

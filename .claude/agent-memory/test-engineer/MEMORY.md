@@ -15,13 +15,55 @@
 - `Service::factory()->timeSlot()` — booking-type service (if exists)
 - `Rental::factory()->held()` — status=Held, held_until=+15min
 - `Rental::factory()->pending()` — status=Pending (if exists)
+- `Cart::factory()->active()` / `->abandoned()` / `->converted()`
+- `Order::factory()->pendingPayment()` / `->paid()` / `->confirmed()` / `->inProgress()` / `->cancelled()` / `->completed()` / `->expired()`
+- `CartItem::factory()` — creates cart + itemRental service automatically
+- `OrderItem::factory()` — creates order + itemRental service automatically
 
-## Test Count (as of 2026-03-25)
-- Total: 301 passed, 5 failed (pre-existing)
-- Rental tests: 67 (RentalAvailabilityService: 21, RentalBookingController: 31, RentalPricing: 15)
+## Test Count (as of 2026-03-28)
+- Total: 359 passed, 5 failed (pre-existing)
+- Sprint 1 model tests: 41 (Cart: 9, CartItem: 10, OrderItem: 13, Order: 19)
+- Sprint 2 service tests: 43 (CartService: 13, RentalAvailabilityService: 11, OrderService: 12, Przelewy24Service: 7)
+- Sprint 3 feature tests: 30 (AddToCartTest: 11, CheckoutFlowTest: 9, CustomerOrdersTest: 10)
 
 ## SQLite Gotchas
-- No ENUM column type — use string
+- No ENUM column type — use string (SQLite accepts enums as varchar, no crash)
 - No lockForUpdate() — skip concurrency tests or mock
 - JSON column queries differ from MySQL
 - Timestamp precision differs
+- `ALTER TABLE ... ADD CONSTRAINT ... CHECK` NOT supported — guard with `if (DB::getDriverName() !== 'sqlite')` in migrations
+- [feedback_sqlite_check_constraint.md](feedback_sqlite_check_constraint.md) — details on this pattern
+
+## Models Requiring HasFactory
+- Order model was missing `HasFactory` — added 2026-03-26. Always check new models for this trait before writing factories.
+
+## SQLite lockForUpdate() Behaviour
+- SQLite silently ignores `lockForUpdate()` inside DB transactions — does not throw
+- CartService::convertToOrder() calls it — tests work fine without mocking
+
+## PHP 8.3 Carbon::diffInDays() Type Change
+- `Carbon::diffInDays($other)` now returns `float` in PHP 8.3
+- Passing result directly to `int $param` causes TypeError in strict-typed services
+- Fix: cast with `(int) $start->diffInDays($end)`
+- Also: argument order matters — `$end->diffInDays($start)` returns negative when end > start; always use `$start->diffInDays($end)`
+- Bug found and fixed in CartService.php line 54 during Sprint 2 testing
+
+## Przelewy24Service Testing Pattern
+- `client()` must be `protected` (not `private`) to allow test subclassing
+- Use anonymous subclass pattern to override `client()`:
+  `new class($p24Mock) extends Przelewy24Service { protected function client(): Przelewy24 { return $this->mockedClient; } }`
+- `TransactionStatusNotification` can be built from real payload array + real `Config` object
+- `isSignValid()` can be tested with `Przelewy24::createSignature()` — no real API needed
+- `Przelewy24Exception` extends GuzzleHttp's `BadResponseException` (needs PSR-7 objects)
+  Use `$this->createMock(\Psr\Http\Message\RequestInterface::class)` + `ResponseInterface::class` to build it
+- Service file: app/Services/Payment/Przelewy24Service.php
+
+## Service Bug Fixes Found During Sprint 2 Testing
+- CartService.php:54 — `$end->diffInDays($start)` was wrong direction AND missing `(int)` cast
+  Fixed to: `(int) $start->diffInDays($end) + 1`
+
+## State Machine Testing Pattern
+- Use `$order->status()->transitionTo('target')` — calls State::transitionTo()
+- Forbidden transitions throw `Asantibanez\LaravelEloquentStateMachines\Exceptions\TransitionNotAllowedException`
+- `$order->status()->canBe('target')` returns bool without side effects (safe for assertion)
+- Factory states bypass the state machine by setting status directly in DB — test `transitionTo()` from those states
