@@ -38,9 +38,9 @@
 
                             {{-- Thumbnail --}}
                             <div class="hidden sm:block w-36 shrink-0 bg-surface-sunken">
-                                @if($item->service->getFirstMediaUrl('gallery'))
+                                @if($item->service->featured_image)
                                     <img
-                                        src="{{ $item->service->getFirstMediaUrl('gallery') }}"
+                                        src="{{ Storage::url($item->service->featured_image) }}"
                                         alt="{{ $item->service->name }}"
                                         class="w-full h-full object-cover aspect-square"
                                         loading="lazy"
