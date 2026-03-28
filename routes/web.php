@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\Dev\FakePaymentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PortfolioController;
@@ -305,6 +306,15 @@ Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->
     Route::get('/car-models', [VehicleDataController::class, 'models'])->name('car-models');
     Route::get('/vehicle-years', [VehicleDataController::class, 'years'])->name('vehicle-years');
 });
+
+// =============================================================================
+// DEV ONLY — fake payment bypass (non-production environments)
+// =============================================================================
+if (! app()->isProduction()) {
+    Route::post('/dev/fake-pay', [FakePaymentController::class, 'pay'])
+        ->middleware(['auth', ResolveTenant::class])
+        ->name('dev.fake-pay');
+}
 
 // =============================================================================
 // CMS Pages - Catch-all Route (MUST BE LAST!)
