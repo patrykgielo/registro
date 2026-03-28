@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
+use App\Filament\Resources\OrderResource\RelationManagers;
 use App\Models\Order;
 use App\Services\Order\OrderService;
 use BackedEnum;
@@ -144,7 +145,17 @@ class OrderResource extends BaseResource
                     ->color('success')
                     ->visible(fn (Order $record): bool => $record->status === 'paid')
                     ->requiresConfirmation()
-                    ->action(fn (Order $record) => $record->status()->transitionTo('confirmed')),
+                    ->action(function (Order $record): void {
+                        try {
+                            $record->status()->transitionTo('confirmed');
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->danger()
+                                ->title('Nie można potwierdzić zamówienia')
+                                ->body($e->getMessage())
+                                ->send();
+                        }
+                    }),
 
                 Actions\Action::make('mark_in_progress')
                     ->label('Wydano klientowi')
@@ -152,7 +163,17 @@ class OrderResource extends BaseResource
                     ->color('info')
                     ->visible(fn (Order $record): bool => $record->status === 'confirmed')
                     ->requiresConfirmation()
-                    ->action(fn (Order $record) => $record->status()->transitionTo('in_progress')),
+                    ->action(function (Order $record): void {
+                        try {
+                            $record->status()->transitionTo('in_progress');
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->danger()
+                                ->title('Nie można zmienić statusu')
+                                ->body($e->getMessage())
+                                ->send();
+                        }
+                    }),
 
                 Actions\Action::make('complete')
                     ->label('Sprzęt zwrócony')
@@ -160,31 +181,49 @@ class OrderResource extends BaseResource
                     ->color('gray')
                     ->visible(fn (Order $record): bool => $record->status === 'in_progress')
                     ->requiresConfirmation()
-                    ->action(fn (Order $record) => $record->status()->transitionTo('completed')),
+                    ->action(function (Order $record): void {
+                        try {
+                            $record->status()->transitionTo('completed');
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->danger()
+                                ->title('Nie można zakończyć zamówienia')
+                                ->body($e->getMessage())
+                                ->send();
+                        }
+                    }),
 
                 Actions\Action::make('cancel')
                     ->label('Anuluj')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
-                    ->visible(fn (Order $record): bool => in_array($record->status, ['pending_payment', 'paid']))
+                    ->visible(fn (Order $record): bool => in_array($record->status, ['pending_payment', 'paid', 'confirmed']))
                     ->form([
                         Textarea::make('reason')
                             ->label('Powód anulowania')
                             ->required()
                             ->maxLength(500),
                     ])
-                    ->action(fn (Order $record, array $data) => app(OrderService::class)->cancel($record, $data['reason'])),
+                    ->action(function (Order $record, array $data): void {
+                        try {
+                            app(OrderService::class)->cancel($record, $data['reason']);
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->danger()
+                                ->title('Nie można anulować zamówienia')
+                                ->body($e->getMessage())
+                                ->send();
+                        }
+                    }),
             ])
-            ->toolbarActions([
-                Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
-                ]),
-            ]);
+            ->toolbarActions([]);
     }
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            RelationManagers\OrderItemsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array
@@ -198,5 +237,20 @@ class OrderResource extends BaseResource
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
     }
 }
