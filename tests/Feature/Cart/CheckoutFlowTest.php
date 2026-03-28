@@ -56,18 +56,34 @@ class CheckoutFlowTest extends TestCase
     }
 
     /**
-     * Build a valid checkout form payload.
+     * Build a valid checkout form payload (natural person / B2C).
      *
      * @return array<string, mixed>
      */
     private function validCheckoutPayload(): array
     {
         return [
+            // Customer type
+            'customer_type' => 'natural_person',
+            // Personal data
             'customer_first_name' => 'Jan',
             'customer_last_name' => 'Kowalski',
             'customer_email' => 'jan.kowalski@test.pl',
             'customer_phone' => '500100200',
+            // PESEL — valid checksum
+            'customer_pesel' => '44051401458',
+            // Contract address
+            'customer_street' => 'Marszałkowska',
+            'customer_building' => '1',
+            'customer_apartment' => null,
+            'customer_city' => 'Warszawa',
+            'customer_postal_code' => '00-001',
+            // Invoice (optional for natural person)
             'invoice_requested' => false,
+            // Legal acceptances
+            'terms_accepted' => true,
+            'rodo_accepted' => true,
+            'withdrawal_exclusion_accepted' => true,
         ];
     }
 
