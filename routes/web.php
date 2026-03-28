@@ -99,29 +99,18 @@ Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('service.show');
 });
 
-// Rental Booking routes (guest-accessible — contact info collected in step 2)
+// Rental Booking routes — DEPRECATED (Sprint 4). Returns 410 Gone with redirect hint.
+// Will be fully removed in next cleanup sprint. API endpoints below are preserved.
 Route::middleware([ResolveTenant::class])->prefix('wypozyczalnia')->name('rental.')->group(function () {
-    Route::get('/{service:slug}', [RentalBookingController::class, 'show'])
-        ->name('step1');
-    Route::post('/{service:slug}', [RentalBookingController::class, 'storeStep1'])
-        ->middleware('throttle:10,1')
-        ->name('step1.store');
+    $gone = fn () => response()->json(['message' => 'Ten endpoint jest nieaktywny. Użyj /koszyk'], 410);
 
-    Route::get('/{service:slug}/kontakt', [RentalBookingController::class, 'showStep2'])
-        ->name('step2');
-    Route::post('/{service:slug}/kontakt', [RentalBookingController::class, 'storeStep2'])
-        ->middleware('throttle:10,1')
-        ->name('step2.store');
-
-    Route::get('/{service:slug}/podsumowanie', [RentalBookingController::class, 'showStep3'])
-        ->name('step3');
-
-    Route::post('/{service:slug}/zatwierdz', [RentalBookingController::class, 'confirm'])
-        ->middleware('throttle:5,1')
-        ->name('confirm');
-
-    Route::get('/{service:slug}/potwierdzenie', [RentalBookingController::class, 'showConfirmation'])
-        ->name('confirmation');
+    Route::get('/{service:slug}', $gone)->name('step1');
+    Route::post('/{service:slug}', $gone)->middleware('throttle:10,1')->name('step1.store');
+    Route::get('/{service:slug}/kontakt', $gone)->name('step2');
+    Route::post('/{service:slug}/kontakt', $gone)->middleware('throttle:10,1')->name('step2.store');
+    Route::get('/{service:slug}/podsumowanie', $gone)->name('step3');
+    Route::post('/{service:slug}/zatwierdz', $gone)->middleware('throttle:5,1')->name('confirm');
+    Route::get('/{service:slug}/potwierdzenie', $gone)->name('confirmation');
 });
 
 // Rental availability AJAX endpoints (read-only, higher rate limit)
