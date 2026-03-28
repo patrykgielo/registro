@@ -20,10 +20,11 @@
 - `CartItem::factory()` — creates cart + itemRental service automatically
 - `OrderItem::factory()` — creates order + itemRental service automatically
 
-## Test Count (as of 2026-03-26)
-- Total: 329 passed, 5 failed (pre-existing)
+## Test Count (as of 2026-03-28)
+- Total: 359 passed, 5 failed (pre-existing)
 - Sprint 1 model tests: 41 (Cart: 9, CartItem: 10, OrderItem: 13, Order: 19)
 - Sprint 2 service tests: 43 (CartService: 13, RentalAvailabilityService: 11, OrderService: 12, Przelewy24Service: 7)
+- Sprint 3 feature tests: 30 (AddToCartTest: 11, CheckoutFlowTest: 9, CustomerOrdersTest: 10)
 
 ## SQLite Gotchas
 - No ENUM column type — use string (SQLite accepts enums as varchar, no crash)
