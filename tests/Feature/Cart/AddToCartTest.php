@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Cart;
 
 use App\Models\Cart;
-use App\Models\CartItem;
 use App\Models\Organization;
 use App\Models\Service;
 use App\Models\User;

@@ -6,8 +6,10 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
 use App\Models\Order;
+use App\Services\Order\OrderService;
 use BackedEnum;
 use Filament\Actions;
+use Filament\Forms\Components\Textarea;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -135,6 +137,43 @@ class OrderResource extends BaseResource
             ->recordAction('view')
             ->recordActions([
                 Actions\ViewAction::make(),
+
+                Actions\Action::make('confirm')
+                    ->label('Potwierdź')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(fn (Order $record): bool => $record->status === 'paid')
+                    ->requiresConfirmation()
+                    ->action(fn (Order $record) => $record->status()->transitionTo('confirmed')),
+
+                Actions\Action::make('mark_in_progress')
+                    ->label('Wydano klientowi')
+                    ->icon('heroicon-o-truck')
+                    ->color('info')
+                    ->visible(fn (Order $record): bool => $record->status === 'confirmed')
+                    ->requiresConfirmation()
+                    ->action(fn (Order $record) => $record->status()->transitionTo('in_progress')),
+
+                Actions\Action::make('complete')
+                    ->label('Sprzęt zwrócony')
+                    ->icon('heroicon-o-archive-box-arrow-down')
+                    ->color('gray')
+                    ->visible(fn (Order $record): bool => $record->status === 'in_progress')
+                    ->requiresConfirmation()
+                    ->action(fn (Order $record) => $record->status()->transitionTo('completed')),
+
+                Actions\Action::make('cancel')
+                    ->label('Anuluj')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->visible(fn (Order $record): bool => in_array($record->status, ['pending_payment', 'paid']))
+                    ->form([
+                        Textarea::make('reason')
+                            ->label('Powód anulowania')
+                            ->required()
+                            ->maxLength(500),
+                    ])
+                    ->action(fn (Order $record, array $data) => app(OrderService::class)->cancel($record, $data['reason'])),
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
