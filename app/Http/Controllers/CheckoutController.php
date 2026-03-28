@@ -37,7 +37,29 @@ class CheckoutController extends Controller
                 ->withErrors(['general' => 'Twój koszyk jest pusty.']);
         }
 
-        return view('checkout.show', compact('cart'));
+        $user = auth()->user();
+        $profileData = [
+            'customer_type' => $user->customer_type,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'email' => $user->email,
+            'phone' => $user->phone_e164,
+            'pesel' => $user->pesel,
+            'street' => $user->street_name,
+            'building' => $user->street_number,
+            'city' => $user->city,
+            'postal_code' => $user->postal_code,
+            'company_name' => $user->company_name,
+            'nip' => $user->nip,
+            'regon' => $user->regon,
+            'krs' => $user->krs,
+            'billing_street' => $user->billing_street,
+            'billing_building' => $user->billing_building_number,
+            'billing_city' => $user->billing_city,
+            'billing_postal' => $user->billing_postal_code,
+        ];
+
+        return view('checkout.show', compact('cart', 'profileData'));
     }
 
     /**

@@ -55,6 +55,10 @@ class User extends Authenticatable implements FilamentUser, HasName, HasTenants
         'billing_city',
         'nip',
         'company_name',
+        'customer_type',
+        'pesel',
+        'regon',
+        'krs',
         'sms_consent_given_at',
         'sms_opted_out_at',
         'email_marketing_consent_at',
@@ -97,6 +101,11 @@ class User extends Authenticatable implements FilamentUser, HasName, HasTenants
         'billing_city',
         'nip',
         'company_name',
+        // Rental / legal profile fields
+        'customer_type',
+        'pesel',
+        'regon',
+        'krs',
         // Profile feature fields
         'max_vehicles',
         'max_addresses',
