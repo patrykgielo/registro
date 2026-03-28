@@ -149,6 +149,7 @@ Settings are **fully per-tenant** via `SettingsManager`. URL fields: when non-em
 
 ---
 
+
 ## Notes for Developers
 
 1. **Do not include `deposit_amount` in financial totals** — it is off-balance-sheet
