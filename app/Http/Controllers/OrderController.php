@@ -23,7 +23,10 @@ class OrderController extends Controller
 
     public function show(Request $request, Order $order): View
     {
-        abort_unless($order->user_id === auth()->id(), 403);
+        $org = TenantFeature::currentTenant();
+
+        abort_unless($org !== null, 404);
+        abort_unless($order->user_id === auth()->id() && $order->organization_id === $org->id, 403);
 
         return view('orders.show', compact('order'));
     }

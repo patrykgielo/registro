@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\CartItemOwnershipException;
 use App\Exceptions\RentalUnavailableException;
 use App\Http\Requests\Cart\AddToCartRequest;
 use App\Models\CartItem;
@@ -71,7 +72,11 @@ class CartController extends Controller
 
         $cart = $this->cart->getOrCreateCart($org, auth()->user());
 
-        $this->cart->removeItem($cart, $item);
+        try {
+            $this->cart->removeItem($cart, $item);
+        } catch (CartItemOwnershipException) {
+            abort(403);
+        }
 
         return redirect()->route('cart.show');
     }
@@ -93,6 +98,8 @@ class CartController extends Controller
 
         try {
             $this->cart->updateQuantity($cart, $item, (int) $request->quantity);
+        } catch (CartItemOwnershipException) {
+            abort(403);
         } catch (RentalUnavailableException $e) {
             return redirect()->back()->withErrors(['availability' => $e->getMessage()]);
         }

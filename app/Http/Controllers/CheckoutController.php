@@ -12,6 +12,7 @@ use App\Support\TenantFeature;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class CheckoutController extends Controller
 {
@@ -60,7 +61,9 @@ class CheckoutController extends Controller
 
             return redirect($paymentUrl);
         } catch (\Exception $e) {
-            return redirect()->back()->withErrors(['general' => $e->getMessage()]);
+            Log::error('Checkout failed', ['exception' => $e, 'user_id' => auth()->id()]);
+
+            return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
         }
     }
 
@@ -69,9 +72,16 @@ class CheckoutController extends Controller
      */
     public function return(Request $request): View
     {
+        $org = TenantFeature::currentTenant();
+
+        abort_unless($org !== null, 404);
+
         $sessionId = $request->query('sessionId') ?? $request->query('p24_session_id');
 
-        $order = Order::where('p24_session_id', $sessionId)->first();
+        $order = Order::where('p24_session_id', $sessionId)
+            ->where('organization_id', $org->id)
+            ->where('user_id', auth()->id())
+            ->first();
 
         return view('checkout.return', compact('order'));
     }
