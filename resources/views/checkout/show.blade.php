@@ -434,9 +434,9 @@
                             <li class="flex gap-3">
                                 {{-- Thumbnail --}}
                                 <div class="shrink-0 w-10 h-10 rounded-lg bg-surface-sunken overflow-hidden">
-                                    @if($item->service->getFirstMediaUrl('gallery'))
+                                    @if($item->service->featured_image)
                                         <img
-                                            src="{{ $item->service->getFirstMediaUrl('gallery') }}"
+                                            src="{{ Storage::url($item->service->featured_image) }}"
                                             alt="{{ $item->service->name }}"
                                             class="w-full h-full object-cover"
                                             loading="lazy"
