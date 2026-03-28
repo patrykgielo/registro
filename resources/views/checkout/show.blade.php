@@ -513,51 +513,6 @@
                         </p>
                     </div>
 
-                    {{-- DEV: fake payment bypass (non-production only) --}}
-                    @if(! app()->isProduction())
-                        {{--
-                            Separate <form> with hidden mirrors of every checkout field that targets
-                            the DEV-only route.  Alpine copies live values from the main form before
-                            submit so that SubmitCheckoutRequest validation passes.
-                            Creates the order AND marks it paid in one step — no P24 involved.
-                            Only visible + functional in local/staging environments.
-                        --}}
-                        <form
-                            method="POST"
-                            action="{{ route('dev.fake-pay') }}"
-                            class="mt-3"
-                            x-data
-                            @submit.prevent="
-                                ['customer_first_name','customer_last_name','customer_email','customer_phone',
-                                 'invoice_requested','invoice_company_name','invoice_nip',
-                                 'invoice_street','invoice_street_number','invoice_postal_code','invoice_city'
-                                ].forEach(function(name) {
-                                    var src = document.querySelector('[name=' + name + ']');
-                                    var dst = $el.querySelector('[data-copy=' + name + ']');
-                                    if (src && dst) {
-                                        dst.value = src.type === 'checkbox' ? (src.checked ? '1' : '') : src.value;
-                                    }
-                                });
-                                $el.submit();
-                            "
-                        >
-                            @csrf
-                            @foreach(['customer_first_name','customer_last_name','customer_email','customer_phone',
-                                      'invoice_requested','invoice_company_name','invoice_nip',
-                                      'invoice_street','invoice_street_number','invoice_postal_code','invoice_city'] as $field)
-                                <input type="hidden" name="{{ $field }}" data-copy="{{ $field }}">
-                            @endforeach
-                            <button
-                                type="submit"
-                                class="w-full py-3 px-4 rounded-xl border-2 border-dashed border-amber-400
-                                       bg-amber-50 text-amber-800 font-medium text-sm
-                                       hover:bg-amber-100 transition-colors duration-200 cursor-pointer"
-                            >
-                                [DEV] Zaplac testowo &mdash; pomin Przelewy24
-                            </button>
-                        </form>
-                    @endif
-
                     {{-- Back to cart --}}
                     <div class="mt-3 text-center">
                         <a
@@ -575,6 +530,27 @@
         </div>
 
     </form>
+
+    {{-- DEV: fake payment bypass — MUST be outside main <form> (nested forms are invalid HTML) --}}
+    @if(! app()->isProduction())
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 pb-4">
+            <div class="flex justify-end">
+                <div class="w-full lg:w-80">
+                    <form method="POST" action="{{ route('dev.fake-pay') }}">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="w-full py-3 px-4 rounded-xl border-2 border-dashed border-amber-400
+                                   bg-amber-50 text-amber-800 font-medium text-sm
+                                   hover:bg-amber-100 transition-colors duration-200 cursor-pointer"
+                        >
+                            ⚡ [DEV] Zapłać testowo — pomiń Przelewy24
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endif
 </x-layout.section>
 
 @endsection
