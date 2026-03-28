@@ -15,6 +15,7 @@ use App\Services\RentalAvailabilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class RentalBookingController extends Controller
 {
@@ -22,8 +23,10 @@ class RentalBookingController extends Controller
         protected RentalAvailabilityService $availabilityService
     ) {}
 
+    /** @deprecated Sprint 4 — use /koszyk flow instead. Will be removed. */
     public function show(Request $request, Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::show() called', ['service' => $service->slug, 'url' => $request->fullUrl()]);
         $this->guardRentalService($service);
 
         $sessionKey = "rental_booking.{$service->id}";
@@ -66,8 +69,10 @@ class RentalBookingController extends Controller
         ]);
     }
 
+    /** @deprecated Sprint 4 — use /koszyk/dodaj instead. Will be removed. */
     public function storeStep1(StoreRentalStep1Request $request, Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::storeStep1() called', ['service' => $service->slug]);
         $this->guardRentalService($service);
 
         $sessionKey = "rental_booking.{$service->id}";
@@ -95,8 +100,10 @@ class RentalBookingController extends Controller
         return redirect()->route('rental.step2', $service);
     }
 
+    /** @deprecated Sprint 4 — use /koszyk/zamowienie instead. Will be removed. */
     public function showStep2(Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::showStep2() called', ['service' => $service->slug]);
         $this->guardRentalService($service);
 
         $rental = $this->getActiveHold($service);
@@ -124,8 +131,10 @@ class RentalBookingController extends Controller
         ]);
     }
 
+    /** @deprecated Sprint 4 — will be removed. */
     public function storeStep2(StoreRentalStep2Request $request, Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::storeStep2() called', ['service' => $service->slug]);
         $this->guardRentalService($service);
 
         $rental = $this->getActiveHold($service);
@@ -139,8 +148,10 @@ class RentalBookingController extends Controller
         return redirect()->route('rental.step3', $service);
     }
 
+    /** @deprecated Sprint 4 — will be removed. */
     public function showStep3(Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::showStep3() called', ['service' => $service->slug]);
         $this->guardRentalService($service);
 
         $rental = $this->getActiveHold($service);
@@ -170,8 +181,10 @@ class RentalBookingController extends Controller
         ]);
     }
 
+    /** @deprecated Sprint 4 — use /koszyk/zamowienie instead. Will be removed. */
     public function confirm(Request $request, Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::confirm() called', ['service' => $service->slug]);
         $this->guardRentalService($service);
 
         $rental = $this->getActiveHold($service);
@@ -201,8 +214,10 @@ class RentalBookingController extends Controller
         return redirect()->route('rental.confirmation', $service);
     }
 
+    /** @deprecated Sprint 4 — will be removed. */
     public function showConfirmation(Service $service)
     {
+        Log::warning('[DEPRECATED] RentalBookingController::showConfirmation() called', ['service' => $service->slug]);
         $this->guardRentalService($service);
 
         $rentalId = session('rental_id');
