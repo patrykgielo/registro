@@ -45,7 +45,7 @@
                         {{-- Cart Icon --}}
                         <a
                             href="{{ route('cart.show') }}"
-                            class="relative flex items-center justify-center w-9 h-9 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                            class="relative flex items-center justify-center min-h-11 min-w-11 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                             aria-label="{{ $cartCount > 0 ? 'Twój koszyk (' . $cartCount . ' ' . ($cartCount === 1 ? 'pozycja' : ($cartCount < 5 ? 'pozycje' : 'pozycji')) . ')' : 'Twój koszyk' }}"
                         >
                             <x-heroicon-m-shopping-cart class="h-5 w-5" />
@@ -102,7 +102,7 @@
                 {{-- Mobile Hamburger --}}
                 <button
                     @click="mobileOpen = true"
-                    class="md:hidden flex items-center justify-center w-10 h-10 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
+                    class="md:hidden flex items-center justify-center min-h-11 min-w-11 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
                     aria-label="Otwórz menu"
                 >
                     <x-heroicon-m-bars-3 class="h-6 w-6" />

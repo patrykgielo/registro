@@ -76,7 +76,7 @@
                                     aria-invalid="{{ $errors->has('customer_first_name') ? 'true' : 'false' }}"
                                     aria-describedby="{{ $errors->has('customer_first_name') ? 'customer_first_name-error' : '' }}"
                                     @class([
-                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                         'transition-colors duration-200 ease-out',
                                         'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                         'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_first_name'),
@@ -106,7 +106,7 @@
                                     aria-invalid="{{ $errors->has('customer_last_name') ? 'true' : 'false' }}"
                                     aria-describedby="{{ $errors->has('customer_last_name') ? 'customer_last_name-error' : '' }}"
                                     @class([
-                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                         'transition-colors duration-200 ease-out',
                                         'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                         'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_last_name'),
@@ -136,7 +136,7 @@
                                     aria-invalid="{{ $errors->has('customer_email') ? 'true' : 'false' }}"
                                     aria-describedby="{{ $errors->has('customer_email') ? 'customer_email-error' : 'customer_email-hint' }}"
                                     @class([
-                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                         'transition-colors duration-200 ease-out',
                                         'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                         'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_email'),
@@ -170,7 +170,7 @@
                                     aria-invalid="{{ $errors->has('customer_phone') ? 'true' : 'false' }}"
                                     aria-describedby="{{ $errors->has('customer_phone') ? 'customer_phone-error' : '' }}"
                                     @class([
-                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                        'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                         'transition-colors duration-200 ease-out',
                                         'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                         'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_phone'),
@@ -252,7 +252,7 @@
                                         aria-invalid="{{ $errors->has('invoice_company_name') ? 'true' : 'false' }}"
                                         aria-describedby="{{ $errors->has('invoice_company_name') ? 'invoice_company_name-error' : '' }}"
                                         @class([
-                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                             'transition-colors duration-200 ease-out',
                                             'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_company_name'),
@@ -282,7 +282,7 @@
                                         aria-invalid="{{ $errors->has('invoice_nip') ? 'true' : 'false' }}"
                                         aria-describedby="{{ $errors->has('invoice_nip') ? 'invoice_nip-error' : '' }}"
                                         @class([
-                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                             'transition-colors duration-200 ease-out',
                                             'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_nip'),
@@ -311,7 +311,7 @@
                                         aria-invalid="{{ $errors->has('invoice_street') ? 'true' : 'false' }}"
                                         aria-describedby="{{ $errors->has('invoice_street') ? 'invoice_street-error' : '' }}"
                                         @class([
-                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                             'transition-colors duration-200 ease-out',
                                             'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_street'),
@@ -339,7 +339,7 @@
                                         aria-invalid="{{ $errors->has('invoice_street_number') ? 'true' : 'false' }}"
                                         aria-describedby="{{ $errors->has('invoice_street_number') ? 'invoice_street_number-error' : '' }}"
                                         @class([
-                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                             'transition-colors duration-200 ease-out',
                                             'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_street_number'),
@@ -370,7 +370,7 @@
                                         aria-invalid="{{ $errors->has('invoice_postal_code') ? 'true' : 'false' }}"
                                         aria-describedby="{{ $errors->has('invoice_postal_code') ? 'invoice_postal_code-error' : '' }}"
                                         @class([
-                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                             'transition-colors duration-200 ease-out',
                                             'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_postal_code'),
@@ -399,7 +399,7 @@
                                         aria-invalid="{{ $errors->has('invoice_city') ? 'true' : 'false' }}"
                                         aria-describedby="{{ $errors->has('invoice_city') ? 'invoice_city-error' : '' }}"
                                         @class([
-                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-[44px]',
+                                            'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
                                             'transition-colors duration-200 ease-out',
                                             'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_city'),
