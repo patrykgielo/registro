@@ -91,3 +91,31 @@ Schedule::command('rentals:release-expired-holds')
     ->withoutOverlapping()
     ->name('rentals:release-expired-holds')
     ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Order System
+|--------------------------------------------------------------------------
+*/
+
+// Cancel pending_payment orders past their expires_at TTL
+// Runs: Every 5 minutes
+Schedule::command('orders:cleanup-expired')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->name('orders:cleanup-expired')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Cart System
+|--------------------------------------------------------------------------
+*/
+
+// Delete abandoned carts older than 7 days
+// Runs: Daily at 2:00 AM (alongside GDPR email log cleanup)
+Schedule::command('carts:cleanup-abandoned')
+    ->dailyAt('02:00')
+    ->withoutOverlapping()
+    ->name('carts:cleanup-abandoned')
+    ->onOneServer();

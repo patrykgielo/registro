@@ -21,10 +21,11 @@
 - `OrderItem::factory()` — creates order + itemRental service automatically
 
 ## Test Count (as of 2026-03-28)
-- Total: 359 passed, 5 failed (pre-existing)
+- Total: 387 passed, 5 failed (pre-existing)
 - Sprint 1 model tests: 41 (Cart: 9, CartItem: 10, OrderItem: 13, Order: 19)
 - Sprint 2 service tests: 43 (CartService: 13, RentalAvailabilityService: 11, OrderService: 12, Przelewy24Service: 7)
 - Sprint 3 feature tests: 30 (AddToCartTest: 11, CheckoutFlowTest: 9, CustomerOrdersTest: 10)
+- Sprint 4 tests: 28 (DeprecatedRentalRoutesTest: 11, CleanupExpiredOrdersTest: 8, CleanupAbandonedCartsTest: 9)
 
 ## SQLite Gotchas
 - No ENUM column type — use string (SQLite accepts enums as varchar, no crash)
@@ -61,6 +62,18 @@
 ## Service Bug Fixes Found During Sprint 2 Testing
 - CartService.php:54 — `$end->diffInDays($start)` was wrong direction AND missing `(int)` cast
   Fixed to: `(int) $start->diffInDays($end) + 1`
+
+## Artisan Command Testing Pattern
+- Use `$this->artisan('command:name')->assertSuccessful()` for exit code check
+- Use `->expectsOutputToContain('text')` to assert $this->info() output
+- Commands needing DB still use RefreshDatabase (they're in Unit/ for isolation, not for no-DB)
+- `updated_at` manipulation: use `DB::table()->where()->update()` AFTER factory creation — Eloquent model events re-touch the timestamp on save
+
+## Deprecated Route 410 Testing Pattern
+- 410 routes use `{service:slug}` route model binding — BelongsToOrganization global scope will 404 without tenant
+- Must stub ResolveTenant (same `actingAsTenant()` pattern as AddToCartTest/CheckoutFlowTest)
+- API availability endpoints (/api/rental/...) share the same route model binding — stub is needed there too
+- Use `assertNotEquals(410, ...)` + `assertNotEquals(500, ...)` for "must stay alive" API tests
 
 ## State Machine Testing Pattern
 - Use `$order->status()->transitionTo('target')` — calls State::transitionTo()
