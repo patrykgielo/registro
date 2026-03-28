@@ -124,6 +124,16 @@ class Organization extends Model
     }
 
     /**
+     * Get orders belonging to this organization.
+     *
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
      * Get settings for this organization.
      */
     public function settingRecords(): HasMany
