@@ -1,6 +1,7 @@
 @props([
     'contactPhone' => null,
     'bookingEnabled' => false,
+    'rentalEnabled' => false,
     'registrationEnabled' => true,
 ])
 
@@ -44,17 +45,20 @@
                     @auth
                         @php
                             $cartCount = 0;
-                            $cartOrg = \App\Support\TenantFeature::currentTenant();
-                            if ($cartOrg) {
-                                $cartModel = \App\Models\Cart::active()
-                                    ->forUser(Auth::user())
-                                    ->where('organization_id', $cartOrg->id)
-                                    ->first();
-                                $cartCount = $cartModel ? $cartModel->items()->count() : 0;
+                            if ($rentalEnabled) {
+                                $cartOrg = \App\Support\TenantFeature::currentTenant();
+                                if ($cartOrg) {
+                                    $cartModel = \App\Models\Cart::active()
+                                        ->forUser(Auth::user())
+                                        ->where('organization_id', $cartOrg->id)
+                                        ->first();
+                                    $cartCount = $cartModel ? $cartModel->items()->count() : 0;
+                                }
                             }
                         @endphp
 
                         {{-- Cart Icon --}}
+                        @if($rentalEnabled)
                         <a
                             href="{{ route('cart.show') }}"
                             class="relative flex items-center justify-center min-h-11 min-w-11 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
@@ -68,6 +72,7 @@
                                 >{{ $cartCount > 99 ? '99+' : $cartCount }}</span>
                             @endif
                         </a>
+                        @endif
 
                         <x-interactive.dropdown align="right">
                             <x-slot:trigger>
@@ -81,9 +86,16 @@
                             <a href="{{ route('profile.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
                                 <x-heroicon-m-user class="h-4 w-4" /> Moje konto
                             </a>
+                            @if($bookingEnabled)
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
                                 <x-heroicon-m-calendar class="h-4 w-4" /> Moje rezerwacje
                             </a>
+                            @endif
+                            @if($rentalEnabled)
+                            <a href="{{ route('orders.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
+                                <x-heroicon-m-shopping-bag class="h-4 w-4" /> Moje zamówienia
+                            </a>
+                            @endif
                             @if(Auth::user()->hasAnyRole(['admin', 'super-admin', 'staff']))
                                 <a href="/admin" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
                                     <x-heroicon-m-cog-6-tooth class="h-4 w-4" /> Panel admina
@@ -192,8 +204,14 @@
                             <a href="{{ route('profile.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
                                 <x-heroicon-m-user class="h-5 w-5" /> Moje konto
                             </a>
+                            @if($bookingEnabled)
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
                                 <x-heroicon-m-calendar class="h-5 w-5" /> Moje rezerwacje
+                            </a>
+                            @endif
+                            @if($rentalEnabled)
+                            <a href="{{ route('orders.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
+                                <x-heroicon-m-shopping-bag class="h-5 w-5" /> Moje zamówienia
                             </a>
                             <a
                                 href="{{ route('cart.show') }}"
@@ -211,6 +229,7 @@
                                 </span>
                                 Koszyk
                             </a>
+                            @endif
                         @else
                             <x-ui.separator class="my-4" />
                             <a href="{{ route('login') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">

@@ -103,14 +103,15 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Share global feature flags with all Blade views.
      *
-     * Provides $bookingEnabled, $registrationEnabled, $contactPhone
-     * for conditional rendering of CTAs and registration links.
+     * Provides $bookingEnabled, $rentalEnabled, $registrationEnabled, $contactPhone
+     * for conditional rendering of CTAs, cart links, and registration links.
      */
     private function shareFeatureFlags(): void
     {
         view()->composer('*', function ($view) {
             $sm = app(SettingsManager::class);
             $view->with('bookingEnabled', $sm->isBookingEnabled());
+            $view->with('rentalEnabled', $sm->isRentalEnabled());
             $view->with('registrationEnabled', $sm->isRegistrationEnabled());
             $view->with('contactPhone', $sm->get('contact.phone', ''));
         });

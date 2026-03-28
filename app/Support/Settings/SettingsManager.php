@@ -372,7 +372,7 @@ class SettingsManager
     }
 
     /**
-     * Check if online booking is enabled.
+     * Check if online booking (time-slot appointments) is enabled.
      * Returns false for rental-only tenants regardless of the setting.
      */
     public function isBookingEnabled(): bool
@@ -385,6 +385,26 @@ class SettingsManager
         }
 
         return (bool) $this->get('booking.booking_enabled', true);
+    }
+
+    /**
+     * Check if the rental (cart/checkout) flow is enabled.
+     *
+     * Returns true for 'item_rental' and 'both' booking types.
+     * Returns false for 'time_slot'-only organizations.
+     *
+     * When no tenant is resolved, returns true and defers the 404 decision
+     * to the controller (consistent with how isBookingEnabled behaves).
+     */
+    public function isRentalEnabled(): bool
+    {
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant === null) {
+            return true;
+        }
+
+        return $tenant->supportsRentals();
     }
 
     /**

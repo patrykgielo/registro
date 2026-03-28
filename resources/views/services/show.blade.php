@@ -18,6 +18,7 @@
 @php
     $isRental = $service->service_type === \App\Enums\ServiceType::ItemRental;
     $bookingEnabled = app(\App\Support\Settings\SettingsManager::class)->isBookingEnabled();
+    $rentalEnabled = app(\App\Support\Settings\SettingsManager::class)->isRentalEnabled();
     $contactPhone = app(\App\Support\Settings\SettingsManager::class)->contactInformation()['phone'] ?? null;
     $specs = $service->metadata['specs'] ?? [];
 @endphp
@@ -282,7 +283,7 @@
                                 </x-ui.button>
                             @endif
                         </div>
-                        @else
+                        @elseif($rentalEnabled)
                         <div class="space-y-3">
                             @auth
                                 <form method="POST" action="{{ route('cart.add') }}" x-show="canBook" x-transition>
