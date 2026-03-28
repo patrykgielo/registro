@@ -53,6 +53,53 @@ public function getSlotDuration(): int {
 }
 ```
 
+## SettingsManager — Tenant-Aware Feature Flags
+
+`SettingsManager` udostępnia dwie metody do sprawdzania aktywnych trybów rezerwacji tenanta:
+
+```php
+// Czy tenant obsługuje rezerwacje czasowe (time_slot)?
+$settings->isBookingEnabled(): bool
+// → false dla org z booking_type === 'item_rental'
+// → true dla 'time_slot' i 'both'
+
+// Czy tenant obsługuje wynajem sprzętu (item_rental)?
+$settings->isRentalEnabled(): bool
+// → true dla 'item_rental' i 'both'
+// → false dla 'time_slot'
+```
+
+### Użycie w kontrolerach / middleware
+
+```php
+// Middleware (np. CheckRentalEnabled):
+if (! app(SettingsManager::class)->isRentalEnabled()) {
+    return redirect()->route('home')->with('info', 'Wynajem sprzętu jest niedostępny.');
+}
+
+// Widoki — flagi są dostępne globalnie przez AppServiceProvider::shareFeatureFlags():
+// @if($rentalEnabled) ... @endif
+// @if($bookingEnabled) ... @endif
+```
+
+### Globalne zmienne Blade (shareFeatureFlags)
+
+`AppServiceProvider::shareFeatureFlags()` udostępnia `$rentalEnabled` i `$bookingEnabled` we WSZYSTKICH widokach Blade. Nie trzeba ich przekazywać ręcznie do każdego widoku — wyjątkiem są komponenty anonimowe (`@props`), które muszą je jawnie deklarować:
+
+```blade
+{{-- Komponent anonimowy MUSI zadeklarować prop --}}
+@props(['rentalEnabled' => false, 'bookingEnabled' => false])
+
+@if($rentalEnabled)
+    <a href="{{ route('cart.show') }}">Koszyk</a>
+@endif
+@if($bookingEnabled)
+    <a href="{{ route('booking.step', 1) }}">Zarezerwuj</a>
+@endif
+```
+
+**UWAGA:** `booking_type` może być: `time_slot`, `item_rental`, `both`. Sprawdzaj zawsze przez `SettingsManager`, nie przez bezpośredni dostęp do organizacji.
+
 ## Return Type Declarations
 
 ```php

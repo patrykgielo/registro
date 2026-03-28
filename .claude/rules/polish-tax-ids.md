@@ -82,26 +82,57 @@ $nip = preg_replace('/[\s-]/', '', $value);
 
 ---
 
-## Other Polish IDs (Reference)
+---
 
-### PESEL (11 digits)
-- Weights: `[1, 3, 7, 9, 1, 3, 7, 9, 1, 3]`
-- Checksum: `(10 - (sum mod 10)) mod 10`
-- Contains birth date and gender
+## PESEL Validation (`app/Rules/ValidPolishPESEL.php`)
 
-### REGON (9 or 14 digits)
-- 9-digit weights: `[8, 9, 2, 3, 4, 5, 6, 7]`
-- 14-digit weights: `[2, 4, 8, 5, 0, 9, 7, 3, 6, 1, 2, 4, 8]`
-- **Also uses modulo 11 - SAME checksum 10 issue applies!**
+Zaimplementowane w `feature/checkout-legal-data` (2026-03-28). Wymagane dla B2C checkout.
+
+```php
+// Użycie
+'customer_pesel' => ['required', new ValidPolishPESEL()],
+```
+
+### Algorytm
+
+- Długość: 11 cyfr
+- Wagi: `[1, 3, 7, 9, 1, 3, 7, 9, 1, 3]`
+- Cyfra kontrolna (11.): `(10 - (suma mod 10)) mod 10`
+- Używa `mod 10` — **brak problemu z checksum = 10**
+
+**PESEL to PII** — zawiera datę urodzenia i płeć. Nigdy nie loguj, nigdy nie eksponuj w błędach API.
+
+---
+
+## REGON Validation (`app/Rules/ValidPolishREGON.php`)
+
+Zaimplementowane w `feature/checkout-legal-data` (2026-03-28). Wymagane dla B2B checkout.
+
+```php
+// Użycie
+'company_regon' => ['required', new ValidPolishREGON()],
+```
+
+### Algorytm 9-cyfrowy
+- Wagi: `[8, 9, 2, 3, 4, 5, 6, 7]`
+- Checksum = `suma mod 11` — **jeśli = 10 → 0** (jak NIP!)
+- Cyfra kontrolna: cyfra[8]
+
+### Algorytm 14-cyfrowy
+- Wagi: `[2, 4, 8, 5, 0, 9, 7, 3, 6, 1, 2, 4, 8]`
+- Checksum = `suma mod 11` — **jeśli = 10 → 0**
+- Cyfra kontrolna: cyfra[13]
+
+**REGON używa `mod 11` — ten sam problem checksum = 10 co NIP!**
 
 ---
 
 ## Validation Class Location
 
 ```
-app/Rules/ValidPolishNIP.php    # NIP validation
-app/Rules/ValidPESEL.php        # If PESEL needed
-app/Rules/ValidREGON.php        # If REGON needed
+app/Rules/ValidPolishNIP.php       # NIP validation (mod 11, checksum≠10)
+app/Rules/ValidPolishPESEL.php     # PESEL validation (mod 10, 11 cyfr) — PII!
+app/Rules/ValidPolishREGON.php     # REGON 9/14-digit (mod 11, checksum≠10)
 ```
 
 **Tests location:** `tests/Unit/ValidPolish*Test.php`
