@@ -8,6 +8,7 @@ use App\Filament\Traits\HasGroupedSettings;
 use App\Models\Page as PageModel;
 use App\Services\Sms\SmsService;
 use App\Support\Settings\SettingsManager;
+use App\Support\TenantFeature;
 use BackedEnum;
 use enshrined\svgSanitize\Sanitizer;
 use Filament\Forms\Components\FileUpload;
@@ -77,6 +78,43 @@ class SystemSettings extends Page implements HasForms
     public static function canAccess(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    /**
+     * Maps settings tab keys to the module required for that tab to be visible.
+     * Tabs without an entry are always visible (core settings).
+     */
+    private const TAB_MODULE_MAP = [
+        'booking' => 'bookings',
+        'booking_wizard' => 'bookings',
+        'map' => 'website',
+        'marketing' => 'website',
+        'email' => 'communication',
+        'sms' => 'communication',
+        'cms' => 'website',
+        'integrations' => 'website',
+        'checkout' => 'rentals',
+    ];
+
+    /**
+     * Determine if a settings tab should be visible for the current tenant.
+     * Super-admins (no tenant context) always see all tabs.
+     */
+    private function isTabVisible(string $tab): bool
+    {
+        $module = self::TAB_MODULE_MAP[$tab] ?? null;
+
+        if ($module === null) {
+            return true;
+        }
+
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant === null) {
+            return true;
+        }
+
+        return $tenant->hasModule($module);
     }
 
     /**
@@ -297,6 +335,7 @@ class SystemSettings extends Page implements HasForms
     private function bookingTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Booking')
+            ->visible(fn () => $this->isTabVisible('booking'))
             ->schema([
                 Section::make('Dostępność systemu')
                     ->description('Włącz/wyłącz rezerwację online i rejestrację użytkowników')
@@ -380,6 +419,7 @@ class SystemSettings extends Page implements HasForms
     {
         return Tabs\Tab::make('System rezerwacji')
             ->icon('heroicon-o-calendar-days')
+            ->visible(fn () => $this->isTabVisible('booking_wizard'))
             ->schema([
                 Section::make('Przed wizytą')
                     ->description('Lista informacji wyświetlanych klientowi po potwierdzeniu rezerwacji')
@@ -464,6 +504,7 @@ class SystemSettings extends Page implements HasForms
     private function mapTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Map')
+            ->visible(fn () => $this->isTabVisible('map'))
             ->schema([
                 Section::make('Google Maps Configuration')
                     ->description('Configure Google Maps integration')
@@ -718,6 +759,7 @@ class SystemSettings extends Page implements HasForms
     private function marketingTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Marketing')
+            ->visible(fn () => $this->isTabVisible('marketing'))
             ->schema([
                 Section::make('Hero Section')
                     ->description('Homepage hero section content')
@@ -823,6 +865,7 @@ class SystemSettings extends Page implements HasForms
     private function emailTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Email')
+            ->visible(fn () => $this->isTabVisible('email'))
             ->schema([
                 Section::make('SMTP Configuration')
                     ->description('Configure SMTP server for sending emails')
@@ -925,6 +968,7 @@ class SystemSettings extends Page implements HasForms
     private function smsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('SMS')
+            ->visible(fn () => $this->isTabVisible('sms'))
             ->schema([
                 Section::make('SMSAPI Configuration')
                     ->description('Configure SMSAPI.pl integration for sending SMS')
@@ -1038,6 +1082,7 @@ class SystemSettings extends Page implements HasForms
     private function cmsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('CMS')
+            ->visible(fn () => $this->isTabVisible('cms'))
             ->schema([
                 Section::make('Homepage Settings')
                     ->description('Configure which page displays as homepage')
@@ -1089,6 +1134,7 @@ class SystemSettings extends Page implements HasForms
     {
         return Tabs\Tab::make('Integrations')
             ->icon('heroicon-o-puzzle-piece')
+            ->visible(fn () => $this->isTabVisible('integrations'))
             ->schema([
                 Section::make('Google Tag Manager')
                     ->description('Configure GTM for analytics, marketing pixels, and cookie consent')
