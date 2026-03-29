@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Payment;
 
+use App\Events\OrderPaid;
 use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Support\Facades\Log;
@@ -114,6 +115,7 @@ class Przelewy24Service
 
             $order->status()->transitionTo('paid');
             $order->update(['paid_at' => now()]);
+            event(new OrderPaid($order));
         } catch (Przelewy24Exception $e) {
             Payment::create([
                 'order_id' => $order->id,

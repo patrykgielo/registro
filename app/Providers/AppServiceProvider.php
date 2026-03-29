@@ -10,6 +10,9 @@ use App\Events\AppointmentCancelled;
 use App\Events\AppointmentConfirmed;
 use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
+use App\Events\OrderCancelled;
+use App\Events\OrderConfirmed;
+use App\Events\OrderPaid;
 use App\Events\PasswordResetRequested;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
@@ -20,6 +23,9 @@ use App\Notifications\AdminCreatedUserNotification;
 use App\Notifications\AppointmentCancelledNotification;
 use App\Notifications\AppointmentCreatedNotification;
 use App\Notifications\AppointmentRescheduledNotification;
+use App\Notifications\OrderCancelledNotification;
+use App\Notifications\OrderConfirmedNotification;
+use App\Notifications\OrderPaidNotification;
 use App\Notifications\PasswordResetNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
@@ -225,6 +231,51 @@ class AppServiceProvider extends ServiceProvider
             $event->appointment->customer->notify(
                 new AppointmentCancelledNotification($event->appointment, $event->reason)
             );
+        });
+
+        // ========== ORDER NOTIFICATIONS ==========
+
+        // Order Paid: notify customer + admin/org owner
+        Event::listen(OrderPaid::class, function (OrderPaid $event) {
+            $order = $event->order->load(['user', 'organization.owner']);
+
+            if ($order->user) {
+                $order->user->notify(new OrderPaidNotification($order, 'customer'));
+            } else {
+                \Log::warning('OrderPaid: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+
+            if ($order->organization?->owner) {
+                $order->organization->owner->notify(new OrderPaidNotification($order, 'admin'));
+            }
+        });
+
+        // Order Confirmed: notify customer
+        Event::listen(OrderConfirmed::class, function (OrderConfirmed $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderConfirmedNotification($order));
+            } else {
+                \Log::warning('OrderConfirmed: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        });
+
+        // Order Cancelled: notify customer
+        Event::listen(OrderCancelled::class, function (OrderCancelled $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderCancelledNotification($order, $event->reason));
+            } else {
+                \Log::warning('OrderCancelled: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
         });
 
         // ========== SECURITY: SESSION REGENERATION ==========

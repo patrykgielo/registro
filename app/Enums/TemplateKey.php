@@ -44,6 +44,12 @@ enum TemplateKey: string
     // ── Service area waitlist (Email only) ──────────────────────
     case SERVICE_AREA_AVAILABLE = 'service-area-available';
 
+    // ── Order lifecycle (Email only) ─────────────────────────────
+    case ORDER_PAID = 'order-paid';
+    case ORDER_CONFIRMED = 'order-confirmed';
+    case ORDER_CANCELLED = 'order-cancelled';
+    case ADMIN_NEW_ORDER = 'admin-new-order';
+
     // ── Admin (Email only) ───────────────────────────────────────
     case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
     case ADMIN_USER_CREATED = 'admin-user-created';
@@ -69,6 +75,10 @@ enum TemplateKey: string
             self::ACCOUNT_DELETION_REQUESTED => 'Usuwanie konta (zgloszenie)',
             self::ACCOUNT_DELETION_COMPLETED => 'Usuwanie konta (potwierdzenie)',
             self::SERVICE_AREA_AVAILABLE => 'Strefa serwisowa dostępna',
+            self::ORDER_PAID => 'Potwierdzenie zamówienia',
+            self::ORDER_CONFIRMED => 'Zamówienie potwierdzone',
+            self::ORDER_CANCELLED => 'Zamówienie anulowane',
+            self::ADMIN_NEW_ORDER => 'Nowe zamówienie (admin)',
             self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
             self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
         };
