@@ -20,12 +20,13 @@
 - `CartItem::factory()` — creates cart + itemRental service automatically
 - `OrderItem::factory()` — creates order + itemRental service automatically
 
-## Test Count (as of 2026-03-28)
-- Total: 387 passed, 5 failed (pre-existing)
+## Test Count (as of 2026-03-29)
+- Total: 397 passed, 5 failed (pre-existing)
 - Sprint 1 model tests: 41 (Cart: 9, CartItem: 10, OrderItem: 13, Order: 19)
 - Sprint 2 service tests: 43 (CartService: 13, RentalAvailabilityService: 11, OrderService: 12, Przelewy24Service: 7)
 - Sprint 3 feature tests: 30 (AddToCartTest: 11, CheckoutFlowTest: 9, CustomerOrdersTest: 10)
 - Sprint 4 tests: 28 (DeprecatedRentalRoutesTest: 11, CleanupExpiredOrdersTest: 8, CleanupAbandonedCartsTest: 9)
+- Sprint 5 tests: 10 (CustomerOrdersTest cancellation: 6, Przelewy24WebhookTest: 4)
 
 ## SQLite Gotchas
 - No ENUM column type — use string (SQLite accepts enums as varchar, no crash)
@@ -80,3 +81,12 @@
 - Forbidden transitions throw `Asantibanez\LaravelEloquentStateMachines\Exceptions\TransitionNotAllowedException`
 - `$order->status()->canBe('target')` returns bool without side effects (safe for assertion)
 - Factory states bypass the state machine by setting status directly in DB — test `transitionTo()` from those states
+
+## WebhookController Testing Pattern (Przelewy24)
+- Route: `POST /webhooks/przelewy24` → name `webhooks.p24`; uses ResolveTenant middleware — must stub it with `actingAsTenant()`
+- Controller ALWAYS returns `response('OK', 200)` — it catches ALL exceptions, so there is no 4xx from the controller itself
+- Mock `Przelewy24Service` via `$this->mock(Przelewy24Service::class, fn($mock) => ...)` — Laravel's built-in mock() binds to the container
+- For "marks order as paid" test: mock `handleWebhook()` with `andReturnUsing()` that calls the actual state transition on the order — this tests the integration path without P24 API
+- Idempotency test: mock returns null (no-op) to simulate "already paid" guard in service
+- GET on a POST-only route returns 405 — use `assertContains($response->status(), [404, 405])` for safety
+- ThrottleRequests must be disabled in setUp() for webhook tests (same as other controller tests)
