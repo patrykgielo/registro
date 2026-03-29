@@ -104,6 +104,16 @@ class CartService
 
             $subtotal = $cart->items->sum('total_price');
 
+            $customerType = $checkoutData['customer_type'] ?? 'natural_person';
+            $isBusinessCustomer = $customerType === 'business';
+
+            // Calculate total deposit from cart items (snapshot at checkout time)
+            $depositTotal = $cart->items->sum(function ($item) {
+                return ($item->service->deposit_amount ?? 0) * $item->quantity;
+            });
+
+            $now = now();
+
             $order = Order::create([
                 'organization_id' => $cart->organization_id,
                 'user_id' => $cart->user_id,
@@ -114,20 +124,43 @@ class CartService
                 'discount_amount' => 0,
                 'tax_amount' => 0,
                 'total_amount' => $subtotal,
+                // Customer data
                 'customer_email' => $checkoutData['customer_email'] ?? null,
                 'customer_first_name' => $checkoutData['customer_first_name'] ?? null,
                 'customer_last_name' => $checkoutData['customer_last_name'] ?? null,
                 'customer_phone' => $checkoutData['customer_phone'] ?? null,
-                'invoice_requested' => $checkoutData['invoice_requested'] ?? false,
+                // Legal fields
+                'customer_type' => $customerType,
+                'customer_pesel' => $checkoutData['customer_pesel'] ?? null,
+                'customer_street' => $checkoutData['customer_street'] ?? null,
+                'customer_building' => $checkoutData['customer_building'] ?? null,
+                'customer_apartment' => $checkoutData['customer_apartment'] ?? null,
+                'customer_city' => $checkoutData['customer_city'] ?? null,
+                'customer_postal_code' => $checkoutData['customer_postal_code'] ?? null,
+                // Invoice — for business always requested
+                'invoice_requested' => $isBusinessCustomer ? true : ($checkoutData['invoice_requested'] ?? false),
                 'invoice_company_name' => $checkoutData['invoice_company_name'] ?? null,
                 'invoice_nip' => $checkoutData['invoice_nip'] ?? null,
                 'invoice_street' => $checkoutData['invoice_street'] ?? null,
                 'invoice_street_number' => $checkoutData['invoice_street_number'] ?? null,
                 'invoice_postal_code' => $checkoutData['invoice_postal_code'] ?? null,
                 'invoice_city' => $checkoutData['invoice_city'] ?? null,
+                // Business extras
+                'company_regon' => $checkoutData['company_regon'] ?? null,
+                'company_krs' => $checkoutData['company_krs'] ?? null,
+                'company_contact_name' => $checkoutData['company_contact_name'] ?? null,
+                // Deposit (kaucja)
+                'deposit_amount' => $depositTotal,
+                'deposit_status' => $depositTotal > 0 ? 'pending' : 'not_required',
+                // Legal acceptances with timestamps + IP
+                'rodo_accepted_at' => $now,
+                'rodo_accepted_ip' => $checkoutData['ip'] ?? null,
+                'terms_accepted_at' => $now,
+                'withdrawal_exclusion_accepted_at' => $now,
+                // Meta
                 'cart_id' => $cart->id,
                 'ip_address' => $checkoutData['ip'] ?? null,
-                'expires_at' => now()->addMinutes(20),
+                'expires_at' => $now->addMinutes(20),
             ]);
 
             foreach ($cart->items as $item) {
@@ -142,13 +175,53 @@ class CartService
                     'unit_price' => $item->unit_price,
                     'total_price' => $item->total_price,
                     'price_snapshot' => $item->price_snapshot,
+                    'deposit_amount' => $item->service->deposit_amount ?? 0,
                 ]);
+            }
+
+            // Optionally persist checkout data back to the user's profile
+            if (! empty($checkoutData['save_to_profile'])) {
+                $this->saveProfileData($cart->user_id, $checkoutData);
             }
 
             $cart->update(['status' => 'converted']);
 
             return $order;
         });
+    }
+
+    /**
+     * Persist checkout data back to the user profile when "save_to_profile" is requested.
+     * Only updates non-null fields to avoid overwriting existing data with empty values.
+     */
+    private function saveProfileData(int $userId, array $checkoutData): void
+    {
+        $user = User::find($userId);
+
+        if ($user === null) {
+            return;
+        }
+
+        $updateData = array_filter([
+            'customer_type' => $checkoutData['customer_type'] ?? null,
+            'pesel' => $checkoutData['customer_pesel'] ?? null,
+            'street_name' => $checkoutData['customer_street'] ?? null,
+            'street_number' => $checkoutData['customer_building'] ?? null,
+            'city' => $checkoutData['customer_city'] ?? null,
+            'postal_code' => $checkoutData['customer_postal_code'] ?? null,
+            'company_name' => $checkoutData['invoice_company_name'] ?? null,
+            'nip' => $checkoutData['invoice_nip'] ?? null,
+            'regon' => $checkoutData['company_regon'] ?? null,
+            'krs' => $checkoutData['company_krs'] ?? null,
+            'billing_street' => $checkoutData['invoice_street'] ?? null,
+            'billing_building_number' => $checkoutData['invoice_street_number'] ?? null,
+            'billing_postal_code' => $checkoutData['invoice_postal_code'] ?? null,
+            'billing_city' => $checkoutData['invoice_city'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        if (! empty($updateData)) {
+            $user->update($updateData);
+        }
     }
 
     /**

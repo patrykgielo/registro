@@ -40,6 +40,22 @@ public function getNameAttribute(): string
 }
 ```
 
+### User Model — Checkout Legal Data Fields (dodane 2026-03-28)
+
+```php
+$user->customer_type  // 'natural_person' | 'business' | null
+$user->pesel          // 11 cyfr (opcjonalny profil) — DANE WRAŻLIWE!
+$user->regon          // 9 lub 14 cyfr (opcjonalny profil)
+$user->krs            // do 20 znaków (opcjonalny profil)
+```
+
+**KRYTYCZNE — PESEL to dane wrażliwe (PII):**
+- Nigdy nie loguj PESEL w logach aplikacji
+- Nigdy nie zwracaj PESEL w komunikatach błędów
+- Nigdy nie eksponuj PESEL w odpowiedziach API (chyba że uwierzytelniony właściciel konta)
+
+Pola te są opcjonalne w profilu — użytkownik może je uzupełnić podczas checkout wybierając "Zapisz dane do profilu". Walidacja: `ValidPolishPESEL`, `ValidPolishREGON` (patrz `.claude/rules/polish-tax-ids.md`).
+
 ## Mass Assignment Protection
 
 ```php
@@ -381,3 +397,84 @@ class Appointment extends Model
     use SoftDeletes;
 }
 ```
+
+---
+
+## Order Model — Legal Fields & Deposit Lifecycle (dodane 2026-03-28)
+
+`Order` zawiera kompletne dane prawne wymagane przez polskie przepisy (Art. 659 KC, KPC, RODO).
+
+### Typ klienta
+
+```php
+$order->customer_type  // 'natural_person' (B2C) | 'business' (B2B)
+```
+
+### B2C — natural_person
+```php
+$order->customer_first_name
+$order->customer_last_name
+$order->customer_email
+$order->customer_phone
+$order->customer_pesel       // 11 cyfr — DANE WRAŻLIWE
+$order->customer_street
+$order->customer_building
+$order->customer_apartment   // nullable
+$order->customer_city
+$order->customer_postal_code
+```
+
+### B2B — business (dodatkowe)
+```php
+$order->invoice_company_name
+$order->invoice_nip          // walidowany NIP
+$order->company_regon        // walidowany REGON
+$order->company_krs          // nullable
+$order->company_contact_name // osoba upoważniona do podpisania umowy
+$order->invoice_street
+$order->invoice_street_number
+$order->invoice_postal_code
+$order->invoice_city
+```
+
+### Zgody RODO (immutable po ustawieniu — NIGDY nie nadpisuj!)
+```php
+$order->rodo_accepted_at                      // Carbon|null
+$order->rodo_accepted_ip                      // string|null
+$order->terms_accepted_at                     // Carbon|null
+$order->withdrawal_exclusion_accepted_at      // Carbon|null
+```
+
+### Kaucja (security deposit — NIE jest VAT-owalna!)
+
+```
+deposit_amount = 0          → deposit_status = 'not_required'
+deposit_amount > 0          → deposit_status = 'pending'
+                                    ↓ admin: "Pobrano kaucję"
+                               'collected' (deposit_collected_at set)
+                                    ↓ admin: "Zwrócono" lub "Przepadła"
+                        'returned' (deposit_returned_at set) | 'forfeited'
+```
+
+```php
+$order->deposit_amount        // DECIMAL(10,2) — NIE wliczać do total_amount!
+$order->deposit_status        // Enum: not_required|pending|collected|returned|partial_return|forfeited
+$order->deposit_collected_at  // Carbon|null
+$order->deposit_returned_at   // Carbon|null
+$order->deposit_notes         // string|null
+```
+
+**KRYTYCZNE:** `deposit_amount` NIE jest częścią `total_amount`. Kaucja to zwrotny depozyt, nie płatność — nie podlega VAT i nie trafia na fakturę.
+
+Zarządzanie kaucją: admin panel → `OrderResource` → akcje row: **Pobrano kaucję** / **Zwrócono kaucję** / **Kaucja przepadła**.
+
+---
+
+## OrderItem Model — Deposit Tracking (dodane 2026-03-28)
+
+```php
+$orderItem->deposit_amount  // DECIMAL(10,2) — kaucja za tę pozycję
+                            // = service->deposit_amount * quantity (snapshot przy tworzeniu)
+```
+
+Suma `order_items.deposit_amount` = `orders.deposit_amount` (obliczone w `CartService::convertToOrder()`).

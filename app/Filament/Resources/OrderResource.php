@@ -92,6 +92,36 @@ class OrderResource extends BaseResource
                     ->money('PLN')
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('deposit_amount')
+                    ->label('Kaucja')
+                    ->money('PLN')
+                    ->sortable()
+                    ->toggleable()
+                    ->placeholder('—'),
+
+                Tables\Columns\TextColumn::make('deposit_status')
+                    ->label('Status kaucji')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'not_required' => 'gray',
+                        'pending' => 'warning',
+                        'collected' => 'success',
+                        'returned' => 'gray',
+                        'partial_return' => 'info',
+                        'forfeited' => 'danger',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'not_required' => 'Nie wymagana',
+                        'pending' => 'Oczekuje',
+                        'collected' => 'Pobrana',
+                        'returned' => 'Zwrócona',
+                        'partial_return' => 'Zwrot częściowy',
+                        'forfeited' => 'Przepadła',
+                        default => $state,
+                    })
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Data zamówienia')
                     ->date('d.m.Y')
@@ -134,6 +164,17 @@ class OrderResource extends BaseResource
                         $data['created_until'],
                         fn ($q, $date) => $q->whereDate('created_at', '<=', $date)
                     )),
+
+                Tables\Filters\SelectFilter::make('deposit_status')
+                    ->label('Status kaucji')
+                    ->options([
+                        'not_required' => 'Nie wymagana',
+                        'pending' => 'Oczekuje',
+                        'collected' => 'Pobrana',
+                        'returned' => 'Zwrócona',
+                        'partial_return' => 'Zwrot częściowy',
+                        'forfeited' => 'Przepadła',
+                    ]),
             ])
             ->recordAction('view')
             ->recordActions([
@@ -214,6 +255,75 @@ class OrderResource extends BaseResource
                                 ->body($e->getMessage())
                                 ->send();
                         }
+                    }),
+
+                Actions\Action::make('collect_deposit')
+                    ->label('Pobrano kaucję')
+                    ->icon('heroicon-o-banknotes')
+                    ->color('success')
+                    ->visible(fn (Order $record): bool => $record->deposit_status === 'pending')
+                    ->form([
+                        \Filament\Forms\Components\Textarea::make('deposit_notes')
+                            ->label('Notatka (opcjonalnie)')
+                            ->maxLength(500),
+                    ])
+                    ->action(function (Order $record, array $data): void {
+                        $record->update([
+                            'deposit_status' => 'collected',
+                            'deposit_collected_at' => now(),
+                            'deposit_notes' => $data['deposit_notes'] ?? null,
+                        ]);
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('Kaucja pobrana')
+                            ->send();
+                    }),
+
+                Actions\Action::make('return_deposit')
+                    ->label('Zwrócono kaucję')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('info')
+                    ->visible(fn (Order $record): bool => $record->deposit_status === 'collected')
+                    ->form([
+                        \Filament\Forms\Components\Textarea::make('deposit_notes')
+                            ->label('Notatka (opcjonalnie)')
+                            ->maxLength(500),
+                    ])
+                    ->action(function (Order $record, array $data): void {
+                        $record->update([
+                            'deposit_status' => 'returned',
+                            'deposit_returned_at' => now(),
+                            'deposit_notes' => $data['deposit_notes'] ?? null,
+                        ]);
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('Kaucja zwrócona')
+                            ->send();
+                    }),
+
+                Actions\Action::make('forfeit_deposit')
+                    ->label('Kaucja przepadła')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->visible(fn (Order $record): bool => $record->deposit_status === 'collected')
+                    ->requiresConfirmation()
+                    ->modalHeading('Kaucja przepada')
+                    ->modalDescription('Czy na pewno chcesz oznaczyć, że kaucja przepadła? Ta akcja jest nieodwracalna.')
+                    ->form([
+                        \Filament\Forms\Components\Textarea::make('deposit_notes')
+                            ->label('Powód przepadku')
+                            ->required()
+                            ->maxLength(500),
+                    ])
+                    ->action(function (Order $record, array $data): void {
+                        $record->update([
+                            'deposit_status' => 'forfeited',
+                            'deposit_notes' => $data['deposit_notes'],
+                        ]);
+                        \Filament\Notifications\Notification::make()
+                            ->warning()
+                            ->title('Kaucja przepadła')
+                            ->send();
                     }),
             ])
             ->toolbarActions([]);

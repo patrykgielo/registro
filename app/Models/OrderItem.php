@@ -25,6 +25,7 @@ class OrderItem extends Model
         'unit_price',
         'total_price',
         'price_snapshot',
+        'deposit_amount',
     ];
 
     protected function casts(): array
@@ -37,6 +38,7 @@ class OrderItem extends Model
             'rental_days' => 'integer',
             'unit_price' => 'decimal:2',
             'total_price' => 'decimal:2',
+            'deposit_amount' => 'decimal:2',
         ];
     }
 

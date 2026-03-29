@@ -69,18 +69,23 @@ pending_payment → paid → confirmed → in_progress → completed
 
 ### Views
 - `resources/views/cart/show.blade.php` — cart with inline quantity/remove, summary sidebar
-- `resources/views/checkout/show.blade.php` — single-page checkout, Alpine.js invoice toggle
+- `resources/views/checkout/show.blade.php` — B2C/B2B dual-path checkout with legal data, PESEL, consents, kaucja display
 - `resources/views/checkout/return.blade.php` — payment result (5 states: success/pending/failed/cancelled/unknown)
 - `resources/views/orders/index.blade.php` — paginated order list with status badges
 - `resources/views/orders/show.blade.php` — order detail with items and invoice section
 
 ### Filament Admin
 - `app/Filament/Resources/OrderResource.php` — order management (`$module = 'rentals'`)
-  - Status badge table, date filters, row actions (confirm/in_progress/complete/cancel)
+  - Status + deposit badge table, date/deposit_status filters
+  - Row actions: confirm/in_progress/complete/cancel + collect_deposit/return_deposit/forfeit_deposit
   - `OrderItemsRelationManager` — read-only line items
 - `app/Filament/Resources/OrderResource/Pages/ListOrders.php`
-- `app/Filament/Resources/OrderResource/Pages/ViewOrder.php`
+- `app/Filament/Resources/OrderResource/Pages/ViewOrder.php` — full legal data infolist (customer, company, address, deposit, consents)
 - `app/Filament/Resources/OrderResource/RelationManagers/OrderItemsRelationManager.php`
+
+### Validation Rules
+- `app/Rules/ValidPolishPESEL.php` — 11-digit, mod-10 checksum (weights [1,3,7,9,1,3,7,9,1,3])
+- `app/Rules/ValidPolishREGON.php` — 9-digit (mod-11) and 14-digit variants
 
 ### Scheduled Jobs
 - `app/Console/Commands/CleanupExpiredOrders.php` — cancels `pending_payment` orders past `expires_at`
@@ -128,6 +133,34 @@ $middleware->validateCsrfTokens(except: ['/webhooks/przelewy24']);
 ```
 
 Webhook flow: P24 POSTs → `Przelewy24Service::handleWebhook()` → verifies signature → verifies transaction → `order->status()->transitionTo('paid')`.
+
+---
+
+## Checkout Legal Data (Polish Law Compliance)
+
+See full details: `app/docs/features/checkout-legal-compliance.md`
+
+### Customer Types
+- **natural_person** (B2C) — first name, last name, PESEL, contract address
+- **business** (B2B) — company name, NIP (validated), REGON (validated), KRS (optional), authorized signatory name, billing address
+
+### Orders Table — Legal Fields
+`customer_type`, `customer_pesel`, `customer_street/building/apartment/city/postal_code`,
+`company_regon`, `company_krs`, `company_contact_name`,
+`deposit_amount`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`, `deposit_notes`,
+`rodo_accepted_at`, `rodo_accepted_ip`, `terms_accepted_at`, `withdrawal_exclusion_accepted_at`
+
+### Kaucja (Security Deposit)
+- NOT included in order `total_amount` — tracked separately
+- `deposit_amount` = sum of `service->deposit_amount * quantity` per cart item
+- `deposit_status`: `not_required` → `pending` → `collected` → `returned` / `partial_return` / `forfeited`
+- Managed by admin in Filament: collect/return/forfeit actions
+- Physical collection at equipment pickup (off-system)
+
+### Required Consents (3 checkboxes, all mandatory)
+1. **RODO** — Art. 13 RODO information obligation
+2. **Regulamin** — general terms of service
+3. **Withdrawal exclusion** — Art. 38(1)(12) UoPK (no withdrawal right for dated rentals)
 
 ---
 

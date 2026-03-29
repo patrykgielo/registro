@@ -15,7 +15,7 @@ class ProfileService
     ) {}
 
     /**
-     * Update user's personal information (name, phone).
+     * Update user's personal information (name, phone, address, legal fields).
      */
     public function updatePersonalInfo(User $user, array $data): User
     {
@@ -23,6 +23,19 @@ class ProfileService
             'first_name' => $data['first_name'] ?? $user->first_name,
             'last_name' => $data['last_name'] ?? $user->last_name,
             'phone_e164' => $data['phone_e164'] ?? $user->phone_e164,
+            // Billing address
+            'billing_street' => $data['billing_street'] ?? $user->billing_street,
+            'billing_building_number' => $data['billing_building_number'] ?? $user->billing_building_number,
+            'billing_apartment_number' => $data['billing_apartment_number'] ?? $user->billing_apartment_number,
+            'billing_postal_code' => $data['billing_postal_code'] ?? $user->billing_postal_code,
+            'billing_city' => $data['billing_city'] ?? $user->billing_city,
+            'nip' => $data['nip'] ?? $user->nip,
+            'company_name' => $data['company_name'] ?? $user->company_name,
+            // Rental / legal profile fields
+            'customer_type' => $data['customer_type'] ?? $user->customer_type,
+            'pesel' => $data['pesel'] ?? $user->pesel,
+            'regon' => $data['regon'] ?? $user->regon,
+            'krs' => $data['krs'] ?? $user->krs,
         ]);
 
         return $user->fresh();

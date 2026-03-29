@@ -36,6 +36,15 @@ class Order extends Model
         'customer_first_name',
         'customer_last_name',
         'customer_phone',
+        // Legal / customer type
+        'customer_type',
+        'customer_pesel',
+        'customer_street',
+        'customer_building',
+        'customer_apartment',
+        'customer_city',
+        'customer_postal_code',
+        // Invoice
         'invoice_requested',
         'invoice_company_name',
         'invoice_nip',
@@ -43,6 +52,22 @@ class Order extends Model
         'invoice_street_number',
         'invoice_postal_code',
         'invoice_city',
+        // Business extras
+        'company_regon',
+        'company_krs',
+        'company_contact_name',
+        // Deposit (kaucja)
+        'deposit_amount',
+        'deposit_status',
+        'deposit_collected_at',
+        'deposit_returned_at',
+        'deposit_notes',
+        // Legal acceptances
+        'rodo_accepted_at',
+        'rodo_accepted_ip',
+        'terms_accepted_at',
+        'withdrawal_exclusion_accepted_at',
+        // Payment
         'p24_session_id',
         'p24_order_id',
         'p24_token',
@@ -69,6 +94,15 @@ class Order extends Model
             'discount_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            // Legal fields
+            'customer_type' => 'string',
+            'deposit_amount' => 'decimal:2',
+            'deposit_status' => 'string',
+            'deposit_collected_at' => 'datetime',
+            'deposit_returned_at' => 'datetime',
+            'rodo_accepted_at' => 'datetime',
+            'terms_accepted_at' => 'datetime',
+            'withdrawal_exclusion_accepted_at' => 'datetime',
         ];
     }
 
