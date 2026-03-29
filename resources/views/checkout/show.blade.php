@@ -1000,7 +1000,10 @@
                                         >
                                     </div>
                                     <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150">
-                                        Akceptuję <a href="#" class="text-brand underline underline-offset-2 hover:text-brand-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded">Regulamin Wypożyczalni</a> i zapoznałem/am się z warunkami najmu sprzętu.
+                                        {{ $checkoutSettings['terms_label'] }}
+                                        @if(!empty($checkoutSettings['terms_url']))
+                                            — <a href="{{ $checkoutSettings['terms_url'] }}" target="_blank" rel="noopener noreferrer" class="text-brand underline underline-offset-2 hover:text-brand-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded">Przeczytaj regulamin</a>
+                                        @endif
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </span>
                                 </label>
@@ -1040,7 +1043,10 @@
                                         >
                                     </div>
                                     <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150">
-                                        Wyrażam zgodę na przetwarzanie moich danych osobowych przez {{ $organization->name ?? config('app.name') }} w celu realizacji umowy najmu zgodnie z art.&nbsp;6 ust.&nbsp;1 lit.&nbsp;b) RODO. Dane będą przechowywane przez 5&nbsp;lat od zakończenia umowy.
+                                        {{ $checkoutSettings['rodo_label'] }}
+                                        @if(!empty($checkoutSettings['privacy_policy_url']))
+                                            — <a href="{{ $checkoutSettings['privacy_policy_url'] }}" target="_blank" rel="noopener noreferrer" class="text-brand underline underline-offset-2 hover:text-brand-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded">Polityka prywatności</a>
+                                        @endif
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </span>
                                 </label>
@@ -1080,7 +1086,7 @@
                                         >
                                     </div>
                                     <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150">
-                                        Przyjmuję do wiadomości, że w związku z określeniem terminów wynajmu (art.&nbsp;38 ust.&nbsp;1 pkt&nbsp;12 Ustawy o Prawach Konsumenta) nie przysługuje mi prawo odstąpienia od umowy na odległość.
+                                        {{ $checkoutSettings['withdrawal_label'] }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </span>
                                 </label>
@@ -1209,7 +1215,7 @@
                                 </span>
                             </div>
                             <p class="mt-1.5 text-xs text-text-muted leading-relaxed">
-                                Kaucja pobierana gotówką / kartą przy odbiorze sprzętu. Zwracana po oddaniu sprzętu w stanie nienaruszonym.
+                                {{ $checkoutSettings['deposit_policy_note'] }}
                             </p>
                         </div>
                     @endif

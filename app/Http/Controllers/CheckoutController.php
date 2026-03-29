@@ -8,6 +8,7 @@ use App\Http\Requests\Checkout\SubmitCheckoutRequest;
 use App\Models\Order;
 use App\Services\Cart\CartService;
 use App\Services\Payment\Przelewy24Service;
+use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +20,7 @@ class CheckoutController extends Controller
     public function __construct(
         protected CartService $cart,
         protected Przelewy24Service $p24,
+        protected SettingsManager $settings,
     ) {}
 
     /**
@@ -59,7 +61,21 @@ class CheckoutController extends Controller
             'billing_postal' => $user->billing_postal_code,
         ];
 
-        return view('checkout.show', compact('cart', 'profileData'));
+        $orgName = $org->name ?? config('app.name');
+        $checkoutSettings = [
+            'terms_url' => $this->settings->get('checkout.terms_url', ''),
+            'privacy_policy_url' => $this->settings->get('checkout.privacy_policy_url', ''),
+            'terms_label' => $this->settings->get('checkout.terms_label', 'Akceptuję Regulamin Wypożyczalni i zapoznałem/am się z warunkami najmu sprzętu.'),
+            'rodo_label' => str_replace(
+                '{org_name}',
+                $orgName,
+                $this->settings->get('checkout.rodo_label', "Wyrażam zgodę na przetwarzanie moich danych osobowych przez {$orgName} w celu realizacji umowy najmu zgodnie z art. 6 ust. 1 lit. b) RODO. Dane będą przechowywane przez 5 lat od zakończenia umowy.")
+            ),
+            'withdrawal_label' => $this->settings->get('checkout.withdrawal_label', 'Przyjmuję do wiadomości, że w związku z określeniem terminów wynajmu (art. 38 ust. 1 pkt 12 Ustawy o Prawach Konsumenta) nie przysługuje mi prawo odstąpienia od umowy na odległość.'),
+            'deposit_policy_note' => $this->settings->get('checkout.deposit_policy_note', 'Kaucja pobierana gotówką / kartą przy odbiorze sprzętu. Zwracana po oddaniu sprzętu w stanie nienaruszonym.'),
+        ];
+
+        return view('checkout.show', compact('cart', 'profileData', 'checkoutSettings'));
     }
 
     /**

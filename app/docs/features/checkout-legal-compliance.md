@@ -132,6 +132,23 @@ Fields saved to profile: `customer_type`, `pesel`, `regon`, `krs`, address field
 
 ---
 
+## Checkout Settings (Admin Panel — `feature/checkout-settings`)
+
+Tenant admins can manage all consent texts in **Panel Admina → Ustawienia → zakładka Checkout**.
+
+| Setting key | Field | Default |
+|-------------|-------|---------|
+| `checkout.terms_url` | URL Regulaminu | `''` (brak linku) |
+| `checkout.privacy_policy_url` | URL Polityki prywatności | `''` (brak linku) |
+| `checkout.terms_label` | Tekst zgody na Regulamin | hardcoded fallback |
+| `checkout.rodo_label` | Tekst zgody RODO (`{org_name}` placeholder) | hardcoded fallback |
+| `checkout.withdrawal_label` | Tekst wyłączenia prawa odstąpienia | hardcoded fallback |
+| `checkout.deposit_policy_note` | Notatka o kaucji | hardcoded fallback |
+
+Settings are **fully per-tenant** via `SettingsManager`. URL fields: when non-empty, a "Przeczytaj regulamin" / "Polityka prywatności" link is appended after the consent text automatically in the view.
+
+---
+
 ## Notes for Developers
 
 1. **Do not include `deposit_amount` in financial totals** — it is off-balance-sheet
