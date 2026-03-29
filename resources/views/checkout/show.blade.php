@@ -999,11 +999,8 @@
                                             aria-describedby="terms-error"
                                         >
                                     </div>
-                                    <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150">
-                                        {{ $checkoutSettings['terms_label'] }}
-                                        @if(!empty($checkoutSettings['terms_url']))
-                                            — <a href="{{ $checkoutSettings['terms_url'] }}" target="_blank" rel="noopener noreferrer" class="text-brand underline underline-offset-2 hover:text-brand-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded">Przeczytaj regulamin</a>
-                                        @endif
+                                    <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150 [&_a]:text-brand [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-brand-hover">
+                                        {!! str($checkoutSettings['terms_label'] ?? '')->sanitizeHtml() !!}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </span>
                                 </label>
@@ -1042,11 +1039,8 @@
                                             aria-describedby="rodo-error"
                                         >
                                     </div>
-                                    <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150">
-                                        {{ $checkoutSettings['rodo_label'] }}
-                                        @if(!empty($checkoutSettings['privacy_policy_url']))
-                                            — <a href="{{ $checkoutSettings['privacy_policy_url'] }}" target="_blank" rel="noopener noreferrer" class="text-brand underline underline-offset-2 hover:text-brand-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded">Polityka prywatności</a>
-                                        @endif
+                                    <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150 [&_a]:text-brand [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-brand-hover">
+                                        {!! str($checkoutSettings['rodo_label'] ?? '')->sanitizeHtml() !!}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </span>
                                 </label>
@@ -1085,8 +1079,8 @@
                                             aria-describedby="withdrawal-error"
                                         >
                                     </div>
-                                    <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150">
-                                        {{ $checkoutSettings['withdrawal_label'] }}
+                                    <span class="text-sm text-text-secondary leading-relaxed group-hover:text-text-primary transition-colors duration-150 [&_a]:text-brand [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-brand-hover">
+                                        {!! str($checkoutSettings['withdrawal_label'] ?? '')->sanitizeHtml() !!}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </span>
                                 </label>
@@ -1214,8 +1208,8 @@
                                     {{ number_format($depositTotal, 2, ',', ' ') }}&nbsp;zł
                                 </span>
                             </div>
-                            <p class="mt-1.5 text-xs text-text-muted leading-relaxed">
-                                {{ $checkoutSettings['deposit_policy_note'] }}
+                            <p class="mt-1.5 text-xs text-text-muted leading-relaxed [&_a]:text-brand [&_a]:underline [&_a]:underline-offset-2">
+                                {!! str($checkoutSettings['deposit_policy_note'] ?? '')->sanitizeHtml() !!}
                             </p>
                         </div>
                     @endif

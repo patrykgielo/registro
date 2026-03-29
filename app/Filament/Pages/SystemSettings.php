@@ -14,6 +14,7 @@ use enshrined\svgSanitize\Sanitizer;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -267,12 +268,10 @@ class SystemSettings extends Page implements HasForms
             'checkout' => [
                 'label' => 'Ustawienia checkout zapisane',
                 'rules' => [
-                    'terms_url' => ['nullable', 'url', 'max:255'],
-                    'privacy_policy_url' => ['nullable', 'url', 'max:255'],
-                    'terms_label' => ['nullable', 'string', 'max:1000'],
-                    'rodo_label' => ['nullable', 'string', 'max:1000'],
-                    'withdrawal_label' => ['nullable', 'string', 'max:1000'],
-                    'deposit_policy_note' => ['nullable', 'string', 'max:500'],
+                    'terms_label' => ['nullable', 'string', 'max:5000'],
+                    'rodo_label' => ['nullable', 'string', 'max:5000'],
+                    'withdrawal_label' => ['nullable', 'string', 'max:5000'],
+                    'deposit_policy_note' => ['nullable', 'string', 'max:2000'],
                 ],
             ],
             'integrations' => [
@@ -1328,51 +1327,36 @@ class SystemSettings extends Page implements HasForms
         return Tabs\Tab::make('Checkout')
             ->icon('heroicon-o-clipboard-document-list')
             ->schema([
-                Section::make('Linki do dokumentów')
-                    ->description('Adresy URL do dokumentów prawnych wyświetlanych w procesie zamówienia. Linki pojawią się przy odpowiednich checkboxach zgód.')
-                    ->schema([
-                        TextInput::make('checkout.terms_url')
-                            ->label('URL Regulaminu')
-                            ->placeholder('https://twoja-strona.pl/regulamin')
-                            ->url()
-                            ->maxLength(255)
-                            ->helperText('Link do strony z regulaminem wypożyczalni.'),
-
-                        TextInput::make('checkout.privacy_policy_url')
-                            ->label('URL Polityki prywatności')
-                            ->placeholder('https://twoja-strona.pl/polityka-prywatnosci')
-                            ->url()
-                            ->maxLength(255)
-                            ->helperText('Link do polityki prywatności (RODO).'),
-                    ])
-                    ->columns(2),
-
                 Section::make('Treści zgód')
-                    ->description('Teksty wyświetlane przy checkboxach zgód w formularzu zamówienia. Możesz użyć {org_name} w treści zgody RODO jako zmiennej dla nazwy Twojej firmy.')
+                    ->description('Teksty wyświetlane przy checkboxach zgód w formularzu zamówienia. Używaj edytora aby osadzić linki bezpośrednio w treści zgody (zaznacz słowo → kliknij ikonę linku). Możesz użyć {org_name} w treści zgody RODO jako zmiennej dla nazwy Twojej firmy.')
                     ->schema([
-                        Textarea::make('checkout.terms_label')
+                        RichEditor::make('checkout.terms_label')
                             ->label('Tekst zgody na Regulamin')
-                            ->rows(3)
-                            ->maxLength(1000)
-                            ->helperText('Treść checkboxa "Akceptuję Regulamin". Jeśli ustawisz URL regulaminu powyżej, link "Przeczytaj regulamin" zostanie dodany automatycznie.'),
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->helperText('Treść checkboxa "Akceptuję Regulamin". Zaznacz słowo i kliknij ikonę linku aby wstawić link do regulaminu bezpośrednio w tekście.')
+                            ->columnSpanFull(),
 
-                        Textarea::make('checkout.rodo_label')
+                        RichEditor::make('checkout.rodo_label')
                             ->label('Tekst zgody RODO')
-                            ->rows(4)
-                            ->maxLength(1000)
-                            ->helperText('Treść zgody na przetwarzanie danych osobowych (Art. 13 RODO). Użyj {org_name} jako zmiennej dla nazwy Twojej firmy. Jeśli ustawisz URL polityki prywatności, link zostanie dodany automatycznie.'),
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->helperText('Treść zgody na przetwarzanie danych osobowych (Art. 13 RODO). Użyj {org_name} jako zmiennej dla nazwy Twojej firmy. Możesz wstawić link do polityki prywatności bezpośrednio w tekście.')
+                            ->columnSpanFull(),
 
-                        Textarea::make('checkout.withdrawal_label')
+                        RichEditor::make('checkout.withdrawal_label')
                             ->label('Tekst wyłączenia prawa odstąpienia')
-                            ->rows(3)
-                            ->maxLength(1000)
-                            ->helperText('Informacja o braku prawa odstąpienia od umowy (Art. 38(1)(12) UoPK). Nie zmieniaj bez konsultacji prawnej.'),
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->helperText('Informacja o braku prawa odstąpienia od umowy (Art. 38(1)(12) UoPK). Nie zmieniaj bez konsultacji prawnej.')
+                            ->columnSpanFull(),
 
-                        Textarea::make('checkout.deposit_policy_note')
+                        RichEditor::make('checkout.deposit_policy_note')
                             ->label('Notatka o kaucji')
-                            ->rows(2)
-                            ->maxLength(500)
-                            ->helperText('Opcjonalny tekst wyjaśniający zasady kaucji. Wyświetlany tylko gdy zamówienie wymaga kaucji.'),
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->helperText('Opcjonalny tekst wyjaśniający zasady kaucji. Wyświetlany tylko gdy zamówienie wymaga kaucji.')
+                            ->columnSpanFull(),
                     ]),
 
                 \Filament\Schemas\Components\Actions::make([
