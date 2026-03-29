@@ -41,6 +41,9 @@ enum TemplateKey: string
     case ACCOUNT_DELETION_REQUESTED = 'account-deletion-requested';
     case ACCOUNT_DELETION_COMPLETED = 'account-deletion-completed';
 
+    // ── Service area waitlist (Email only) ──────────────────────
+    case SERVICE_AREA_AVAILABLE = 'service-area-available';
+
     // ── Admin (Email only) ───────────────────────────────────────
     case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
     case ADMIN_USER_CREATED = 'admin-user-created';
@@ -65,6 +68,7 @@ enum TemplateKey: string
             self::EMAIL_CHANGE_COMPLETED => 'Zmiana email (potwierdzenie)',
             self::ACCOUNT_DELETION_REQUESTED => 'Usuwanie konta (zgloszenie)',
             self::ACCOUNT_DELETION_COMPLETED => 'Usuwanie konta (potwierdzenie)',
+            self::SERVICE_AREA_AVAILABLE => 'Strefa serwisowa dostępna',
             self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
             self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
         };
