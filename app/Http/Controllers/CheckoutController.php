@@ -63,8 +63,6 @@ class CheckoutController extends Controller
 
         $orgName = $org->name ?? config('app.name');
         $checkoutSettings = [
-            'terms_url' => $this->settings->get('checkout.terms_url', ''),
-            'privacy_policy_url' => $this->settings->get('checkout.privacy_policy_url', ''),
             'terms_label' => $this->settings->get('checkout.terms_label', 'Akceptuję Regulamin Wypożyczalni i zapoznałem/am się z warunkami najmu sprzętu.'),
             'rodo_label' => str_replace(
                 '{org_name}',
