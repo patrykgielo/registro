@@ -1334,6 +1334,7 @@ class SystemSettings extends Page implements HasForms
                             ->label('Tekst zgody na Regulamin')
                             ->toolbarButtons(['bold', 'italic', 'link'])
                             ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
                             ->helperText('Treść checkboxa "Akceptuję Regulamin". Zaznacz słowo i kliknij ikonę linku aby wstawić link do regulaminu bezpośrednio w tekście.')
                             ->columnSpanFull(),
 
@@ -1341,6 +1342,7 @@ class SystemSettings extends Page implements HasForms
                             ->label('Tekst zgody RODO')
                             ->toolbarButtons(['bold', 'italic', 'link'])
                             ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
                             ->helperText('Treść zgody na przetwarzanie danych osobowych (Art. 13 RODO). Użyj {org_name} jako zmiennej dla nazwy Twojej firmy. Możesz wstawić link do polityki prywatności bezpośrednio w tekście.')
                             ->columnSpanFull(),
 
@@ -1348,6 +1350,7 @@ class SystemSettings extends Page implements HasForms
                             ->label('Tekst wyłączenia prawa odstąpienia')
                             ->toolbarButtons(['bold', 'italic', 'link'])
                             ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
                             ->helperText('Informacja o braku prawa odstąpienia od umowy (Art. 38(1)(12) UoPK). Nie zmieniaj bez konsultacji prawnej.')
                             ->columnSpanFull(),
 
@@ -1355,6 +1358,7 @@ class SystemSettings extends Page implements HasForms
                             ->label('Notatka o kaucji')
                             ->toolbarButtons(['bold', 'italic', 'link'])
                             ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
                             ->helperText('Opcjonalny tekst wyjaśniający zasady kaucji. Wyświetlany tylko gdy zamówienie wymaga kaucji.')
                             ->columnSpanFull(),
                     ]),
