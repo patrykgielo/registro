@@ -306,6 +306,7 @@ class SystemSettings extends Page implements HasForms
                         $this->integrationsTab(),
                         $this->checkoutTab(),
                     ])
+                    ->persistTabInQueryString('tab')
                     ->columnSpanFull(),
             ])
             ->statePath('data');
@@ -317,6 +318,8 @@ class SystemSettings extends Page implements HasForms
     private function generalTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Ogólne')
+            ->id('ogolne')
+            ->key('ogolne')
             ->icon('heroicon-o-building-storefront')
             ->schema([
                 Section::make('Nazwa aplikacji')
@@ -346,6 +349,8 @@ class SystemSettings extends Page implements HasForms
     private function bookingTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Booking')
+            ->id('booking')
+            ->key('booking')
             ->visible(fn () => $this->isTabVisible('booking'))
             ->schema([
                 Section::make('Dostępność systemu')
@@ -429,6 +434,8 @@ class SystemSettings extends Page implements HasForms
     private function bookingWizardTab(): Tabs\Tab
     {
         return Tabs\Tab::make('System rezerwacji')
+            ->id('system-rezerwacji')
+            ->key('system-rezerwacji')
             ->icon('heroicon-o-calendar-days')
             ->visible(fn () => $this->isTabVisible('booking_wizard'))
             ->schema([
@@ -515,6 +522,8 @@ class SystemSettings extends Page implements HasForms
     private function mapTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Map')
+            ->id('mapa')
+            ->key('mapa')
             ->visible(fn () => $this->isTabVisible('map'))
             ->schema([
                 Section::make('Google Maps Configuration')
@@ -573,6 +582,8 @@ class SystemSettings extends Page implements HasForms
     private function contactTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Contact')
+            ->id('kontakt')
+            ->key('kontakt')
             ->schema([
                 Section::make('Business Contact Information')
                     ->description('Your business contact details')
@@ -620,6 +631,8 @@ class SystemSettings extends Page implements HasForms
     private function appearanceTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Wygląd')
+            ->id('wyglad')
+            ->key('wyglad')
             ->icon('heroicon-o-swatch')
             ->schema([
                 Section::make('Header')
@@ -770,6 +783,8 @@ class SystemSettings extends Page implements HasForms
     private function marketingTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Marketing')
+            ->id('marketing')
+            ->key('marketing')
             ->visible(fn () => $this->isTabVisible('marketing'))
             ->schema([
                 Section::make('Hero Section')
@@ -876,6 +891,8 @@ class SystemSettings extends Page implements HasForms
     private function emailTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Email')
+            ->id('email')
+            ->key('email')
             ->visible(fn () => $this->isTabVisible('email'))
             ->schema([
                 Section::make('SMTP Configuration')
@@ -979,6 +996,8 @@ class SystemSettings extends Page implements HasForms
     private function smsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('SMS')
+            ->id('sms')
+            ->key('sms')
             ->visible(fn () => $this->isTabVisible('sms'))
             ->schema([
                 Section::make('SMSAPI Configuration')
@@ -1093,6 +1112,8 @@ class SystemSettings extends Page implements HasForms
     private function cmsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('CMS')
+            ->id('cms')
+            ->key('cms')
             ->visible(fn () => $this->isTabVisible('cms'))
             ->schema([
                 Section::make('Homepage Settings')
@@ -1144,6 +1165,8 @@ class SystemSettings extends Page implements HasForms
     private function integrationsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Integrations')
+            ->id('integracje')
+            ->key('integracje')
             ->icon('heroicon-o-puzzle-piece')
             ->visible(fn () => $this->isTabVisible('integrations'))
             ->schema([
@@ -1325,6 +1348,8 @@ class SystemSettings extends Page implements HasForms
     private function checkoutTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Checkout')
+            ->id('checkout')
+            ->key('checkout')
             ->icon('heroicon-o-clipboard-document-list')
             ->schema([
                 Section::make('Treści zgód')
