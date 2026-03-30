@@ -73,8 +73,22 @@ class ViewOrder extends ViewRecord
                         ->placeholder('—'),
 
                     TextEntry::make('company_contact_name')
-                        ->label('Osoba kontaktowa')
+                        ->label('Osoba podpisująca umowę')
                         ->placeholder('—'),
+
+                    TextEntry::make('signatory_id_number')
+                        ->label('PESEL / dowód podpisującego')
+                        ->placeholder('—'),
+
+                    TextEntry::make('pickup_person_name')
+                        ->label('Osoba odbierająca sprzęt')
+                        ->placeholder('Taka sama jak podpisująca')
+                        ->columnSpanFull(),
+
+                    TextEntry::make('pickup_person_id_number')
+                        ->label('Dowód osoby odbierającej')
+                        ->placeholder('—')
+                        ->visible(fn (Order $record): bool => filled($record->pickup_person_name)),
                 ]),
 
             Section::make('Adres')

@@ -56,6 +56,9 @@ class Order extends Model
         'company_regon',
         'company_krs',
         'company_contact_name',
+        'signatory_id_number',
+        'pickup_person_name',
+        'pickup_person_id_number',
         // Deposit (kaucja)
         'deposit_amount',
         'deposit_status',

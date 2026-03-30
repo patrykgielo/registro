@@ -149,6 +149,9 @@ class CartService
                 'company_regon' => $checkoutData['company_regon'] ?? null,
                 'company_krs' => $checkoutData['company_krs'] ?? null,
                 'company_contact_name' => $checkoutData['company_contact_name'] ?? null,
+                'signatory_id_number' => $checkoutData['signatory_id_number'] ?? null,
+                'pickup_person_name' => $checkoutData['pickup_person_name'] ?? null,
+                'pickup_person_id_number' => $checkoutData['pickup_person_id_number'] ?? null,
                 // Deposit (kaucja)
                 'deposit_amount' => $depositTotal,
                 'deposit_status' => $depositTotal > 0 ? 'pending' : 'not_required',
