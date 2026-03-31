@@ -56,12 +56,12 @@ Reference design tokens from `design-system.json` or Tailwind config:
 - Spacing: Use Tailwind spacing scale
 - Typography: Use configured font families
 
-## SettingsManager w Blade — KRYTYCZNE
+## SettingsManager — KRYTYCZNE (Blade + PHP)
 
-**ZAWSZE używaj pełnej FQCN. Nigdy stringa `'settings'`!**
+**NIE ISTNIEJE `settings()` helper ani `app('settings')` alias!**
 
 ```blade
-{{-- ✅ PRAWIDŁOWO --}}
+{{-- ✅ Blade — pełna FQCN --}}
 app(\App\Support\Settings\SettingsManager::class)->vatRate()
 app(\App\Support\Settings\SettingsManager::class)->nettoPrice($price)
 
@@ -69,9 +69,22 @@ app(\App\Support\Settings\SettingsManager::class)->nettoPrice($price)
 app('settings')->vatRate()
 ```
 
-`SettingsManager` jest zarejestrowany jako `app(SettingsManager::class)`, NIE pod stringiem `'settings'`.
+```php
+// ✅ PHP (controller, service) — inject lub app()
+use App\Support\Settings\SettingsManager;
 
-Incydent 2026-03-31: `frontend-ui-architect` użył `app('settings')` w show.blade.php, cart/show.blade.php, checkout/show.blade.php — 6 wywołań crashowało z BindingResolutionException.
+$settings = app(SettingsManager::class);
+$value = $settings->get('checkout.inquiry_email');
+
+// ❌ BŁĄD — Call to undefined function settings()
+settings('checkout.inquiry_email')
+```
+
+`SettingsManager` rejestrowany wyłącznie jako `app(SettingsManager::class)`. Nie ma helpera `settings()`, nie ma aliasu `'settings'`.
+
+Incydenty 2026-03-31:
+- `frontend-ui-architect` użył `app('settings')` w 3 widokach Blade → BindingResolutionException
+- `ServiceInquiryController` użył `settings()` helper → Call to undefined function
 
 ---
 
