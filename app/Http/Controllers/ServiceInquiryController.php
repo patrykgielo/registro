@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Service;
 use App\Notifications\InquiryNotification;
+use App\Support\Settings\SettingsManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -24,8 +25,9 @@ class ServiceInquiryController extends Controller
             'message' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $recipient = settings('checkout.inquiry_email')
-            ?: settings('email.from_address');
+        $settings = app(SettingsManager::class);
+        $recipient = $settings->get('checkout.inquiry_email')
+            ?: $settings->get('email.from_address');
 
         if (empty($recipient)) {
             Log::warning('ServiceInquiry: no recipient configured', [
