@@ -149,6 +149,7 @@ class SystemSettings extends Page implements HasForms
                 'label' => 'Ustawienia ogólne zapisane',
                 'rules' => [
                     'app_name' => ['required', 'string', 'max:100'],
+                    'vat_rate' => ['nullable', 'integer', 'min:0', 'max:100'],
                 ],
             ],
             'booking' => [
@@ -272,6 +273,7 @@ class SystemSettings extends Page implements HasForms
                     'rodo_label' => ['nullable', 'string', 'max:5000'],
                     'withdrawal_label' => ['nullable', 'string', 'max:5000'],
                     'deposit_policy_note' => ['nullable', 'string', 'max:2000'],
+                    'inquiry_email' => ['nullable', 'email', 'max:255'],
                 ],
             ],
             'integrations' => [
@@ -328,6 +330,15 @@ class SystemSettings extends Page implements HasForms
                             ->maxLength(100)
                             ->placeholder('Registro')
                             ->helperText('Nazwa używana w szablonach wiadomości jako {{app_name}}'),
+
+                        TextInput::make('general.vat_rate')
+                            ->label('Stawka VAT (%)')
+                            ->numeric()
+                            ->suffix('%')
+                            ->default(23)
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->helperText('Używana do wyświetlania ceny netto przy produktach'),
                     ]),
 
                 \Filament\Schemas\Components\Actions::make([
@@ -1361,6 +1372,16 @@ class SystemSettings extends Page implements HasForms
                             ->extraInputAttributes(['style' => 'min-height: 7rem;'])
                             ->helperText('Opcjonalny tekst wyjaśniający zasady kaucji. Wyświetlany tylko gdy zamówienie wymaga kaucji.')
                             ->columnSpanFull(),
+                    ]),
+
+                Section::make('Zapytania o cenę')
+                    ->description('Ustawienia dla produktów z ceną "do potwierdzenia"')
+                    ->schema([
+                        TextInput::make('checkout.inquiry_email')
+                            ->label('Email dla zapytań o cenę')
+                            ->email()
+                            ->placeholder('kontakt@twoja-wypozyczalnia.pl')
+                            ->helperText('Adres email na który trafiają zapytania "Zapytaj o cenę". Domyślnie: adres z ustawień email.'),
                     ]),
 
                 \Filament\Schemas\Components\Actions::make([

@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
+use App\Models\Concerns\HasRentalBehavior;
+use App\Models\Concerns\HasTimeSlotBehavior;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +16,7 @@ use Illuminate\Support\Str;
 
 class Service extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior;
 
     protected $fillable = [
         'organization_id',
@@ -58,6 +60,7 @@ class Service extends Model
         'price_threshold_days',
         'deposit_amount',
         'brand',
+        'price_on_request',
     ];
 
     protected $casts = [
@@ -84,6 +87,7 @@ class Service extends Model
         'price_per_day_long' => 'decimal:2',
         'price_threshold_days' => 'integer',
         'deposit_amount' => 'decimal:2',
+        'price_on_request' => 'boolean',
     ];
 
     // Relationships

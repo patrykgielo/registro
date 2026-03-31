@@ -209,6 +209,12 @@ class ServiceResource extends BaseResource
                             ->label('Kaucja')
                             ->numeric()
                             ->prefix('PLN'),
+
+                        Forms\Components\Toggle::make('price_on_request')
+                            ->label('Cena do potwierdzenia')
+                            ->helperText('Ukrywa cenę i wyświetla przycisk "Zapytaj o cenę" zamiast koszyka')
+                            ->default(false)
+                            ->columnSpanFull(),
                     ])
                     ->columns(3)
                     ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),

@@ -282,6 +282,22 @@ class SettingsManager
         }
     }
 
+    /**
+     * Get tenant VAT rate percentage.
+     */
+    public function vatRate(): int
+    {
+        return (int) $this->get('general.vat_rate', 23);
+    }
+
+    /**
+     * Calculate net price from gross (brutto → netto).
+     */
+    public function nettoPrice(float $brutto): float
+    {
+        return round($brutto / (1 + $this->vatRate() / 100), 2);
+    }
+
     // ========================================================================
     // Helper Methods for Common Setting Groups
     // ========================================================================
