@@ -4,6 +4,10 @@
     'registrationEnabled' => true,
 ])
 
+@php
+    $isTenantDomain = !is_null(request()->attributes->get('tenant'));
+@endphp
+
 <div x-data="{
     mobileOpen: false,
     scrolled: false,
@@ -93,8 +97,10 @@
                         @endif
                     @else
                         <x-ui.button variant="ghost" href="{{ route('login') }}">Zaloguj</x-ui.button>
-                        @if($registrationEnabled)
-                            <x-ui.button href="{{ route('register') }}">Rozpocznij</x-ui.button>
+                        @if($registrationEnabled || !$isTenantDomain)
+                            <x-ui.button href="{{ $isTenantDomain ? route('customer.register') : route('register') }}">
+                                {{ $isTenantDomain ? 'Zarejestruj się' : 'Rozpocznij' }}
+                            </x-ui.button>
                         @endif
                     @endauth
                 </div>
@@ -202,6 +208,11 @@
                             <a href="{{ route('login') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
                                 <x-heroicon-m-arrow-right-on-rectangle class="h-5 w-5" /> Zaloguj się
                             </a>
+                            @if($registrationEnabled || !$isTenantDomain)
+                                <a href="{{ $isTenantDomain ? route('customer.register') : route('register') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
+                                    <x-heroicon-m-user-plus class="h-5 w-5" /> {{ $isTenantDomain ? 'Zarejestruj się' : 'Rozpocznij' }}
+                                </a>
+                            @endif
                         @endauth
                     </nav>
 

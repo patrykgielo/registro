@@ -1,3 +1,10 @@
+---
+paths:
+  - "resources/css/**"
+  - "resources/views/**"
+  - "resources/js/**"
+---
+
 # Dark Theme Rules - CRITICAL
 
 ## KLUCZOWE ROZRÓŻNIENIE

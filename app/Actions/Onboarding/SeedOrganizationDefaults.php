@@ -24,7 +24,7 @@ class SeedOrganizationDefaults
     {
         $defaults = [
             'booking' => [
-                'booking_enabled' => true,
+                'booking_enabled' => $org->supportsAppointments(),
                 'business_hours_start' => '09:00',
                 'business_hours_end' => '18:00',
                 'advance_booking_hours' => 24,

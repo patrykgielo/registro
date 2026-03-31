@@ -357,9 +357,17 @@ class SettingsManager
 
     /**
      * Check if online booking is enabled.
+     * Returns false for rental-only tenants regardless of the setting.
      */
     public function isBookingEnabled(): bool
     {
+        $tenant = TenantFeature::currentTenant();
+
+        // Rental-only tenants (item_rental) never support appointment booking
+        if ($tenant && ! $tenant->supportsAppointments()) {
+            return false;
+        }
+
         return (bool) $this->get('booking.booking_enabled', true);
     }
 

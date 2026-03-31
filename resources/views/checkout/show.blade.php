@@ -66,6 +66,10 @@
             billingCity: '{{ old('invoice_city', $profileData['billing_city'] ?? '') }}',
             billingPostal: '{{ old('invoice_postal_code', $profileData['billing_postal'] ?? '') }}',
             companyContactName: '{{ old('company_contact_name', '') }}',
+            signatoryIdNumber: '{{ old('signatory_id_number', '') }}',
+            differentPickupPerson: {{ old('pickup_person_name') ? 'true' : 'false' }},
+            pickupPersonName: '{{ old('pickup_person_name', '') }}',
+            pickupPersonIdNumber: '{{ old('pickup_person_id_number', '') }}',
 
             {{-- Consents --}}
             termsAccepted: {{ old('terms_accepted') ? 'true' : 'false' }},
@@ -961,6 +965,141 @@
                                     @error('company_contact_name')
                                         <p id="company_contact_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
                                     @enderror
+                                </div>
+
+                                {{-- PESEL lub numer dowodu osoby podpisującej --}}
+                                <div class="mt-4 space-y-1.5">
+                                    <label for="signatory_id_number" class="block text-sm font-medium text-text-primary">
+                                        PESEL lub numer dowodu osobistego
+                                        <span class="text-error ml-0.5" aria-hidden="true">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="signatory_id_number"
+                                        name="signatory_id_number"
+                                        x-model="signatoryIdNumber"
+                                        inputmode="text"
+                                        maxlength="20"
+                                        aria-required="true"
+                                        aria-invalid="{{ $errors->has('signatory_id_number') ? 'true' : 'false' }}"
+                                        aria-describedby="signatory_id_number-hint{{ $errors->has('signatory_id_number') ? ' signatory_id_number-error' : '' }}"
+                                        @class([
+                                            'block w-full sm:max-w-xs rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted font-mono min-h-11',
+                                            'transition-colors duration-200 ease-out',
+                                            'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
+                                            'border-error focus:border-error focus:ring-error/20' => $errors->has('signatory_id_number'),
+                                            'border-border hover:border-border-strong' => !$errors->has('signatory_id_number'),
+                                        ])
+                                        placeholder="np. ABC123456 lub 12345678901"
+                                    >
+                                    <p id="signatory_id_number-hint" class="text-xs text-text-muted mt-1 leading-relaxed">
+                                        Wymagane do zawarcia umowy najmu i ewentualnego dochodzenia roszczeń.
+                                    </p>
+                                    @error('signatory_id_number')
+                                        <p id="signatory_id_number-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            {{-- Toggle: inna osoba odbierająca sprzęt --}}
+                            <div class="pt-4 border-t border-border mt-2">
+                                <div class="flex items-start gap-3">
+                                    <div class="flex items-center h-5 mt-0.5">
+                                        <input
+                                            type="checkbox"
+                                            id="different_pickup_person"
+                                            x-model="differentPickupPerson"
+                                            @change="if (!differentPickupPerson) { pickupPersonName = ''; pickupPersonIdNumber = ''; }"
+                                            class="h-4 w-4 rounded border-border text-brand
+                                                   transition-colors duration-200 ease-out
+                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
+                                                   cursor-pointer"
+                                            :aria-expanded="differentPickupPerson.toString()"
+                                            aria-controls="pickup-person-fields"
+                                        >
+                                    </div>
+                                    <label for="different_pickup_person" class="text-sm font-medium text-text-primary cursor-pointer select-none">
+                                        Sprzęt odbierze inna osoba niż podpisująca umowę
+                                        <span class="block text-xs font-normal text-text-muted mt-0.5">
+                                            Np. pracownik lub kierowca — podaj jej dane do protokołu wydania
+                                        </span>
+                                    </label>
+                                </div>
+
+                                <div
+                                    id="pickup-person-fields"
+                                    x-show="differentPickupPerson"
+                                    x-transition:enter="transition ease-out duration-200"
+                                    x-transition:enter-start="opacity-0 -translate-y-2"
+                                    x-transition:enter-end="opacity-100 translate-y-0"
+                                    x-transition:leave="transition ease-in duration-150"
+                                    x-transition:leave-start="opacity-100 translate-y-0"
+                                    x-transition:leave-end="opacity-0 -translate-y-2"
+                                    role="group"
+                                    aria-label="Dane osoby odbierającej sprzęt"
+                                >
+                                    <div class="mt-5 pt-5 border-t border-border space-y-4">
+
+                                        {{-- Imię i nazwisko osoby odbierającej --}}
+                                        <div class="space-y-1.5">
+                                            <label for="pickup_person_name" class="block text-sm font-medium text-text-primary">
+                                                Imię i nazwisko osoby odbierającej
+                                                <span class="text-error ml-0.5" aria-hidden="true">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id="pickup_person_name"
+                                                name="pickup_person_name"
+                                                x-model="pickupPersonName"
+                                                :disabled="!differentPickupPerson"
+                                                autocomplete="off"
+                                                aria-invalid="{{ $errors->has('pickup_person_name') ? 'true' : 'false' }}"
+                                                aria-describedby="{{ $errors->has('pickup_person_name') ? 'pickup_person_name-error' : '' }}"
+                                                @class([
+                                                    'block w-full rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted min-h-11',
+                                                    'transition-colors duration-200 ease-out',
+                                                    'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
+                                                    'border-error focus:border-error focus:ring-error/20' => $errors->has('pickup_person_name'),
+                                                    'border-border hover:border-border-strong' => !$errors->has('pickup_person_name'),
+                                                ])
+                                                placeholder="Jan Kowalski"
+                                            >
+                                            @error('pickup_person_name')
+                                                <p id="pickup_person_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
+                                            @enderror
+                                        </div>
+
+                                        {{-- Numer dowodu osoby odbierającej --}}
+                                        <div class="space-y-1.5">
+                                            <label for="pickup_person_id_number" class="block text-sm font-medium text-text-primary">
+                                                Numer dowodu osobistego
+                                                <span class="text-error ml-0.5" aria-hidden="true">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id="pickup_person_id_number"
+                                                name="pickup_person_id_number"
+                                                x-model="pickupPersonIdNumber"
+                                                :disabled="!differentPickupPerson"
+                                                inputmode="text"
+                                                maxlength="20"
+                                                aria-invalid="{{ $errors->has('pickup_person_id_number') ? 'true' : 'false' }}"
+                                                aria-describedby="{{ $errors->has('pickup_person_id_number') ? 'pickup_person_id_number-error' : '' }}"
+                                                @class([
+                                                    'block w-full sm:max-w-xs rounded-lg border bg-surface-raised px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted font-mono min-h-11',
+                                                    'transition-colors duration-200 ease-out',
+                                                    'focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none',
+                                                    'border-error focus:border-error focus:ring-error/20' => $errors->has('pickup_person_id_number'),
+                                                    'border-border hover:border-border-strong' => !$errors->has('pickup_person_id_number'),
+                                                ])
+                                                placeholder="np. ABC123456"
+                                            >
+                                            @error('pickup_person_id_number')
+                                                <p id="pickup_person_id_number-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
+                                            @enderror
+                                        </div>
+
+                                    </div>
                                 </div>
                             </div>
 
