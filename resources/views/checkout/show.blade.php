@@ -1332,7 +1332,7 @@
                                 {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł
                             </span>
                         </div>
-                        <p class="mt-1 text-xs text-text-muted">Ceny brutto, w tym VAT</p>
+                        <p class="mt-1 text-xs text-text-muted">Ceny brutto, w tym VAT {{ app('settings')->vatRate() }}%</p>
                     </div>
 
                     {{-- Kaucja (conditionally shown) --}}
