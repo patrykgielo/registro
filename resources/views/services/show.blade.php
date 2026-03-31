@@ -328,6 +328,7 @@
                             </div>
                         @endif
                         {{-- ─── Availability Calendar (inside same card) ─── --}}
+                        @if(!$service->price_on_request)
                         <div
                             class="border-t border-border pt-5 -mx-6 px-6"
                             role="region"
@@ -474,6 +475,7 @@
                         </div>
                         <div x-show="rangeChecking" class="mt-4 text-sm text-text-muted">Sprawdzam dostępność...</div>
                         </div>
+                        @endif {{-- !price_on_request --}}
                         {{-- ─── /Availability Calendar ─── --}}
                     </x-ui.card>
                 </div>
