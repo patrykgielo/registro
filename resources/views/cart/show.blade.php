@@ -197,7 +197,7 @@
                                 {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł
                             </span>
                         </div>
-                        <p class="mt-1 text-xs text-text-muted">Ceny brutto (w tym VAT {{ app('settings')->vatRate() }}%)</p>
+                        <p class="mt-1 text-xs text-text-muted">Ceny brutto (w tym VAT {{ app(\App\Support\Settings\SettingsManager::class)->vatRate() }}%)</p>
                     </div>
 
                     <div class="mt-6">

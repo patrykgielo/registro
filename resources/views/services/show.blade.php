@@ -201,7 +201,7 @@
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
                                         <div class="text-xl font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-text-muted mt-0.5">za dzień</div>
-                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app('settings')->nettoPrice((float) $service->price_per_day), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
 
@@ -210,7 +210,7 @@
                                     <div class="rounded-lg bg-success/5 border border-success/20 p-3 text-center">
                                         <div class="text-xl font-bold text-success">{{ number_format($service->price_per_day_long, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-success/70 mt-0.5">od {{ $service->price_threshold_days }}+ dni</div>
-                                        <div class="text-xs text-success/60 mt-0.5">({{ number_format(app('settings')->nettoPrice((float) $service->price_per_day_long), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-xs text-success/60 mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day_long), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
 
@@ -219,7 +219,7 @@
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
                                         <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_hour, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-text-muted mt-0.5">za godzinę</div>
-                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app('settings')->nettoPrice((float) $service->price_per_hour), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_hour), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
 
@@ -228,7 +228,7 @@
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
                                         <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_week, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-text-muted mt-0.5">za tydzień</div>
-                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app('settings')->nettoPrice((float) $service->price_per_week), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_week), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
                             </div>
