@@ -478,14 +478,10 @@
                         @endif {{-- !price_on_request --}}
                         {{-- ─── /Availability Calendar ─── --}}
                     </x-ui.card>
-                </div>
-            </div>
-        </div>
-    </x-layout.section>
 
-    {{-- ─── Inquiry Modal (price_on_request) ─── --}}
-    @if($service->price_on_request)
-    <template x-teleport="body">
+                    {{-- ─── Inquiry Modal (price_on_request) — must stay inside x-data scope for x-teleport to work ─── --}}
+                    @if($service->price_on_request)
+                    <template x-teleport="body">
         <div
             x-data="{
                 open: false,
@@ -701,8 +697,14 @@
                 </div>
             </div>
         </div>
-    </template>
-    @endif
+                    </template>
+                    @endif
+                    {{-- ─── /Inquiry Modal ─── --}}
+
+                </div>
+            </div>
+        </div>
+    </x-layout.section>
 
 @else
     {{-- ═══════════════════════════════════════════════════════════
