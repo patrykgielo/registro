@@ -506,7 +506,7 @@
                         </x-ui.button>
                     @endif
                 @else
-                    <x-ui.button href="{{ route('register') }}" size="lg" icon-right="arrow-right" class="w-full sm:w-auto">
+                    <x-ui.button href="{{ route('customer.register') }}" size="lg" icon-right="arrow-right" class="w-full sm:w-auto">
                         Zarejestruj się, aby zarezerwować
                     </x-ui.button>
                 @endauth

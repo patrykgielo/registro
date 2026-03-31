@@ -144,9 +144,16 @@ Route::post('/webhooks/przelewy24', [WebhookController::class, 'przelewy24'])
 
 // Authentication routes (register disabled here, handled manually below with middleware)
 // Wrapped in ResolveTenant so LoginController knows which tenant subdomain the user is on
-// Rate limited: 5 login attempts per minute per IP (brute-force protection)
+
+// GET /login — no throttle (just rendering the form, no brute-force risk)
+Route::get('/login', [\App\Http\Controllers\Auth\LoginController::class, 'showLoginForm'])
+    ->middleware([ResolveTenant::class, 'guest'])
+    ->name('login');
+
+// POST /login + other auth actions — brute-force protection (5/min per IP)
 Route::middleware([ResolveTenant::class, 'throttle:5,1'])->group(function () {
-    Auth::routes(['register' => false]);
+    Auth::routes(['login' => false, 'register' => false]);
+    Route::post('/login', [\App\Http\Controllers\Auth\LoginController::class, 'login']);
 });
 
 // Business registration (root domain: /register → 2-step wizard)
