@@ -320,6 +320,10 @@ $industry->seederClass()      // FQCN vertical seedera
 ServiceType::TimeSlot     // Klasyczna usługa (detailing, fryzjer)
 ServiceType::ItemRental   // Wypożyczenie (sprzęt, narzędzia)
 
+// Helper methods (dodane 2026-03-31)
+ServiceType::ItemRental->isRental()   // true
+ServiceType::TimeSlot->isTimeSlot()   // true
+
 // Pola rental na Service (nullable, tylko dla item_rental)
 'service_type'           // ServiceType enum (default: time_slot)
 'rental_category_id'     // FK do rental_categories (nullable)
@@ -329,11 +333,22 @@ ServiceType::ItemRental   // Wypożyczenie (sprzęt, narzędzia)
 'price_per_week'         // Stawka tygodniowa (nullable)
 'price_per_day_long'     // Stawka po przekroczeniu progu (nullable)
 'price_threshold_days'   // Próg dni dla niższej ceny (nullable)
+'price_on_request'       // boolean default false — ukrywa cenę, pokazuje inquiry form
 'deposit_amount'         // Kaucja (nullable)
 'brand'                  // Marka/producent (nullable)
 
 // Specifications → metadata JSON
 'metadata' => ['specs' => ['power_w' => 800, 'weight_kg' => 4.2]]
+
+// Bootable Traits (dodane 2026-03-31)
+// Service uses: HasRentalBehavior + HasTimeSlotBehavior
+// HasRentalBehavior: zeruje price_on_request=false na creating/updating gdy service_type !== ItemRental
+// HasTimeSlotBehavior: marker trait dla time_slot logiki
+
+// price_on_request — tylko dla item_rental
+// Gdy true: ukrywa cenę i koszyk, pokazuje "Zapytaj o cenę" CTA + modal
+// Guard w HasRentalBehavior: TimeSlot service ZAWSZE ma price_on_request=false
+// Metoda: $service->isRentalPriceOnRequest(): bool
 
 // Scopes
 Service::rentable()     // where service_type = item_rental
