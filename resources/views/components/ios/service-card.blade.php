@@ -135,7 +135,12 @@
         </p>
 
         {{-- Duration Badge (time_slot) or Rental Price Badge (item_rental) --}}
-        @if($isRental && $rentalPrice)
+        @if($isRental && ($service?->price_on_request))
+        <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
+            <x-heroicon-m-chat-bubble-left-ellipsis class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
+            <span class="service-card__duration-text font-medium">Cena do potwierdzenia</span>
+        </div>
+        @elseif($isRental && $rentalPrice)
         <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
             <x-heroicon-m-banknotes class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
             <span class="service-card__duration-text font-medium">{{ $rentalPrice }}</span>
@@ -160,7 +165,7 @@
         @endif
 
         {{-- Price --}}
-        @if($price)
+        @if($price && !($service?->price_on_request))
         <div class="service-card__price flex items-baseline gap-1 mb-4">
             <span class="service-card__price-value text-3xl font-bold {{ $priceValueClasses }}">{{ number_format($price, 0, ',', ' ') }}</span>
             <span class="service-card__price-currency text-sm {{ $priceLabelClasses }} font-medium">zł</span>

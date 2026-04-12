@@ -36,6 +36,10 @@ class SeedOrganizationDefaults
             ],
             'general' => [
                 'app_name' => $org->name,
+                'vat_rate' => 23,
+            ],
+            'checkout' => [
+                'inquiry_email' => '',
             ],
         ];
 

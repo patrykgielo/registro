@@ -12,6 +12,7 @@
     <title>{{ $service->meta_title ?? $service->name . ' - ' . config('app.name') }}</title>
     <script type="application/ld+json">{!! $schemaService !!}</script>
     <script type="application/ld+json">{!! $schemaBreadcrumbs !!}</script>
+    <style>[x-cloak] { display: none !important; }</style>
 @endpush
 
 @php
@@ -200,6 +201,7 @@
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
                                         <div class="text-xl font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-text-muted mt-0.5">za dzień</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
 
@@ -208,6 +210,7 @@
                                     <div class="rounded-lg bg-success/5 border border-success/20 p-3 text-center">
                                         <div class="text-xl font-bold text-success">{{ number_format($service->price_per_day_long, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-success/70 mt-0.5">od {{ $service->price_threshold_days }}+ dni</div>
+                                        <div class="text-xs text-success/60 mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day_long), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
 
@@ -216,6 +219,7 @@
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
                                         <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_hour, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-text-muted mt-0.5">za godzinę</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_hour), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
 
@@ -224,6 +228,7 @@
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
                                         <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_week, 0, ',', ' ') }} zł</div>
                                         <div class="text-xs text-text-muted mt-0.5">za tydzień</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_week), 2, ',', ' ') }} zł netto)</div>
                                     </div>
                                 @endif
                             </div>
@@ -258,6 +263,26 @@
                         </div>
 
                         {{-- CTA --}}
+                        @if($service->price_on_request)
+                        {{-- Price-on-request: inquiry CTA instead of cart --}}
+                        <div class="space-y-3">
+                            <p class="text-sm text-text-muted text-center">Cena ustalana indywidualnie</p>
+                            <button
+                                type="button"
+                                x-data
+                                @click="$dispatch('open-inquiry-modal')"
+                                class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 cursor-pointer"
+                                aria-haspopup="dialog"
+                            >
+                                Zapytaj o cenę
+                            </button>
+                            @if($contactPhone)
+                                <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
+                                    Lub zadzwoń: {{ $contactPhone }}
+                                </x-ui.button>
+                            @endif
+                        </div>
+                        @else
                         <div class="space-y-3">
                             @auth
                                 <form method="POST" action="{{ route('cart.add') }}" x-show="canBook" x-transition>
@@ -293,6 +318,7 @@
                                 </x-ui.button>
                             @endif
                         </div>
+                        @endif
 
                         {{-- Availability badge --}}
                         @if($service->quantity_total && $service->quantity_total > 0)
@@ -302,6 +328,7 @@
                             </div>
                         @endif
                         {{-- ─── Availability Calendar (inside same card) ─── --}}
+                        @if(!$service->price_on_request)
                         <div
                             class="border-t border-border pt-5 -mx-6 px-6"
                             role="region"
@@ -448,8 +475,232 @@
                         </div>
                         <div x-show="rangeChecking" class="mt-4 text-sm text-text-muted">Sprawdzam dostępność...</div>
                         </div>
+                        @endif {{-- !price_on_request --}}
                         {{-- ─── /Availability Calendar ─── --}}
                     </x-ui.card>
+
+                    {{-- ─── Inquiry Modal (price_on_request) — must stay inside x-data scope for x-teleport to work ─── --}}
+                    @if($service->price_on_request)
+                    <template x-teleport="body">
+        <div
+            x-data="{
+                open: false,
+                name: '',
+                email: '',
+                phone: '',
+                message: '',
+                loading: false,
+                success: false,
+                error: '',
+                reset() {
+                    this.name = '';
+                    this.email = '';
+                    this.phone = '';
+                    this.message = '';
+                    this.loading = false;
+                    this.success = false;
+                    this.error = '';
+                },
+                submit() {
+                    this.loading = true;
+                    this.error = '';
+                    fetch('{{ route('service.inquiry', $service) }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content
+                        },
+                        body: JSON.stringify({
+                            name: this.name,
+                            email: this.email,
+                            phone: this.phone,
+                            message: this.message
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success) {
+                            this.success = true;
+                        } else {
+                            this.error = d.message ?? 'Wystąpił błąd. Spróbuj ponownie.';
+                        }
+                    })
+                    .catch(() => {
+                        this.error = 'Wystąpił błąd. Spróbuj ponownie.';
+                    })
+                    .finally(() => {
+                        this.loading = false;
+                    });
+                }
+            }"
+            x-on:open-inquiry-modal.window="open = true; reset()"
+            x-on:keydown.escape.window="open = false"
+            x-show="open"
+            x-cloak
+            role="dialog"
+            aria-modal="true"
+            aria-label="Zapytaj o cenę"
+            class="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center px-4"
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+        >
+            {{-- Backdrop --}}
+            <div
+                class="absolute inset-0 bg-surface-overlay"
+                @click="open = false"
+                aria-hidden="true"
+            ></div>
+
+            {{-- Panel --}}
+            <div
+                class="relative w-full max-w-md rounded-2xl bg-surface-raised shadow-xl"
+                x-transition:enter="transition ease-out duration-200"
+                x-transition:enter-start="opacity-0 scale-95"
+                x-transition:enter-end="opacity-100 scale-100"
+                x-transition:leave="transition ease-in duration-150"
+                x-transition:leave-start="opacity-100 scale-100"
+                x-transition:leave-end="opacity-0 scale-95"
+                x-trap.inert.noscroll="open"
+            >
+                {{-- Header --}}
+                <div class="flex items-center justify-between border-b border-border px-6 py-4">
+                    <h2 class="text-base font-semibold text-text-primary" id="inquiry-modal-title">
+                        Zapytaj o cenę
+                    </h2>
+                    <button
+                        @click="open = false"
+                        type="button"
+                        class="flex items-center justify-center min-h-9 min-w-9 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                        aria-label="Zamknij okno"
+                    >
+                        <x-heroicon-m-x-mark class="h-5 w-5" />
+                    </button>
+                </div>
+
+                <div class="px-6 py-5">
+                    {{-- Service name context --}}
+                    <p class="text-sm text-text-muted mb-5">
+                        Zapytanie o: <span class="font-medium text-text-secondary">{{ $service->name }}</span>
+                    </p>
+
+                    {{-- Success state --}}
+                    <div
+                        x-show="success"
+                        x-transition
+                        class="rounded-xl bg-success/5 border border-success/20 p-4 text-sm text-success"
+                        role="status"
+                        aria-live="polite"
+                    >
+                        Dziękujemy! Skontaktujemy się z Tobą wkrótce.
+                    </div>
+
+                    {{-- Form --}}
+                    <form
+                        x-show="!success"
+                        @submit.prevent="submit()"
+                        novalidate
+                        class="space-y-4"
+                        aria-labelledby="inquiry-modal-title"
+                    >
+                        <div>
+                            <label for="inquiry-name" class="mb-1.5 block text-sm font-medium text-text-primary">
+                                Imię i nazwisko <span class="text-error" aria-hidden="true">*</span>
+                            </label>
+                            <input
+                                id="inquiry-name"
+                                type="text"
+                                x-model="name"
+                                required
+                                aria-required="true"
+                                maxlength="100"
+                                autocomplete="name"
+                                class="w-full min-h-11 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow"
+                                placeholder="Jan Kowalski"
+                            >
+                        </div>
+
+                        <div>
+                            <label for="inquiry-email" class="mb-1.5 block text-sm font-medium text-text-primary">
+                                Email <span class="text-error" aria-hidden="true">*</span>
+                            </label>
+                            <input
+                                id="inquiry-email"
+                                type="email"
+                                x-model="email"
+                                required
+                                aria-required="true"
+                                maxlength="255"
+                                autocomplete="email"
+                                class="w-full min-h-11 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow"
+                                placeholder="jan@przyklad.pl"
+                            >
+                        </div>
+
+                        <div>
+                            <label for="inquiry-phone" class="mb-1.5 block text-sm font-medium text-text-primary">
+                                Telefon
+                            </label>
+                            <input
+                                id="inquiry-phone"
+                                type="tel"
+                                x-model="phone"
+                                maxlength="20"
+                                autocomplete="tel"
+                                class="w-full min-h-11 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow"
+                                placeholder="+48 600 000 000"
+                            >
+                        </div>
+
+                        <div>
+                            <label for="inquiry-message" class="mb-1.5 block text-sm font-medium text-text-primary">
+                                Wiadomość
+                            </label>
+                            <textarea
+                                id="inquiry-message"
+                                x-model="message"
+                                rows="3"
+                                maxlength="1000"
+                                class="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow resize-none"
+                                placeholder="Opisz swoje zapytanie..."
+                            ></textarea>
+                        </div>
+
+                        {{-- Error message --}}
+                        <div
+                            x-show="error"
+                            x-text="error"
+                            role="alert"
+                            aria-live="assertive"
+                            class="text-sm text-error"
+                        ></div>
+
+                        <button
+                            type="submit"
+                            :disabled="loading"
+                            :aria-busy="loading"
+                            class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                            <span x-show="!loading">Wyślij zapytanie</span>
+                            <span x-show="loading" x-cloak class="flex items-center gap-2" aria-hidden="true">
+                                <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Wysyłanie...
+                            </span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+                    </template>
+                    @endif
+                    {{-- ─── /Inquiry Modal ─── --}}
+
                 </div>
             </div>
         </div>

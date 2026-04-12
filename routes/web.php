@@ -100,6 +100,11 @@ Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('service.show');
 });
 
+// Service inquiry (price-on-request contact form)
+Route::post('/uslugi/{service:slug}/zapytaj', [\App\Http\Controllers\ServiceInquiryController::class, 'store'])
+    ->middleware([ResolveTenant::class, 'throttle:5,1'])
+    ->name('service.inquiry');
+
 // Rental Booking routes — DEPRECATED (Sprint 4). Returns 410 Gone with redirect hint.
 // Will be fully removed in next cleanup sprint. API endpoints below are preserved.
 Route::middleware([ResolveTenant::class])->prefix('wypozyczalnia')->name('rental.')->group(function () {

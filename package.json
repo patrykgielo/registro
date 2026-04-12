@@ -9,6 +9,7 @@
         "watch:theme": "node scripts/generate-theme.js --watch"
     },
     "dependencies": {
+        "@alpinejs/focus": "^3.15.9",
         "alpinejs": "^3.14.1",
         "flatpickr": "^4.6.13"
     },

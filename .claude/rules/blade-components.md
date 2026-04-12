@@ -56,6 +56,68 @@ Reference design tokens from `design-system.json` or Tailwind config:
 - Spacing: Use Tailwind spacing scale
 - Typography: Use configured font families
 
+## SettingsManager — KRYTYCZNE (Blade + PHP)
+
+**NIE ISTNIEJE `settings()` helper ani `app('settings')` alias!**
+
+```blade
+{{-- ✅ Blade — pełna FQCN --}}
+app(\App\Support\Settings\SettingsManager::class)->vatRate()
+app(\App\Support\Settings\SettingsManager::class)->nettoPrice($price)
+
+{{-- ❌ BŁĄD — BindingResolutionException: Target class [settings] does not exist --}}
+app('settings')->vatRate()
+```
+
+```php
+// ✅ PHP (controller, service) — inject lub app()
+use App\Support\Settings\SettingsManager;
+
+$settings = app(SettingsManager::class);
+$value = $settings->get('checkout.inquiry_email');
+
+// ❌ BŁĄD — Call to undefined function settings()
+settings('checkout.inquiry_email')
+```
+
+`SettingsManager` rejestrowany wyłącznie jako `app(SettingsManager::class)`. Nie ma helpera `settings()`, nie ma aliasu `'settings'`.
+
+Incydenty 2026-03-31:
+- `frontend-ui-architect` użył `app('settings')` w 3 widokach Blade → BindingResolutionException
+- `ServiceInquiryController` użył `settings()` helper → Call to undefined function
+
+---
+
+## price_on_request — WSZYSTKIE miejsca wyświetlania cen
+
+**Flaga `price_on_request=true` musi być obsługiwana w KAŻDYM szablonie wyświetlającym cenę.**
+
+Gdy `$service->price_on_request === true`:
+- ❌ NIE wyświetlaj ceny
+- ✅ Pokaż "Cena do potwierdzenia" (lub odpowiednik)
+
+Szablony do zaktualizowania przy każdej nowej lokalizacji cen:
+
+| Plik | Co sprawdzić |
+|------|-------------|
+| `services/show.blade.php` | Kafelki cenowe + widget koszyka |
+| `services/index.blade.php` | Cena w karcie produktu |
+| `components/ios/service-card.blade.php` | Badge cenowy w tilesach |
+| `cart/show.blade.php` | (koszyk nie wyświetla produktów price_on_request) |
+
+**Wzorzec:**
+```blade
+@if($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_on_request)
+    <span class="...italic">Cena do potwierdzenia</span>
+@elseif($service->price_per_day)
+    <span ...>{{ number_format($service->price_per_day, 0, ',', ' ') }} zł/dzień</span>
+@endif
+```
+
+Incydent 2026-03-31: Po naprawieniu `show.blade.php`, kafelki na stronie głównej i liście nadal pokazywały cenę (naprawione w `service-card.blade.php` + `index.blade.php`).
+
+---
+
 ## CMS Page Architecture (CRITICAL)
 
 **The homepage (`/`) uses CMS system - there is NO `home.blade.php` file!**

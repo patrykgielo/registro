@@ -56,7 +56,9 @@
                     </p>
 
                     <div class="flex items-center justify-between mt-auto pt-4 border-t border-border">
-                        @if($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_per_day)
+                        @if($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_on_request)
+                            <span class="text-sm font-medium text-text-muted italic">Cena do potwierdzenia</span>
+                        @elseif($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_per_day)
                             <span class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} zł<span class="text-sm font-normal text-text-muted">/dzień</span></span>
                         @elseif($service->price)
                             <span class="text-lg font-bold text-text-primary">{{ $service->price_from ? 'od ' : '' }}{{ number_format($service->price_from ?? $service->price, 0, ',', ' ') }} zł</span>

@@ -22,4 +22,14 @@ enum ServiceType: string
             self::ItemRental => 'heroicon-o-cube',
         };
     }
+
+    public function isRental(): bool
+    {
+        return $this === self::ItemRental;
+    }
+
+    public function isTimeSlot(): bool
+    {
+        return $this === self::TimeSlot;
+    }
 }
