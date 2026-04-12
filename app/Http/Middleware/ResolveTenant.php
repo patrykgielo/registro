@@ -7,6 +7,7 @@ namespace App\Http\Middleware;
 use App\Models\Organization;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
@@ -60,6 +61,22 @@ class ResolveTenant
         }
 
         $request->attributes->set('tenant', $tenant);
+
+        // Authorization: authenticated admin/staff must belong to this tenant.
+        // Login route is excluded — user must be able to authenticate first.
+        if (
+            $request->is('admin*') &&
+            ! $request->is('admin/login*') &&
+            Auth::check()
+        ) {
+            $user = Auth::user();
+            if (
+                $user->hasAnyRole(['admin', 'staff']) &&
+                ! $user->canAccessTenant($tenant)
+            ) {
+                return redirect()->to($this->rootUrl($request));
+            }
+        }
 
         // Force route() to generate URLs with tenant subdomain instead of APP_URL.
         // Without this, form actions and redirects point to root domain → 404.

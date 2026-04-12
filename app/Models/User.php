@@ -6,7 +6,6 @@ namespace App\Models;
 use App\Traits\Auditable;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
-use Filament\Models\Contracts\HasTenants;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,11 +14,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable implements FilamentUser, HasName, HasTenants
+class User extends Authenticatable implements FilamentUser, HasName
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use Auditable, HasFactory, HasRoles, Notifiable;
@@ -329,7 +327,7 @@ class User extends Authenticatable implements FilamentUser, HasName, HasTenants
     }
 
     // =========================================================================
-    // MULTI-TENANCY (Filament HasTenants)
+    // ORGANIZATIONS
     // =========================================================================
 
     /**
@@ -343,15 +341,8 @@ class User extends Authenticatable implements FilamentUser, HasName, HasTenants
     }
 
     /**
-     * Get tenants for Filament panel (HasTenants contract).
-     */
-    public function getTenants(Panel $panel): array|Collection
-    {
-        return $this->organizations;
-    }
-
-    /**
-     * Check if user can access a specific tenant (HasTenants contract).
+     * Check if user belongs to the given organization/tenant.
+     * Used by ResolveTenant middleware and LoginController for access authorization.
      */
     public function canAccessTenant(Model $tenant): bool
     {

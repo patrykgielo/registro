@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 class LoginController extends Controller
 {
@@ -17,6 +18,23 @@ class LoginController extends Controller
     protected function redirectTo(): string
     {
         return route('appointments.index');
+    }
+
+    /**
+     * Build the admin panel URL on a tenant's subdomain.
+     */
+    private function tenantAdminUrl(Organization $org, Request $request): string
+    {
+        $scheme = $request->isSecure() ? 'https' : 'http';
+        $baseDomain = config('app.domain', 'registro.local');
+        $port = $request->getPort();
+
+        $portSuffix = '';
+        if (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) {
+            $portSuffix = ':'.$port;
+        }
+
+        return "{$scheme}://{$org->slug}.{$baseDomain}{$portSuffix}/admin";
     }
 
     public function __construct()
@@ -40,19 +58,19 @@ class LoginController extends Controller
             return redirect('/platform');
         }
 
-        // Admin/Staff → Filament admin panel with correct tenant slug
+        // Admin/Staff → Filament admin panel
         if ($user->hasAnyRole(['admin', 'staff'])) {
             $tenant = $request->attributes->get('tenant');
 
             // On subdomain: use that tenant (if user has access)
             if ($tenant instanceof Organization && $user->canAccessTenant($tenant)) {
-                return redirect("/admin/{$tenant->slug}");
+                return redirect('/admin');
             }
 
-            // On root domain: redirect to first accessible org
+            // On root domain: redirect to first accessible org's subdomain
             $firstOrg = $user->organizations()->first();
             if ($firstOrg) {
-                return redirect("/admin/{$firstOrg->slug}");
+                return redirect($this->tenantAdminUrl($firstOrg, $request));
             }
         }
 
