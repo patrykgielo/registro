@@ -89,6 +89,9 @@ class AppServiceProvider extends ServiceProvider
 
         // Share global feature flags with all Blade views
         $this->shareFeatureFlags();
+
+        // Share brand design variables with mail views
+        $this->shareMailBrandVariables();
     }
 
     /**
@@ -104,6 +107,38 @@ class AppServiceProvider extends ServiceProvider
             $view->with('bookingEnabled', $sm->isBookingEnabled());
             $view->with('registrationEnabled', $sm->isRegistrationEnabled());
             $view->with('contactPhone', $sm->get('contact.phone', ''));
+        });
+    }
+
+    /**
+     * Share brand design variables with mail views.
+     *
+     * Injects $brandColor, $brandName, and $logoUrl into vendor mail templates
+     * so transactional emails can use tenant brand color and logo.
+     *
+     * Only injects values when the tenant has email branding enabled.
+     * Skipped in testing environment to avoid DB hits during mail tests.
+     */
+    private function shareMailBrandVariables(): void
+    {
+        if ($this->app->environment('testing')) {
+            return;
+        }
+
+        view()->composer('vendor.mail.*', function ($view) {
+            try {
+                $sm = app(SettingsManager::class);
+
+                $brandColor = $sm->useColorInEmails() ? $sm->brandColor() : null;
+                $logoUrl = $sm->useLogoInEmails() ? $sm->headerLogo() : null;
+                $brandName = $sm->brandName();
+
+                $view->with('brandColor', $brandColor);
+                $view->with('logoUrl', $logoUrl);
+                $view->with('brandName', $brandName);
+            } catch (\Throwable) {
+                // Fail silently — mail must not be blocked by a settings error
+            }
         });
     }
 

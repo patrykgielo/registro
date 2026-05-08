@@ -8,6 +8,34 @@
 
     <x-gtm-head />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    {{-- ─── Brand CSS Variables ─── --}}
+    @php
+        $__sm = app(\App\Support\Settings\SettingsManager::class);
+        $__brandColor = $__sm->brandColor();
+        $__fontFamily = $__sm->fontFamily();
+        $__cssVars = \App\Support\ColorScaleGenerator::toCssVariables($__brandColor);
+        $__fontStack = match ($__fontFamily) {
+            'inter'      => "'Inter', sans-serif",
+            'roboto'     => "'Roboto', sans-serif",
+            'poppins'    => "'Poppins', sans-serif",
+            'montserrat' => "'Montserrat', sans-serif",
+            default      => "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        };
+    @endphp
+
+    @if ($__fontFamily !== 'system')
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family={{ $__fontFamily }}:400,500,600,700&display=swap" rel="stylesheet">
+    @endif
+
+    <style>
+        :root {
+            {!! $__cssVars !!}
+            --font-brand: {{ $__fontStack }};
+        }
+    </style>
+
     @stack('head')
 </head>
 <body class="bg-surface min-h-screen flex flex-col antialiased">

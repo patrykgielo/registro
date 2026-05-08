@@ -557,4 +557,79 @@ class SettingsManager
 
         return $title;
     }
+
+    // ========================================================================
+    // Design Helper Methods
+    // ========================================================================
+
+    /**
+     * Get the tenant's brand color (hex).
+     *
+     * Returns the configured brand_color or the default Registro Indigo.
+     */
+    public function brandColor(): string
+    {
+        $color = $this->get('design.brand_color', '#6366f1');
+
+        if (empty($color) || ! is_string($color)) {
+            return '#6366f1';
+        }
+
+        // Validate hex format before returning
+        if (! preg_match('/^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/', $color)) {
+            return '#6366f1';
+        }
+
+        return $color;
+    }
+
+    /**
+     * Get the tenant's configured font family key.
+     *
+     * Returns one of: inter | system | roboto | poppins | montserrat
+     */
+    public function fontFamily(): string
+    {
+        $font = $this->get('design.font_family', 'inter');
+
+        $allowed = ['inter', 'system', 'roboto', 'poppins', 'montserrat'];
+
+        if (! in_array($font, $allowed, true)) {
+            return 'inter';
+        }
+
+        return $font;
+    }
+
+    /**
+     * Get the tenant's brand name for public display.
+     *
+     * Returns brand_name_override if set, otherwise falls back to appName().
+     */
+    public function brandName(): string
+    {
+        $override = $this->get('design.brand_name_override');
+
+        if (! empty($override) && is_string($override)) {
+            return $override;
+        }
+
+        return $this->appName();
+    }
+
+    /**
+     * Check if the tenant wants their logo injected in emails.
+     */
+    public function useLogoInEmails(): bool
+    {
+        return (bool) $this->get('design.use_logo_in_emails', true);
+    }
+
+    /**
+     * Check if the tenant wants their brand color used in emails.
+     */
+    public function useColorInEmails(): bool
+    {
+        return (bool) $this->get('design.use_color_in_emails', true);
+    }
 }
