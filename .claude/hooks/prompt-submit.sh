@@ -12,6 +12,27 @@ set -euo pipefail
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty' 2>/dev/null || true)
 
+# --- Cache expiry detection ---
+# Anthropic prompt cache TTL = 5 minutes. After idle > 5 min the next turn
+# rebuilds full context at ~10x cost. Warn before the expensive turn fires.
+_CC_TS_FILE="/tmp/cc_cache_ts_$(echo "${CLAUDE_PROJECT_DIR:-/}" | tr '/' '_' | tr -s '_')"
+if [ -f "$_CC_TS_FILE" ]; then
+    _LAST_TS=$(cat "$_CC_TS_FILE" 2>/dev/null || echo "0")
+    _NOW=$(date +%s)
+    if [[ "$_LAST_TS" =~ ^[0-9]+$ ]]; then
+        _ELAPSED=$(( _NOW - _LAST_TS ))
+        # Warn only for 5 min – 2h idle (beyond 2h = fresh session, no point)
+        if [ "$_ELAPSED" -gt 300 ] && [ "$_ELAPSED" -lt 7200 ]; then
+            _MINUTES=$(( _ELAPSED / 60 ))
+            echo "## CACHE WYGASL (${_MINUTES} min bezczynnosci)"
+            echo "Ten turn przetworzy PELNY kontekst od nowa (koszt ~10x wyzszy)."
+            echo "Rozwaz: /compact [instrukcje] PRZED tym turnem aby zmniejszyc kontekst."
+            echo "Lub kontynuuj swiadomie — cache odbuduje sie na kolejny turn."
+            echo ""
+        fi
+    fi
+fi
+
 # Skip short prompts (yes/no, confirmations, follow-ups)
 if [ "${#PROMPT}" -lt 25 ]; then
     exit 0

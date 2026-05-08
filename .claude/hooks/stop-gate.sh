@@ -9,6 +9,11 @@
 
 set -uo pipefail
 
+# Record last-response timestamp for cache expiry detection in prompt-submit hook
+# Cache TTL = 5 min; after that the next turn pays 10x (full context rebuild)
+_CC_TS_FILE="/tmp/cc_cache_ts_$(echo "${CLAUDE_PROJECT_DIR:-/}" | tr '/' '_' | tr -s '_')"
+date +%s > "$_CC_TS_FILE" 2>/dev/null || true
+
 count_files() {
     local pattern="$1"
     local count

@@ -2,151 +2,44 @@
 
 ## ZASADA GŁÓWNA — BEZWZGLĘDNA
 
-**NIGDY nie rozpoczynaj żadnego działania bez uprzedniego użycia agenta.**
-
-Dotyczy WSZYSTKIEGO: implementacji, diagnozowania, refactoringu, zmian konfiguracji, nawet "prostych" zmian.
-
-**Naruszenie = przerwanie pracy.**
-
-### Incident 2026-03-14: RoleDoesNotExist
-Implementacja onboardingu bez agenta architektury → pominięto zależność Spatie roles → crash na produkcji.
-Testy przeszły bo TestCase seeduje role, ale fresh DB nie ma ról. Agent by to wychwycił.
-
-### Workflow PRZED każdym zadaniem:
+**NIGDY nie pisz kodu / nie diagnozuj / nie zmieniaj konfiguracji bez agenta.**
+Incident 2026-03-14: onboarding bez agenta → pominięto Spatie roles → crash.
 
 ```
-1. STOP — nie pisz kodu!
-2. Uruchom agenta (Explore/Plan/laravel-senior-architect)
-3. Agent analizuje zależności, istniejący kod, edge cases
-4. Dopiero po raporcie agenta → implementuj
+STOP → agent → implementuj
 ```
 
-## Kiedy używać którego agenta
-
-### Implementation (piszą kod)
+## Który agent do czego
 
 | Zadanie | Agent |
 |---------|-------|
-| Laravel/PHP, architektura, Filament (logic) | `laravel-senior-architect` |
-| Frontend, Blade, Tailwind, Alpine, Filament (UI) | `frontend-ui-architect` |
-| Testy, PHPUnit, factories, TDD | `test-engineer` |
-| CI/CD, Docker, deployment, .env | `devops-engineer` |
-
-### Quality Gates (read-only, sprawdzają)
-
-| Zadanie | Agent |
-|---------|-------|
-| **Post-implementation review** | `code-reviewer` (read-only, OBOWIĄZKOWY po implementacji) |
-| Security audit, OWASP, GDPR | `agent-security-audit-specialist` |
-| Frontend performance, a11y | `frontend-quality-auditor` |
-| Design token compliance | `design-system-guardian` |
-
-### Research & Support
-
-| Zadanie | Agent |
-|---------|-------|
-| Research, dokumentacja, nowa wiedza | `web-research-specialist` + firecrawl / browser-use |
+| Laravel/PHP, Filament (logic) | `laravel-senior-architect` |
+| Frontend, Blade, Tailwind, UI | `frontend-ui-architect` |
+| Testy, PHPUnit, TDD | `test-engineer` |
+| CI/CD, Docker | `devops-engineer` |
+| Security, OWASP | `agent-security-audit-specialist` |
+| Web research, docs | `web-research-specialist` |
+| Code review (po implementacji) | `code-reviewer` (OBOWIĄZKOWY) |
+| ClickUp | `clickup-task-manager` |
 | Koordynacja wielu agentów | `project-coordinator` |
-| Content marketing (PL) | `content-strategist` |
 
-### Business Tools
+**Research:** Firecrawl = domyślne (statyczne strony). Browser-use = loginy, SPA, multi-step.
 
-| Zadanie | Agent |
-|---------|-------|
-| ClickUp, task management | `clickup-task-manager` |
-| Wyceny komercyjne | `commercial-estimate-specialist` |
+## Minimalny agent per zadanie
 
-### Security
+| Akcja | Minimum |
+|-------|---------|
+| Nowy feature | `Explore` → `laravel-senior-architect` |
+| Bug fix | `Explore` (root cause) → fix |
+| Frontend nowy | `web-research-specialist` → `frontend-ui-architect` |
+| Frontend modyfikacja | `Explore` → `frontend-ui-architect` |
+| Security | `agent-security-audit-specialist` |
 
-Jeden agent: `agent-security-audit-specialist` (54KB). Legacy stuby `security-scanner` i `security-advisor` zostały usunięte (2026-03-20).
+## Agent Teams
 
-## Research i braki wiedzy
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — max 3 teammates równolegle.
 
-**KAŻDY brak wiedzy → `web-research-specialist` + firecrawl MCP / browser-use MCP**
+## ClickUp — ZAKAZ ticketów dla
 
-### Firecrawl vs Browser-use
-
-| Scenariusz | Narzędzie |
-|------------|-----------|
-| Statyczna strona, scraping, bulk URL | **Firecrawl** (szybszy, 2-5s) |
-| Strona za loginem, SPA, multi-step | **Browser-use** (agent przeglądarkowy, 60-120s) |
-| Wypełnianie formularzy, testowanie UI | **Browser-use** |
-| Proste wyszukiwanie | **Firecrawl** (`firecrawl_search`) |
-
-**Zasada:** Firecrawl = domyślne. Browser-use = gdy Firecrawl nie wystarczy (interakcja, login, JS rendering).
-
-**Docs:** `app/docs/guides/browser-use-mcp.md`
-
-Przykłady:
-- Nie wiesz jak coś działa → research agent + firecrawl
-- Strona wymaga kliknięć/logowania → research agent + browser-use
-- Potrzebujesz aktualnej dokumentacji → research agent + firecrawl
-- Konfiguracja zewnętrznego serwisu → research agent + firecrawl
-- Porównanie rozwiązań → research agent + firecrawl
-
-## Wyrównanie konfiguracji
-
-Gdy coś nie działa (staging vs production):
-1. `laravel-senior-architect` - analiza konfiguracji Laravel/Docker
-2. `web-research-specialist` - jeśli brak wiedzy o konkretnym serwisie
-
-## NIGDY nie rób sam
-
-- Nie diagnozuj błędów bez agenta
-- Nie pisz kodu bez agenta
-- Nie zmieniaj konfiguracji bez agenta
-- Nie badaj problemu bez agenta
-- Nie twórz dokumentacji bez agenta (Explore do audytu stanu)
-- **Nie zakładaj "to proste"** — agent sprawdza zależności których nie widać
-
-**Agenci = kontrola jakości + specjalistyczna wiedza**
-
-### Minimalny agent per typ zadania
-
-| Akcja | Minimum | Dlaczego |
-|-------|---------|----------|
-| Nowy kod / feature | `Explore` → `laravel-senior-architect` | Sprawdzi istniejące wzorce, zależności |
-| Bug fix | `Explore` (root cause) → fix | Nie zgaduj, zbadaj |
-| Refactoring | `Explore` → `Plan` | Znajdzie użycia, wpływ zmian |
-| Frontend/UI (nowy komponent) | `web-research-specialist` → `frontend-ui-architect` | Research wzorców PRZED implementacją! |
-| Frontend/UI (modyfikacja) | `Explore` → `frontend-ui-architect` | Sprawdzi istniejące patterns, tokens |
-| Dokumentacja | `Explore` (audit stanu) → pisanie | Sprawdzi co jest, czego brakuje |
-| Security | `agent-security-audit-specialist` | Pełny OWASP check |
-
-## Agent Teams (Experimental)
-
-**Włączone** w settings — `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
-
-Osobne instancje Claude Code pracujące równolegle. Używaj dla:
-- Dużych feature'ów (backend + frontend + testy jednocześnie)
-- Research + implementation równolegle
-- Code review + fix jednocześnie
-
-**Limit:** max 3 teammates (tokeny rosną liniowo).
-**Docs:** `app/docs/guides/agent-teams.md`
-
-## Agent Memory & Effort
-
-Kluczowe agenty mają `memory: project` — uczą się między sesjami:
-- `laravel-senior-architect` → `.claude/agent-memory/laravel-senior-architect/`
-- `frontend-ui-architect` → `.claude/agent-memory/frontend-ui-architect/`
-- `agent-security-audit-specialist` → `.claude/agent-memory/agent-security-audit-specialist/`
-
-Effort levels zoptymalizowane per agent (high/medium/low) — mniejszy koszt tokenów.
-
-## ClickUp Ticket Rules
-
-### ZAKAZ tworzenia ticketów dla:
-- Optymalizacja agentów Claude
-- Konfiguracja Claude Code
-- Usprawnienia promptów/rules
-- Wewnętrzne tooling AI
-
-### DOZWOLONE tickety:
-- Implementacja techniczna (features, bugfixy)
-- Architektura aplikacji
-- Infrastruktura (CI/CD, Docker, deployment)
-- Bezpieczeństwo (OWASP, GDPR - audyty techniczne)
-- Dokumentacja techniczna projektu
-
-**ClickUp = tylko praca nad produktem, NIE nad narzędziami AI.**
+Optymalizacja Claude, konfiguracja AI, usprawnienia promptów/rules.
+ClickUp = tylko praca nad produktem.
