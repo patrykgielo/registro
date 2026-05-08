@@ -905,12 +905,6 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
         get canBook() {
             return this.selectedStart && this.selectedEnd && this.rangeAvailableQty > 0 && !this.rangeChecking;
         },
-        get bookingUrl() {
-            const base = '{{ route("rental.step1", $service) }}';
-            if (!this.selectedStart || !this.selectedEnd) return base;
-            return base + '?start_date=' + this.selectedStart + '&end_date=' + this.selectedEnd;
-        },
-
         // ── Date selection ───────────────────────────────────────
         selectDate(dateStr) {
             if (!this.selectedStart || (this.selectedStart && this.selectedEnd)) {
