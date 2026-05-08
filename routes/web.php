@@ -17,6 +17,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionController;
 use App\Http\Controllers\RentalBookingController;
+use App\Http\Controllers\RentalController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\UserAddressController;
 use App\Http\Controllers\UserVehicleController;
@@ -105,18 +106,10 @@ Route::post('/uslugi/{service:slug}/zapytaj', [\App\Http\Controllers\ServiceInqu
     ->middleware([ResolveTenant::class, 'throttle:5,1'])
     ->name('service.inquiry');
 
-// Rental Booking routes — DEPRECATED (Sprint 4). Returns 410 Gone with redirect hint.
-// Will be fully removed in next cleanup sprint. API endpoints below are preserved.
-Route::middleware([ResolveTenant::class])->prefix('wypozyczalnia')->name('rental.')->group(function () {
-    $gone = fn () => response()->json(['message' => 'Ten endpoint jest nieaktywny. Użyj /koszyk'], 410);
-
-    Route::get('/{service:slug}', $gone)->name('step1');
-    Route::post('/{service:slug}', $gone)->middleware('throttle:10,1')->name('step1.store');
-    Route::get('/{service:slug}/kontakt', $gone)->name('step2');
-    Route::post('/{service:slug}/kontakt', $gone)->middleware('throttle:10,1')->name('step2.store');
-    Route::get('/{service:slug}/podsumowanie', $gone)->name('step3');
-    Route::post('/{service:slug}/zatwierdz', $gone)->middleware('throttle:5,1')->name('confirm');
-    Route::get('/{service:slug}/potwierdzenie', $gone)->name('confirmation');
+// Rental Catalogue routes (public, tenant-scoped)
+Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
+    Route::get('/wypozyczalnia', [RentalController::class, 'index'])->name('rental.index');
+    Route::get('/wypozyczalnia/{category:slug}', [RentalController::class, 'showCategory'])->name('rental.category');
 });
 
 // Rental availability AJAX endpoints (read-only, higher rate limit)
