@@ -14,6 +14,7 @@
         $__sm = app(\App\Support\Settings\SettingsManager::class);
         $__brandColor = $__sm->brandColor();
         $__fontFamily = $__sm->fontFamily();
+        $__palette = \App\Support\ColorScaleGenerator::generate($__brandColor);
         $__cssVars = \App\Support\ColorScaleGenerator::toCssVariables($__brandColor);
         $__fontStack = match ($__fontFamily) {
             'inter'      => "'Inter', sans-serif",
@@ -32,6 +33,10 @@
     <style>
         :root {
             {!! $__cssVars !!}
+            --color-brand: {{ $__palette['500'] }};
+            --color-brand-hover: {{ $__palette['600'] }};
+            --color-brand-subtle: {{ $__palette['50'] }};
+            --color-border-focus: {{ $__palette['500'] }}80;
             --font-brand: {{ $__fontStack }};
         }
     </style>
