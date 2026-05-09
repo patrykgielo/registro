@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Rules\StaffRoleRule;
 use App\Services\AppointmentService;
@@ -160,7 +161,7 @@ class AppointmentController extends Controller
             'appointment_date' => $validated['appointment_date'],
             'start_time' => $validated['start_time'],
             'end_time' => $validated['end_time'],
-            'status' => 'pending',
+            'status' => AppointmentStatus::Pending,
             'notes' => $validated['notes'] ?? null,
             'location_address' => $validated['location_address'] ?? null,
             'location_latitude' => $validated['location_latitude'] ?? null,
@@ -188,7 +189,7 @@ class AppointmentController extends Controller
         }
 
         $appointment->update([
-            'status' => 'cancelled',
+            'status' => AppointmentStatus::Cancelled,
             'cancellation_reason' => 'Anulowane przez klienta',
         ]);
 

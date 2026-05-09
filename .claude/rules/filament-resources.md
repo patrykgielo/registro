@@ -84,6 +84,56 @@ Traity są przeznaczone dla Content Management. Inne Resources (np. Customer, Em
 
 ---
 
+## Module Visibility Gating (Phase 6)
+
+**BaseResource auto-gatuje widoczność Resources na podstawie modułów organizacji.**
+
+### Pattern: `$module` property
+
+```php
+// Resource z modułem — widoczny tylko gdy moduł aktywny
+protected static ?string $module = 'services';
+
+// Core resource — zawsze widoczny
+protected static ?string $module = null;
+```
+
+### `shouldRegisterNavigation()` w BaseResource
+
+```php
+public static function shouldRegisterNavigation(): bool
+{
+    if (static::$module === null) return true;        // core = always
+    $tenant = TenantFeature::currentTenant();
+    if ($tenant === null) return true;                // platform/CLI = show all
+    return $tenant->hasModule(static::$module);       // tenant = check module
+}
+```
+
+### NIGDY nie override'uj `shouldRegisterNavigation()` na Resource
+
+```php
+// ❌ ŹLE — stary pattern (Phase 2-5), USUNIĘTY w Phase 6
+public static function shouldRegisterNavigation(): bool
+{
+    return TenantFeature::active('vehicles');
+}
+
+// ✅ DOBRZE — Phase 6: użyj $module property
+protected static ?string $module = 'vehicles';
+```
+
+### Moduły vs Features (WAŻNE ROZRÓŻNIENIE)
+
+| System | Gating | Użycie |
+|--------|--------|--------|
+| `$module` | Widoczność CAŁEGO Resource w nawigacji | `protected static ?string $module = 'staff';` |
+| `TenantFeature::active()` | Widoczność POLA w formularzu | `->visible(fn () => TenantFeature::active('vehicles'))` |
+
+Moduły nie zastępują feature flags — oba systemy współistnieją.
+
+---
+
 ## Warunkowa Walidacja: Create vs Edit (Bug z 2026-02-16)
 
 **Filament waliduje WSZYSTKIE pola formularza przy zapisie, nie tylko zmienione!**
@@ -112,3 +162,38 @@ Forms\Components\DatePicker::make('appointment_date')
 ```
 
 `$record === null` → create mode, `$record !== null` → edit mode.
+
+---
+
+## ZASADA: Admin → Frontend Impact Check (CRITICAL)
+
+**Każda zmiana w Filament Resource MUSI być zweryfikowana na frontendzie!**
+
+### Reguła
+
+Gdy zmieniasz formularz w panelu admina (nowe pola, zmiana formatu danych, Repeater, KeyValue):
+
+1. **ZNAJDŹ WSZYSTKIE widoki** które renderują te dane na frontendzie
+2. **SPRAWDŹ edge cases**: puste wartości, null, zmiana formatu (object→array)
+3. **PRZETESTUJ** stronę publiczną z danymi które admin może wpisać
+
+### Incident 2026-03-22: htmlspecialchars() crash na stronie produktowej
+
+**Problem:** Zmiana specs z KeyValue `{key: value}` na Repeater `[{label, value, unit}]` spowodowała crash `htmlspecialchars(): Argument #1 must be string, array given` gdy admin dodał puste wpisy repeatera (label=null, value=null).
+
+**Przyczyna:** Frontend (`show.blade.php`) nie filtrował pustych wpisów ani nie castował null na string. Admin dodał puste wiersze repeatera → frontend crash.
+
+**Zapobieganie:**
+- **ZAWSZE** filtruj puste wpisy z Repeater/KeyValue przed renderowaniem
+- **ZAWSZE** castuj do `(string)` wartości z JSON które mogą być null
+- **ZAWSZE** sprawdź `empty()` przed wyświetleniem sekcji
+- Przy zmianie formatu danych → BACKWARD COMPATIBLE rendering (obsługa starego i nowego formatu)
+
+### Checklist przy zmianach admin form:
+
+```
+[ ] Zidentyfikowano WSZYSTKIE Blade views renderujące zmienione dane
+[ ] Przetestowano z pustymi/null danymi
+[ ] Przetestowano z danymi w starym formacie (backward compat)
+[ ] Przetestowano stronę publiczną po zapisie z admin panelu
+```

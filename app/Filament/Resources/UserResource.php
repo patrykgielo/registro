@@ -9,7 +9,6 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -18,7 +17,7 @@ use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 use UnitEnum;
 
-class UserResource extends Resource
+class UserResource extends BaseResource
 {
     protected static ?string $model = User::class;
 
@@ -299,10 +298,11 @@ class UserResource extends Resource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Restrict access to super-admins only.
+     * Tenant admins should use CustomerResource and EmployeeResource.
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

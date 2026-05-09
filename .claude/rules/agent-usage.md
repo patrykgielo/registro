@@ -1,73 +1,45 @@
-# Agent Usage Rules - OBOWIĄZKOWE
+# Agent Usage Rules - CRITICAL (TIER 1)
 
-## ZASADA GŁÓWNA
+## ZASADA GŁÓWNA — BEZWZGLĘDNA
 
-**ZAWSZE używaj agentów z `.claude/agents/` do KAŻDEGO zadania.**
+**NIGDY nie pisz kodu / nie diagnozuj / nie zmieniaj konfiguracji bez agenta.**
+Incident 2026-03-14: onboarding bez agenta → pominięto Spatie roles → crash.
 
-Nawet do najmniejszych zadań - agenci mają specjalistyczną wiedzę i kontrolują jakość.
+```
+STOP → agent → implementuj
+```
 
-## Kiedy używać którego agenta
+## Który agent do czego
 
 | Zadanie | Agent |
 |---------|-------|
-| Laravel/PHP, architektura, refactoring | `laravel-senior-architect` |
-| Frontend, Blade, Tailwind, UI/UX | `frontend-ui-architect` |
-| Komponenty DaisyUI/iOS | `daisyui-ios-component-architect` |
-| **Security audit, OWASP, GDPR, pełny audyt** | `agent-security-audit-specialist` ⭐ |
-| Research, dokumentacja, nowa wiedza | `web-research-specialist` + firecrawl |
-| ClickUp, task management | `clickup-task-manager` |
+| Laravel/PHP, Filament (logic) | `laravel-senior-architect` |
+| Frontend, Blade, Tailwind, UI | `frontend-ui-architect` |
+| Testy, PHPUnit, TDD | `test-engineer` |
+| CI/CD, Docker | `devops-engineer` |
+| Security, OWASP | `agent-security-audit-specialist` |
+| Web research, docs | `web-research-specialist` |
+| Code review (po implementacji) | `code-reviewer` (OBOWIĄZKOWY) |
+| ClickUp | `clickup-task-manager` |
 | Koordynacja wielu agentów | `project-coordinator` |
-| Design tokens, spójność UI | `design-system-guardian` |
-| Wyceny komercyjne | `commercial-estimate-specialist` |
 
-### Security Agents - Hierarchia
+**Research:** Firecrawl = domyślne (statyczne strony). Browser-use = loginy, SPA, multi-step.
 
-| Agent | Rozmiar | Użycie |
-|-------|---------|--------|
-| `agent-security-audit-specialist` | 54KB | **GŁÓWNY** - pełne audyty OWASP/GDPR |
-| `security-scanner` | 1.8KB | Legacy stub - użyj głównego |
-| `security-advisor` | 1.6KB | Legacy stub - użyj głównego |
+## Minimalny agent per zadanie
 
-⭐ **Zawsze używaj `agent-security-audit-specialist`** dla zadań bezpieczeństwa.
+| Akcja | Minimum |
+|-------|---------|
+| Nowy feature | `Explore` → `laravel-senior-architect` |
+| Bug fix | `Explore` (root cause) → fix |
+| Frontend nowy | `web-research-specialist` → `frontend-ui-architect` |
+| Frontend modyfikacja | `Explore` → `frontend-ui-architect` |
+| Security | `agent-security-audit-specialist` |
 
-## Research i braki wiedzy
+## Agent Teams
 
-**KAŻDY brak wiedzy → `web-research-specialist` + firecrawl MCP**
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — max 3 teammates równolegle.
 
-Przykłady:
-- Nie wiesz jak coś działa → research agent
-- Potrzebujesz aktualnej dokumentacji → research agent
-- Konfiguracja zewnętrznego serwisu → research agent
-- Porównanie rozwiązań → research agent
+## ClickUp — ZAKAZ ticketów dla
 
-## Wyrównanie konfiguracji
-
-Gdy coś nie działa (staging vs production):
-1. `laravel-senior-architect` - analiza konfiguracji Laravel/Docker
-2. `web-research-specialist` - jeśli brak wiedzy o konkretnym serwisie
-
-## NIGDY nie rób sam
-
-- Nie diagnozuj błędów bez agenta
-- Nie pisz kodu bez agenta
-- Nie zmieniaj konfiguracji bez agenta
-- Nie badaj problemu bez agenta
-
-**Agenci = kontrola jakości + specjalistyczna wiedza**
-
-## ClickUp Ticket Rules
-
-### ZAKAZ tworzenia ticketów dla:
-- Optymalizacja agentów Claude
-- Konfiguracja Claude Code
-- Usprawnienia promptów/rules
-- Wewnętrzne tooling AI
-
-### DOZWOLONE tickety:
-- Implementacja techniczna (features, bugfixy)
-- Architektura aplikacji
-- Infrastruktura (CI/CD, Docker, deployment)
-- Bezpieczeństwo (OWASP, GDPR - audyty techniczne)
-- Dokumentacja techniczna projektu
-
-**ClickUp = tylko praca nad produktem, NIE nad narzędziami AI.**
+Optymalizacja Claude, konfiguracja AI, usprawnienia promptów/rules.
+ClickUp = tylko praca nad produktem.

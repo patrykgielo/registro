@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -11,8 +12,11 @@ use Illuminate\Database\Eloquent\Model;
  * Setting Model
  *
  * Stores application-wide settings grouped by context (booking, email, map, etc.)
+ * Settings with organization_id = null are global defaults.
+ * Settings with organization_id are tenant overrides.
  *
  * @property int $id
+ * @property int|null $organization_id
  * @property string $group
  * @property string $key
  * @property array $value
@@ -21,12 +25,15 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Setting extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
     protected $fillable = [
+        'organization_id',
         'group',
         'key',
         'value',

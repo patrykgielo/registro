@@ -4,24 +4,21 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "npm run generate:theme && vite build",
+        "build": "vite build",
         "generate:theme": "node scripts/generate-theme.js",
         "watch:theme": "node scripts/generate-theme.js --watch"
     },
     "dependencies": {
+        "@alpinejs/focus": "^3.15.9",
         "alpinejs": "^3.14.1",
         "flatpickr": "^4.6.13"
     },
     "devDependencies": {
-        "@popperjs/core": "^2.11.6",
         "@tailwindcss/typography": "^0.5.19",
         "@tailwindcss/vite": "^4.0.0",
         "axios": "^1.11.0",
-        "bootstrap": "^5.2.3",
         "concurrently": "^9.0.1",
-        "daisyui": "^5.5.8",
         "laravel-vite-plugin": "^2.0.0",
-        "sass": "^1.56.1",
         "tailwindcss": "^4.0.0",
         "vite": "^7.0.7"
     }

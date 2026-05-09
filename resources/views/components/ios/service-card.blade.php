@@ -11,20 +11,23 @@
 ])
 
 @php
+    use App\Enums\ServiceType;
+
     // Extract from service model if provided
     if ($service) {
         $title = $service->name;
         $description = $service->excerpt ?? Str::limit($service->description, 100);
-        $price = $service->price_from ?? $service->price;
-        $duration = $service->duration_minutes;
+        $isRental = $service->service_type === ServiceType::ItemRental;
+        $price = $isRental ? $service->price_per_day : ($service->price_from ?? $service->price);
+        $duration = $isRental ? null : $service->duration_minutes;
         $url = route('service.show', $service->slug ?? $service->id);
-        $icon = $service->icon ?? 'sparkles';
+        $icon = $service->icon ?? ($isRental ? 'cube' : 'sparkles');
 
         // Conversion optimization data
         $averageRating = $service->average_rating ?? 0;
         $totalReviews = $service->total_reviews ?? 0;
         $isPopular = $service->is_popular ?? false;
-        $bookingCountWeek = $service->booking_count_week ?? 0;
+        $bookingCountWeek = $isRental ? 0 : ($service->booking_count_week ?? 0);
         $features = $service->features ?? [];
 
         // Featured image for background
@@ -32,13 +35,20 @@
             ? asset('storage/' . $service->featured_image)
             : null;
 
+        // Rental-specific display data
+        $rentalPrice = $isRental ? $service->formatted_rental_price : null;
+        $quantityAvailable = $isRental ? $service->quantity_total : null;
+
     } else {
+        $isRental = false;
         $averageRating = 0;
         $totalReviews = 0;
         $isPopular = false;
         $bookingCountWeek = 0;
         $features = [];
         $featuredImage = null;
+        $rentalPrice = null;
+        $quantityAvailable = null;
     }
 
     // Dark variant detection - force dark when featured image is present
@@ -49,11 +59,11 @@
         ? 'service-card-dark shadow-dark-glow hover:shadow-dark-glow-hover hover:border-[#0AB1EA]/30'
         : 'bg-white shadow-md hover:shadow-2xl border border-gray-100 hover:border-primary-300';
 
-    $titleClasses = $isDark ? 'text-white group-hover:text-[#0AB1EA]' : 'text-gray-900 group-hover:text-orange-600';
+    $titleClasses = $isDark ? 'text-white group-hover:text-[#0AB1EA]' : 'text-gray-900 group-hover:text-brand';
     $descriptionClasses = $isDark ? 'text-white/70' : 'text-gray-600';
     $priceLabelClasses = $isDark ? 'text-white/70' : 'text-gray-600';
     $priceValueClasses = $isDark ? 'text-white' : 'text-gray-900';
-    $ctaClasses = $isDark ? 'btn-cta-dark' : 'bg-warning text-white hover:bg-warning/90';
+    $ctaClasses = $isDark ? 'btn-cta-dark' : 'bg-brand text-white hover:bg-brand-hover';
     $durationClasses = $isDark ? 'badge-duration-dark' : 'bg-gray-50 text-gray-600';
     $durationIconClasses = $isDark ? 'text-white/60' : 'text-gray-500';
     $featuresListClasses = $isDark ? 'features-list-dark' : 'bg-gray-50';
@@ -124,8 +134,18 @@
             {{ $description }}
         </p>
 
-        {{-- Duration Badge --}}
-        @if($duration)
+        {{-- Duration Badge (time_slot) or Rental Price Badge (item_rental) --}}
+        @if($isRental && ($service?->price_on_request))
+        <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
+            <x-heroicon-m-chat-bubble-left-ellipsis class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
+            <span class="service-card__duration-text font-medium">Cena do potwierdzenia</span>
+        </div>
+        @elseif($isRental && $rentalPrice)
+        <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
+            <x-heroicon-m-banknotes class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
+            <span class="service-card__duration-text font-medium">{{ $rentalPrice }}</span>
+        </div>
+        @elseif($duration)
         <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
             <x-heroicon-m-clock class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
             <span class="service-card__duration-text font-medium">{{ $duration }} min</span>
@@ -145,7 +165,7 @@
         @endif
 
         {{-- Price --}}
-        @if($price)
+        @if($price && !($service?->price_on_request))
         <div class="service-card__price flex items-baseline gap-1 mb-4">
             <span class="service-card__price-value text-3xl font-bold {{ $priceValueClasses }}">{{ number_format($price, 0, ',', ' ') }}</span>
             <span class="service-card__price-currency text-sm {{ $priceLabelClasses }} font-medium">zł</span>

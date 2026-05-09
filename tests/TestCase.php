@@ -12,10 +12,11 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
-        // Seed required reference data for all tests
-        // This runs AFTER RefreshDatabase trait migrations
-        $this->artisan('db:seed', ['--class' => \Database\Seeders\RolePermissionSeeder::class]);
-        $this->artisan('db:seed', ['--class' => \Database\Seeders\EmailTemplateSeeder::class]);
-        $this->artisan('db:seed', ['--class' => \Database\Seeders\VehicleTypeSeeder::class]);
+        // Only seed when the test uses RefreshDatabase (has a database)
+        if (in_array(\Illuminate\Foundation\Testing\RefreshDatabase::class, class_uses_recursive($this))) {
+            $this->artisan('db:seed', ['--class' => \Database\Seeders\RolePermissionSeeder::class]);
+            $this->artisan('db:seed', ['--class' => \Database\Seeders\EmailTemplateSeeder::class]);
+            $this->artisan('db:seed', ['--class' => \Database\Seeders\VehicleTypeSeeder::class]);
+        }
     }
 }

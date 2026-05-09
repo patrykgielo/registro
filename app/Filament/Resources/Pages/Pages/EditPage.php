@@ -10,7 +10,6 @@ use App\Support\Settings\SettingsManager;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
-use Illuminate\Support\Facades\Cache;
 
 class EditPage extends EditRecord
 {
@@ -40,9 +39,7 @@ class EditPage extends EditRecord
         $wasHomepage = $currentHomepageId !== null && (int) $currentHomepageId === $this->record->id;
 
         if ($isHomepage && ! $wasHomepage) {
-            // Setting as new homepage
             $settingsManager->set('cms.homepage_page_id', $this->record->id);
-            Cache::forget('settings:cms');
 
             Notification::make()
                 ->title('Strona główna ustawiona')
@@ -50,9 +47,7 @@ class EditPage extends EditRecord
                 ->success()
                 ->send();
         } elseif (! $isHomepage && $wasHomepage) {
-            // Removing homepage setting
             $settingsManager->set('cms.homepage_page_id', null);
-            Cache::forget('settings:cms');
 
             Notification::make()
                 ->title('Strona główna usunięta')

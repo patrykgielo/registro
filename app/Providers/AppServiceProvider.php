@@ -10,6 +10,9 @@ use App\Events\AppointmentCancelled;
 use App\Events\AppointmentConfirmed;
 use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
+use App\Events\OrderCancelled;
+use App\Events\OrderConfirmed;
+use App\Events\OrderPaid;
 use App\Events\PasswordResetRequested;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
@@ -20,6 +23,9 @@ use App\Notifications\AdminCreatedUserNotification;
 use App\Notifications\AppointmentCancelledNotification;
 use App\Notifications\AppointmentCreatedNotification;
 use App\Notifications\AppointmentRescheduledNotification;
+use App\Notifications\OrderCancelledNotification;
+use App\Notifications\OrderConfirmedNotification;
+use App\Notifications\OrderPaidNotification;
 use App\Notifications\PasswordResetNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
@@ -89,21 +95,57 @@ class AppServiceProvider extends ServiceProvider
 
         // Share global feature flags with all Blade views
         $this->shareFeatureFlags();
+
+        // Share brand design variables with mail views
+        $this->shareMailBrandVariables();
     }
 
     /**
      * Share global feature flags with all Blade views.
      *
-     * Provides $bookingEnabled, $registrationEnabled, $contactPhone
-     * for conditional rendering of CTAs and registration links.
+     * Provides $bookingEnabled, $rentalEnabled, $registrationEnabled, $contactPhone
+     * for conditional rendering of CTAs, cart links, and registration links.
      */
     private function shareFeatureFlags(): void
     {
         view()->composer('*', function ($view) {
             $sm = app(SettingsManager::class);
             $view->with('bookingEnabled', $sm->isBookingEnabled());
+            $view->with('rentalEnabled', $sm->isRentalEnabled());
             $view->with('registrationEnabled', $sm->isRegistrationEnabled());
             $view->with('contactPhone', $sm->get('contact.phone', ''));
+        });
+    }
+
+    /**
+     * Share brand design variables with mail views.
+     *
+     * Injects $brandColor, $brandName, and $logoUrl into vendor mail templates
+     * so transactional emails can use tenant brand color and logo.
+     *
+     * Only injects values when the tenant has email branding enabled.
+     * Skipped in testing environment to avoid DB hits during mail tests.
+     */
+    private function shareMailBrandVariables(): void
+    {
+        if ($this->app->environment('testing')) {
+            return;
+        }
+
+        view()->composer('vendor.mail.*', function ($view) {
+            try {
+                $sm = app(SettingsManager::class);
+
+                $brandColor = $sm->useColorInEmails() ? $sm->brandColor() : null;
+                $logoUrl = $sm->useLogoInEmails() ? $sm->headerLogo() : null;
+                $brandName = $sm->brandName();
+
+                $view->with('brandColor', $brandColor);
+                $view->with('logoUrl', $logoUrl);
+                $view->with('brandName', $brandName);
+            } catch (\Throwable) {
+                // Fail silently — mail must not be blocked by a settings error
+            }
         });
     }
 
@@ -190,6 +232,51 @@ class AppServiceProvider extends ServiceProvider
             $event->appointment->customer->notify(
                 new AppointmentCancelledNotification($event->appointment, $event->reason)
             );
+        });
+
+        // ========== ORDER NOTIFICATIONS ==========
+
+        // Order Paid: notify customer + admin/org owner
+        Event::listen(OrderPaid::class, function (OrderPaid $event) {
+            $order = $event->order->load(['user', 'organization.owner']);
+
+            if ($order->user) {
+                $order->user->notify(new OrderPaidNotification($order, 'customer'));
+            } else {
+                \Log::warning('OrderPaid: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+
+            if ($order->organization?->owner) {
+                $order->organization->owner->notify(new OrderPaidNotification($order, 'admin'));
+            }
+        });
+
+        // Order Confirmed: notify customer
+        Event::listen(OrderConfirmed::class, function (OrderConfirmed $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderConfirmedNotification($order));
+            } else {
+                \Log::warning('OrderConfirmed: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        });
+
+        // Order Cancelled: notify customer
+        Event::listen(OrderCancelled::class, function (OrderCancelled $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderCancelledNotification($order, $event->reason));
+            } else {
+                \Log::warning('OrderCancelled: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
         });
 
         // ========== SECURITY: SESSION REGENERATION ==========

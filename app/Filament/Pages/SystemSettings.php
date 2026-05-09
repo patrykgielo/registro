@@ -8,11 +8,13 @@ use App\Filament\Traits\HasGroupedSettings;
 use App\Models\Page as PageModel;
 use App\Services\Sms\SmsService;
 use App\Support\Settings\SettingsManager;
+use App\Support\TenantFeature;
 use BackedEnum;
 use enshrined\svgSanitize\Sanitizer;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -68,7 +70,7 @@ class SystemSettings extends Page implements HasForms
     /**
      * Permission required to access this page.
      */
-    protected static ?string $permission = 'manage settings';
+    protected static ?string $permission = 'settings.manage';
 
     /**
      * Restrict access to admins and super-admins only.
@@ -77,6 +79,43 @@ class SystemSettings extends Page implements HasForms
     public static function canAccess(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    /**
+     * Maps settings tab keys to the module required for that tab to be visible.
+     * Tabs without an entry are always visible (core settings).
+     */
+    private const TAB_MODULE_MAP = [
+        'booking' => 'bookings',
+        'booking_wizard' => 'bookings',
+        'map' => 'website',
+        'marketing' => 'website',
+        'email' => 'communication',
+        'sms' => 'communication',
+        'cms' => 'website',
+        'integrations' => 'website',
+        'checkout' => 'rentals',
+    ];
+
+    /**
+     * Determine if a settings tab should be visible for the current tenant.
+     * Super-admins (no tenant context) always see all tabs.
+     */
+    private function isTabVisible(string $tab): bool
+    {
+        $module = self::TAB_MODULE_MAP[$tab] ?? null;
+
+        if ($module === null) {
+            return true;
+        }
+
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant === null) {
+            return true;
+        }
+
+        return $tenant->hasModule($module);
     }
 
     /**
@@ -110,6 +149,7 @@ class SystemSettings extends Page implements HasForms
                 'label' => 'Ustawienia ogólne zapisane',
                 'rules' => [
                     'app_name' => ['required', 'string', 'max:100'],
+                    'vat_rate' => ['nullable', 'integer', 'min:0', 'max:100'],
                 ],
             ],
             'booking' => [
@@ -226,6 +266,16 @@ class SystemSettings extends Page implements HasForms
                     'footer_column_title' => ['nullable', 'string', 'max:50'],
                 ],
             ],
+            'checkout' => [
+                'label' => 'Ustawienia checkout zapisane',
+                'rules' => [
+                    'terms_label' => ['nullable', 'string', 'max:5000'],
+                    'rodo_label' => ['nullable', 'string', 'max:5000'],
+                    'withdrawal_label' => ['nullable', 'string', 'max:5000'],
+                    'deposit_policy_note' => ['nullable', 'string', 'max:2000'],
+                    'inquiry_email' => ['nullable', 'email', 'max:255'],
+                ],
+            ],
             'integrations' => [
                 'label' => 'Ustawienia integracji zapisane',
                 'rules' => [
@@ -256,7 +306,9 @@ class SystemSettings extends Page implements HasForms
                         $this->smsTab(),
                         $this->cmsTab(),
                         $this->integrationsTab(),
+                        $this->checkoutTab(),
                     ])
+                    ->persistTabInQueryString('tab')
                     ->columnSpanFull(),
             ])
             ->statePath('data');
@@ -268,6 +320,8 @@ class SystemSettings extends Page implements HasForms
     private function generalTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Ogólne')
+            ->id('ogolne')
+            ->key('ogolne')
             ->icon('heroicon-o-building-storefront')
             ->schema([
                 Section::make('Nazwa aplikacji')
@@ -279,6 +333,15 @@ class SystemSettings extends Page implements HasForms
                             ->maxLength(100)
                             ->placeholder('Registro')
                             ->helperText('Nazwa używana w szablonach wiadomości jako {{app_name}}'),
+
+                        TextInput::make('general.vat_rate')
+                            ->label('Stawka VAT (%)')
+                            ->numeric()
+                            ->suffix('%')
+                            ->default(23)
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->helperText('Używana do wyświetlania ceny netto przy produktach'),
                     ]),
 
                 \Filament\Schemas\Components\Actions::make([
@@ -297,6 +360,9 @@ class SystemSettings extends Page implements HasForms
     private function bookingTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Booking')
+            ->id('booking')
+            ->key('booking')
+            ->visible(fn () => $this->isTabVisible('booking'))
             ->schema([
                 Section::make('Dostępność systemu')
                     ->description('Włącz/wyłącz rezerwację online i rejestrację użytkowników')
@@ -379,7 +445,10 @@ class SystemSettings extends Page implements HasForms
     private function bookingWizardTab(): Tabs\Tab
     {
         return Tabs\Tab::make('System rezerwacji')
+            ->id('system-rezerwacji')
+            ->key('system-rezerwacji')
             ->icon('heroicon-o-calendar-days')
+            ->visible(fn () => $this->isTabVisible('booking_wizard'))
             ->schema([
                 Section::make('Przed wizytą')
                     ->description('Lista informacji wyświetlanych klientowi po potwierdzeniu rezerwacji')
@@ -464,6 +533,9 @@ class SystemSettings extends Page implements HasForms
     private function mapTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Map')
+            ->id('mapa')
+            ->key('mapa')
+            ->visible(fn () => $this->isTabVisible('map'))
             ->schema([
                 Section::make('Google Maps Configuration')
                     ->description('Configure Google Maps integration')
@@ -521,6 +593,8 @@ class SystemSettings extends Page implements HasForms
     private function contactTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Contact')
+            ->id('kontakt')
+            ->key('kontakt')
             ->schema([
                 Section::make('Business Contact Information')
                     ->description('Your business contact details')
@@ -568,6 +642,8 @@ class SystemSettings extends Page implements HasForms
     private function appearanceTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Wygląd')
+            ->id('wyglad')
+            ->key('wyglad')
             ->icon('heroicon-o-swatch')
             ->schema([
                 Section::make('Header')
@@ -718,6 +794,9 @@ class SystemSettings extends Page implements HasForms
     private function marketingTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Marketing')
+            ->id('marketing')
+            ->key('marketing')
+            ->visible(fn () => $this->isTabVisible('marketing'))
             ->schema([
                 Section::make('Hero Section')
                     ->description('Homepage hero section content')
@@ -823,6 +902,9 @@ class SystemSettings extends Page implements HasForms
     private function emailTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Email')
+            ->id('email')
+            ->key('email')
+            ->visible(fn () => $this->isTabVisible('email'))
             ->schema([
                 Section::make('SMTP Configuration')
                     ->description('Configure SMTP server for sending emails')
@@ -925,6 +1007,9 @@ class SystemSettings extends Page implements HasForms
     private function smsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('SMS')
+            ->id('sms')
+            ->key('sms')
+            ->visible(fn () => $this->isTabVisible('sms'))
             ->schema([
                 Section::make('SMSAPI Configuration')
                     ->description('Configure SMSAPI.pl integration for sending SMS')
@@ -1038,6 +1123,9 @@ class SystemSettings extends Page implements HasForms
     private function cmsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('CMS')
+            ->id('cms')
+            ->key('cms')
+            ->visible(fn () => $this->isTabVisible('cms'))
             ->schema([
                 Section::make('Homepage Settings')
                     ->description('Configure which page displays as homepage')
@@ -1088,7 +1176,10 @@ class SystemSettings extends Page implements HasForms
     private function integrationsTab(): Tabs\Tab
     {
         return Tabs\Tab::make('Integrations')
+            ->id('integracje')
+            ->key('integracje')
             ->icon('heroicon-o-puzzle-piece')
+            ->visible(fn () => $this->isTabVisible('integrations'))
             ->schema([
                 Section::make('Google Tag Manager')
                     ->description('Configure GTM for analytics, marketing pixels, and cookie consent')
@@ -1260,6 +1351,80 @@ class SystemSettings extends Page implements HasForms
     public function saveIntegrationsSettings(): void
     {
         $this->saveSettingsGroup('integrations');
+    }
+
+    /**
+     * Checkout settings tab.
+     */
+    private function checkoutTab(): Tabs\Tab
+    {
+        return Tabs\Tab::make('Checkout')
+            ->id('checkout')
+            ->key('checkout')
+            ->icon('heroicon-o-clipboard-document-list')
+            ->schema([
+                Section::make('Treści zgód')
+                    ->description('Teksty wyświetlane przy checkboxach zgód w formularzu zamówienia. Używaj edytora aby osadzić linki bezpośrednio w treści zgody (zaznacz słowo → kliknij ikonę linku). Możesz użyć {org_name} w treści zgody RODO jako zmiennej dla nazwy Twojej firmy.')
+                    ->schema([
+                        RichEditor::make('checkout.terms_label')
+                            ->label('Tekst zgody na Regulamin')
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
+                            ->helperText('Treść checkboxa "Akceptuję Regulamin". Zaznacz słowo i kliknij ikonę linku aby wstawić link do regulaminu bezpośrednio w tekście.')
+                            ->columnSpanFull(),
+
+                        RichEditor::make('checkout.rodo_label')
+                            ->label('Tekst zgody RODO')
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
+                            ->helperText('Treść zgody na przetwarzanie danych osobowych (Art. 13 RODO). Użyj {org_name} jako zmiennej dla nazwy Twojej firmy. Możesz wstawić link do polityki prywatności bezpośrednio w tekście.')
+                            ->columnSpanFull(),
+
+                        RichEditor::make('checkout.withdrawal_label')
+                            ->label('Tekst wyłączenia prawa odstąpienia')
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
+                            ->helperText('Informacja o braku prawa odstąpienia od umowy (Art. 38(1)(12) UoPK). Nie zmieniaj bez konsultacji prawnej.')
+                            ->columnSpanFull(),
+
+                        RichEditor::make('checkout.deposit_policy_note')
+                            ->label('Notatka o kaucji')
+                            ->toolbarButtons(['bold', 'italic', 'link'])
+                            ->disableToolbarButtons(['attachFiles'])
+                            ->extraInputAttributes(['style' => 'min-height: 7rem;'])
+                            ->helperText('Opcjonalny tekst wyjaśniający zasady kaucji. Wyświetlany tylko gdy zamówienie wymaga kaucji.')
+                            ->columnSpanFull(),
+                    ]),
+
+                Section::make('Zapytania o cenę')
+                    ->description('Ustawienia dla produktów z ceną "do potwierdzenia"')
+                    ->schema([
+                        TextInput::make('checkout.inquiry_email')
+                            ->label('Email dla zapytań o cenę')
+                            ->email()
+                            ->placeholder('kontakt@twoja-wypozyczalnia.pl')
+                            ->helperText('Adres email na który trafiają zapytania "Zapytaj o cenę". Domyślnie: adres z ustawień email.'),
+                    ]),
+
+                \Filament\Schemas\Components\Actions::make([
+                    \Filament\Actions\Action::make('saveCheckout')
+                        ->label('Zapisz ustawienia checkout')
+                        ->action('saveCheckoutSettings')
+                        ->color('primary')
+                        ->icon('heroicon-o-check'),
+                ])->columnSpanFull(),
+            ]);
+    }
+
+    /**
+     * Save checkout settings.
+     */
+    public function saveCheckoutSettings(): void
+    {
+        $this->saveSettingsGroup('checkout');
     }
 
     /**

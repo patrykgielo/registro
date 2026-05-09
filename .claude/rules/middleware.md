@@ -150,3 +150,31 @@ public function terminate(Request $request, Response $response): void
 - `CheckMaintenanceMode` - tryb maintenance z bypass dla admin
 - `Authenticate` - Laravel default
 - `VerifyCsrfToken` - Laravel default
+- `CheckBookingEnabled` (`check-booking-enabled`) - przekierowuje na home gdy `isBookingEnabled() === false` dla tenanta
+- `CheckRentalEnabled` (`check-rental-enabled`) - przekierowuje na home gdy `isRentalEnabled() === false` dla tenanta
+
+### Rejestracja w `bootstrap/app.php`
+
+```php
+$middleware->alias([
+    'check-booking-enabled' => \App\Http\Middleware\CheckBookingEnabled::class,
+    'check-rental-enabled'  => \App\Http\Middleware\CheckRentalEnabled::class,
+]);
+```
+
+### Zastosowanie w `routes/web.php`
+
+```php
+// Trasy koszyka/wynajmu — dostępne tylko gdy rental jest aktywny
+Route::middleware(['auth', 'tenant', \App\Http\Middleware\CheckRentalEnabled::class])
+    ->group(function () {
+        Route::get('/koszyk', [CartController::class, 'show'])->name('cart.show');
+        // ...
+    });
+
+// Trasy rezerwacji — dostępne tylko gdy booking jest aktywny
+Route::middleware(['auth', 'tenant', 'check-booking-enabled'])
+    ->group(function () {
+        Route::get('/rezerwacja', ...)->name('booking.step');
+    });
+```

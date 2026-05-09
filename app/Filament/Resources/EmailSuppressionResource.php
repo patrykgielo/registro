@@ -9,7 +9,6 @@ use App\Models\EmailSuppression;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -17,7 +16,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class EmailSuppressionResource extends Resource
+class EmailSuppressionResource extends BaseResource
 {
     protected static ?string $model = EmailSuppression::class;
 
@@ -221,25 +220,25 @@ class EmailSuppressionResource extends Resource
     }
 
     /**
-     * Check if user can access this resource
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
     public static function canCreate(): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->can('communication.manage_suppressions') ?? false;
     }
 
     public static function canEdit($record): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->can('communication.manage_suppressions') ?? false;
     }
 
     public static function canDelete($record): bool
     {
-        return auth()->user()?->can('manage suppressions') ?? false;
+        return auth()->user()?->can('communication.manage_suppressions') ?? false;
     }
 }

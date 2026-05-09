@@ -1,10 +1,7 @@
 @props(['data' => []])
 
 @php
-    use App\Models\Service;
-    use App\Models\Post;
-    use App\Models\Promotion;
-    use App\Models\PortfolioItem;
+    use App\Support\ContentGridResolver;
     use Illuminate\Support\Facades\Storage;
 
     $contentType = $data['content_type'] ?? 'services';
@@ -36,25 +33,8 @@
         }
     }
 
-    // Fetch content items in specified order (FIELD preserves order)
-    $items = collect([]);
-    if (!empty($contentItemIds)) {
-        $items = match($contentType) {
-            'services' => Service::whereIn('id', $contentItemIds)
-                ->orderByRaw('FIELD(id, ' . implode(',', array_map('intval', $contentItemIds)) . ')')
-                ->get(),
-            'posts' => Post::whereIn('id', $contentItemIds)
-                ->orderByRaw('FIELD(id, ' . implode(',', array_map('intval', $contentItemIds)) . ')')
-                ->get(),
-            'promotions' => Promotion::whereIn('id', $contentItemIds)
-                ->orderByRaw('FIELD(id, ' . implode(',', array_map('intval', $contentItemIds)) . ')')
-                ->get(),
-            'portfolio' => PortfolioItem::whereIn('id', $contentItemIds)
-                ->orderByRaw('FIELD(id, ' . implode(',', array_map('intval', $contentItemIds)) . ')')
-                ->get(),
-            default => collect([]),
-        };
-    }
+    // Fetch content items in specified order via centralized resolver
+    $items = ContentGridResolver::resolveItems($contentType, $contentItemIds);
 
     // Detect if background is dark (luminance calculation per WCAG)
     $isColorDark = function (string $hex): bool {

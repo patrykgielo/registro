@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\AppointmentStatus;
 use App\Filament\Resources\AppointmentResource;
 use App\Models\Appointment;
 use Guava\Calendar\Filament\CalendarWidget;
@@ -35,22 +36,16 @@ class AppointmentsCalendar extends CalendarWidget
                     )
                     ->start($appointment->appointment_date->format('Y-m-d').' '.$appointment->start_time->format('H:i'))
                     ->end($appointment->appointment_date->format('Y-m-d').' '.$appointment->end_time->format('H:i'))
-                    ->backgroundColor($this->getEventColor($appointment->status))
+                    ->backgroundColor($appointment->status->hexColor())
                     ->textColor('#ffffff')
                     ->url(AppointmentResource::getUrl('edit', ['record' => $appointment->id]));
             })
             ->toArray();
     }
 
-    protected function getEventColor(string $status): string
+    protected function getEventColor(AppointmentStatus $status): string
     {
-        return match ($status) {
-            'pending' => '#f59e0b',
-            'confirmed' => '#10b981',
-            'cancelled' => '#ef4444',
-            'completed' => '#6b7280',
-            default => '#3b82f6',
-        };
+        return $status->hexColor();
     }
 
     public function onEventClick(EventClickInfo $info, Model $event, ?string $action = null): void

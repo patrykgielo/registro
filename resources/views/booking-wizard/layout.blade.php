@@ -28,7 +28,7 @@
     {{-- Progress Indicator --}}
     <x-booking-wizard.progress-indicator
         :current-step="$currentStep ?? 1"
-        :total-steps="5"
+        :total-steps="$totalSteps ?? 5"
     />
 
     {{-- Main Content Area --}}
@@ -72,6 +72,7 @@
 // Booking Wizard State Management
 const bookingWizard = {
     currentStep: {{ $currentStep ?? 1 }},
+    currentStepKey: '{{ $currentStepKey ?? "service" }}',
     isSubmitting: false,
 
     // Auto-save state to Laravel session via AJAX
@@ -108,9 +109,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const wizardForm = document.getElementById('{{ $formId ?? 'booking-form' }}');
 
     if (wizardForm) {
-        // Step 5 (Review/Confirmation) should NOT use AJAX - let it submit naturally
+        // Review step should NOT use AJAX - let it submit naturally
         // This allows the controller to redirect to the confirmation page
-        if (bookingWizard.currentStep === 5) {
+        if (bookingWizard.currentStepKey === 'review') {
             console.log('Step 5 detected - allowing natural form submission (no AJAX)');
             return; // Exit early - don't attach AJAX handler
         }
@@ -120,8 +121,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (bookingWizard.isSubmitting) return;
 
-            // CRITICAL: Step 3 (Vehicle & Location) requires validation
-            if (bookingWizard.currentStep === 3) {
+            // CRITICAL: Vehicle & Location step requires validation
+            if (bookingWizard.currentStepKey === 'vehicle-location') {
                 // Dispatch custom event to trigger Alpine validation (inline errors + scroll)
                 const validationEvent = new CustomEvent('validate-step3', {
                     detail: { valid: false },
@@ -150,8 +151,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // CRITICAL: Step 4 (Contact) requires client-side validation before AJAX
-            if (bookingWizard.currentStep === 4) {
+            // CRITICAL: Contact step requires client-side validation before AJAX
+            if (bookingWizard.currentStepKey === 'contact') {
                 // Dispatch custom event to trigger Alpine validation
                 const validationEvent = new CustomEvent('validate-step4', {
                     detail: { valid: false },
@@ -167,8 +168,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // CRITICAL: Step 4 (Contact) requires client-side validation before AJAX
-            if (bookingWizard.currentStep === 4) {
+            // CRITICAL: Contact step requires client-side validation before AJAX
+            if (bookingWizard.currentStepKey === 'contact') {
                 // Dispatch custom event to trigger Alpine validation
                 const validationEvent = new CustomEvent('validate-step4', {
                     detail: { valid: false },

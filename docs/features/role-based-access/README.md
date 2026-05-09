@@ -151,8 +151,8 @@ public static function canAccess(): bool
 **Why:** Overrides permission-based auth for stricter role control
 
 **2. Email Resources**
-- Removed `'view email logs'` and `'view email events'` from Staff role permissions
-- Requires manual permission revocation on production (one-time)
+- Removed `'communication.view_logs'` and `'communication.view_events'` from Staff role permissions
+- Phase 6: EmailEvent/SmsEvent/Suppressions restricted to super-admin only
 
 **3. Approval Toggle (Staff Vacation Form)**
 ```php
@@ -226,24 +226,34 @@ auth()->user()?->hasRole('staff') ?? false
 
 ## 📊 Staff Role Permissions (Database)
 
-**Current Permissions** (after Phase 2):
+**Current Permissions** (Phase 6 — module-namespaced format):
 ```php
 [
-    'view services',
-    'view appointments',
-    'create appointments',
-    'edit appointments',
-    'manage availability',
-    'view availability',
+    'services.view',
+    'bookings.view',
+    'bookings.create',
+    'bookings.edit',
+    'staff.manage_availability',
+    'staff.view_availability',
 ]
 ```
 
-**Removed in Phase 2:**
+**Removed for security:**
 ```php
-// These were removed for security
-'view email logs',      // Staff should not see email logs
-'view email events',    // Staff should not see email events
-'manage settings',      // Staff should not access System Settings
+// Staff should not access these
+'communication.view_logs',        // Email logs
+'communication.view_events',      // Email events
+'settings.manage',                // System Settings
+```
+
+**Phase 6 migration** automatically renamed permissions:
+```
+'view services' → 'services.view'
+'view appointments' → 'bookings.view'
+'create appointments' → 'bookings.create'
+'edit appointments' → 'bookings.edit'
+'manage availability' → 'staff.manage_availability'
+'view availability' → 'staff.view_availability'
 ```
 
 ---
@@ -323,7 +333,7 @@ gh run watch
 # 3. CRITICAL: Manually revoke permissions on production
 ssh root@72.60.17.138
 cd /var/www/registro
-docker compose -f docker-compose.prod.yml exec -T app php artisan tinker --execute="\$staff = Spatie\\Permission\\Models\\Role::findByName('staff'); \$staff->revokePermissionTo(['view email logs', 'view email events', 'manage settings']); echo 'Permissions revoked';"
+docker compose -f docker-compose.prod.yml exec -T app php artisan tinker --execute="\$staff = Spatie\\Permission\\Models\\Role::findByName('staff'); \$staff->revokePermissionTo(['communication.view_logs', 'communication.view_events', 'settings.manage']); echo 'Permissions revoked';"
 
 # 4. Clear caches
 docker compose -f docker-compose.prod.yml restart app horizon scheduler
@@ -348,7 +358,7 @@ Seeder changes only apply to new role assignments. Existing permissions must be 
 docker compose exec app php artisan tinker --execute="\$staff = Spatie\\Permission\\Models\\Role::findByName('staff'); \$staff->permissions->pluck('name');"
 
 # 2. Revoke incorrect permissions
-docker compose exec app php artisan tinker --execute="\$staff = Spatie\\Permission\\Models\\Role::findByName('staff'); \$staff->revokePermissionTo(['view email logs', 'view email events', 'manage settings']);"
+docker compose exec app php artisan tinker --execute="\$staff = Spatie\\Permission\\Models\\Role::findByName('staff'); \$staff->revokePermissionTo(['communication.view_logs', 'communication.view_events', 'settings.manage']);"
 
 # 3. Clear caches and restart
 docker compose restart app horizon scheduler

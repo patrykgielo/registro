@@ -2,18 +2,20 @@
 
 namespace App\Models;
 
+use App\Enums\AppointmentStatus;
 use App\Events\AppointmentCancelled;
 use App\Events\AppointmentConfirmed;
 use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
 use App\Traits\Auditable;
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Appointment extends Model
 {
     /** @use HasFactory<\Database\Factories\AppointmentFactory> */
-    use Auditable, HasFactory;
+    use Auditable, BelongsToOrganization, HasFactory;
 
     /**
      * Fields to include in audit logging (booking data - GDPR relevant)
@@ -56,30 +58,31 @@ class Appointment extends Model
         static::updating(function (Appointment $appointment) {
             if ($appointment->isDirty(['appointment_date', 'start_time', 'end_time'])) {
                 // Only dispatch if appointment is not cancelled
-                if ($appointment->status !== 'cancelled') {
+                if ($appointment->status !== AppointmentStatus::Cancelled) {
                     event(new AppointmentRescheduled($appointment));
                 }
             }
 
             // Detect appointment confirmation (status change to 'confirmed')
-            if ($appointment->isDirty('status') && $appointment->status === 'confirmed') {
+            if ($appointment->isDirty('status') && $appointment->status === AppointmentStatus::Confirmed) {
                 event(new AppointmentConfirmed($appointment));
             }
 
             // Detect appointment cancellation (status change to 'cancelled')
-            if ($appointment->isDirty('status') && $appointment->status === 'cancelled') {
+            if ($appointment->isDirty('status') && $appointment->status === AppointmentStatus::Cancelled) {
                 $appointment->cancelled_at = now();
                 event(new AppointmentCancelled($appointment));
             }
 
             // Auto-set completed_at timestamp
-            if ($appointment->isDirty('status') && $appointment->status === 'completed') {
+            if ($appointment->isDirty('status') && $appointment->status === AppointmentStatus::Completed) {
                 $appointment->completed_at = now();
             }
         });
     }
 
     protected $fillable = [
+        'organization_id',
         'service_id',
         'customer_id',
         'staff_id',
@@ -136,6 +139,7 @@ class Appointment extends Model
         'service_duration_at_booking' => 'integer',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'status' => AppointmentStatus::class,
     ];
 
     // Relationships
@@ -193,27 +197,27 @@ class Appointment extends Model
 
     public function scopePending($query)
     {
-        return $query->where('status', 'pending');
+        return $query->where('status', AppointmentStatus::Pending);
     }
 
     public function scopeConfirmed($query)
     {
-        return $query->where('status', 'confirmed');
+        return $query->where('status', AppointmentStatus::Confirmed);
     }
 
     public function scopeCancelled($query)
     {
-        return $query->where('status', 'cancelled');
+        return $query->where('status', AppointmentStatus::Cancelled);
     }
 
     public function scopeCompleted($query)
     {
-        return $query->where('status', 'completed');
+        return $query->where('status', AppointmentStatus::Completed);
     }
 
     public function scopeUpcoming($query)
     {
-        return $query->whereIn('status', ['pending', 'confirmed'])
+        return $query->whereIn('status', [AppointmentStatus::Pending, AppointmentStatus::Confirmed])
             ->where('appointment_date', '>=', now()->toDateString())
             ->orderBy('appointment_date')
             ->orderBy('start_time');
@@ -237,7 +241,7 @@ class Appointment extends Model
     // Accessors
     public function getIsUpcomingAttribute(): bool
     {
-        return in_array($this->status, ['pending', 'confirmed'])
+        return $this->status->isActive()
             && $this->appointment_date >= now()->toDateString();
     }
 
@@ -249,7 +253,7 @@ class Appointment extends Model
     public function getCanBeCancelledAttribute(): bool
     {
         // Only pending or confirmed appointments can be cancelled
-        if (! in_array($this->status, ['pending', 'confirmed'])) {
+        if (! $this->status->isActive()) {
             return false;
         }
 

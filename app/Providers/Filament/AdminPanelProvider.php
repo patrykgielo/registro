@@ -93,6 +93,7 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 'appointments' => NavigationGroup::make(__('navigation.groups.appointments')),
                 'content' => NavigationGroup::make(__('navigation.groups.content')),
+                'rentals' => NavigationGroup::make(__('navigation.groups.rentals')),
                 'vehicles' => NavigationGroup::make(__('navigation.groups.vehicles')),
                 'staff' => NavigationGroup::make(__('navigation.groups.staff')),
                 'users' => NavigationGroup::make(__('navigation.groups.users')),
@@ -129,6 +130,7 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+                \App\Http\Middleware\ResolveTenant::class, // Redirect unknown subdomains to root
             ])
             ->authMiddleware([
                 Authenticate::class,

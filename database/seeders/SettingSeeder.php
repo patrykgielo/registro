@@ -36,6 +36,7 @@ class SettingSeeder extends Seeder
         $this->seedEmailSettings();
         $this->seedSmsSettings();
         $this->seedPrelaunchSettings();
+        $this->seedCheckoutSettings();
     }
 
     /**
@@ -258,6 +259,23 @@ class SettingSeeder extends Seeder
         ];
 
         $this->seedGroup('prelaunch', $settings);
+    }
+
+    /**
+     * Seed checkout settings (consent texts, document URLs).
+     */
+    private function seedCheckoutSettings(): void
+    {
+        $settings = [
+            'terms_url' => [''],
+            'privacy_policy_url' => [''],
+            'terms_label' => ['Akceptuję Regulamin Wypożyczalni i zapoznałem/am się z warunkami najmu sprzętu.'],
+            'rodo_label' => ['Wyrażam zgodę na przetwarzanie moich danych osobowych przez {org_name} w celu realizacji umowy najmu zgodnie z art. 6 ust. 1 lit. b) RODO. Dane będą przechowywane przez 5 lat od zakończenia umowy.'],
+            'withdrawal_label' => ['Przyjmuję do wiadomości, że w związku z określeniem terminów wynajmu (art. 38 ust. 1 pkt 12 Ustawy o Prawach Konsumenta) nie przysługuje mi prawo odstąpienia od umowy na odległość.'],
+            'deposit_policy_note' => ['Kaucja pobierana gotówką / kartą przy odbiorze sprzętu. Zwracana po oddaniu sprzętu w stanie nienaruszonym.'],
+        ];
+
+        $this->seedGroup('checkout', $settings);
     }
 
     /**

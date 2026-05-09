@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Notifications\Notifiable;
 
 class ServiceAreaWaitlist extends Model
 {
-    use HasFactory;
+    use HasFactory, Notifiable;
 
     protected $table = 'service_area_waitlist';
 
@@ -74,8 +75,7 @@ class ServiceAreaWaitlist extends Model
             'admin_notes' => $notes,
         ]);
 
-        // TODO: Dispatch notification email job
-        // dispatch(new NotifyServiceAreaAvailable($this));
+        $this->notify(new \App\Notifications\ServiceAreaAvailableNotification($this));
     }
 
     /**

@@ -289,12 +289,12 @@ VALUES ('booking', 'new_setting', '["value"]');
 
 **Grant to user:**
 ```php
-$user->givePermissionTo('manage settings');
+$user->givePermissionTo('settings.manage');
 ```
 
 **Check permission:**
 ```php
-$user->hasPermissionTo('manage settings');
+$user->hasPermissionTo('settings.manage');
 ```
 
 ## Testing
@@ -354,7 +354,7 @@ docker compose exec app php artisan route:list --path=admin/system-settings
 # Verify permission
 docker compose exec app php artisan tinker
 >>> $user = \App\Models\User::find(1);
->>> $user->hasPermissionTo('manage settings');
+>>> $user->hasPermissionTo('settings.manage');
 ```
 
 ### Mail Configuration Not Applied

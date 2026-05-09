@@ -1,3 +1,8 @@
+---
+paths:
+  - "docs/releases/**"
+---
+
 # Release Documentation Rules
 
 ## Struktura dokumentu release

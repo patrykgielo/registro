@@ -1,15 +1,32 @@
 # CLAUDE.md - Registro Project
 
+## MANDATORY PROCESS (enforced by hooks)
+
+**EVERY implementation task — hooks WILL block you if you skip:**
+
+1. **AGENT FIRST** — `laravel-senior-architect` (PHP) or `frontend-ui-architect` (UI) before ANY code
+2. **feature/* branch ONLY** — PreToolUse hook blocks commits to develop/main
+3. **Pint + tests** — before commit: `./vendor/bin/pint --test && php artisan test`
+4. **Docs/rules AFTER** — Stop hook blocks completion if 5+ source files changed with 0 docs/rules updates
+
+**Use `/implement <task>` for guided workflow with mandatory gates.**
+
+---
+
 ## Rules System
 
 **BEFORE starting ANY work:** Read `.claude/rules/_INDEX.md`
 
 Rules are organized in TIERs:
-- **TIER 1** (CRITICAL): self-improvement, git-workflow, deployment, security
+- **TIER 1** (CRITICAL): self-improvement, git-workflow, deployment, security, agent-usage
 - **TIER 2** (Implementation): models, services, filament, tests
 - **TIER 3** (Enhancement): frontend, animations, api
 
-**PreToolUse Hook** automatically blocks dangerous git operations.
+**Hooks (deterministic enforcement):**
+- **PreToolUse** — blocks dangerous git operations
+- **UserPromptSubmit** — injects agent-first reminder on implementation tasks
+- **Stop** — blocks completion without documentation updates
+- **Notification** — re-injects TIER 1 rules after context compaction
 
 **Self-Learning Rules:**
 - DOCUMENT every resolved error immediately (rules/docs)
@@ -19,7 +36,7 @@ Rules are organized in TIERs:
 
 ## Project Stack
 
-- **Laravel 12**, PHP 8.2+, MySQL 8.0
+- **Laravel 12**, PHP 8.3+, MySQL 8.0
 - **Filament v4** (namespace breaking changes - see filament.md)
 - **Tailwind CSS 4.0**, Vite 7+
 - **Docker Compose** (9 services)
@@ -53,10 +70,23 @@ $user->name = "x"  // FORBIDDEN (column doesn't exist!)
 ```
 ALL docs are in: app/docs/
 NOT in: /docs/ (root)
-Archived Paradocks docs: docs/archive/
+Archived legacy docs: docs/archive/
 ```
 
 ---
+
+## Skills (slash commands)
+
+| Skill | Effort | Purpose |
+|-------|--------|---------|
+| `/implement <task>` | high | Gated workflow: agent → branch → code → test → docs |
+| `/review [scope]` | high | Code review (architecture, security, docs) |
+| `/deep-research <topic>` | high | Web research with Firecrawl |
+| `/commit [msg]` | low | Stage, Pint, test, conventional commit |
+| `/pr [title]` | low | Push + create PR to develop |
+| `/test [--filter]` | low | Run Pint + PHPUnit in Docker |
+| `/catchup` | low | Session start briefing (recent changes, PRs) |
+| `/browser-use` | — | Browser automation (visible Chrome, user profile) |
 
 ## Quick Commands
 
@@ -64,8 +94,13 @@ Archived Paradocks docs: docs/archive/
 # Development
 composer run dev
 
-# Tests
-./vendor/bin/pint --test && php artisan test
+# OBOWIĄZKOWE po każdej zmianie Blade/CSS/JS — bez wyjątków!
+docker compose exec -T app npm run build
+# Jeśli po build nadal są stare style → plik public/hot blokuje → usuń go:
+docker compose exec -T app rm -f public/hot
+
+# Tests (in Docker — .env.testing forces SQLite)
+docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T app php artisan test
 ```
 
 ---
@@ -92,12 +127,22 @@ feature/* → develop (PR) → main (PR)
 | Full Docs | `app/docs/README.md` |
 | Features | `app/docs/features/` |
 | Filament v4 | `app/docs/guides/filament-v4-*.md` |
-| Archived (Paradocks) | `docs/archive/` |
+| Archived (legacy) | `docs/archive/` |
 
 ---
 
 ## Definition of Done
 
+- [ ] Agent used BEFORE implementation
 - [ ] Tests pass: `./vendor/bin/pint --test && php artisan test`
 - [ ] Created feature branch (NOT direct to develop)
-- [ ] Documentation updated if needed
+- [ ] Documentation/rules updated (Stop hook enforces this)
+
+---
+
+## REMINDER (bottom anchor — do not remove)
+
+- **AGENT FIRST** before any code
+- **DOCS/RULES AFTER** every implementation (Stop hook blocks you otherwise)
+- **FILESYSTEM_DISK=public** always (never local)
+- **User model:** first_name/last_name (no `name` column)

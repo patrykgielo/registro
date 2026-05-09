@@ -12,6 +12,21 @@ All GitHub Actions workflows are set to `workflow_dispatch` (manual trigger only
 
 1. **NIGDY nie commituj .env, .env.production, .env.staging** - są w .gitignore
 2. **NIGDY nie uruchamiaj seederów w CI/CD pipeline** - seedery nadpisują dane edytowane przez admina
+3. **NIGDY nie uruchamiaj `migrate:fresh`, `migrate:reset`, `migrate:refresh`, `db:wipe`** — w ŻADNYM środowisku! Hook blokuje. Tylko deweloper ręcznie.
+4. **NIGDY nie uruchamiaj testów bez `.env.testing`** — Docker `.env` nadpisuje phpunit.xml i RefreshDatabase uderzy w dev MySQL!
+
+### Incident 2026-03-17: RefreshDatabase wyczyściła dev MySQL
+
+**Problem:** `docker compose exec -T app php artisan test` uruchomił testy z `RefreshDatabase` trait na dev MySQL zamiast SQLite in-memory.
+
+**Przyczyna:** Docker ustawia `DB_HOST=mysql` jako OS-level env variable (priorytet 3). phpunit.xml `<env>` tagi mają priorytet 4 (niższy). `.env` Dotenv = priorytet 5-6. OS-level wygrywa → testy trafiły w MySQL `registro` → `RefreshDatabase` zrobiło `migrate:fresh` → utrata danych.
+
+**Rozwiązanie:** `.env.testing` — Laravel ładuje go ZAMIAST `.env` gdy `APP_ENV=testing`. Ustawia `DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:`.
+
+**Zapobieganie:**
+- `.env.testing` w repo (committed) — wymusza SQLite dla testów
+- PreToolUse hook blokuje `migrate:fresh/reset/refresh/db:wipe` w KAŻDYM środowisku
+- Rule: Claude NIGDY nie uruchamia destrukcyjnych DB operacji
 
 ## .env File Management
 
@@ -43,7 +58,7 @@ APP_DEBUG        # Must be 'false' for production
 
 | Kontekst | Dozwolone? |
 |----------|------------|
-| Lokalne dev (`php artisan migrate:fresh --seed`) | Tak |
+| Lokalne dev (`php artisan migrate:fresh --seed`) | Tylko deweloper ręcznie! Claude NIGDY! |
 | CI testy (ephemeral DB) | Tak |
 | Deploy staging/production | NIGDY |
 

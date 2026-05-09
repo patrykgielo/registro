@@ -16,11 +16,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'check-rental-enabled' => \App\Http\Middleware\CheckRentalEnabled::class,
         ]);
 
         // Exclude webhook routes from CSRF protection
         $middleware->validateCsrfTokens(except: [
             'api/webhooks/*',
+            'webhooks/przelewy24',
         ]);
 
         // Add maintenance mode check to web middleware group

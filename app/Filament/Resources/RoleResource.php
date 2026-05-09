@@ -6,7 +6,6 @@ use App\Filament\Resources\RoleResource\Pages;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -15,7 +14,7 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use UnitEnum;
 
-class RoleResource extends Resource
+class RoleResource extends BaseResource
 {
     protected static ?string $model = Role::class;
 
@@ -152,10 +151,10 @@ class RoleResource extends Resource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Restrict access to super-admins only.
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

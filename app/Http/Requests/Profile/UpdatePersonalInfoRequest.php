@@ -1,8 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Requests\Profile;
 
+use App\Rules\ValidPolishPESEL;
+use App\Rules\ValidPolishREGON;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdatePersonalInfoRequest extends FormRequest
 {
@@ -11,6 +16,9 @@ class UpdatePersonalInfoRequest extends FormRequest
         return true;
     }
 
+    /**
+     * @return array<string, list<mixed>>
+     */
     public function rules(): array
     {
         return [
@@ -25,9 +33,17 @@ class UpdatePersonalInfoRequest extends FormRequest
             'billing_city' => ['nullable', 'string', 'max:100'],
             'nip' => ['nullable', 'digits:10'],
             'company_name' => ['nullable', 'string', 'max:255'],
+            // Rental / legal profile fields
+            'customer_type' => ['nullable', Rule::in(['natural_person', 'business'])],
+            'pesel' => ['nullable', new ValidPolishPESEL],
+            'regon' => ['nullable', new ValidPolishREGON],
+            'krs' => ['nullable', 'string', 'max:20'],
         ];
     }
 
+    /**
+     * @return array<string, string>
+     */
     public function messages(): array
     {
         return [
@@ -36,6 +52,8 @@ class UpdatePersonalInfoRequest extends FormRequest
             'phone_e164.regex' => __('Numer telefonu musi być w formacie międzynarodowym (np. +48123456789).'),
             'billing_postal_code.regex' => __('Kod pocztowy musi być w formacie XX-XXX.'),
             'nip.digits' => __('NIP musi składać się z 10 cyfr.'),
+            'customer_type.in' => __('Nieprawidłowy typ klienta.'),
+            'krs.max' => __('Numer KRS/CEIDG nie może przekraczać 20 znaków.'),
         ];
     }
 }

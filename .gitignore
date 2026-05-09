@@ -23,6 +23,9 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 
+# Content creation (local only, never committed)
+/content/
+
 # Local Docker development files (not committed)
 /mysql/
 /php/
@@ -55,6 +58,7 @@ app/vendor/
 .env.*
 !.env.example
 !.env.staging.example
+!.env.testing
 .env.production
 .env.staging
 .env.local
@@ -104,3 +108,4 @@ ssh_config
 # Local staging credentials (never commit!)
 .staging-credentials.local
 *.credentials.local
+.claude/worktrees/

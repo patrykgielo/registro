@@ -2,15 +2,16 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\AppointmentStatus;
 use App\Filament\Resources\AppointmentResource\Pages;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Carbon\Carbon;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -18,9 +19,11 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class AppointmentResource extends Resource
+class AppointmentResource extends BaseResource
 {
     protected static ?string $model = Appointment::class;
+
+    protected static ?string $module = 'bookings';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-calendar';
 
@@ -112,13 +115,8 @@ class AppointmentResource extends Resource
 
                 Forms\Components\Select::make('status')
                     ->label('Status')
-                    ->options([
-                        'pending' => 'Oczekująca',
-                        'confirmed' => 'Potwierdzona',
-                        'cancelled' => 'Anulowana',
-                        'completed' => 'Zakończona',
-                    ])
-                    ->default('pending')
+                    ->options(AppointmentStatus::options())
+                    ->default(AppointmentStatus::Pending->value)
                     ->required()
                     ->native(false),
 
@@ -130,10 +128,11 @@ class AppointmentResource extends Resource
                 Forms\Components\Textarea::make('cancellation_reason')
                     ->label('Powód anulowania')
                     ->rows(3)
-                    ->visible(fn (callable $get) => $get('status') === 'cancelled')
+                    ->visible(fn (callable $get) => $get('status') === AppointmentStatus::Cancelled->value)
                     ->columnSpanFull(),
 
                 Section::make('Lokalizacja')
+                    ->visible(fn () => TenantFeature::active('mobile_service') || TenantFeature::active('vehicles'))
                     ->schema([
                         Forms\Components\TextInput::make('service_location_type')
                             ->label('Typ lokalizacji usługi')
@@ -200,6 +199,7 @@ class AppointmentResource extends Resource
                     ->collapsed(),
 
                 Section::make('Pojazd')
+                    ->visible(fn () => TenantFeature::active('vehicles'))
                     ->schema([
                         Forms\Components\Select::make('vehicle_type_id')
                             ->label('Typ pojazdu')
@@ -310,22 +310,12 @@ class AppointmentResource extends Resource
                     ->getStateUsing(fn ($record) => $record->vehicle_display)
                     ->placeholder('—')
                     ->searchable()
-                    ->toggleable(),
+                    ->toggleable()
+                    ->visible(fn () => TenantFeature::active('vehicles')),
                 Tables\Columns\BadgeColumn::make('status')
                     ->label('Status')
-                    ->colors([
-                        'warning' => 'pending',
-                        'success' => 'confirmed',
-                        'danger' => 'cancelled',
-                        'secondary' => 'completed',
-                    ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'pending' => 'Oczekująca',
-                        'confirmed' => 'Potwierdzona',
-                        'cancelled' => 'Anulowana',
-                        'completed' => 'Zakończona',
-                        default => $state,
-                    }),
+                    ->colors(AppointmentStatus::colorMap())
+                    ->formatStateUsing(fn (string $state): string => AppointmentStatus::tryFrom($state)?->label() ?? $state),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Utworzono')
                     ->dateTime('d.m.Y H:i')
@@ -336,12 +326,7 @@ class AppointmentResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
-                    ->options([
-                        'pending' => 'Oczekująca',
-                        'confirmed' => 'Potwierdzona',
-                        'cancelled' => 'Anulowana',
-                        'completed' => 'Zakończona',
-                    ]),
+                    ->options(AppointmentStatus::options()),
                 Tables\Filters\SelectFilter::make('service')
                     ->label('Usługa')
                     ->relationship('service', 'name'),

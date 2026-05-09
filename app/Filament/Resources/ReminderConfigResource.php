@@ -10,16 +10,17 @@ use App\Models\ReminderConfig;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use UnitEnum;
 
-class ReminderConfigResource extends Resource
+class ReminderConfigResource extends BaseResource
 {
     protected static ?string $model = ReminderConfig::class;
+
+    protected static ?string $module = 'communication';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-bell-alert';
 

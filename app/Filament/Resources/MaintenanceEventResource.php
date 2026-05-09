@@ -9,7 +9,6 @@ use App\Filament\Resources\MaintenanceEventResource\Pages;
 use App\Models\MaintenanceEvent;
 use BackedEnum;
 use Filament\Actions;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -17,7 +16,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class MaintenanceEventResource extends Resource
+class MaintenanceEventResource extends BaseResource
 {
     protected static ?string $model = MaintenanceEvent::class;
 
@@ -227,10 +226,10 @@ class MaintenanceEventResource extends Resource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 }

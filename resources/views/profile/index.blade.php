@@ -36,7 +36,8 @@
                     </a>
                 </li>
 
-                {{-- Vehicle --}}
+                {{-- Vehicle (only when vehicles feature active) --}}
+                @if(App\Support\TenantFeature::active('vehicles'))
                 <li>
                     <a href="{{ route('profile.vehicle') }}"
                        class="flex items-center justify-between px-4 py-4 active:bg-gray-100 transition-colors min-h-[44px]">
@@ -53,6 +54,7 @@
                         @include('profile.partials.icons.chevron-right')
                     </a>
                 </li>
+                @endif
 
                 {{-- Address --}}
                 <li>

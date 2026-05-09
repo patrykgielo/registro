@@ -8,7 +8,6 @@ use App\Models\User;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -16,9 +15,11 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class StaffVacationPeriodResource extends Resource
+class StaffVacationPeriodResource extends BaseResource
 {
     protected static ?string $model = StaffVacationPeriod::class;
+
+    protected static ?string $module = 'staff';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-sun';
 

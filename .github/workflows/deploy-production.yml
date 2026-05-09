@@ -152,6 +152,7 @@ jobs:
           docker build \
             --no-cache \
             --pull \
+            --build-arg OPCACHE_MODE=production \
             --tag ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }} \
             --tag ghcr.io/patrykgielo/registro:latest \
             .

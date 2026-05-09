@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Settings;
 
 use App\Models\Setting;
+use App\Support\TenantFeature;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
@@ -29,6 +30,8 @@ class SettingsManager
     /**
      * Get a setting value by dot notation path.
      *
+     * Tenant-aware: checks tenant-specific setting first, falls back to global default.
+     *
      * Example: get('booking.business_hours_start', '09:00')
      *
      * @param  string  $path  Dot notation path (group.key)
@@ -41,22 +44,33 @@ class SettingsManager
         $cacheKey = $this->getCacheKey($group, $key);
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default) {
-            $setting = Setting::group($group)->key($key)->first();
+            $tenantId = $this->getCurrentTenantId();
+
+            // Try tenant-specific setting first
+            if ($tenantId) {
+                $setting = Setting::withoutGlobalScope('organization')
+                    ->where('organization_id', $tenantId)
+                    ->group($group)
+                    ->key($key)
+                    ->first();
+
+                if ($setting) {
+                    return $this->unwrapValue($setting->value);
+                }
+            }
+
+            // Fall back to global default (organization_id IS NULL)
+            $setting = Setting::withoutGlobalScope('organization')
+                ->whereNull('organization_id')
+                ->group($group)
+                ->key($key)
+                ->first();
 
             if (! $setting) {
                 return $default;
             }
 
-            // If value is an array with single scalar element, return the element.
-            // Preserve arrays (Repeater data) even if they have one item.
-            $value = $setting->value;
-
-            // Unwrap single-element arrays only if the element is a scalar (not an array).
-            if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
-                return $value[0];
-            }
-
-            return $value;
+            return $this->unwrapValue($setting->value);
         });
     }
 
@@ -75,8 +89,14 @@ class SettingsManager
         // Wrap scalar values in array for JSON storage
         $jsonValue = is_array($value) ? $value : [$value];
 
-        Setting::updateOrCreate(
-            ['group' => $group, 'key' => $key],
+        $tenantId = $this->getCurrentTenantId();
+
+        Setting::withoutGlobalScope('organization')->updateOrCreate(
+            [
+                'organization_id' => $tenantId,
+                'group' => $group,
+                'key' => $key,
+            ],
             ['value' => $jsonValue]
         );
 
@@ -113,20 +133,30 @@ class SettingsManager
      */
     public function all(): array
     {
-        $settings = Setting::all();
+        $tenantId = $this->getCurrentTenantId();
+        $query = Setting::withoutGlobalScope('organization');
 
+        if ($tenantId) {
+            // Get global defaults + tenant overrides (tenant wins)
+            $query->where(function ($q) use ($tenantId) {
+                $q->whereNull('organization_id')
+                    ->orWhere('organization_id', $tenantId);
+            });
+        } else {
+            $query->whereNull('organization_id');
+        }
+
+        $settings = $query->get();
         $grouped = [];
 
         foreach ($settings as $setting) {
-            $value = $setting->value;
+            $value = $this->unwrapValue($setting->value);
+            $groupKey = $setting->group.'.'.$setting->key;
 
-            // Unwrap single-element arrays only if the element is a scalar (not an array).
-            // This preserves Repeater data with one item (e.g., [{"name": "X"}]).
-            if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
-                $value = $value[0];
+            // Tenant setting overrides global
+            if ($setting->organization_id !== null || ! isset($grouped[$setting->group][$setting->key])) {
+                $grouped[$setting->group][$setting->key] = $value;
             }
-
-            $grouped[$setting->group][$setting->key] = $value;
         }
 
         return $grouped;
@@ -145,20 +175,28 @@ class SettingsManager
         $cacheKey = $this->getCacheKey($group);
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group) {
-            $settings = Setting::group($group)->get();
+            $tenantId = $this->getCurrentTenantId();
+            $query = Setting::withoutGlobalScope('organization')->group($group);
 
+            if ($tenantId) {
+                $query->where(function ($q) use ($tenantId) {
+                    $q->whereNull('organization_id')
+                        ->orWhere('organization_id', $tenantId);
+                });
+            } else {
+                $query->whereNull('organization_id');
+            }
+
+            $settings = $query->get();
             $result = [];
 
             foreach ($settings as $setting) {
-                $value = $setting->value;
+                $value = $this->unwrapValue($setting->value);
 
-                // Unwrap single-element arrays only if the element is a scalar (not an array).
-                // This preserves Repeater data with one item (e.g., [{"name": "X"}]).
-                if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
-                    $value = $value[0];
+                // Tenant setting overrides global
+                if ($setting->organization_id !== null || ! isset($result[$setting->key])) {
+                    $result[$setting->key] = $value;
                 }
-
-                $result[$setting->key] = $value;
             }
 
             return $result;
@@ -192,13 +230,37 @@ class SettingsManager
      * @param  string  $group  Group name
      * @param  string|null  $key  Setting key (optional)
      */
-    private function getCacheKey(string $group, ?string $key = null): string
+    /**
+     * Unwrap single-element scalar arrays for consistency.
+     * Preserves arrays (Repeater data) even if they have one item.
+     */
+    private function unwrapValue(mixed $value): mixed
     {
-        if ($key === null) {
-            return self::CACHE_PREFIX.":{$group}";
+        if (is_array($value) && count($value) === 1 && array_key_exists(0, $value) && ! is_array($value[0])) {
+            return $value[0];
         }
 
-        return self::CACHE_PREFIX.":{$group}:{$key}";
+        return $value;
+    }
+
+    /**
+     * Get current tenant ID from Filament or public request context.
+     */
+    private function getCurrentTenantId(): ?int
+    {
+        return TenantFeature::currentTenant()?->id;
+    }
+
+    private function getCacheKey(string $group, ?string $key = null): string
+    {
+        $tenantId = $this->getCurrentTenantId() ?? 'global';
+        $prefix = self::CACHE_PREFIX.":tenant:{$tenantId}";
+
+        if ($key === null) {
+            return "{$prefix}:{$group}";
+        }
+
+        return "{$prefix}:{$group}:{$key}";
     }
 
     /**
@@ -218,6 +280,22 @@ class SettingsManager
             // Also clear group cache as it contains this setting
             Cache::forget($this->getCacheKey($group));
         }
+    }
+
+    /**
+     * Get tenant VAT rate percentage.
+     */
+    public function vatRate(): int
+    {
+        return (int) $this->get('general.vat_rate', 23);
+    }
+
+    /**
+     * Calculate net price from gross (brutto → netto).
+     */
+    public function nettoPrice(float $brutto): float
+    {
+        return round($brutto / (1 + $this->vatRate() / 100), 2);
     }
 
     // ========================================================================
@@ -294,11 +372,39 @@ class SettingsManager
     }
 
     /**
-     * Check if online booking is enabled.
+     * Check if online booking (time-slot appointments) is enabled.
+     * Returns false for rental-only tenants regardless of the setting.
      */
     public function isBookingEnabled(): bool
     {
+        $tenant = TenantFeature::currentTenant();
+
+        // Rental-only tenants (item_rental) never support appointment booking
+        if ($tenant && ! $tenant->supportsAppointments()) {
+            return false;
+        }
+
         return (bool) $this->get('booking.booking_enabled', true);
+    }
+
+    /**
+     * Check if the rental (cart/checkout) flow is enabled.
+     *
+     * Returns true for 'item_rental' and 'both' booking types.
+     * Returns false for 'time_slot'-only organizations.
+     *
+     * When no tenant is resolved, returns true and defers the 404 decision
+     * to the controller (consistent with how isBookingEnabled behaves).
+     */
+    public function isRentalEnabled(): bool
+    {
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant === null) {
+            return true;
+        }
+
+        return $tenant->supportsRentals();
     }
 
     /**
@@ -470,5 +576,80 @@ class SettingsManager
         }
 
         return $title;
+    }
+
+    // ========================================================================
+    // Design Helper Methods
+    // ========================================================================
+
+    /**
+     * Get the tenant's brand color (hex).
+     *
+     * Returns the configured brand_color or the default Registro Indigo.
+     */
+    public function brandColor(): string
+    {
+        $color = $this->get('design.brand_color', '#6366f1');
+
+        if (empty($color) || ! is_string($color)) {
+            return '#6366f1';
+        }
+
+        // Validate hex format before returning
+        if (! preg_match('/^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/', $color)) {
+            return '#6366f1';
+        }
+
+        return $color;
+    }
+
+    /**
+     * Get the tenant's configured font family key.
+     *
+     * Returns one of: inter | system | roboto | poppins | montserrat
+     */
+    public function fontFamily(): string
+    {
+        $font = $this->get('design.font_family', 'inter');
+
+        $allowed = ['inter', 'system', 'roboto', 'poppins', 'montserrat'];
+
+        if (! in_array($font, $allowed, true)) {
+            return 'inter';
+        }
+
+        return $font;
+    }
+
+    /**
+     * Get the tenant's brand name for public display.
+     *
+     * Returns brand_name_override if set, otherwise falls back to appName().
+     */
+    public function brandName(): string
+    {
+        $override = $this->get('design.brand_name_override');
+
+        if (! empty($override) && is_string($override)) {
+            return $override;
+        }
+
+        return $this->appName();
+    }
+
+    /**
+     * Check if the tenant wants their logo injected in emails.
+     */
+    public function useLogoInEmails(): bool
+    {
+        return (bool) $this->get('design.use_logo_in_emails', true);
+    }
+
+    /**
+     * Check if the tenant wants their brand color used in emails.
+     */
+    public function useColorInEmails(): bool
+    {
+        return (bool) $this->get('design.use_color_in_emails', true);
     }
 }

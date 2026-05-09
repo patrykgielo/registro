@@ -11,14 +11,13 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class EmailEventResource extends Resource
+class EmailEventResource extends BaseResource
 {
     protected static ?string $model = EmailEvent::class;
 
@@ -242,16 +241,16 @@ class EmailEventResource extends Resource
     }
 
     /**
-     * Check if user can access this resource
+     * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('view email events') ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->can('view email events') ?? false;
+        return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
     public static function canCreate(): bool

@@ -13,16 +13,17 @@ use Filament\Actions;
 use Filament\Forms;
 use Filament\Infolists;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
-class EmailSendResource extends Resource
+class EmailSendResource extends BaseResource
 {
     protected static ?string $model = EmailSend::class;
+
+    protected static ?string $module = 'communication';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-paper-airplane';
 
@@ -375,12 +376,12 @@ class EmailSendResource extends Resource
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('view email logs') ?? false;
+        return auth()->user()?->can('communication.view_logs') ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->can('view email logs') ?? false;
+        return auth()->user()?->can('communication.view_logs') ?? false;
     }
 
     public static function canCreate(): bool

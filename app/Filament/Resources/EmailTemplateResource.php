@@ -12,7 +12,6 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
@@ -22,9 +21,11 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
 
-class EmailTemplateResource extends Resource
+class EmailTemplateResource extends BaseResource
 {
     protected static ?string $model = EmailTemplate::class;
+
+    protected static ?string $module = 'communication';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-envelope';
 
@@ -322,22 +323,22 @@ class EmailTemplateResource extends Resource
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     public static function canCreate(): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     public static function canEdit($record): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     public static function canDelete($record): bool
     {
-        return auth()->user()?->can('manage email templates') ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 
     /**

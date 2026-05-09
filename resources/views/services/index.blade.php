@@ -1,132 +1,111 @@
 @extends('layouts.app')
 
-@section('title', 'Usługi - Profesjonalny Car Detailing')
-
 @section('content')
-{{-- Hero Section --}}
-<section class="bg-primary-600 text-white py-16 md:py-24">
-    <div class="container mx-auto px-4">
-        <div class="max-w-3xl mx-auto text-center">
-            <h1 class="text-4xl md:text-5xl font-bold mb-4">
-                Nasze Usługi
-            </h1>
-            <p class="text-xl md:text-2xl text-white/90 mb-8">
-                Profesjonalny car detailing w Warszawie - Przywróć swojemu samochodowi pierwotny wygląd
-            </p>
-            @auth
-                @if($bookingEnabled)
-                    <x-ios.button
-                        variant="inverse"
-                        href="{{ route('booking.step', ['step' => 1]) }}"
-                        label="Zarezerwuj Termin"
-                        icon="calendar"
-                        iconPosition="right"
-                    />
-                @else
-                    <x-ios.button
-                        variant="inverse"
-                        href="tel:{{ $contactPhone }}"
-                        label="Skontaktuj się z nami"
-                        icon="phone"
-                        iconPosition="right"
-                    />
-                @endif
-            @else
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    @if($registrationEnabled)
-                        <x-ios.button
-                            variant="inverse"
-                            href="{{ route('register') }}"
-                            label="Zarejestruj się"
-                        />
-                    @endif
-                    <x-ios.button
-                        variant="outline-light"
-                        href="{{ route('login') }}"
-                        label="Zaloguj się"
-                    />
-                </div>
-            @endauth
-        </div>
-    </div>
-</section>
 
-{{-- Services Grid Section (Dark Theme) --}}
-<section class="py-16 bg-section-dark">
-    <div class="container mx-auto px-4">
-        @if($services->count() > 0)
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-                @foreach($services as $service)
-                    <x-ios.service-card
-                        :service="$service"
-                        :icon="$service->icon ?? 'sparkles'"
-                        variant="dark"
-                        class="scroll-reveal"
-                    />
-                @endforeach
-            </div>
+{{-- Hero --}}
+<x-layout.section spacing="lg" class="bg-surface-sunken">
+    <div class="max-w-3xl mx-auto text-center">
+        <h1 class="text-4xl md:text-5xl font-bold text-text-primary tracking-tight mb-4">
+            Nasze usługi
+        </h1>
+        <p class="text-lg md:text-xl text-text-secondary mb-8">
+            Profesjonalne usługi dopasowane do Twoich potrzeb
+        </p>
+
+        @auth
+            @if($bookingEnabled)
+                <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" size="lg" icon-right="arrow-right">
+                    Zarezerwuj termin
+                </x-ui.button>
+            @endif
         @else
-            {{-- Empty State (Dark Variant) --}}
-            <div class="max-w-2xl mx-auto bg-white/10 border border-white/20 rounded-2xl p-12 text-center">
-                <svg class="w-24 h-24 mx-auto text-white/40 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
-                </svg>
-                <h3 class="text-2xl font-bold text-white mb-2">Obecnie brak dostępnych usług</h3>
-                <p class="text-white/70">Wkrótce pojawią się nowe usługi. Sprawdź ponownie później!</p>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                @if($registrationEnabled)
+                    <x-ui.button href="{{ route('register') }}" size="lg">Rozpocznij</x-ui.button>
+                @endif
+                <x-ui.button variant="secondary" href="{{ route('login') }}" size="lg">Zaloguj się</x-ui.button>
             </div>
-        @endif
+        @endauth
     </div>
-</section>
+</x-layout.section>
 
-{{-- CTA Section --}}
-<section class="py-16 bg-white">
-    <div class="container mx-auto px-4">
-        <div class="max-w-4xl mx-auto bg-section-dark rounded-3xl shadow-2xl p-8 md:p-12 text-center text-white relative overflow-hidden">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">
-                Gotowy na profesjonalny detailing?
-            </h2>
-            <p class="text-xl text-white/80 mb-8">
-                @if($bookingEnabled)
-                    Zarezerwuj termin online i ciesz się czystym autem już dziś
-                @else
-                    Skontaktuj się z nami telefonicznie i umów wizytę
-                @endif
-            </p>
-            @auth
-                @if($bookingEnabled)
-                    <x-ios.button
-                        variant="inverse"
-                        href="{{ route('booking.step', ['step' => 1]) }}"
-                        label="Zarezerwuj Termin Teraz"
-                        icon="calendar"
-                        iconPosition="right"
-                    />
-                @else
-                    <x-ios.button
-                        variant="inverse"
-                        href="tel:{{ $contactPhone }}"
-                        label="Skontaktuj się z nami"
-                        icon="phone"
-                        iconPosition="right"
-                    />
-                @endif
-            @else
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    @if($registrationEnabled)
-                        <x-ios.button
-                            variant="inverse"
-                            href="{{ route('register') }}"
-                            label="Załóż Konto"
-                        />
+{{-- Services Grid --}}
+<x-layout.section>
+    @if($services->count() > 0)
+        <x-layout.grid cols="3" gap="8">
+            @foreach($services as $service)
+                <x-ui.card hover href="{{ route('service.show', $service) }}" class="group" data-animate data-animate-delay="{{ $loop->index * 80 }}">
+                    @if($service->featured_image)
+                        <div class="-mx-6 -mt-6 mb-6 overflow-hidden rounded-t-xl">
+                            <x-media.image :src="$service->featured_image" :alt="$service->name" aspect="16/9" rounded="none" class="group-hover:scale-[1.03] transition-transform duration-300" />
+                        </div>
                     @endif
-                    <x-ios.button
-                        variant="outline-light"
-                        href="{{ route('login') }}"
-                        label="Mam już konto"
-                    />
-                </div>
-            @endauth
+
+                    @if($service->icon)
+                        <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-brand-subtle text-brand mb-4">
+                            <x-dynamic-component :component="'heroicon-m-' . $service->icon" class="h-5 w-5" />
+                        </div>
+                    @endif
+
+                    <h3 class="text-lg font-semibold text-text-primary mb-2 group-hover:text-brand transition-colors">
+                        {{ $service->name }}
+                    </h3>
+
+                    <p class="text-sm text-text-secondary mb-4 line-clamp-2">
+                        {{ $service->excerpt ?? Str::limit($service->description, 120) }}
+                    </p>
+
+                    <div class="flex items-center justify-between mt-auto pt-4 border-t border-border">
+                        @if($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_on_request)
+                            <span class="text-sm font-medium text-text-muted italic">Cena do potwierdzenia</span>
+                        @elseif($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_per_day)
+                            <span class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} zł<span class="text-sm font-normal text-text-muted">/dzień</span></span>
+                        @elseif($service->price)
+                            <span class="text-lg font-bold text-text-primary">{{ $service->price_from ? 'od ' : '' }}{{ number_format($service->price_from ?? $service->price, 0, ',', ' ') }} zł</span>
+                        @endif
+
+                        @if($service->duration_minutes && $service->service_type !== \App\Enums\ServiceType::ItemRental)
+                            <x-ui.badge variant="default" icon="clock">{{ $service->formatted_duration }}</x-ui.badge>
+                        @endif
+                    </div>
+                </x-ui.card>
+            @endforeach
+        </x-layout.grid>
+    @else
+        <div class="max-w-md mx-auto text-center py-16">
+            <x-heroicon-o-cube class="h-16 w-16 text-text-muted mx-auto mb-4" />
+            <h3 class="text-xl font-semibold text-text-primary mb-2">Brak dostępnych usług</h3>
+            <p class="text-text-secondary">Wkrótce pojawią się nowe usługi. Sprawdź ponownie później.</p>
         </div>
+    @endif
+</x-layout.section>
+
+{{-- CTA --}}
+<x-layout.section dark>
+    <div class="max-w-2xl mx-auto text-center">
+        <h2 class="text-3xl font-bold text-dark-text mb-4">Gotowy, aby zacząć?</h2>
+        <p class="text-dark-text-muted text-lg mb-8">
+            @if($bookingEnabled)
+                Zarezerwuj termin online w kilka kliknięć
+            @else
+                Skontaktuj się z nami i umów wizytę
+            @endif
+        </p>
+        @auth
+            @if($bookingEnabled)
+                <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" size="lg" icon-right="arrow-right" class="bg-surface-raised text-text-primary hover:bg-surface">
+                    Zarezerwuj teraz
+                </x-ui.button>
+            @endif
+        @else
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                @if($registrationEnabled)
+                    <x-ui.button href="{{ route('register') }}" size="lg" class="bg-surface-raised text-text-primary hover:bg-surface">Załóż konto</x-ui.button>
+                @endif
+                <x-ui.button variant="ghost" href="{{ route('login') }}" size="lg" class="text-dark-text hover:text-dark-text">Mam już konto</x-ui.button>
+            </div>
+        @endauth
     </div>
-</section>
+</x-layout.section>
+
 @endsection

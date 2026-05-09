@@ -9,7 +9,6 @@ use App\Filament\Traits\CreatesAndRedirectsToEdit;
 use App\Support\Settings\SettingsManager;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use Illuminate\Support\Facades\Cache;
 
 class CreatePage extends CreateRecord
 {
@@ -29,9 +28,6 @@ class CreatePage extends CreateRecord
         if ($isHomepage) {
             $settingsManager = app(SettingsManager::class);
             $settingsManager->set('cms.homepage_page_id', $this->record->id);
-
-            // Clear relevant caches
-            Cache::forget('settings:cms');
 
             Notification::make()
                 ->title('Strona główna ustawiona')

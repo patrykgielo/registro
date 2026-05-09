@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Blade;
@@ -25,6 +26,8 @@ use Illuminate\Support\Facades\Blade;
  */
 class SmsTemplate extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * The table associated with the model.
      *
@@ -38,6 +41,7 @@ class SmsTemplate extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'organization_id',
         'key',
         'language',
         'message_body',

@@ -2,24 +2,27 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Support\BuilderBlocks;
 use App\Models\Service;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use UnitEnum;
 
-class ServiceResource extends Resource
+class ServiceResource extends BaseResource
 {
     protected static ?string $model = Service::class;
+
+    protected static ?string $module = 'services';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-wrench-screwdriver';
 
@@ -39,6 +42,17 @@ class ServiceResource extends Resource
                 // Sekcja 1: Podstawowe Informacje
                 Section::make('Podstawowe informacje')
                     ->schema([
+                        Forms\Components\Select::make('service_type')
+                            ->label('Typ usługi')
+                            ->options(ServiceType::class)
+                            ->required()
+                            ->default(ServiceType::TimeSlot)
+                            ->live()
+                            ->disabled(fn (?Model $record): bool => $record !== null)
+                            ->dehydrated()
+                            ->helperText('Typ usługi nie może być zmieniony po utworzeniu')
+                            ->columnSpanFull(),
+
                         Forms\Components\TextInput::make('name')
                             ->label('Nazwa usługi')
                             ->required()
@@ -70,6 +84,7 @@ class ServiceResource extends Resource
                             ->helperText('Wyświetlany na liście usług (max 500 znaków)')
                             ->columnSpanFull(),
 
+                        // Duration fields (time_slot only)
                         Grid::make(3)
                             ->schema([
                                 Forms\Components\TextInput::make('duration_days')
@@ -120,15 +135,14 @@ class ServiceResource extends Resource
                                     })
                                     ->dehydrated(false),
                             ])
-                            ->columnSpanFull(),
+                            ->columnSpanFull()
+                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
 
                         Forms\Components\Hidden::make('duration_minutes')
-                            ->default(60)
-                            ->required(),
+                            ->default(60),
 
                         Forms\Components\TextInput::make('price')
                             ->label('Cena bazowa')
-                            ->required()
                             ->numeric()
                             ->default(0.00)
                             ->prefix('PLN')
@@ -138,7 +152,8 @@ class ServiceResource extends Resource
                             ->label('Cena "od" (opcjonalnie)')
                             ->numeric()
                             ->prefix('PLN')
-                            ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)'),
+                            ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)')
+                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
 
                         Forms\Components\Toggle::make('is_active')
                             ->label('Aktywna')
@@ -153,6 +168,132 @@ class ServiceResource extends Resource
                             ->helperText('Niższe wartości = wyżej na liście'),
                     ])
                     ->columns(2),
+
+                // Sekcja: Cennik wypożyczenia (item_rental only)
+                Section::make('Cennik wypożyczenia')
+                    ->schema([
+                        Forms\Components\TextInput::make('price_per_day')
+                            ->label('Cena za dzień')
+                            ->required()
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\TextInput::make('price_per_hour')
+                            ->label('Cena za godzinę')
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\TextInput::make('price_per_week')
+                            ->label('Cena za tydzień')
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\TextInput::make('price_per_day_long')
+                            ->label('Cena po przekroczeniu progu')
+                            ->numeric()
+                            ->prefix('PLN')
+                            ->requiredWith('price_threshold_days')
+                            ->lte('price_per_day')
+                            ->helperText('Niższa stawka dzienna po przekroczeniu progu dni (wymagane razem z progiem)'),
+
+                        Forms\Components\TextInput::make('price_threshold_days')
+                            ->label('Próg dni')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(365)
+                            ->suffix('dni')
+                            ->requiredWith('price_per_day_long')
+                            ->helperText('Po ilu dniach obowiązuje niższa stawka (wymagane razem z ceną)'),
+
+                        Forms\Components\TextInput::make('deposit_amount')
+                            ->label('Kaucja')
+                            ->numeric()
+                            ->prefix('PLN'),
+
+                        Forms\Components\Toggle::make('price_on_request')
+                            ->label('Cena do potwierdzenia')
+                            ->helperText('Ukrywa cenę i wyświetla przycisk "Zapytaj o cenę" zamiast koszyka')
+                            ->default(false)
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(3)
+                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
+
+                // Sekcja: Magazyn (item_rental only)
+                Section::make('Magazyn i identyfikacja')
+                    ->schema([
+                        Forms\Components\TextInput::make('quantity_total')
+                            ->label('Ilość w magazynie')
+                            ->required()
+                            ->numeric()
+                            ->minValue(1)
+                            ->default(1),
+
+                        Forms\Components\Select::make('rental_category_id')
+                            ->label('Kategoria')
+                            ->relationship('category', 'name')
+                            ->searchable()
+                            ->preload(),
+
+                        Forms\Components\TextInput::make('brand')
+                            ->label('Marka / producent')
+                            ->maxLength(255),
+                    ])
+                    ->columns(3)
+                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
+
+                // Sekcja: Specyfikacja techniczna (item_rental only)
+                Section::make('Specyfikacja techniczna')
+                    ->schema([
+                        Forms\Components\Repeater::make('metadata.specs')
+                            ->label('Parametry techniczne')
+                            ->schema([
+                                Forms\Components\TextInput::make('label')
+                                    ->label('Parametr')
+                                    ->placeholder('np. Moc')
+                                    ->maxLength(100),
+                                Forms\Components\TextInput::make('value')
+                                    ->label('Wartość')
+                                    ->placeholder('np. 800')
+                                    ->maxLength(100),
+                                Forms\Components\TextInput::make('unit')
+                                    ->label('Jednostka')
+                                    ->placeholder('np. W')
+                                    ->maxLength(20),
+                            ])
+                            ->columns(3)
+                            ->reorderable()
+                            ->collapsible()
+                            ->itemLabel(fn (array $state): ?string => isset($state['label']) ? "{$state['label']}: {$state['value']} {$state['unit']}" : null)
+                            ->addActionLabel('Dodaj parametr')
+                            ->columnSpanFull()
+                            ->defaultItems(0)
+                            ->helperText('Wyświetlane na stronie produktowej jako tabela specyfikacji'),
+                    ])
+                    ->headerActions([
+                        Actions\Action::make('loadSpecTemplate')
+                            ->label('Wstaw z szablonu branżowego')
+                            ->icon('heroicon-o-clipboard-document-list')
+                            ->color('gray')
+                            ->action(function (callable $set) {
+                                $tenant = \App\Support\TenantFeature::currentTenant();
+                                $industry = $tenant?->industry;
+                                if (! $industry) {
+                                    return;
+                                }
+                                $template = $industry->defaultSpecDefinitions();
+                                $specs = array_map(fn ($def) => [
+                                    'label' => $def['label'],
+                                    'value' => '',
+                                    'unit' => $def['unit'],
+                                ], $template);
+                                $set('metadata.specs', $specs);
+                            })
+                            ->requiresConfirmation()
+                            ->modalHeading('Wstawić szablon specyfikacji?')
+                            ->modalDescription('Obecne parametry zostaną zastąpione szablonem branżowym. Uzupełnij wartości po wstawieniu.'),
+                    ])
+                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
 
                 // Sekcja 2: Zdjęcie wyróżniające
                 Section::make('Zdjęcie wyróżniające')
@@ -342,6 +483,15 @@ class ServiceResource extends Resource
                     ->sortable()
                     ->weight('bold'),
 
+                Tables\Columns\TextColumn::make('service_type')
+                    ->label('Typ')
+                    ->badge()
+                    ->formatStateUsing(fn (ServiceType $state): string => $state->label())
+                    ->color(fn (ServiceType $state): string => match ($state) {
+                        ServiceType::TimeSlot => 'info',
+                        ServiceType::ItemRental => 'warning',
+                    }),
+
                 Tables\Columns\TextColumn::make('slug')
                     ->label('Slug')
                     ->searchable()
@@ -353,7 +503,9 @@ class ServiceResource extends Resource
                     ->label('Czas trwania')
                     ->sortable(query: function ($query, $direction) {
                         return $query->orderBy('duration_minutes', $direction);
-                    }),
+                    })
+                    ->formatStateUsing(fn ($state, Service $record) => $record->service_type === ServiceType::ItemRental ? '—' : $state)
+                    ->placeholder('—'),
 
                 Tables\Columns\TextColumn::make('price')
                     ->label('Cena')
@@ -387,6 +539,10 @@ class ServiceResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('service_type')
+                    ->label('Typ')
+                    ->options(ServiceType::class),
+
                 Tables\Filters\Filter::make('published')
                     ->label('Opublikowane')
                     ->query(fn ($query) => $query->published()),
@@ -405,7 +561,9 @@ class ServiceResource extends Resource
                     ->icon('heroicon-o-eye')
                     ->url(fn (Service $record) => route('service.show', $record))
                     ->openUrlInNewTab()
-                    ->visible(fn (Service $record) => $record->published_at && $record->published_at->isPast()),
+                    ->visible(fn (Service $record) => $record->service_type === ServiceType::ItemRental
+                        ? $record->is_active
+                        : ($record->published_at && $record->published_at->isPast())),
                 Actions\EditAction::make()
                     ->label('Edytuj'),
                 Actions\DeleteAction::make()
@@ -436,44 +594,15 @@ class ServiceResource extends Resource
     }
 
     /**
-     * Get available Heroicon solid icons for selection.
-     *
-     * Dynamically scans blade-heroicons package for s-* (solid) icons.
-     * Auto-updates when package is updated.
-     *
-     * @return array<string, string> Icon name => Human-readable label
+     * Check if service_type is ItemRental (handles both enum and string from $get()).
      */
-    protected static function getHeroiconOptions(): array
+    private static function isRentalType(mixed $value): bool
     {
-        $iconPath = base_path('vendor/blade-ui-kit/blade-heroicons/resources/svg');
-        $files = glob($iconPath.'/s-*.svg');
-
-        if (empty($files)) {
-            // Fallback to common icons if scan fails
-            return [
-                'sparkles' => 'Sparkles',
-                'rectangle-stack' => 'Rectangle Stack',
-                'paint-brush' => 'Paint Brush',
-                'sun' => 'Sun',
-                'squares-plus' => 'Squares Plus',
-                'swatch' => 'Swatch',
-                'beaker' => 'Beaker',
-                'shield-check' => 'Shield Check',
-            ];
+        if ($value instanceof ServiceType) {
+            return $value === ServiceType::ItemRental;
         }
 
-        $icons = [];
-        foreach ($files as $file) {
-            $name = str_replace('.svg', '', basename($file));
-            $name = str_replace('s-', '', $name);
-
-            // Format: "arrow-down" => "Arrow Down"
-            $icons[$name] = ucwords(str_replace('-', ' ', $name));
-        }
-
-        asort($icons);
-
-        return $icons;
+        return $value === ServiceType::ItemRental->value;
     }
 
     /**

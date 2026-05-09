@@ -30,6 +30,51 @@ docker compose exec app composer show filament/filament | grep versions
 
 ## Critical Namespace Changes (v4 Breaking)
 
+### Resource/Page Method Signatures (BREAKING!)
+
+**Filament v4 zmienił sygnatury metod — `Form` → `Schema`!**
+
+```php
+// ❌ WRONG — v3 signature, NIE DZIAŁA w v4!
+use Filament\Forms\Form;
+public static function form(Form $form): Form { ... }
+
+// ✅ CORRECT — v4 signature
+use Filament\Schemas\Schema;
+public static function form(Schema $schema): Schema { ... }
+```
+
+**Dotyczy też property types:**
+```php
+// ❌ WRONG
+protected static ?string $navigationIcon = 'heroicon-o-...';
+
+// ✅ CORRECT — v4 wymaga union type
+protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-...';
+
+// ❌ WRONG
+protected static ?string $navigationGroup = 'content';
+
+// ✅ CORRECT
+protected static string|\UnitEnum|null $navigationGroup = 'content';
+```
+
+**Table/Resource Actions — przeniesione do `Filament\Actions`!**
+```php
+// ❌ WRONG — v3 namespace, NIE ISTNIEJE w v4!
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+Tables\Actions\EditAction::make()
+
+// ✅ CORRECT — v4: wszystkie Actions w jednym namespace
+use Filament\Actions;
+Actions\EditAction::make()
+Actions\DeleteBulkAction::make()
+Actions\BulkActionGroup::make([...])
+```
+
+**Zawsze weryfikuj wzorce z istniejących Resources w projekcie** (np. `ServiceResource.php`).
+
 ### DECISION RULE: Container vs Field
 
 **Ask yourself:** Is it a CONTAINER (holds other components) or a DATA ENTRY FIELD (user types/selects)?
@@ -271,6 +316,14 @@ Actions\Action::make('details')
 - `->schema()` zamiast `->infolist()` na Action
 
 ---
+
+## Module System Integration (Phase 6)
+
+Resources dziedziczą automatyczny `shouldRegisterNavigation()` z `BaseResource` który sprawdza `Organization.hasModule()`.
+
+**Pattern:** `protected static ?string $module = 'services';` na Resource class.
+
+Szczegóły: → `filament-resources.md` sekcja "Module Visibility Gating"
 
 ## Documentation References
 

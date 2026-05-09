@@ -8,6 +8,8 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -51,6 +53,10 @@ class User extends Authenticatable implements FilamentUser, HasName
         'billing_city',
         'nip',
         'company_name',
+        'customer_type',
+        'pesel',
+        'regon',
+        'krs',
         'sms_consent_given_at',
         'sms_opted_out_at',
         'email_marketing_consent_at',
@@ -93,6 +99,11 @@ class User extends Authenticatable implements FilamentUser, HasName
         'billing_city',
         'nip',
         'company_name',
+        // Rental / legal profile fields
+        'customer_type',
+        'pesel',
+        'regon',
+        'krs',
         // Profile feature fields
         'max_vehicles',
         'max_addresses',
@@ -275,36 +286,67 @@ class User extends Authenticatable implements FilamentUser, HasName
         // AFTER authentication. Do NOT check maintenance here - it breaks login flow
         // because canAccessPanel() is called during attemptWhen() callback.
 
-        // Layer 1: Role-based access control
-        if (! $this->hasAnyRole(['super-admin', 'admin', 'staff'])) {
-            \Log::warning('Unauthorized panel access attempt', [
-                'user' => $this->email,
-                'roles' => $this->roles->pluck('name'),
-                'ip' => request()->ip(),
-            ]);
-
-            return false;
+        // Platform panel: super-admin only
+        if ($panel->getId() === 'platform') {
+            return $this->hasRole('super-admin');
         }
 
-        // Layer 2: Session integrity check (prevents session fixation attacks)
-        $sessionUserId = auth()->id();
-        if ($sessionUserId && $sessionUserId !== $this->id) {
-            \Log::critical('Session fixation attack detected', [
-                'session_user_id' => $sessionUserId,
-                'current_user_id' => $this->id,
-                'user' => $this->email,
-                'ip' => request()->ip(),
-            ]);
+        // Admin (tenant) panel: any staff/admin role + must belong to at least one organization
+        if ($panel->getId() === 'admin') {
+            if (! $this->hasAnyRole(['super-admin', 'admin', 'staff'])) {
+                \Log::warning('Unauthorized panel access attempt', [
+                    'user' => $this->email,
+                    'roles' => $this->roles->pluck('name'),
+                    'ip' => request()->ip(),
+                ]);
 
-            // Force logout on session mismatch
-            auth()->logout();
-            request()->session()->invalidate();
-            request()->session()->regenerateToken();
+                return false;
+            }
 
-            return false;
+            // Layer 2: Session integrity check (prevents session fixation attacks)
+            $sessionUserId = auth()->id();
+            if ($sessionUserId && $sessionUserId !== $this->id) {
+                \Log::critical('Session fixation attack detected', [
+                    'session_user_id' => $sessionUserId,
+                    'current_user_id' => $this->id,
+                    'user' => $this->email,
+                    'ip' => request()->ip(),
+                ]);
+
+                auth()->logout();
+                request()->session()->invalidate();
+                request()->session()->regenerateToken();
+
+                return false;
+            }
+
+            return true;
         }
 
-        return true;
+        return false;
+    }
+
+    // =========================================================================
+    // ORGANIZATIONS
+    // =========================================================================
+
+    /**
+     * Get organizations this user belongs to.
+     */
+    public function organizations(): BelongsToMany
+    {
+        return $this->belongsToMany(Organization::class, 'organization_user')
+            ->withPivot('role')
+            ->withTimestamps();
+    }
+
+    /**
+     * Check if user belongs to the given organization/tenant.
+     * Used by ResolveTenant middleware and LoginController for access authorization.
+     */
+    public function canAccessTenant(Model $tenant): bool
+    {
+        return $this->organizations()->whereKey($tenant->getKey())->exists();
     }
 
     // Helper methods for role checking
@@ -332,6 +374,19 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function customerAppointments()
     {
         return $this->hasMany(Appointment::class, 'customer_id');
+    }
+
+    public function rentalsAsCustomer()
+    {
+        return $this->hasMany(Rental::class, 'customer_id');
+    }
+
+    /**
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
     }
 
     /**

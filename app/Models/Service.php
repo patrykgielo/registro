@@ -2,15 +2,24 @@
 
 namespace App\Models;
 
+use App\Enums\RentalStatus;
+use App\Enums\ServiceType;
+use App\Models\Concerns\HasRentalBehavior;
+use App\Models\Concerns\HasTimeSlotBehavior;
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class Service extends Model
 {
-    use HasFactory;
+    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior;
 
     protected $fillable = [
+        'organization_id',
         // Existing fields
         'name',
         'description',
@@ -39,6 +48,19 @@ class Service extends Model
         'is_popular',
         'booking_count_week',
         'features',
+        'metadata',
+        // Rental fields
+        'service_type',
+        'rental_category_id',
+        'quantity_total',
+        'price_per_day',
+        'price_per_hour',
+        'price_per_week',
+        'price_per_day_long',
+        'price_threshold_days',
+        'deposit_amount',
+        'brand',
+        'price_on_request',
     ];
 
     protected $casts = [
@@ -55,16 +77,33 @@ class Service extends Model
         'is_popular' => 'boolean',
         'booking_count_week' => 'integer',
         'features' => 'array',
+        'metadata' => 'array',
+        // Rental fields
+        'service_type' => ServiceType::class,
+        'quantity_total' => 'integer',
+        'price_per_day' => 'decimal:2',
+        'price_per_hour' => 'decimal:2',
+        'price_per_week' => 'decimal:2',
+        'price_per_day_long' => 'decimal:2',
+        'price_threshold_days' => 'integer',
+        'deposit_amount' => 'decimal:2',
+        'price_on_request' => 'boolean',
     ];
 
     // Relationships
-    public function appointments()
+
+    /**
+     * @return HasMany<Appointment, $this>
+     */
+    public function appointments(): HasMany
     {
         return $this->hasMany(Appointment::class);
     }
 
     /**
      * Get the staff members that can perform this service.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
      */
     public function staff()
     {
@@ -73,9 +112,7 @@ class Service extends Model
     }
 
     /**
-     * Get the staff members that can perform this service.
-     *
-     * This is an alias for staff() to support Filament's AttachAction.
+     * Alias for staff() to support Filament's AttachAction.
      * Filament expects inverse relationships to use the plural model name (users),
      * but our business logic uses staff() for clarity.
      *
@@ -86,7 +123,24 @@ class Service extends Model
         return $this->staff();
     }
 
+    /**
+     * @return BelongsTo<RentalCategory, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(RentalCategory::class, 'rental_category_id');
+    }
+
+    /**
+     * @return HasMany<Rental, $this>
+     */
+    public function rentals(): HasMany
+    {
+        return $this->hasMany(Rental::class);
+    }
+
     // Scopes
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -115,6 +169,52 @@ class Service extends Model
     }
 
     /**
+     * Scope: Services that are rentable items (service_type = item_rental)
+     */
+    public function scopeRentable($query)
+    {
+        return $query->where('service_type', ServiceType::ItemRental->value);
+    }
+
+    /**
+     * Scope: Services that are bookable by time slot (service_type = time_slot)
+     */
+    public function scopeBookable($query)
+    {
+        return $query->where('service_type', ServiceType::TimeSlot->value);
+    }
+
+    /**
+     * Scope: Rental items available between given dates with given quantity.
+     * Automatically filters to item_rental type. Uses correlated subquery
+     * compatible with MySQL 8 strict mode (ONLY_FULL_GROUP_BY).
+     */
+    public function scopeAvailableBetween($query, Carbon $startDate, Carbon $endDate, int $quantity = 1)
+    {
+        return $query->where('service_type', ServiceType::ItemRental->value)
+            ->where('quantity_total', '>=', $quantity)
+            ->whereRaw(
+                'services.quantity_total - COALESCE((
+                    SELECT SUM(r.quantity) FROM rentals r
+                    WHERE r.service_id = services.id
+                    AND r.status IN (?, ?, ?)
+                    AND r.start_date <= ?
+                    AND r.end_date >= ?
+                ), 0) >= ?',
+                [
+                    RentalStatus::Pending->value,
+                    RentalStatus::Confirmed->value,
+                    RentalStatus::Active->value,
+                    $endDate->toDateString(),
+                    $startDate->toDateString(),
+                    $quantity,
+                ]
+            );
+    }
+
+    // Boot
+
+    /**
      * Boot method for model events
      */
     protected static function booted(): void
@@ -125,7 +225,26 @@ class Service extends Model
                 $service->slug = Str::slug($service->name);
             }
         });
+
+        static::updating(function (Service $service) {
+            // service_type is immutable after creation
+            if ($service->isDirty('service_type')) {
+                $service->service_type = $service->getOriginal('service_type');
+            }
+
+            // Cross-tenant guard: rental_category must belong to same org
+            if ($service->isDirty('rental_category_id') && $service->rental_category_id && $service->organization_id) {
+                $category = RentalCategory::withoutGlobalScope('organization')
+                    ->find($service->rental_category_id);
+
+                if ($category && $category->organization_id !== $service->organization_id) {
+                    throw new \InvalidArgumentException('Rental category does not belong to this organization.');
+                }
+            }
+        });
     }
+
+    // Route model binding
 
     /**
      * Get the route key name for Laravel route model binding
@@ -135,6 +254,8 @@ class Service extends Model
         return 'slug';
     }
 
+    // Methods
+
     /**
      * Check if the service is published (published_at in the past)
      */
@@ -143,10 +264,51 @@ class Service extends Model
         return $this->published_at && $this->published_at->isPast();
     }
 
+    /**
+     * Calculate how many units are available in a given date range.
+     * Only valid for item_rental services. Throws for time_slot.
+     */
+    public function availableQuantity(Carbon $startDate, Carbon $endDate): int
+    {
+        if ($this->service_type !== ServiceType::ItemRental) {
+            throw new \LogicException('availableQuantity() can only be called on item_rental services.');
+        }
+
+        $reservedByRentals = Rental::where('service_id', $this->id)
+            ->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
+            ->where('start_date', '<=', $endDate)
+            ->where('end_date', '>=', $startDate)
+            ->sum('quantity');
+
+        // Also deduct order items that block availability (paid/confirmed/in_progress
+        // orders, plus pending_payment orders with an active hold TTL).
+        // Full migration to RentalAvailabilityService happens in Sprint 2 (step 2.1).
+        $reservedByOrders = OrderItem::where('service_id', $this->id)
+            ->overlappingDates($startDate, $endDate)
+            ->blockingAvailability()
+            ->sum('quantity');
+
+        return max(0, ($this->quantity_total ?? 0) - $reservedByRentals - $reservedByOrders);
+    }
+
+    /**
+     * Check if a given quantity is available in a date range.
+     * Only valid for item_rental services. Throws for time_slot.
+     */
+    public function isAvailable(Carbon $startDate, Carbon $endDate, int $quantity = 1): bool
+    {
+        return $this->availableQuantity($startDate, $endDate) >= $quantity;
+    }
+
     // Accessors
-    public function getFormattedDurationAttribute(): string
+
+    public function getFormattedDurationAttribute(): ?string
     {
         $totalMinutes = $this->duration_minutes;
+
+        if ($totalMinutes === null) {
+            return null;
+        }
 
         $days = floor($totalMinutes / 1440);
         $remainingAfterDays = $totalMinutes % 1440;
@@ -173,8 +335,30 @@ class Service extends Model
     /**
      * Alias for formatted_duration (used in Blade templates)
      */
-    public function getDurationDisplayAttribute(): string
+    public function getDurationDisplayAttribute(): ?string
     {
         return $this->formatted_duration;
+    }
+
+    /**
+     * Formatted rental price summary for display (item_rental services).
+     */
+    public function getFormattedRentalPriceAttribute(): ?string
+    {
+        if ($this->price_per_day === null) {
+            return null;
+        }
+
+        $price = number_format((float) $this->price_per_day, 2, ',', ' ').' zł/dzień';
+
+        if ($this->price_per_hour) {
+            $price .= ' | '.number_format((float) $this->price_per_hour, 2, ',', ' ').' zł/godz';
+        }
+
+        if ($this->price_per_week) {
+            $price .= ' | '.number_format((float) $this->price_per_week, 2, ',', ' ').' zł/tydz';
+        }
+
+        return $price;
     }
 }
