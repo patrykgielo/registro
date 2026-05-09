@@ -382,6 +382,14 @@ class User extends Authenticatable implements FilamentUser, HasName
     }
 
     /**
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
      * Get the staff schedules (base weekly patterns) for this user.
      */
     public function staffSchedules()

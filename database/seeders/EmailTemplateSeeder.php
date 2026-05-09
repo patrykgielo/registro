@@ -369,6 +369,28 @@ class EmailTemplateSeeder extends Seeder
                 'variables' => ['user_name', 'app_name', 'user_email', 'setup_url', 'expires_at'],
                 'active' => true,
             ],
+
+            // Service Area Available - Waitlist notification
+            [
+                'key' => TemplateKey::SERVICE_AREA_AVAILABLE->value,
+                'language' => 'pl',
+                'subject' => 'Dobra wiadomość! Obsługujemy już Twój obszar - {{app_name}}',
+                'html_body' => '<h1>Witaj {{name}}!</h1><p>Mamy dla Ciebie dobrą wiadomość — zaczęliśmy obsługiwać obszar, który wskazałeś na liście oczekujących.</p><p><strong>Twój adres:</strong> {{requested_address}}</p><p>Zapraszamy do skorzystania z naszych usług!</p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Witaj {{name}}! Mamy dla Ciebie dobrą wiadomość — zaczęliśmy obsługiwać obszar, który wskazałeś na liście oczekujących. Twój adres: {{requested_address}}. Zapraszamy do skorzystania z naszych usług! Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['name', 'requested_address', 'app_name'],
+                'active' => true,
+            ],
+            [
+                'key' => TemplateKey::SERVICE_AREA_AVAILABLE->value,
+                'language' => 'en',
+                'subject' => 'Good news! We now serve your area - {{app_name}}',
+                'html_body' => '<h1>Hello {{name}}!</h1><p>We have great news for you — we have started serving the area you registered on our waitlist.</p><p><strong>Your address:</strong> {{requested_address}}</p><p>We invite you to use our services!</p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Hello {{name}}! We have great news for you — we have started serving the area you registered on our waitlist. Your address: {{requested_address}}. We invite you to use our services! Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['name', 'requested_address', 'app_name'],
+                'active' => true,
+            ],
         ];
 
         foreach ($templates as $template) {
@@ -381,6 +403,6 @@ class EmailTemplateSeeder extends Seeder
             );
         }
 
-        $this->command->info('✓ Email templates seeded successfully (30 templates)');
+        $this->command->info('✓ Email templates seeded successfully (32 templates)');
     }
 }

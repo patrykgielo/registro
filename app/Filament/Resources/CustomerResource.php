@@ -46,6 +46,9 @@ class CustomerResource extends BaseResource
                 )->orWhereHas(
                     'rentalsAsCustomer',
                     fn ($q3) => $q3->where('organization_id', $tenant->id)
+                )->orWhereHas(
+                    'orders',
+                    fn ($q3) => $q3->where('organization_id', $tenant->id)
                 );
             }));
     }

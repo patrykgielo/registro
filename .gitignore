@@ -108,3 +108,4 @@ ssh_config
 # Local staging credentials (never commit!)
 .staging-credentials.local
 *.credentials.local
+.claude/worktrees/
