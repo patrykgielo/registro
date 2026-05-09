@@ -70,7 +70,7 @@
                             <x-ui.badge variant="default">{{ $service->category->name }}</x-ui.badge>
                         @endif
                         @if($service->quantity_total)
-                            <x-ui.badge variant="info" dot>{{ $service->quantity_total }} szt. w magazynie</x-ui.badge>
+                            <x-ui.badge variant="brand" dot>{{ $service->quantity_total }} szt. w magazynie</x-ui.badge>
                         @endif
                     </div>
 
@@ -905,12 +905,6 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
         get canBook() {
             return this.selectedStart && this.selectedEnd && this.rangeAvailableQty > 0 && !this.rangeChecking;
         },
-        get bookingUrl() {
-            const base = '{{ route("rental.step1", $service) }}';
-            if (!this.selectedStart || !this.selectedEnd) return base;
-            return base + '?start_date=' + this.selectedStart + '&end_date=' + this.selectedEnd;
-        },
-
         // ── Date selection ───────────────────────────────────────
         selectDate(dateStr) {
             if (!this.selectedStart || (this.selectedStart && this.selectedEnd)) {

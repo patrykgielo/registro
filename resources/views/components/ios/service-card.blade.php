@@ -59,11 +59,11 @@
         ? 'service-card-dark shadow-dark-glow hover:shadow-dark-glow-hover hover:border-[#0AB1EA]/30'
         : 'bg-white shadow-md hover:shadow-2xl border border-gray-100 hover:border-primary-300';
 
-    $titleClasses = $isDark ? 'text-white group-hover:text-[#0AB1EA]' : 'text-gray-900 group-hover:text-orange-600';
+    $titleClasses = $isDark ? 'text-white group-hover:text-[#0AB1EA]' : 'text-gray-900 group-hover:text-brand';
     $descriptionClasses = $isDark ? 'text-white/70' : 'text-gray-600';
     $priceLabelClasses = $isDark ? 'text-white/70' : 'text-gray-600';
     $priceValueClasses = $isDark ? 'text-white' : 'text-gray-900';
-    $ctaClasses = $isDark ? 'btn-cta-dark' : 'bg-warning text-white hover:bg-warning/90';
+    $ctaClasses = $isDark ? 'btn-cta-dark' : 'bg-brand text-white hover:bg-brand-hover';
     $durationClasses = $isDark ? 'badge-duration-dark' : 'bg-gray-50 text-gray-600';
     $durationIconClasses = $isDark ? 'text-white/60' : 'text-gray-500';
     $featuresListClasses = $isDark ? 'features-list-dark' : 'bg-gray-50';

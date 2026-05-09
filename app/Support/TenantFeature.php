@@ -43,6 +43,16 @@ class TenantFeature
         } catch (\Throwable) {
         }
 
+        // 3. Session fallback — for Livewire update requests that bypass ResolveTenant.
+        //    ResolveTenant stores tenant_id in session on every full page request.
+        try {
+            $tenantId = session('tenant_id');
+            if ($tenantId) {
+                return Organization::find($tenantId);
+            }
+        } catch (\Throwable) {
+        }
+
         return null;
     }
 }

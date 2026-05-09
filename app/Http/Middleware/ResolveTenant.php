@@ -62,6 +62,12 @@ class ResolveTenant
 
         $request->attributes->set('tenant', $tenant);
 
+        // Store tenant ID in session so Livewire update requests (which skip this
+        // middleware) can still resolve the tenant via TenantFeature::currentTenant().
+        if ($request->hasSession()) {
+            $request->session()->put('tenant_id', $tenant->id);
+        }
+
         // Authorization: authenticated admin/staff must belong to this tenant.
         // Login route is excluded — user must be able to authenticate first.
         if (
