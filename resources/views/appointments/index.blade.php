@@ -5,9 +5,9 @@
     <h1 class="text-3xl font-bold mb-8">Moje wizyty</h1>
 
     @if($appointments->isEmpty())
-        <div class="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg">
+        <div class="bg-surface-raised border-l-4 border-brand p-6 rounded-lg">
             <p class="text-lg mb-4">Nie masz jeszcze żadnych wizyt.</p>
-            <a href="{{ route('home') }}" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 inline-block">
+            <a href="{{ route('home') }}" class="bg-brand hover:bg-brand-hover text-white px-6 py-2 rounded-lg inline-block transition-colors duration-200">
                 Przeglądaj dostępne usługi
             </a>
         </div>
