@@ -56,6 +56,7 @@
         $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation();
         $contactPhone = $contact['phone'] ?? null;
         $bookingEnabled = app(\App\Support\Settings\SettingsManager::class)->isBookingEnabled();
+        $rentalEnabled = app(\App\Support\Settings\SettingsManager::class)->isRentalEnabled();
         $registrationEnabled = app(\App\Support\Settings\SettingsManager::class)->isRegistrationEnabled();
     @endphp
 
@@ -63,6 +64,7 @@
     <x-nav.header
         :contact-phone="$contactPhone"
         :booking-enabled="$bookingEnabled"
+        :rental-enabled="$rentalEnabled"
         :registration-enabled="$registrationEnabled"
     />
 

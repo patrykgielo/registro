@@ -24,6 +24,7 @@ use App\Http\Controllers\UserVehicleController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\CheckBookingEnabled;
 use App\Http\Middleware\CheckRegistrationEnabled;
+use App\Http\Middleware\CheckRentalEnabled;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -121,7 +122,7 @@ Route::middleware([ResolveTenant::class, 'throttle:60,1'])->name('rental.')->gro
 });
 
 // Cart & Checkout routes (Sprint 2+ — new e-commerce flow, requires auth + tenant)
-Route::middleware([ResolveTenant::class, 'auth'])->group(function () {
+Route::middleware([ResolveTenant::class, 'auth', CheckRentalEnabled::class])->group(function () {
     Route::get('/koszyk', [CartController::class, 'show'])->name('cart.show');
     Route::post('/koszyk/dodaj', [CartController::class, 'add'])->name('cart.add');
     Route::delete('/koszyk/usun/{item}', [CartController::class, 'remove'])->name('cart.remove');
