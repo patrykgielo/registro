@@ -249,4 +249,120 @@ class CustomerOrdersTest extends TestCase
 
         $response->assertNotFound();
     }
+
+    // -------------------------------------------------------------------------
+    // orders.cancel — happy path
+    // -------------------------------------------------------------------------
+
+    public function test_customer_can_cancel_pending_payment_order(): void
+    {
+        $user = User::factory()->create();
+
+        $order = Order::factory()->pendingPayment()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        // Powinno przekierować na stronę zamówienia
+        $response->assertRedirect(route('orders.show', $order));
+
+        $order->refresh();
+        $this->assertSame('cancelled', $order->status);
+    }
+
+    public function test_cancel_sets_cancelled_at_timestamp(): void
+    {
+        $user = User::factory()->create();
+
+        $order = Order::factory()->pendingPayment()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        $order->refresh();
+        $this->assertNotNull($order->cancelled_at);
+    }
+
+    // -------------------------------------------------------------------------
+    // orders.cancel — forbidden statuses
+    // -------------------------------------------------------------------------
+
+    public function test_customer_cannot_cancel_paid_order(): void
+    {
+        $user = User::factory()->create();
+
+        $order = Order::factory()->paid()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        $response->assertForbidden();
+    }
+
+    public function test_customer_cannot_cancel_confirmed_order(): void
+    {
+        $user = User::factory()->create();
+
+        $order = Order::factory()->confirmed()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        $response->assertForbidden();
+    }
+
+    // -------------------------------------------------------------------------
+    // orders.cancel — authorization
+    // -------------------------------------------------------------------------
+
+    public function test_customer_cannot_cancel_another_users_order(): void
+    {
+        $userA = User::factory()->create();
+        $userB = User::factory()->create();
+
+        // Zamówienie należy do użytkownika A
+        $order = Order::factory()->pendingPayment()->create([
+            'user_id' => $userA->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        // Użytkownik B próbuje anulować zamówienie A
+        $response = $this->actingAs($userB)
+            ->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        $response->assertForbidden();
+    }
+
+    public function test_guest_cannot_cancel_order(): void
+    {
+        $user = User::factory()->create();
+
+        $order = Order::factory()->pendingPayment()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        // Brak autentykacji — powinno przekierować na login
+        $response = $this->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        $response->assertRedirect(route('login'));
+    }
 }

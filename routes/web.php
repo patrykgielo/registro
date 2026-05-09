@@ -133,6 +133,7 @@ Route::middleware([ResolveTenant::class, 'auth'])->group(function () {
     Route::get('/koszyk/powrot', [CheckoutController::class, 'return'])->name('checkout.return');
     Route::get('/moje-zamowienia', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/moje-zamowienia/{order}', [OrderController::class, 'show'])->name('orders.show');
+    Route::post('/moje-zamowienia/{order}/anuluj', [OrderController::class, 'cancel'])->name('orders.cancel');
 });
 
 // Przelewy24 webhook (no auth, no CSRF — excluded in bootstrap/app.php)

@@ -289,6 +289,46 @@
                                         </dd>
                                     </div>
                                 @endif
+                                @if(($order->company_regon ?? null))
+                                    <div>
+                                        <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
+                                            REGON
+                                        </dt>
+                                        <dd class="text-text-primary tabular-nums">
+                                            {{ $order->company_regon }}
+                                        </dd>
+                                    </div>
+                                @endif
+                                @if(($order->company_krs ?? null))
+                                    <div>
+                                        <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
+                                            KRS
+                                        </dt>
+                                        <dd class="text-text-primary tabular-nums">
+                                            {{ $order->company_krs }}
+                                        </dd>
+                                    </div>
+                                @endif
+                                @if($order->invoice_street && $order->invoice_street_number)
+                                    <div class="sm:col-span-2">
+                                        <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
+                                            Ulica
+                                        </dt>
+                                        <dd class="text-text-primary">
+                                            {{ $order->invoice_street }} {{ $order->invoice_street_number }}
+                                        </dd>
+                                    </div>
+                                @endif
+                                @if($order->invoice_postal_code && $order->invoice_city)
+                                    <div class="sm:col-span-2">
+                                        <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
+                                            Miejscowość
+                                        </dt>
+                                        <dd class="text-text-primary">
+                                            {{ $order->invoice_postal_code }} {{ $order->invoice_city }}
+                                        </dd>
+                                    </div>
+                                @endif
                             </dl>
                         </x-ui.card>
                     </section>
@@ -350,6 +390,66 @@
                             </div>
                         @endif
                     </div>
+
+                    {{-- Deposit (kaucja) — shown only when deposit_amount > 0 --}}
+                    @php
+                        $depositAmount = $order->deposit_amount ?? null;
+                        $depositStatus = $order->deposit_status ?? null;
+                        $depositBadgeConfig = [
+                            'pending'        => ['bg-warning/10',      'text-warning',    'ring-warning/20',  'Oczekuje'],
+                            'collected'      => ['bg-info/10',         'text-info',       'ring-info/20',     'Pobrana'],
+                            'returned'       => ['bg-success/10',      'text-success',    'ring-success/20',  'Zwrócona'],
+                            'partial_return' => ['bg-info/10',         'text-info',       'ring-info/20',     'Częściowy zwrot'],
+                            'forfeited'      => ['bg-error/10',        'text-error',      'ring-error/20',    'Przepadła'],
+                        ];
+                        [$depositBg, $depositText, $depositRing, $depositLabel] =
+                            $depositBadgeConfig[$depositStatus ?? ''] ?? ['bg-surface-sunken', 'text-text-muted', 'ring-border', $depositStatus];
+                    @endphp
+                    @if($depositAmount > 0)
+                        <div class="border-t border-border mt-5 pt-4">
+                            <h3 class="text-sm font-semibold text-text-primary mb-3">
+                                Kaucja
+                            </h3>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-sm font-medium text-text-secondary tabular-nums">
+                                    {{ number_format($depositAmount, 2, ',', ' ') }}&nbsp;zł
+                                </span>
+                                @if($depositStatus && $depositStatus !== 'not_required')
+                                    <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
+                                                 {{ $depositBg }} {{ $depositText }} {{ $depositRing }}">
+                                        {{ $depositLabel }}
+                                    </span>
+                                @endif
+                            </div>
+                            <p class="mt-2 text-xs text-text-muted leading-relaxed">
+                                Kaucja pobierana przy odbiorze sprzętu. Zwracana po oddaniu w stanie nienaruszonym.
+                            </p>
+                        </div>
+                    @endif
+
+                    {{-- Cancel action — only for pending_payment orders --}}
+                    @if($order->status === 'pending_payment')
+                        <div class="border-t border-border mt-5 pt-4">
+                            <form
+                                method="POST"
+                                action="{{ route('orders.cancel', $order) }}"
+                                onsubmit="return confirm('Czy na pewno chcesz anulować to zamówienie?')"
+                            >
+                                @csrf
+                                <button
+                                    type="submit"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+                                           text-error ring-1 ring-error/30 bg-error/5
+                                           hover:bg-error/10 hover:ring-error/50
+                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/50 focus-visible:ring-offset-2
+                                           transition-all duration-200 ease-out"
+                                >
+                                    <x-heroicon-m-x-circle class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                    Anuluj zamówienie
+                                </button>
+                            </form>
+                        </div>
+                    @endif
                 </x-ui.card>
             </aside>
 
