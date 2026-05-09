@@ -348,6 +348,98 @@ class EmailTemplateSeeder extends Seeder
                 'active' => true,
             ],
 
+            // 16. Order Paid - Customer Confirmation (Polish)
+            [
+                'key' => TemplateKey::ORDER_PAID->value,
+                'language' => 'pl',
+                'subject' => 'Potwierdzenie zamówienia #{{order_number}}',
+                'html_body' => '<h1>Dziękujemy za zamówienie!</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało opłacone i jest realizowane.</p><p><strong>Kwota:</strong> {{total_amount}} zł</p><p>Możesz śledzić status zamówienia w swoim koncie:</p><p><a href="{{orders_url}}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Moje zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Dziękujemy za zamówienie! Cześć {{customer_name}}, Twoje zamówienie nr #{{order_number}} zostało opłacone. Kwota: {{total_amount}} zł. Śledź status: {{orders_url}}. Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+            // 16. Order Paid - Customer Confirmation (English)
+            [
+                'key' => TemplateKey::ORDER_PAID->value,
+                'language' => 'en',
+                'subject' => 'Order Confirmation #{{order_number}}',
+                'html_body' => '<h1>Thank you for your order!</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been paid and is being processed.</p><p><strong>Amount:</strong> {{total_amount}} PLN</p><p>You can track your order status in your account:</p><p><a href="{{orders_url}}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">My Orders</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Thank you for your order! Hello {{customer_name}}, Your order #{{order_number}} has been paid. Amount: {{total_amount}} PLN. Track your order: {{orders_url}}. Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+
+            // 17. Order Confirmed - Customer Notification (Polish)
+            [
+                'key' => TemplateKey::ORDER_CONFIRMED->value,
+                'language' => 'pl',
+                'subject' => 'Zamówienie #{{order_number}} zostało potwierdzone',
+                'html_body' => '<h1>Zamówienie potwierdzone!</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało potwierdzone przez nasz zespół i jest w trakcie przygotowania.</p><p>Możesz sprawdzić szczegóły w swoim koncie:</p><p><a href="{{orders_url}}" style="background-color: #2196F3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Zobacz zamówienie</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Zamówienie potwierdzone! Cześć {{customer_name}}, Twoje zamówienie nr #{{order_number}} zostało potwierdzone. Sprawdź szczegóły: {{orders_url}}. Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+            // 17. Order Confirmed - Customer Notification (English)
+            [
+                'key' => TemplateKey::ORDER_CONFIRMED->value,
+                'language' => 'en',
+                'subject' => 'Order #{{order_number}} Confirmed',
+                'html_body' => '<h1>Order Confirmed!</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been confirmed by our team and is being prepared.</p><p>You can check the details in your account:</p><p><a href="{{orders_url}}" style="background-color: #2196F3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Order</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Order Confirmed! Hello {{customer_name}}, Your order #{{order_number}} has been confirmed. View details: {{orders_url}}. Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+
+            // 18. Order Cancelled - Customer Notification (Polish)
+            [
+                'key' => TemplateKey::ORDER_CANCELLED->value,
+                'language' => 'pl',
+                'subject' => 'Zamówienie #{{order_number}} zostało anulowane',
+                'html_body' => '<h1>Zamówienie anulowane</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało anulowane.</p><p><strong>Powód:</strong> {{reason}}</p><p>Jeśli masz pytania, skontaktuj się z nami.</p><p>Możesz sprawdzić historię zamówień w swoim koncie:</p><p><a href="{{orders_url}}" style="background-color: #EF4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Moje zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Zamówienie anulowane. Cześć {{customer_name}}, Twoje zamówienie nr #{{order_number}} zostało anulowane. Powód: {{reason}}. Sprawdź historię: {{orders_url}}. Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'reason', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+            // 18. Order Cancelled - Customer Notification (English)
+            [
+                'key' => TemplateKey::ORDER_CANCELLED->value,
+                'language' => 'en',
+                'subject' => 'Order #{{order_number}} Cancelled',
+                'html_body' => '<h1>Order Cancelled</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been cancelled.</p><p><strong>Reason:</strong> {{reason}}</p><p>If you have any questions, please contact us.</p><p>You can view your order history in your account:</p><p><a href="{{orders_url}}" style="background-color: #EF4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">My Orders</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Order Cancelled. Hello {{customer_name}}, Your order #{{order_number}} has been cancelled. Reason: {{reason}}. View history: {{orders_url}}. Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'reason', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+
+            // 19. Admin New Order - Admin/Org Owner Notification (Polish)
+            [
+                'key' => TemplateKey::ADMIN_NEW_ORDER->value,
+                'language' => 'pl',
+                'subject' => 'Nowe zamówienie #{{order_number}} od {{customer_name}}',
+                'html_body' => '<h1>Nowe zamówienie!</h1><p>Otrzymałeś nowe zamówienie w systemie {{app_name}}.</p><p><strong>Numer zamówienia:</strong> #{{order_number}}<br><strong>Klient:</strong> {{customer_name}}<br><strong>Kwota:</strong> {{total_amount}} zł</p><p>Zaloguj się do panelu administracyjnego, aby potwierdzić zamówienie:</p><p><a href="{{admin_url}}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Panel administracyjny</a></p><p>Pozdrawiamy,<br>System {{app_name}}</p>',
+                'text_body' => 'Nowe zamówienie! Zamówienie nr #{{order_number}} od {{customer_name}}. Kwota: {{total_amount}} zł. Zaloguj się do panelu: {{admin_url}}. System {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'admin_url', 'app_name'],
+                'active' => true,
+            ],
+            // 19. Admin New Order - Admin/Org Owner Notification (English)
+            [
+                'key' => TemplateKey::ADMIN_NEW_ORDER->value,
+                'language' => 'en',
+                'subject' => 'New Order #{{order_number}} from {{customer_name}}',
+                'html_body' => '<h1>New Order!</h1><p>You have received a new order in {{app_name}}.</p><p><strong>Order number:</strong> #{{order_number}}<br><strong>Customer:</strong> {{customer_name}}<br><strong>Amount:</strong> {{total_amount}} PLN</p><p>Log in to the admin panel to confirm the order:</p><p><a href="{{admin_url}}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Admin Panel</a></p><p>Best regards,<br>{{app_name}} System</p>',
+                'text_body' => 'New Order! Order #{{order_number}} from {{customer_name}}. Amount: {{total_amount}} PLN. Log in to admin panel: {{admin_url}}. {{app_name}} System',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'admin_url', 'app_name'],
+                'active' => true,
+            ],
+
             // 15. Admin Created User - Password Setup (Polish)
             [
                 'key' => TemplateKey::ADMIN_USER_CREATED->value,
@@ -403,6 +495,6 @@ class EmailTemplateSeeder extends Seeder
             );
         }
 
-        $this->command->info('✓ Email templates seeded successfully (32 templates)');
+        $this->command->info('✓ Email templates seeded successfully (38 templates)');
     }
 }

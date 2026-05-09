@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\StateMachines;
 
+use App\Events\OrderCancelled;
+use App\Events\OrderConfirmed;
 use Asantibanez\LaravelEloquentStateMachines\StateMachines\StateMachine;
 
 class OrderStatusStateMachine extends StateMachine
@@ -40,6 +42,28 @@ class OrderStatusStateMachine extends StateMachine
             'completed' => ['refunded'],
 
             // Terminal states: cancelled, refunded (no outgoing transitions)
+        ];
+    }
+
+    /**
+     * Hooks executed after a transition completes.
+     *
+     * Each key is a $to state; value is an array of callables($from, $model).
+     * OrderPaid is dispatched directly from Przelewy24Service (webhook context).
+     */
+    public function afterTransitionHooks(): array
+    {
+        return [
+            'confirmed' => [
+                function (string $from, $model): void {
+                    event(new OrderConfirmed($model));
+                },
+            ],
+            'cancelled' => [
+                function (string $from, $model): void {
+                    event(new OrderCancelled($model));
+                },
+            ],
         ];
     }
 }
