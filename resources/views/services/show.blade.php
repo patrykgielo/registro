@@ -70,7 +70,7 @@
                             <x-ui.badge variant="default">{{ $service->category->name }}</x-ui.badge>
                         @endif
                         @if($service->quantity_total)
-                            <x-ui.badge variant="info" dot>{{ $service->quantity_total }} szt. w magazynie</x-ui.badge>
+                            <x-ui.badge variant="brand" dot>{{ $service->quantity_total }} szt. w magazynie</x-ui.badge>
                         @endif
                     </div>
 

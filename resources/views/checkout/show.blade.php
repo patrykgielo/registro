@@ -528,7 +528,7 @@
                                     value="1"
                                     x-model="invoice"
                                     @checked(old('invoice_requested'))
-                                    class="h-4 w-4 rounded border-border text-brand
+                                    class="h-4 w-4 rounded border-border accent-brand text-brand
                                            transition-colors duration-200 ease-out
                                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                            cursor-pointer"
@@ -1010,7 +1010,7 @@
                                             id="different_pickup_person"
                                             x-model="differentPickupPerson"
                                             @change="if (!differentPickupPerson) { pickupPersonName = ''; pickupPersonIdNumber = ''; }"
-                                            class="h-4 w-4 rounded border-border text-brand
+                                            class="h-4 w-4 rounded border-border accent-brand text-brand
                                                    transition-colors duration-200 ease-out
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                                    cursor-pointer"
@@ -1129,7 +1129,7 @@
                                             value="1"
                                             x-model="termsAccepted"
                                             @checked(old('terms_accepted'))
-                                            class="h-4 w-4 rounded border-border text-brand
+                                            class="h-4 w-4 rounded border-border accent-brand text-brand
                                                    transition-colors duration-200 ease-out
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                                    cursor-pointer"
@@ -1169,7 +1169,7 @@
                                             value="1"
                                             x-model="rodoAccepted"
                                             @checked(old('rodo_accepted'))
-                                            class="h-4 w-4 rounded border-border text-brand
+                                            class="h-4 w-4 rounded border-border accent-brand text-brand
                                                    transition-colors duration-200 ease-out
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                                    cursor-pointer"
@@ -1209,7 +1209,7 @@
                                             value="1"
                                             x-model="withdrawalExclusionAccepted"
                                             @checked(old('withdrawal_exclusion_accepted'))
-                                            class="h-4 w-4 rounded border-border text-brand
+                                            class="h-4 w-4 rounded border-border accent-brand text-brand
                                                    transition-colors duration-200 ease-out
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                                    cursor-pointer"
@@ -1253,7 +1253,7 @@
                                         value="1"
                                         x-model="saveToProfile"
                                         @checked(old('save_to_profile'))
-                                        class="h-4 w-4 rounded border-border text-brand
+                                        class="h-4 w-4 rounded border-border accent-brand text-brand
                                                transition-colors duration-200 ease-out
                                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                                cursor-pointer"
@@ -1389,7 +1389,7 @@
                     <div class="mt-3 text-center">
                         <a
                             href="{{ route('cart.show') }}"
-                            class="text-sm text-text-muted hover:text-text-secondary transition-colors duration-200
+                            class="text-sm text-text-muted hover:text-brand transition-colors duration-200
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 rounded"
                         >
                             Wróć do koszyka

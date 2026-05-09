@@ -122,7 +122,7 @@
                                             min="1"
                                             step="1"
                                             class="w-16 h-9 px-2 text-sm text-center rounded-lg border border-border bg-surface-raised text-text-primary
-                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:border-brand
+                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50
                                                    transition-colors duration-200"
                                             aria-label="Ilość sztuk: {{ $item->service->name }}"
                                         >
@@ -214,7 +214,7 @@
                     <div class="mt-3 text-center">
                         <a
                             href="{{ route('services.index') }}"
-                            class="text-sm text-text-muted hover:text-text-secondary transition-colors duration-200
+                            class="text-sm text-text-muted hover:text-brand transition-colors duration-200
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 rounded"
                         >
                             Kontynuuj zakupy
