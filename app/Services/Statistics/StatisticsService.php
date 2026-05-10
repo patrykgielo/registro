@@ -46,7 +46,11 @@ class StatisticsService
         // Use live data for today if snapshot is stale or missing
         $today = Carbon::today();
         if ($from->lte($today) && $to->gte($today)) {
-            $todaySnapshot = $rows->where('date', $today->toDateString());
+            $todaySnapshot = $rows->filter(fn ($r) => (
+                $r->date instanceof \Illuminate\Support\Carbon
+                    ? $r->date->toDateString()
+                    : (string) $r->date
+            ) === $today->toDateString());
             $needsLive = $todaySnapshot->isEmpty()
                 || $todaySnapshot->min('computed_at') < now()->subHours(2);
 
@@ -245,6 +249,15 @@ class StatisticsService
         }
 
         ksort($byDay);
+
+        // Defensive: ensure any entries outside the gap-fill range also have total
+        foreach ($byDay as $key => $entry) {
+            if (! isset($byDay[$key]['total'])) {
+                $byDay[$key]['total'] = ($byDay[$key]['orders'] ?? 0.0)
+                    + ($byDay[$key]['appointments'] ?? 0.0)
+                    + ($byDay[$key]['rentals'] ?? 0.0);
+            }
+        }
 
         $totalRevenue = $totals['orders']['revenue']
             + $totals['appointments']['revenue']

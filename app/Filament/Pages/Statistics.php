@@ -163,7 +163,7 @@ class Statistics extends Page
 
         foreach ($data['by_day'] as $date => $row) {
             $labels[] = Carbon::parse($date)->format('d.m');
-            $totals[] = round($row['total'], 2);
+            $totals[] = round($row['total'] ?? 0.0, 2);
         }
 
         return ['labels' => $labels, 'totals' => $totals];
