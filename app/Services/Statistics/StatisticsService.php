@@ -102,9 +102,9 @@ class StatisticsService
             ->get()
             ->groupBy('organization_id');
 
-        return $rows->map(function (Collection $orgRows) {
+        return $rows->map(function (Collection $orgRows) use ($from, $to) {
             $org = $orgRows->first()->organization;
-            $agg = $this->aggregateRows($orgRows, Carbon::minValue(), Carbon::maxValue());
+            $agg = $this->aggregateRows($orgRows, $from, $to);
 
             return [
                 'organization' => $org,
