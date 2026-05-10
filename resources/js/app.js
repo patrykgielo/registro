@@ -1,9 +1,11 @@
 import './bootstrap';
 import './booking-wizard';
+import { revenueChart } from './charts/revenue-chart.js';
 import Alpine from 'alpinejs';
 import Focus from '@alpinejs/focus';
 
 Alpine.plugin(Focus);
+Alpine.data('revenueChart', revenueChart);
 window.Alpine = Alpine;
 Alpine.start();
 

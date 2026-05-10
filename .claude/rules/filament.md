@@ -341,6 +341,61 @@ not `protected static`. PHP throws FatalError when a child tries to override non
 
 ---
 
+## Custom CSS/JS in Filament Admin Panel (Phase 11b)
+
+**Pattern:** Inject custom CSS and JS alongside Filament's own assets via `renderHook`.
+
+### renderHook vs viteTheme — CRITICAL DIFFERENCE
+
+```php
+// ❌ WRONG — replaces Filament's CSS entirely (breaks layout)
+->viteTheme('resources/css/filament/admin.css')
+
+// ✅ CORRECT — adds our CSS alongside Filament's (additive)
+->renderHook(
+    PanelsRenderHook::HEAD_END,
+    fn (): HtmlString => new HtmlString(
+        '<link rel="stylesheet" href="' . Vite::asset('resources/css/filament/admin.css') . '">'
+        . '<script type="module" src="' . Vite::asset('resources/js/filament-admin.js') . '"></script>'
+    )
+)
+```
+
+### Tailwind v4 in Filament: @theme required for utilities
+
+When creating a CSS file with `@import 'tailwindcss/utilities.css'` (not the full `tailwindcss`):
+- **`:root { --color-gray-800: ... }`** → just CSS custom properties, NO utility class generation
+- **`@theme { --color-gray-800: ... }`** → registers tokens AND generates `bg-gray-800`, `dark:bg-gray-800`, etc.
+
+Without `@theme`, utility classes like `bg-gray-800`, `dark:bg-gray-800`, `border-t-primary-500` are NOT generated even though the CSS variables exist.
+
+### Alpine.js components in Filament (via filament-admin.js)
+
+Filament manages Alpine. To register custom Alpine components:
+1. Create `resources/js/filament-admin.js` — registers components via `alpine:init`, NO `Alpine.start()`
+2. Add to Vite `input[]` entry points
+3. Inject as `<script type="module">` via renderHook
+
+```javascript
+// resources/js/filament-admin.js
+import { revenueChart } from './charts/revenue-chart.js';
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('revenueChart', revenueChart);
+});
+```
+
+Timing: `type="module"` scripts run before `DOMContentLoaded`. Filament's Alpine starts at `DOMContentLoaded`. So `alpine:init` listener (registered in the module) catches the event before Alpine processes `x-data` attributes.
+
+### Heroicons in custom Filament views — SVG sizing
+
+Filament CSS forces SVGs to `display: block; width: 100%`. Always add HTML attributes:
+```blade
+<x-heroicon-o-banknotes class="w-5 h-5 flex-shrink-0" width="20" height="20" />
+```
+
+---
+
 ## Module System Integration (Phase 6)
 
 Resources dziedziczą automatyczny `shouldRegisterNavigation()` z `BaseResource` który sprawdza `Organization.hasModule()`.

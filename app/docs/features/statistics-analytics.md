@@ -86,13 +86,37 @@ php artisan statistics:backfill --from=2026-03-01 --to=2026-04-30
 php artisan statistics:recalculate --date=2026-05-10 --org=1
 ```
 
-## Dependencies Added
+## Phase 11b — UI Redesign (2026-05-10)
 
-- `barryvdh/laravel-dompdf` ^3.1 — PDF generation
-- Chart.js (served via Filament's bundled assets or CDN in Blade views)
+Full statistics UI redesign with:
+- **Period selector pills** — `wire:click` reactive (no page reload), `#[Url]` syncs to `?period=`
+- **KPI cards** — colored top borders (primary teal, cyan, green, amber), icons, dark card backgrounds
+- **ApexCharts multi-series area chart** — Zamówienia/Wizyty/Wypożyczenia with gradient fill
+- **Reactive chart** — `updatedPeriod()` dispatches `chart-refresh` event, Alpine `x-on:chart-refresh.window` updates series without Livewire re-mounting chart
+
+### CSS Architecture (lessons learned)
+
+**admin.css uses `@import 'tailwindcss/utilities.css'` (NOT full `tailwindcss`):**
+- Requires `@theme { --color-*: ... }` instead of `:root { --color-*: ... }` for Tailwind to generate utility classes
+- `:root {}` sets CSS custom properties only — Tailwind does NOT know about them for utility class generation
+- `@theme {}` registers tokens AND generates `bg-gray-800`, `dark:bg-gray-800`, `border-t-primary-500`, etc.
+
+**Loading CSS in Filament admin:**
+- `->renderHook(PanelsRenderHook::HEAD_END, ...)` injects CSS alongside Filament's own CSS
+- `->viteTheme()` REPLACES Filament's CSS entirely (breaks layout)
+
+**Loading Alpine.js components in Filament admin:**
+- `resources/js/filament-admin.js` — registered via `alpine:init` event, loaded as `<script type="module">`
+- `type="module"` scripts run before `DOMContentLoaded` so `alpine:init` listener is registered in time
+- Filament's Alpine starts at `DOMContentLoaded`, fires `alpine:init`, listener runs, component registered
+
+### Dependencies Added
+
+- `apexcharts` ^5.11.0 npm (via `resources/js/charts/revenue-chart.js` + `resources/js/filament-admin.js`)
+- `barryvdh/laravel-dompdf` ^3.1 — PDF generation (from Phase 11)
 
 ## Known Constraints
 
-- Charts in Blade pages use Chart.js loaded from the page's script stack — requires Chart.js to be available in the Filament panel bundle
 - PDF reports contain tables only (no charts) — DomPDF does not support canvas/JS
 - The `statistics_daily_snapshots.count` column name conflicts with PHP's reserved keywords in some ORM contexts — addressed by using raw DB queries in the Job
+- Heroicons in custom Filament views require explicit `width`/`height` HTML attributes — Filament CSS forces SVGs to 100% width otherwise

@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Url;
 use UnitEnum;
 
 /**
@@ -36,6 +37,7 @@ class Statistics extends Page
 
     protected string $view = 'filament.pages.statistics';
 
+    #[Url]
     public string $period = 'this_month';
 
     public static function canAccess(): bool
@@ -45,11 +47,19 @@ class Statistics extends Page
 
     public function mount(): void
     {
-        $this->period = request()->query('period', 'this_month');
-
+        // #[Url] handles syncing from query string; validate on mount
         if (! in_array($this->period, $this->validPeriods(), true)) {
             $this->period = 'this_month';
         }
+    }
+
+    public function updatedPeriod(): void
+    {
+        if (! in_array($this->period, $this->validPeriods(), true)) {
+            $this->period = 'this_month';
+        }
+        $chartData = $this->getChartData();
+        $this->dispatch('chart-refresh', series: $chartData['series'], categories: $chartData['categories']);
     }
 
     protected function getHeaderActions(): array
@@ -140,33 +150,43 @@ class Statistics extends Page
     }
 
     /**
-     * Chart labels and datasets for last 30 days.
+     * Chart series and categories for the selected period (multi-series for ApexCharts).
      *
-     * @return array{labels: list<string>, totals: list<float>}
+     * @return array{series: list<array{name: string, data: list<float>}>, categories: list<string>}
      */
     public function getChartData(): array
     {
         $tenant = TenantFeature::currentTenant();
         if (! $tenant instanceof Organization) {
-            return ['labels' => [], 'totals' => []];
+            return ['series' => [], 'categories' => []];
         }
 
         /** @var StatisticsService $service */
         $service = app(StatisticsService::class);
 
-        $from = Carbon::today()->subDays(29);
-        $to = Carbon::today();
+        [$from, $to] = $service->periodToRange($this->period);
         $data = $service->forTenant($tenant, $from, $to);
 
-        $labels = [];
-        $totals = [];
+        $orders = [];
+        $appointments = [];
+        $rentals = [];
+        $categories = [];
 
         foreach ($data['by_day'] as $date => $row) {
-            $labels[] = Carbon::parse($date)->format('d.m');
-            $totals[] = round($row['total'] ?? 0.0, 2);
+            $categories[] = Carbon::parse($date)->format('d.m');
+            $orders[] = round($row['orders'] ?? 0.0, 2);
+            $appointments[] = round($row['appointments'] ?? 0.0, 2);
+            $rentals[] = round($row['rentals'] ?? 0.0, 2);
         }
 
-        return ['labels' => $labels, 'totals' => $totals];
+        return [
+            'series' => [
+                ['name' => 'Zamówienia',   'data' => $orders],
+                ['name' => 'Wizyty',       'data' => $appointments],
+                ['name' => 'Wypożyczenia', 'data' => $rentals],
+            ],
+            'categories' => $categories,
+        ];
     }
 
     /**

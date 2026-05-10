@@ -142,17 +142,21 @@ class AdminPanelProvider extends PanelProvider
                 \App\Http\Middleware\AdminMaintenanceCheck::class, // Block non-super-admin during maintenance
             ])
 
-            // 🎨 CUSTOM CSS - Hide image editor icon (premium feature)
+            // 🎨 CUSTOM CSS + JS - Filament dark mode utilities, ApexCharts Alpine components
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): HtmlString => new HtmlString('
+                fn (): HtmlString => new HtmlString(
+                    '<link rel="stylesheet" href="'.\Illuminate\Support\Facades\Vite::asset('resources/css/filament/admin.css').'">'
+                    .'<script type="module" src="'.\Illuminate\Support\Facades\Vite::asset('resources/js/filament-admin.js').'"></script>'
+                    .'
                     <style>
                         /* Hide image editor button - feature reserved for premium */
                         .no-edit-icon .filepond--action-edit-item {
                             display: none !important;
                         }
                     </style>
-                ')
+                    '
+                )
             );
     }
 }
