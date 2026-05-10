@@ -5,6 +5,8 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\MaintenanceSettings;
 use App\Filament\Pages\SystemSettings;
 use App\Filament\Widgets\CacheClearWidget;
+use App\Filament\Widgets\RevenueChartWidget;
+use App\Filament\Widgets\TenantStatsOverviewWidget;
 use App\Http\Responses\LoginResponse;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -100,6 +102,7 @@ class AdminPanelProvider extends PanelProvider
                 'communication' => NavigationGroup::make(__('navigation.groups.communication')),
                 'settings' => NavigationGroup::make(__('navigation.groups.settings')),
                 'system' => NavigationGroup::make(__('navigation.groups.system')),
+                'reports' => NavigationGroup::make(__('navigation.groups.reports')),
             ])
 
             // 📄 PAGES & RESOURCES
@@ -116,6 +119,8 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 Widgets\AccountWidget::class,
                 Widgets\FilamentInfoWidget::class,
+                TenantStatsOverviewWidget::class,
+                RevenueChartWidget::class,
                 CacheClearWidget::class,
             ])
 

@@ -317,6 +317,30 @@ Actions\Action::make('details')
 
 ---
 
+## Widget Property Static vs Instance — CRITICAL (Bug 2026-05-10)
+
+Filament v4 widget properties are NOT uniformly static. Declaring them wrong causes FatalError.
+
+```php
+// ❌ WRONG — ChartWidget/StatsOverviewWidget: these are NON-STATIC
+protected static ?string $heading = '...';      // FatalError!
+protected static ?string $description = '...';  // FatalError!
+protected static ?string $pollingInterval = ...; // FatalError!
+
+// ✅ CORRECT — instance properties (no static)
+protected ?string $heading = '...';
+protected ?string $description = '...';
+protected ?string $pollingInterval = null;
+
+// ✅ CORRECT — Widget base: $sort IS static
+protected static ?int $sort = 2;
+```
+
+**Root cause:** `Filament\Widgets\ChartWidget` and CanPoll trait declare these as `protected ?string`,
+not `protected static`. PHP throws FatalError when a child tries to override non-static with static.
+
+---
+
 ## Module System Integration (Phase 6)
 
 Resources dziedziczą automatyczny `shouldRegisterNavigation()` z `BaseResource` który sprawdza `Organization.hasModule()`.
