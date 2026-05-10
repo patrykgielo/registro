@@ -56,6 +56,10 @@ class Organization extends Model
         'is_active',
         'settings',
         'trial_ends_at',
+        'subscription_status',
+        'monthly_fee',
+        'subscribed_at',
+        'subscription_expires_at',
     ];
 
     protected $casts = [
@@ -63,6 +67,9 @@ class Organization extends Model
         'industry' => Industry::class,
         'settings' => 'array',
         'trial_ends_at' => 'datetime',
+        'monthly_fee' => 'decimal:2',
+        'subscribed_at' => 'datetime',
+        'subscription_expires_at' => 'datetime',
     ];
 
     /**
@@ -171,6 +178,32 @@ class Organization extends Model
     public function trialExpired(): bool
     {
         return $this->trial_ends_at !== null && $this->trial_ends_at->isPast();
+    }
+
+    /**
+     * Check if organization has an active paid subscription.
+     */
+    public function isSubscribed(): bool
+    {
+        return $this->subscription_status === 'active';
+    }
+
+    /**
+     * Check if organization is in trial period (by subscription_status column).
+     */
+    public function isTrial(): bool
+    {
+        return $this->subscription_status === 'trial';
+    }
+
+    /**
+     * Get all SaaS payments recorded for this tenant.
+     *
+     * @return HasMany<TenantPayment, $this>
+     */
+    public function tenantPayments(): HasMany
+    {
+        return $this->hasMany(TenantPayment::class);
     }
 
     /**

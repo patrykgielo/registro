@@ -2,8 +2,10 @@
 
 use App\Jobs\Email\CleanupOldEmailLogsJob;
 use App\Jobs\Email\SendAdminDigestJob;
+use App\Jobs\RecalculateDailyStatisticsJob;
 use App\Jobs\Reminder\ProcessRemindersJob;
 use App\Jobs\Sms\CleanupOldSmsLogsJob;
+use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -119,3 +121,17 @@ Schedule::command('carts:cleanup-abandoned')
     ->withoutOverlapping()
     ->name('carts:cleanup-abandoned')
     ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Statistics System
+|--------------------------------------------------------------------------
+*/
+
+// Recalculate today + yesterday snapshots every hour
+// Keeps statistics_daily_snapshots fresh for all UI consumers
+// Runs: Hourly
+Schedule::call(function () {
+    dispatch(new RecalculateDailyStatisticsJob(Carbon::yesterday()));
+    dispatch(new RecalculateDailyStatisticsJob(Carbon::today()));
+})->hourly()->name('statistics-recalculate')->withoutOverlapping();

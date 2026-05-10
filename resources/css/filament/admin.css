@@ -1,0 +1,49 @@
+/* Filament admin panel custom styles
+ * Loaded ALONGSIDE Filament's own CSS via renderHook (not replacing it).
+ * Provides Tailwind utilities for statistics page and other custom Filament views.
+ * Class-based dark mode: Filament adds .dark on <html>.
+ */
+@import 'tailwindcss/utilities.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Only scan Filament admin views — keeps bundle small */
+@source '../../views/filament/**/*.blade.php';
+
+/* Design tokens — @theme registers them with Tailwind so utility classes are generated.
+ * utilities.css alone doesn't include theme values; @theme is required for bg-*, text-*, etc. */
+@theme {
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-gray-50:  oklch(98.5% 0.002 247.839);
+    --color-gray-100: oklch(96.7% 0.003 264.542);
+    --color-gray-200: oklch(92.8% 0.006 264.531);
+    --color-gray-300: oklch(87.2% 0.010 258.338);
+    --color-gray-400: oklch(70.7% 0.022 261.325);
+    --color-gray-500: oklch(55.1% 0.023 264.364);
+    --color-gray-600: oklch(44.6% 0.030 256.802);
+    --color-gray-700: oklch(37.3% 0.034 259.733);
+    --color-gray-800: oklch(27.8% 0.033 256.848);
+    --color-gray-900: oklch(21.0% 0.034 264.665);
+    --color-primary-50:  #E6F4F6;
+    --color-primary-400: #4AA5B0;
+    --color-primary-500: #3D8A94;
+    --color-primary-600: #2F6A72;
+    --color-primary-900: #0A0F10;
+    --color-cyan-50:  oklch(98.4% 0.019 200.873);
+    --color-cyan-400: oklch(78.9% 0.154 211.530);
+    --color-cyan-500: oklch(71.5% 0.143 215.221);
+    --color-cyan-600: oklch(60.9% 0.126 221.723);
+    --color-cyan-900: oklch(30.2% 0.056 229.695);
+    --color-green-50:  oklch(98.2% 0.018 155.826);
+    --color-green-400: oklch(79.2% 0.209 151.711);
+    --color-green-500: oklch(72.3% 0.219 149.579);
+    --color-green-600: oklch(62.7% 0.194 149.214);
+    --color-green-900: oklch(39.3% 0.095 152.535);
+    --color-amber-50:  oklch(98.7% 0.022  95.277);
+    --color-amber-400: oklch(83.0% 0.199  86.407);
+    --color-amber-500: oklch(76.9% 0.188  70.080);
+    --color-amber-600: oklch(65.6% 0.172  63.408);
+    --color-amber-900: oklch(41.4% 0.112  45.904);
+    --spacing: 0.25rem;
+}
