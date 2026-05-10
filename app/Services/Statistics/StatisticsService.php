@@ -66,57 +66,6 @@ class StatisticsService
     }
 
     /**
-     * Cross-tenant aggregate for the platform panel.
-     *
-     * @return array{
-     *   orders: array{revenue: float, count: int},
-     *   appointments: array{revenue: float, count: int},
-     *   rentals: array{revenue: float, count: int},
-     *   total_revenue: float,
-     *   by_day: array<string, array{orders: float, appointments: float, rentals: float, total: float}>
-     * }
-     */
-    public function platformAggregate(Carbon $from, Carbon $to): array
-    {
-        $rows = StatisticsSnapshot::whereBetween('date', [$from->toDateString(), $to->toDateString()])
-            ->get();
-
-        return $this->aggregateRows($rows, $from, $to);
-    }
-
-    /**
-     * Per-tenant breakdown for the platform panel table.
-     *
-     * @return Collection<int, array{
-     *   organization: Organization,
-     *   orders: array{revenue: float, count: int},
-     *   appointments: array{revenue: float, count: int},
-     *   rentals: array{revenue: float, count: int},
-     *   total_revenue: float
-     * }>
-     */
-    public function perTenant(Carbon $from, Carbon $to): Collection
-    {
-        $rows = StatisticsSnapshot::with('organization')
-            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
-            ->get()
-            ->groupBy('organization_id');
-
-        return $rows->map(function (Collection $orgRows) use ($from, $to) {
-            $org = $orgRows->first()->organization;
-            $agg = $this->aggregateRows($orgRows, $from, $to);
-
-            return [
-                'organization' => $org,
-                'orders' => $agg['orders'],
-                'appointments' => $agg['appointments'],
-                'rentals' => $agg['rentals'],
-                'total_revenue' => $agg['total_revenue'],
-            ];
-        })->values();
-    }
-
-    /**
      * Live fallback query — hits raw tables directly.
      * Called when today's snapshot is missing or older than 2 hours.
      *

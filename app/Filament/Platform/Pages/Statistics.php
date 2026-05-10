@@ -4,26 +4,26 @@ declare(strict_types=1);
 
 namespace App\Filament\Platform\Pages;
 
-use App\Services\Statistics\StatisticsExportService;
-use App\Services\Statistics\StatisticsService;
-use BackedEnum;
+use App\Models\Organization;
 use Carbon\Carbon;
-use Filament\Actions\Action;
 use Filament\Pages\Page;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
-use UnitEnum;
 
 /**
  * Platform-level statistics page — /platform/statystyki
  *
- * Cross-tenant aggregate KPIs + per-tenant breakdown table.
- * Period selector via query string ?period=.
+ * SaaS billing overview: tenant counts, MRR, subscription status breakdown,
+ * new registration chart, expiring trials, and full tenant table.
+ *
+ * Does NOT depend on StatisticsService or statistics_daily_snapshots.
  */
 class Statistics extends Page
 {
-    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-chart-bar';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-chart-bar';
 
-    protected static string|UnitEnum|null $navigationGroup = null;
+    protected static string|\UnitEnum|null $navigationGroup = null;
 
     protected static ?int $navigationSort = 50;
 
@@ -38,10 +38,19 @@ class Statistics extends Page
 
     public function mount(): void
     {
-        // #[Url] handles syncing from query string; validate on mount
         if (! in_array($this->period, $this->validPeriods(), true)) {
             $this->period = 'this_month';
         }
+    }
+
+    public function getTitle(): string
+    {
+        return 'Statystyki platformy';
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return 'Statystyki';
     }
 
     public function updatedPeriod(): void
@@ -49,95 +58,111 @@ class Statistics extends Page
         if (! in_array($this->period, $this->validPeriods(), true)) {
             $this->period = 'this_month';
         }
-        $chartData = $this->getChartData();
+
+        [$from, $to] = $this->periodToRange($this->period);
+        $chartData = $this->getChartData($from, $to);
         $this->dispatch('chart-refresh', series: $chartData['series'], categories: $chartData['categories']);
     }
 
-    protected function getHeaderActions(): array
+    /**
+     * KPI: tenant count breakdown by subscription_status.
+     *
+     * @return array{total: int, active: int, trial: int, paused: int, cancelled: int, expiringTrials: int}
+     */
+    public function getTenantCounts(): array
     {
-        return [
-            Action::make('exportCsv')
-                ->label('Eksport CSV')
-                ->icon('heroicon-o-arrow-down-tray')
-                ->color('gray')
-                ->action(function () {
-                    /** @var StatisticsService $service */
-                    $service = app(StatisticsService::class);
-                    [$from, $to] = $service->periodToRange($this->period);
-                    $data = $service->platformAggregate($from, $to);
+        $total = Organization::count();
+        $active = Organization::where('subscription_status', 'active')->count();
+        $trial = Organization::where('subscription_status', 'trial')->count();
+        $paused = Organization::where('subscription_status', 'paused')->count();
+        $cancelled = Organization::where('subscription_status', 'cancelled')->count();
 
-                    return app(StatisticsExportService::class)->toCsv($data, $this->period);
-                }),
-        ];
+        $expiringTrials = Organization::where('subscription_status', 'trial')
+            ->whereNotNull('trial_ends_at')
+            ->where('trial_ends_at', '<=', now()->addDays(7))
+            ->where('trial_ends_at', '>=', now())
+            ->count();
+
+        return compact('total', 'active', 'trial', 'paused', 'cancelled', 'expiringTrials');
     }
 
     /**
-     * Cross-tenant aggregate for KPI cards.
-     *
-     * @return array{
-     *   orders: array{revenue: float, count: int},
-     *   appointments: array{revenue: float, count: int},
-     *   rentals: array{revenue: float, count: int},
-     *   total_revenue: float,
-     *   by_day: array<string, array{orders: float, appointments: float, rentals: float, total: float}>
-     * }
+     * KPI: Monthly Recurring Revenue — sum of monthly_fee for active subscriptions.
      */
-    public function getAggregateData(): array
+    public function getMrr(): float
     {
-        /** @var StatisticsService $service */
-        $service = app(StatisticsService::class);
-        [$from, $to] = $service->periodToRange($this->period);
-
-        return $service->platformAggregate($from, $to);
+        return (float) Organization::where('subscription_status', 'active')
+            ->whereNotNull('monthly_fee')
+            ->sum('monthly_fee');
     }
 
     /**
-     * Per-tenant breakdown for the table.
-     *
-     * @return array<int, array{organization: \App\Models\Organization, orders: array{revenue: float, count: int}, appointments: array{revenue: float, count: int}, rentals: array{revenue: float, count: int}, total_revenue: float}>
+     * KPI: new organizations registered within [from, to].
      */
-    public function getPerTenantData(): array
+    public function getNewRegistrations(Carbon $from, Carbon $to): int
     {
-        /** @var StatisticsService $service */
-        $service = app(StatisticsService::class);
-        [$from, $to] = $service->periodToRange($this->period);
-
-        return $service->perTenant($from, $to)->all();
+        return Organization::whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])->count();
     }
 
     /**
-     * Chart series and categories for the selected period (multi-series for ApexCharts).
+     * Chart: new registrations per day in the selected period (single series).
      *
-     * @return array{series: list<array{name: string, data: list<float>}>, categories: list<string>}
+     * @return array{series: list<array{name: string, data: list<int>}>, categories: list<string>}
      */
-    public function getChartData(): array
+    public function getChartData(Carbon $from, Carbon $to): array
     {
-        /** @var StatisticsService $service */
-        $service = app(StatisticsService::class);
+        $rows = DB::table('organizations')
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as cnt')
+            ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get()
+            ->keyBy('day');
 
-        [$from, $to] = $service->periodToRange($this->period);
-        $data = $service->platformAggregate($from, $to);
-
-        $orders = [];
-        $appointments = [];
-        $rentals = [];
+        $series = [];
         $categories = [];
+        $current = $from->copy()->startOfDay();
 
-        foreach ($data['by_day'] as $date => $row) {
-            $categories[] = Carbon::parse($date)->format('d.m');
-            $orders[] = round($row['orders'] ?? 0.0, 2);
-            $appointments[] = round($row['appointments'] ?? 0.0, 2);
-            $rentals[] = round($row['rentals'] ?? 0.0, 2);
+        while ($current->lte($to->copy()->endOfDay())) {
+            $key = $current->toDateString();
+            $categories[] = $current->format('d.m');
+            $series[] = (int) ($rows[$key]->cnt ?? 0);
+            $current->addDay();
         }
 
         return [
-            'series' => [
-                ['name' => 'Zamówienia',   'data' => $orders],
-                ['name' => 'Wizyty',       'data' => $appointments],
-                ['name' => 'Wypożyczenia', 'data' => $rentals],
-            ],
+            'series' => [['name' => 'Nowi tenanci', 'data' => $series]],
             'categories' => $categories,
         ];
+    }
+
+    /**
+     * Table: all tenants ordered by status then creation date.
+     *
+     * @return Collection<int, Organization>
+     */
+    public function getTenantsTable(): Collection
+    {
+        return Organization::with('owner')
+            ->orderByRaw("FIELD(subscription_status, 'active', 'trial', 'paused', 'cancelled')")
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    /**
+     * Tenants whose trial expires within 14 days.
+     *
+     * @return Collection<int, Organization>
+     */
+    public function getExpiringTrials(): Collection
+    {
+        return Organization::with('owner')
+            ->where('subscription_status', 'trial')
+            ->whereNotNull('trial_ends_at')
+            ->where('trial_ends_at', '>=', now())
+            ->where('trial_ends_at', '<=', now()->addDays(14))
+            ->orderBy('trial_ends_at')
+            ->get();
     }
 
     /**
@@ -161,5 +186,23 @@ class Statistics extends Page
             ['value' => 'last_month', 'label' => 'Poprzedni miesiąc'],
             ['value' => 'last_year', 'label' => 'Poprzedni rok'],
         ];
+    }
+
+    /**
+     * Convert a period key to a [Carbon $from, Carbon $to] tuple.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public function periodToRange(string $period): array
+    {
+        return match ($period) {
+            'today' => [Carbon::today(), Carbon::today()],
+            'this_week' => [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()],
+            'this_month' => [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()],
+            'this_year' => [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()],
+            'last_month' => [Carbon::now()->subMonth()->startOfMonth(), Carbon::now()->subMonth()->endOfMonth()],
+            'last_year' => [Carbon::now()->subYear()->startOfYear(), Carbon::now()->subYear()->endOfYear()],
+            default => [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()],
+        };
     }
 }
