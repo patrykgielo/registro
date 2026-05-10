@@ -40,7 +40,8 @@ class StatisticsService
     {
         $rows = StatisticsSnapshot::where('organization_id', $org->id)
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
-            ->get();
+            ->get()
+            ->toBase(); // plain Collection — allows merging stdClass from liveToCollection()
 
         // Use live data for today if snapshot is stale or missing
         $today = Carbon::today();
@@ -53,7 +54,7 @@ class StatisticsService
                 $liveRows = $this->liveForDate($org, $today);
                 // Remove stale today rows and replace with live data
                 $rows = $rows->filter(fn ($r) => $r->date->toDateString() !== $today->toDateString());
-                $rows = $rows->merge($this->liveToCollection($liveRows, $org->id, $today));
+                $rows = $rows->values()->merge($this->liveToCollection($liveRows, $org->id, $today));
             }
         }
 
