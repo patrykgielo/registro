@@ -5,8 +5,8 @@
     {{-- Business info summary --}}
     <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-                <x-dynamic-component :component="'heroicon-m-' . $industry->icon()" class="w-5 h-5 text-primary-600" />
+            <div class="w-10 h-10 bg-brand/10 rounded-lg flex items-center justify-center">
+                <x-dynamic-component :component="'heroicon-m-' . $industry->icon()" class="w-5 h-5 text-brand" />
             </div>
             <div>
                 <p class="font-semibold text-gray-900">{{ $step1['org_name'] }}</p>
@@ -87,16 +87,16 @@
                         type="checkbox"
                         required
                         {{ old('terms') ? 'checked' : '' }}
-                        class="w-5 h-5 rounded-lg border-2 border-gray-300 text-primary focus:ring-4 focus:ring-primary/20 transition-all"
+                        class="w-5 h-5 rounded-lg border-2 border-gray-300 text-brand focus:ring-4 focus:ring-brand/20 transition-all"
                     >
                 </div>
                 <label for="terms" class="ml-3 text-sm text-gray-700">
                     Akceptuję
-                    <a href="{{ route('page.show', 'regulamin') }}" target="_blank" class="text-primary font-semibold hover:text-primary/80 underline">
+                    <a href="{{ route('page.show', 'regulamin') }}" target="_blank" class="text-brand font-semibold hover:text-brand/80 underline">
                         Regulamin
                     </a>
                     oraz
-                    <a href="{{ route('page.show', 'polityka-prywatnosci') }}" target="_blank" class="text-primary font-semibold hover:text-primary/80 underline">
+                    <a href="{{ route('page.show', 'polityka-prywatnosci') }}" target="_blank" class="text-brand font-semibold hover:text-brand/80 underline">
                         Politykę Prywatności
                     </a>
                 </label>
@@ -116,7 +116,7 @@
                 </span>
             </a>
             <button type="submit"
-                    class="flex-[2] bg-primary-500 text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-primary/30">
+                    class="flex-[2] bg-brand text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-brand/30">
                 <span class="flex items-center justify-center gap-2">
                     Utwórz konto
                     <x-heroicon-m-rocket-launch class="w-5 h-5" />

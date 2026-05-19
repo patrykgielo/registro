@@ -92,7 +92,7 @@
 
         {{-- Register Button --}}
         <button type="submit"
-                class="w-full bg-primary-500 text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ios-spring focus:outline-none focus:ring-4 focus:ring-primary/30">
+                class="w-full bg-brand text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ios-spring focus:outline-none focus:ring-4 focus:ring-brand/30">
             <span class="flex items-center justify-center gap-2">
                 Zarejestruj się
                 <x-heroicon-m-arrow-right class="w-5 h-5" />
