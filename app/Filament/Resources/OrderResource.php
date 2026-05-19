@@ -7,9 +7,11 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers;
 use App\Models\Order;
+use App\Models\User;
 use App\Services\Order\OrderService;
 use BackedEnum;
 use Filament\Actions;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -37,6 +39,47 @@ class OrderResource extends BaseResource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
+            Section::make('Klient')
+                ->columns(1)
+                ->schema([
+                    Select::make('user_id')
+                        ->label('Przypisany klient')
+                        ->relationship('user', 'email')
+                        ->getOptionLabelFromRecordUsing(
+                            fn (User $record) => "{$record->first_name} {$record->last_name} ({$record->email})"
+                        )
+                        ->searchable(['first_name', 'last_name', 'email'])
+                        ->live()
+                        ->helperText('Wybór klienta nadpisuje dane kontaktowe poniżej jego bieżącym profilem.')
+                        ->afterStateUpdated(function (?int $state, callable $set): void {
+                            if (! $state) {
+                                return;
+                            }
+                            $user = User::find($state);
+                            if (! $user) {
+                                return;
+                            }
+                            $set('customer_first_name', $user->first_name);
+                            $set('customer_last_name', $user->last_name);
+                            $set('customer_email', $user->email);
+                            $set('customer_phone', $user->phone_e164);
+                            $set('customer_pesel', $user->pesel);
+                            $set('customer_type', $user->customer_type);
+                            $set('customer_street', $user->street_name);
+                            $set('customer_building', $user->street_number);
+                            $set('customer_city', $user->city);
+                            $set('customer_postal_code', $user->postal_code);
+                            $set('invoice_company_name', $user->company_name);
+                            $set('invoice_nip', $user->nip);
+                            $set('company_regon', $user->regon);
+                            $set('company_krs', $user->krs);
+                            $set('invoice_street', $user->billing_street);
+                            $set('invoice_street_number', $user->billing_building_number);
+                            $set('invoice_postal_code', $user->billing_postal_code);
+                            $set('invoice_city', $user->billing_city);
+                        }),
+                ]),
+
             Section::make('Dane kontaktowe')
                 ->columns(2)
                 ->schema([
@@ -112,6 +155,44 @@ class OrderResource extends BaseResource
 
                     TextInput::make('pickup_person_id_number')
                         ->label('Dowód osoby odbierającej')
+                        ->nullable(),
+                ]),
+
+            Section::make('Dane do faktury')
+                ->columns(2)
+                ->visible(fn (?Order $record): bool => $record?->customer_type === 'business')
+                ->schema([
+                    TextInput::make('invoice_company_name')
+                        ->label('Nazwa firmy')
+                        ->nullable(),
+
+                    TextInput::make('invoice_nip')
+                        ->label('NIP')
+                        ->nullable(),
+
+                    TextInput::make('company_regon')
+                        ->label('REGON')
+                        ->nullable(),
+
+                    TextInput::make('company_krs')
+                        ->label('KRS')
+                        ->nullable(),
+
+                    TextInput::make('invoice_street')
+                        ->label('Ulica (faktura)')
+                        ->nullable(),
+
+                    TextInput::make('invoice_street_number')
+                        ->label('Nr budynku (faktura)')
+                        ->nullable(),
+
+                    TextInput::make('invoice_postal_code')
+                        ->label('Kod pocztowy (faktura)')
+                        ->nullable()
+                        ->mask('99-999'),
+
+                    TextInput::make('invoice_city')
+                        ->label('Miasto (faktura)')
                         ->nullable(),
                 ]),
 
@@ -450,6 +531,10 @@ class OrderResource extends BaseResource
 
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
+        if (in_array($record->status, ['completed', 'cancelled', 'refunded'])) {
+            return false;
+        }
+
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 
