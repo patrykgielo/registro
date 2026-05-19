@@ -352,22 +352,46 @@ class EmailTemplateSeeder extends Seeder
             [
                 'key' => TemplateKey::ORDER_PAID->value,
                 'language' => 'pl',
-                'subject' => 'Potwierdzenie zamówienia #{{order_number}}',
-                'html_body' => '<h1>Dziękujemy za zamówienie!</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało opłacone i jest realizowane.</p><p><strong>Kwota:</strong> {{total_amount}} zł</p><p>Możesz śledzić status zamówienia w swoim koncie:</p><p><a href="{{orders_url}}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Moje zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
-                'text_body' => 'Dziękujemy za zamówienie! Cześć {{customer_name}}, Twoje zamówienie nr #{{order_number}} zostało opłacone. Kwota: {{total_amount}} zł. Śledź status: {{orders_url}}. Pozdrawiamy, Zespół {{app_name}}',
+                'subject' => 'Potwierdzenie zamówienia #{{order_number}} — {{app_name}}',
+                'html_body' => '<h1>Dziękujemy za zamówienie!</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało opłacone. Poniżej znajdziesz szczegóły wynajmu:</p>{{items_list_html}}<p style="margin-top:16px;"><strong>Suma za wynajem:</strong> {{total_amount}} zł</p>{{deposit_amount}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"><p><strong>Miejsce odbioru sprzętu:</strong><br>{{pickup_address}}{{pickup_phone}}</p><p>Zachowaj tę wiadomość — przyda się przy odbiorze sprzętu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Dziękujemy za zamówienie! Cześć {{customer_name}}, Twoje zamówienie nr #{{order_number}} zostało opłacone.
+
+Sprzęt:
+{{items_list_text}}
+
+Suma za wynajem: {{total_amount}} zł
+{{deposit_amount}}
+Miejsce odbioru: {{pickup_address}}
+Telefon: {{pickup_phone}}
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
                 'blade_path' => null,
-                'variables' => ['customer_name', 'order_number', 'total_amount', 'orders_url', 'app_name'],
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'orders_url', 'app_name', 'items_list_html', 'items_list_text', 'deposit_amount', 'pickup_address', 'pickup_phone'],
                 'active' => true,
             ],
             // 16. Order Paid - Customer Confirmation (English)
             [
                 'key' => TemplateKey::ORDER_PAID->value,
                 'language' => 'en',
-                'subject' => 'Order Confirmation #{{order_number}}',
-                'html_body' => '<h1>Thank you for your order!</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been paid and is being processed.</p><p><strong>Amount:</strong> {{total_amount}} PLN</p><p>You can track your order status in your account:</p><p><a href="{{orders_url}}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">My Orders</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
-                'text_body' => 'Thank you for your order! Hello {{customer_name}}, Your order #{{order_number}} has been paid. Amount: {{total_amount}} PLN. Track your order: {{orders_url}}. Best regards, The {{app_name}} Team',
+                'subject' => 'Order Confirmation #{{order_number}} — {{app_name}}',
+                'html_body' => '<h1>Thank you for your order!</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been paid. Here are your rental details:</p>{{items_list_html}}<p style="margin-top:16px;"><strong>Rental total:</strong> {{total_amount}} PLN</p>{{deposit_amount}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"><p><strong>Equipment pickup location:</strong><br>{{pickup_address}}{{pickup_phone}}</p><p>Keep this email — you will need it when collecting the equipment.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Thank you for your order! Hello {{customer_name}}, Your order #{{order_number}} has been paid.
+
+Items:
+{{items_list_text}}
+
+Rental total: {{total_amount}} PLN
+{{deposit_amount}}
+Pickup location: {{pickup_address}}
+Phone: {{pickup_phone}}
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
                 'blade_path' => null,
-                'variables' => ['customer_name', 'order_number', 'total_amount', 'orders_url', 'app_name'],
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'orders_url', 'app_name', 'items_list_html', 'items_list_text', 'deposit_amount', 'pickup_address', 'pickup_phone'],
                 'active' => true,
             ],
 

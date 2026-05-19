@@ -5,7 +5,7 @@
         'pending_payment' => ['bg-warning/10',    'text-warning',   'ring-warning/20',   'Oczekuje na płatność'],
         'paid'            => ['bg-success/10',    'text-success',   'ring-success/20',   'Opłacone'],
         'confirmed'       => ['bg-success/10',    'text-success',   'ring-success/20',   'Potwierdzone'],
-        'in_progress'     => ['bg-info/10',       'text-info',      'ring-info/20',      'W realizacji'],
+        'in_progress'     => ['bg-info/10',       'text-info',      'ring-info/20',      'Sprzęt u klienta'],
         'completed'       => ['bg-surface-sunken', 'text-text-muted', 'ring-border',     'Zakończone'],
         'cancelled'       => ['bg-error/10',      'text-error',     'ring-error/20',     'Anulowane'],
         'refunded'        => ['bg-brand-subtle',  'text-brand',     'ring-brand/20',     'Zwrócone'],
@@ -259,6 +259,59 @@
                         </dl>
                     </x-ui.card>
                 </section>
+
+                {{-- ─── Pickup location ─── --}}
+                @php
+                    $orgSettings    = $order->organization?->settings ?? [];
+                    $pickupAddress  = data_get($orgSettings, 'contact.address_line');
+                    $pickupPostal   = data_get($orgSettings, 'contact.postal_code');
+                    $pickupCity     = data_get($orgSettings, 'contact.city');
+                    $pickupPhone    = data_get($orgSettings, 'contact.phone');
+                    $hasPickupInfo  = $pickupAddress || $pickupCity || $pickupPhone;
+                @endphp
+                @if($hasPickupInfo)
+                <section aria-labelledby="pickup-heading">
+                    <x-ui.card>
+                        <h2 id="pickup-heading" class="text-base font-semibold text-text-primary mb-5">
+                            Miejsce odbioru sprzętu
+                        </h2>
+                        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            @if($pickupAddress || $pickupCity)
+                            <div>
+                                <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
+                                    Adres
+                                </dt>
+                                <dd class="text-text-primary">
+                                    @if($pickupAddress)
+                                        {{ $pickupAddress }}<br>
+                                    @endif
+                                    @if($pickupPostal || $pickupCity)
+                                        {{ trim($pickupPostal.' '.$pickupCity) }}
+                                    @endif
+                                </dd>
+                            </div>
+                            @endif
+                            @if($pickupPhone)
+                            <div>
+                                <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
+                                    Telefon
+                                </dt>
+                                <dd>
+                                    <a
+                                        href="tel:{{ $pickupPhone }}"
+                                        class="text-text-primary hover:text-brand
+                                               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:rounded
+                                               transition-colors duration-200"
+                                    >
+                                        {{ $pickupPhone }}
+                                    </a>
+                                </dd>
+                            </div>
+                            @endif
+                        </dl>
+                    </x-ui.card>
+                </section>
+                @endif
 
                 {{-- ─── Invoice details (conditional) ─── --}}
                 @if($order->invoice_requested)

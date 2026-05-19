@@ -340,7 +340,7 @@
                                     <p id="customer_pesel-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
                                 @enderror
                                 <p id="customer_pesel-hint" class="text-xs text-text-muted mt-1 leading-relaxed">
-                                    Numer PESEL jest wymagany do zawarcia umowy najmu i ewentualnego dochodzenia roszczeń.
+                                    Wymagany do weryfikacji tożsamości przy odbiorze sprzętu.
                                 </p>
                             </div>
 
@@ -1352,6 +1352,27 @@
                             </p>
                         </div>
                     @endif
+
+                    {{-- Co się dzieje dalej? --}}
+                    <div class="mt-4 pt-4 border-t border-border">
+                        <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2.5">
+                            Co się dzieje dalej?
+                        </h3>
+                        <ol class="space-y-2 text-xs text-text-muted" role="list">
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">1</span>
+                                <span>Opłacasz zamówienie — otrzymasz e-mail z potwierdzeniem i szczegółami odbioru.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">2</span>
+                                <span>Administrator potwierdza dostępność sprzętu i kontaktuje się z Tobą w razie pytań.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">3</span>
+                                <span>Odbierasz sprzęt osobiście w umówionym terminie — miej przy sobie dokument tożsamości.</span>
+                            </li>
+                        </ol>
+                    </div>
 
                     {{-- Przelewy24 CTA --}}
                     <div class="mt-6">
