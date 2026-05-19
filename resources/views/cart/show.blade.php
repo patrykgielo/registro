@@ -97,7 +97,7 @@
                                 </div>
 
                                 {{-- Quantity + Remove row --}}
-                                <div class="mt-4 flex items-center justify-between gap-3 flex-wrap">
+                                <div class="mt-4 flex items-center justify-between gap-3">
 
                                     {{-- Quantity form --}}
                                     <form
@@ -136,6 +136,54 @@
                                         >
                                             Aktualizuj
                                         </button>
+
+                                        {{-- Tooltip: availability hint --}}
+                                        <div
+                                            class="relative flex items-center"
+                                            x-data="{ open: false }"
+                                            @mouseenter="open = true"
+                                            @mouseleave="open = false"
+                                            @focusin="open = true"
+                                            @focusout="open = false"
+                                        >
+                                            <button
+                                                type="button"
+                                                class="flex items-center justify-center w-5 h-5 rounded-full text-text-muted
+                                                       hover:text-text-secondary
+                                                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-1
+                                                       transition-colors duration-200 cursor-pointer"
+                                                aria-label="Informacja o dostępności ilości"
+                                                :aria-expanded="open"
+                                                :aria-describedby="open ? 'qty-hint-{{ $item->id }}' : undefined"
+                                            >
+                                                <x-heroicon-s-information-circle class="w-4 h-4 shrink-0" aria-hidden="true" />
+                                            </button>
+
+                                            <div
+                                                id="qty-hint-{{ $item->id }}"
+                                                role="tooltip"
+                                                x-show="open"
+                                                x-transition:enter="transition ease-out duration-150"
+                                                x-transition:enter-start="opacity-0 -translate-y-1"
+                                                x-transition:enter-end="opacity-100 translate-y-0"
+                                                x-transition:leave="transition ease-in duration-100"
+                                                x-transition:leave-start="opacity-100 translate-y-0"
+                                                x-transition:leave-end="opacity-0 -translate-y-1"
+                                                x-cloak
+                                                class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 z-20
+                                                       px-3 py-2 text-xs text-text-secondary bg-surface-raised
+                                                       border border-border rounded-lg shadow-sm
+                                                       pointer-events-none"
+                                            >
+                                                Dotyczy tego samego terminu. Brak możliwości zwiększenia = brak dostępności w wybranym terminie.
+                                                {{-- Arrow --}}
+                                                <span
+                                                    class="absolute top-full left-1/2 -translate-x-1/2 -mt-px
+                                                           border-4 border-transparent border-t-border"
+                                                    aria-hidden="true"
+                                                ></span>
+                                            </div>
+                                        </div>
                                     </form>
 
                                     {{-- Remove form --}}
