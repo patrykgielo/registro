@@ -11,6 +11,8 @@ use App\Services\Order\OrderService;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -34,7 +36,95 @@ class OrderResource extends BaseResource
 
     public static function form(Schema $schema): Schema
     {
-        return $schema->components([]);
+        return $schema->components([
+            Section::make('Dane kontaktowe')
+                ->columns(2)
+                ->schema([
+                    TextInput::make('customer_first_name')
+                        ->label('Imię')
+                        ->required(),
+
+                    TextInput::make('customer_last_name')
+                        ->label('Nazwisko')
+                        ->required(),
+
+                    TextInput::make('customer_email')
+                        ->label('Email')
+                        ->email()
+                        ->required(),
+
+                    TextInput::make('customer_phone')
+                        ->label('Telefon')
+                        ->nullable(),
+                ]),
+
+            Section::make('Adres')
+                ->columns(3)
+                ->schema([
+                    TextInput::make('customer_street')
+                        ->label('Ulica')
+                        ->nullable(),
+
+                    TextInput::make('customer_building')
+                        ->label('Nr budynku')
+                        ->nullable(),
+
+                    TextInput::make('customer_apartment')
+                        ->label('Nr lokalu')
+                        ->nullable(),
+
+                    TextInput::make('customer_city')
+                        ->label('Miasto')
+                        ->nullable(),
+
+                    TextInput::make('customer_postal_code')
+                        ->label('Kod pocztowy')
+                        ->nullable()
+                        ->mask('99-999'),
+                ]),
+
+            Section::make('Weryfikacja tożsamości')
+                ->columns(2)
+                ->visible(fn (?Order $record): bool => $record?->customer_type === 'natural_person')
+                ->schema([
+                    TextInput::make('customer_pesel')
+                        ->label('PESEL')
+                        ->nullable()
+                        ->maxLength(11),
+                ]),
+
+            Section::make('Dane firmy — do korekty')
+                ->columns(2)
+                ->visible(fn (?Order $record): bool => $record?->customer_type === 'business')
+                ->schema([
+                    TextInput::make('company_contact_name')
+                        ->label('Osoba podpisująca umowę')
+                        ->nullable(),
+
+                    TextInput::make('signatory_id_number')
+                        ->label('PESEL / dowód podpisującego')
+                        ->nullable(),
+
+                    TextInput::make('pickup_person_name')
+                        ->label('Osoba odbierająca sprzęt')
+                        ->nullable()
+                        ->columnSpanFull(),
+
+                    TextInput::make('pickup_person_id_number')
+                        ->label('Dowód osoby odbierającej')
+                        ->nullable(),
+                ]),
+
+            Section::make('Notatka wewnętrzna')
+                ->columns(1)
+                ->schema([
+                    Textarea::make('notes')
+                        ->label('Notatka dla tenanta')
+                        ->nullable()
+                        ->helperText('Niewidoczna dla klienta')
+                        ->rows(3),
+                ]),
+        ]);
     }
 
     public static function table(Table $table): Table
@@ -341,6 +431,7 @@ class OrderResource extends BaseResource
         return [
             'index' => Pages\ListOrders::route('/'),
             'view' => Pages\ViewOrder::route('/{record}'),
+            'edit' => Pages\EditOrder::route('/{record}/edit'),
         ];
     }
 
@@ -356,7 +447,7 @@ class OrderResource extends BaseResource
 
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
-        return false;
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 
     public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
