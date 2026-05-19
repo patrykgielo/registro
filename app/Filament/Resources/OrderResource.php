@@ -7,10 +7,14 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers;
 use App\Models\Order;
+use App\Models\User;
 use App\Services\Order\OrderService;
 use BackedEnum;
 use Filament\Actions;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -34,7 +38,174 @@ class OrderResource extends BaseResource
 
     public static function form(Schema $schema): Schema
     {
-        return $schema->components([]);
+        return $schema->components([
+            Section::make('Klient')
+                ->columns(1)
+                ->schema([
+                    Select::make('user_id')
+                        ->label('Przypisany klient')
+                        ->relationship('user', 'email')
+                        ->getOptionLabelFromRecordUsing(
+                            fn (User $record) => "{$record->first_name} {$record->last_name} ({$record->email})"
+                        )
+                        ->searchable(['first_name', 'last_name', 'email'])
+                        ->live()
+                        ->helperText('Wybór klienta nadpisuje dane kontaktowe poniżej jego bieżącym profilem.')
+                        ->afterStateUpdated(function (?int $state, callable $set): void {
+                            if (! $state) {
+                                return;
+                            }
+                            $user = User::find($state);
+                            if (! $user) {
+                                return;
+                            }
+                            $set('customer_first_name', $user->first_name);
+                            $set('customer_last_name', $user->last_name);
+                            $set('customer_email', $user->email);
+                            $set('customer_phone', $user->phone_e164);
+                            $set('customer_pesel', $user->pesel);
+                            $set('customer_type', $user->customer_type);
+                            $set('customer_street', $user->street_name);
+                            $set('customer_building', $user->street_number);
+                            $set('customer_city', $user->city);
+                            $set('customer_postal_code', $user->postal_code);
+                            $set('invoice_company_name', $user->company_name);
+                            $set('invoice_nip', $user->nip);
+                            $set('company_regon', $user->regon);
+                            $set('company_krs', $user->krs);
+                            $set('invoice_street', $user->billing_street);
+                            $set('invoice_street_number', $user->billing_building_number);
+                            $set('invoice_postal_code', $user->billing_postal_code);
+                            $set('invoice_city', $user->billing_city);
+                        }),
+                ]),
+
+            Section::make('Dane kontaktowe')
+                ->columns(2)
+                ->schema([
+                    TextInput::make('customer_first_name')
+                        ->label('Imię')
+                        ->required(),
+
+                    TextInput::make('customer_last_name')
+                        ->label('Nazwisko')
+                        ->required(),
+
+                    TextInput::make('customer_email')
+                        ->label('Email')
+                        ->email()
+                        ->required(),
+
+                    TextInput::make('customer_phone')
+                        ->label('Telefon')
+                        ->nullable(),
+                ]),
+
+            Section::make('Adres')
+                ->columns(3)
+                ->schema([
+                    TextInput::make('customer_street')
+                        ->label('Ulica')
+                        ->nullable(),
+
+                    TextInput::make('customer_building')
+                        ->label('Nr budynku')
+                        ->nullable(),
+
+                    TextInput::make('customer_apartment')
+                        ->label('Nr lokalu')
+                        ->nullable(),
+
+                    TextInput::make('customer_city')
+                        ->label('Miasto')
+                        ->nullable(),
+
+                    TextInput::make('customer_postal_code')
+                        ->label('Kod pocztowy')
+                        ->nullable()
+                        ->mask('99-999'),
+                ]),
+
+            Section::make('Weryfikacja tożsamości')
+                ->columns(2)
+                ->visible(fn (?Order $record): bool => $record?->customer_type === 'natural_person')
+                ->schema([
+                    TextInput::make('customer_pesel')
+                        ->label('PESEL')
+                        ->nullable()
+                        ->maxLength(11),
+                ]),
+
+            Section::make('Dane firmy — do korekty')
+                ->columns(2)
+                ->visible(fn (?Order $record): bool => $record?->customer_type === 'business')
+                ->schema([
+                    TextInput::make('company_contact_name')
+                        ->label('Osoba podpisująca umowę')
+                        ->nullable(),
+
+                    TextInput::make('signatory_id_number')
+                        ->label('PESEL / dowód podpisującego')
+                        ->nullable(),
+
+                    TextInput::make('pickup_person_name')
+                        ->label('Osoba odbierająca sprzęt')
+                        ->nullable()
+                        ->columnSpanFull(),
+
+                    TextInput::make('pickup_person_id_number')
+                        ->label('Dowód osoby odbierającej')
+                        ->nullable(),
+                ]),
+
+            Section::make('Dane do faktury')
+                ->columns(2)
+                ->visible(fn (?Order $record): bool => $record?->customer_type === 'business')
+                ->schema([
+                    TextInput::make('invoice_company_name')
+                        ->label('Nazwa firmy')
+                        ->nullable(),
+
+                    TextInput::make('invoice_nip')
+                        ->label('NIP')
+                        ->nullable(),
+
+                    TextInput::make('company_regon')
+                        ->label('REGON')
+                        ->nullable(),
+
+                    TextInput::make('company_krs')
+                        ->label('KRS')
+                        ->nullable(),
+
+                    TextInput::make('invoice_street')
+                        ->label('Ulica (faktura)')
+                        ->nullable(),
+
+                    TextInput::make('invoice_street_number')
+                        ->label('Nr budynku (faktura)')
+                        ->nullable(),
+
+                    TextInput::make('invoice_postal_code')
+                        ->label('Kod pocztowy (faktura)')
+                        ->nullable()
+                        ->mask('99-999'),
+
+                    TextInput::make('invoice_city')
+                        ->label('Miasto (faktura)')
+                        ->nullable(),
+                ]),
+
+            Section::make('Notatka wewnętrzna')
+                ->columns(1)
+                ->schema([
+                    Textarea::make('notes')
+                        ->label('Notatka dla tenanta')
+                        ->nullable()
+                        ->helperText('Niewidoczna dla klienta')
+                        ->rows(3),
+                ]),
+        ]);
     }
 
     public static function table(Table $table): Table
@@ -61,7 +232,7 @@ class OrderResource extends BaseResource
                 Tables\Columns\TextColumn::make('customer_email')
                     ->label('Email')
                     ->searchable()
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
@@ -96,7 +267,7 @@ class OrderResource extends BaseResource
                     ->label('Kaucja')
                     ->money('PLN')
                     ->sortable()
-                    ->toggleable()
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('—'),
 
                 Tables\Columns\TextColumn::make('deposit_status')
@@ -120,7 +291,7 @@ class OrderResource extends BaseResource
                         'forfeited' => 'Przepadła',
                         default => $state,
                     })
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Data zamówienia')
@@ -176,155 +347,158 @@ class OrderResource extends BaseResource
                         'forfeited' => 'Przepadła',
                     ]),
             ])
-            ->recordAction('view')
+            ->recordAction('edit')
             ->recordActions([
-                Actions\ViewAction::make(),
+                Actions\EditAction::make()
+                    ->label('Zarządzaj'),
 
-                Actions\Action::make('confirm')
-                    ->label('Potwierdź')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->visible(fn (Order $record): bool => $record->status === 'paid')
-                    ->requiresConfirmation()
-                    ->action(function (Order $record): void {
-                        try {
-                            $record->status()->transitionTo('confirmed');
-                        } catch (\Exception $e) {
+                Actions\ActionGroup::make([
+                    Actions\Action::make('confirm')
+                        ->label('Potwierdź zamówienie')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
+                        ->visible(fn (Order $record): bool => $record->status === 'paid')
+                        ->requiresConfirmation()
+                        ->action(function (Order $record): void {
+                            try {
+                                $record->status()->transitionTo('confirmed');
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->danger()
+                                    ->title('Nie można potwierdzić zamówienia')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
+
+                    Actions\Action::make('mark_in_progress')
+                        ->label('Wydano klientowi')
+                        ->icon('heroicon-o-truck')
+                        ->color('info')
+                        ->visible(fn (Order $record): bool => $record->status === 'confirmed')
+                        ->requiresConfirmation()
+                        ->action(function (Order $record): void {
+                            try {
+                                $record->status()->transitionTo('in_progress');
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->danger()
+                                    ->title('Nie można zmienić statusu')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
+
+                    Actions\Action::make('complete')
+                        ->label('Sprzęt zwrócony')
+                        ->icon('heroicon-o-archive-box-arrow-down')
+                        ->color('gray')
+                        ->visible(fn (Order $record): bool => $record->status === 'in_progress')
+                        ->requiresConfirmation()
+                        ->action(function (Order $record): void {
+                            try {
+                                $record->status()->transitionTo('completed');
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->danger()
+                                    ->title('Nie można zakończyć zamówienia')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
+
+                    Actions\Action::make('collect_deposit')
+                        ->label('Pobrano kaucję')
+                        ->icon('heroicon-o-banknotes')
+                        ->color('success')
+                        ->visible(fn (Order $record): bool => $record->deposit_status === 'pending')
+                        ->form([
+                            \Filament\Forms\Components\Textarea::make('deposit_notes')
+                                ->label('Notatka (opcjonalnie)')
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Order $record, array $data): void {
+                            $record->update([
+                                'deposit_status' => 'collected',
+                                'deposit_collected_at' => now(),
+                                'deposit_notes' => $data['deposit_notes'] ?? null,
+                            ]);
                             \Filament\Notifications\Notification::make()
-                                ->danger()
-                                ->title('Nie można potwierdzić zamówienia')
-                                ->body($e->getMessage())
+                                ->success()
+                                ->title('Kaucja pobrana')
                                 ->send();
-                        }
-                    }),
+                        }),
 
-                Actions\Action::make('mark_in_progress')
-                    ->label('Wydano klientowi')
-                    ->icon('heroicon-o-truck')
-                    ->color('info')
-                    ->visible(fn (Order $record): bool => $record->status === 'confirmed')
-                    ->requiresConfirmation()
-                    ->action(function (Order $record): void {
-                        try {
-                            $record->status()->transitionTo('in_progress');
-                        } catch (\Exception $e) {
+                    Actions\Action::make('return_deposit')
+                        ->label('Zwrócono kaucję')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('info')
+                        ->visible(fn (Order $record): bool => $record->deposit_status === 'collected')
+                        ->form([
+                            \Filament\Forms\Components\Textarea::make('deposit_notes')
+                                ->label('Notatka (opcjonalnie)')
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Order $record, array $data): void {
+                            $record->update([
+                                'deposit_status' => 'returned',
+                                'deposit_returned_at' => now(),
+                                'deposit_notes' => $data['deposit_notes'] ?? null,
+                            ]);
                             \Filament\Notifications\Notification::make()
-                                ->danger()
-                                ->title('Nie można zmienić statusu')
-                                ->body($e->getMessage())
+                                ->success()
+                                ->title('Kaucja zwrócona')
                                 ->send();
-                        }
-                    }),
+                        }),
 
-                Actions\Action::make('complete')
-                    ->label('Sprzęt zwrócony')
-                    ->icon('heroicon-o-archive-box-arrow-down')
-                    ->color('gray')
-                    ->visible(fn (Order $record): bool => $record->status === 'in_progress')
-                    ->requiresConfirmation()
-                    ->action(function (Order $record): void {
-                        try {
-                            $record->status()->transitionTo('completed');
-                        } catch (\Exception $e) {
+                    Actions\Action::make('forfeit_deposit')
+                        ->label('Kaucja przepadła')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->visible(fn (Order $record): bool => $record->deposit_status === 'collected')
+                        ->requiresConfirmation()
+                        ->modalHeading('Kaucja przepada')
+                        ->modalDescription('Czy na pewno chcesz oznaczyć, że kaucja przepadła? Ta akcja jest nieodwracalna.')
+                        ->form([
+                            \Filament\Forms\Components\Textarea::make('deposit_notes')
+                                ->label('Powód przepadku')
+                                ->required()
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Order $record, array $data): void {
+                            $record->update([
+                                'deposit_status' => 'forfeited',
+                                'deposit_notes' => $data['deposit_notes'],
+                            ]);
                             \Filament\Notifications\Notification::make()
-                                ->danger()
-                                ->title('Nie można zakończyć zamówienia')
-                                ->body($e->getMessage())
+                                ->warning()
+                                ->title('Kaucja przepadła')
                                 ->send();
-                        }
-                    }),
+                        }),
 
-                Actions\Action::make('cancel')
-                    ->label('Anuluj')
-                    ->icon('heroicon-o-x-circle')
-                    ->color('danger')
-                    ->visible(fn (Order $record): bool => in_array($record->status, ['pending_payment', 'paid', 'confirmed']))
-                    ->form([
-                        Textarea::make('reason')
-                            ->label('Powód anulowania')
-                            ->required()
-                            ->maxLength(500),
-                    ])
-                    ->action(function (Order $record, array $data): void {
-                        try {
-                            app(OrderService::class)->cancel($record, $data['reason']);
-                        } catch (\Exception $e) {
-                            \Filament\Notifications\Notification::make()
-                                ->danger()
-                                ->title('Nie można anulować zamówienia')
-                                ->body($e->getMessage())
-                                ->send();
-                        }
-                    }),
-
-                Actions\Action::make('collect_deposit')
-                    ->label('Pobrano kaucję')
-                    ->icon('heroicon-o-banknotes')
-                    ->color('success')
-                    ->visible(fn (Order $record): bool => $record->deposit_status === 'pending')
-                    ->form([
-                        \Filament\Forms\Components\Textarea::make('deposit_notes')
-                            ->label('Notatka (opcjonalnie)')
-                            ->maxLength(500),
-                    ])
-                    ->action(function (Order $record, array $data): void {
-                        $record->update([
-                            'deposit_status' => 'collected',
-                            'deposit_collected_at' => now(),
-                            'deposit_notes' => $data['deposit_notes'] ?? null,
-                        ]);
-                        \Filament\Notifications\Notification::make()
-                            ->success()
-                            ->title('Kaucja pobrana')
-                            ->send();
-                    }),
-
-                Actions\Action::make('return_deposit')
-                    ->label('Zwrócono kaucję')
-                    ->icon('heroicon-o-arrow-uturn-left')
-                    ->color('info')
-                    ->visible(fn (Order $record): bool => $record->deposit_status === 'collected')
-                    ->form([
-                        \Filament\Forms\Components\Textarea::make('deposit_notes')
-                            ->label('Notatka (opcjonalnie)')
-                            ->maxLength(500),
-                    ])
-                    ->action(function (Order $record, array $data): void {
-                        $record->update([
-                            'deposit_status' => 'returned',
-                            'deposit_returned_at' => now(),
-                            'deposit_notes' => $data['deposit_notes'] ?? null,
-                        ]);
-                        \Filament\Notifications\Notification::make()
-                            ->success()
-                            ->title('Kaucja zwrócona')
-                            ->send();
-                    }),
-
-                Actions\Action::make('forfeit_deposit')
-                    ->label('Kaucja przepadła')
-                    ->icon('heroicon-o-x-circle')
-                    ->color('danger')
-                    ->visible(fn (Order $record): bool => $record->deposit_status === 'collected')
-                    ->requiresConfirmation()
-                    ->modalHeading('Kaucja przepada')
-                    ->modalDescription('Czy na pewno chcesz oznaczyć, że kaucja przepadła? Ta akcja jest nieodwracalna.')
-                    ->form([
-                        \Filament\Forms\Components\Textarea::make('deposit_notes')
-                            ->label('Powód przepadku')
-                            ->required()
-                            ->maxLength(500),
-                    ])
-                    ->action(function (Order $record, array $data): void {
-                        $record->update([
-                            'deposit_status' => 'forfeited',
-                            'deposit_notes' => $data['deposit_notes'],
-                        ]);
-                        \Filament\Notifications\Notification::make()
-                            ->warning()
-                            ->title('Kaucja przepadła')
-                            ->send();
-                    }),
+                    Actions\Action::make('cancel')
+                        ->label('Anuluj zamówienie')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->visible(fn (Order $record): bool => in_array($record->status, ['pending_payment', 'paid', 'confirmed']))
+                        ->form([
+                            Textarea::make('reason')
+                                ->label('Powód anulowania')
+                                ->required()
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Order $record, array $data): void {
+                            try {
+                                app(OrderService::class)->cancel($record, $data['reason']);
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->danger()
+                                    ->title('Nie można anulować zamówienia')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
+                ])->tooltip('Akcje'),
             ])
             ->toolbarActions([]);
     }
@@ -341,6 +515,7 @@ class OrderResource extends BaseResource
         return [
             'index' => Pages\ListOrders::route('/'),
             'view' => Pages\ViewOrder::route('/{record}'),
+            'edit' => Pages\EditOrder::route('/{record}/edit'),
         ];
     }
 
@@ -356,7 +531,11 @@ class OrderResource extends BaseResource
 
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
-        return false;
+        if (in_array($record->status, ['completed', 'cancelled', 'refunded'])) {
+            return false;
+        }
+
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 
     public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
