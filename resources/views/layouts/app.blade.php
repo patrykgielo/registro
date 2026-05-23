@@ -43,7 +43,7 @@
 
     @stack('head')
 </head>
-<body class="bg-surface min-h-screen flex flex-col antialiased">
+<body class="bg-surface min-h-screen flex flex-col antialiased" data-page-type="{{ $pageType ?? 'unknown' }}">
     <x-gtm-body />
 
     {{-- Skip Link (WCAG 2.2 AA) --}}

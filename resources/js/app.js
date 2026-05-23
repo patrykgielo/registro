@@ -3,8 +3,10 @@ import './booking-wizard';
 import { revenueChart } from './charts/revenue-chart.js';
 import Alpine from 'alpinejs';
 import Focus from '@alpinejs/focus';
+import AlpineTrackerPlugin from './tracker/alpine-tracker-plugin.js';
 
 Alpine.plugin(Focus);
+Alpine.plugin(AlpineTrackerPlugin);
 Alpine.data('revenueChart', revenueChart);
 window.Alpine = Alpine;
 Alpine.start();

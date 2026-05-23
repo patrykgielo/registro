@@ -124,6 +124,20 @@ Schedule::command('carts:cleanup-abandoned')
 
 /*
 |--------------------------------------------------------------------------
+| Analytics System
+|--------------------------------------------------------------------------
+*/
+
+// Delete analytics events older than 13 months (GDPR retention)
+// Runs: Monthly (first of month at midnight)
+Schedule::command('analytics:prune')
+    ->monthly()
+    ->withoutOverlapping()
+    ->name('analytics:prune')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
 | Statistics System
 |--------------------------------------------------------------------------
 */

@@ -41,7 +41,10 @@ use App\Services\Sms\SmsGatewayInterface;
 use App\Services\Sms\SmsService;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -98,6 +101,12 @@ class AppServiceProvider extends ServiceProvider
 
         // Share brand design variables with mail views
         $this->shareMailBrandVariables();
+
+        // Register analytics rate limiter
+        RateLimiter::for('analytics', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip()));
+
+        // Inject $pageType into frontend layout for analytics tracking
+        view()->composer('layouts.app', \App\View\Composers\PageTypeComposer::class);
     }
 
     /**
