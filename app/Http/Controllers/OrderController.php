@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -29,7 +30,10 @@ class OrderController extends Controller
         abort_unless($org !== null, 404);
         abort_unless($order->user_id === auth()->id() && $order->organization_id === $org->id, 403);
 
-        return view('orders.show', compact('order'));
+        $rentalExtensionEnabled = app(SettingsManager::class)->isRentalExtensionEnabled();
+        $order->load(['items.extensionRequests']);
+
+        return view('orders.show', compact('order', 'rentalExtensionEnabled'));
     }
 
     public function cancel(Request $request, Order $order): RedirectResponse

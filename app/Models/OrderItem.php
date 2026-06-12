@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 class OrderItem extends Model
@@ -78,5 +79,13 @@ class OrderItem extends Model
                     });
             });
         });
+    }
+
+    /**
+     * @return HasMany<OrderItemExtensionRequest, $this>
+     */
+    public function extensionRequests(): HasMany
+    {
+        return $this->hasMany(OrderItemExtensionRequest::class);
     }
 }

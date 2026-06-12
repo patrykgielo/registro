@@ -54,6 +54,11 @@ enum TemplateKey: string
     case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
     case ADMIN_USER_CREATED = 'admin-user-created';
 
+    // ── Rental extension (Email only) ────────────────────────────
+    case RENTAL_EXTENSION_REQUESTED = 'rental-extension-requested';
+    case RENTAL_EXTENSION_APPROVED = 'rental-extension-approved';
+    case RENTAL_EXTENSION_REJECTED = 'rental-extension-rejected';
+
     /**
      * Get human-readable label for admin UI.
      */
@@ -81,6 +86,9 @@ enum TemplateKey: string
             self::ADMIN_NEW_ORDER => 'Nowe zamówienie (admin)',
             self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
             self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
+            self::RENTAL_EXTENSION_REQUESTED => 'Wniosek o przedłużenie (admin)',
+            self::RENTAL_EXTENSION_APPROVED => 'Przedłużenie zatwierdzone (klient)',
+            self::RENTAL_EXTENSION_REJECTED => 'Przedłużenie odrzucone (klient)',
         };
     }
 
