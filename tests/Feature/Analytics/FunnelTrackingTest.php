@@ -13,7 +13,6 @@ use App\Models\Order;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -213,18 +212,12 @@ class FunnelTrackingTest extends TestCase
     // RecordAnalyticsOnOrderPaid listener
     // -------------------------------------------------------------------------
 
-    public function test_record_analytics_on_order_paid_listener_is_registered(): void
+    public function test_record_analytics_on_order_paid_listener_is_queued_on_analytics_queue(): void
     {
-        Event::fake([OrderPaid::class]);
+        $listener = new RecordAnalyticsOnOrderPaid(new \App\Services\Analytics\AnalyticsEventDispatcher);
 
-        $order = Order::factory()->create([
-            'organization_id' => $this->org->id,
-            'user_id' => $this->user->id,
-        ]);
-
-        OrderPaid::dispatch($order);
-
-        Event::assertDispatched(OrderPaid::class);
+        $this->assertInstanceOf(\Illuminate\Contracts\Queue\ShouldQueue::class, $listener);
+        $this->assertEquals('analytics', $listener->queue);
     }
 
     public function test_record_analytics_on_order_paid_dispatches_order_completed_event(): void
@@ -236,7 +229,7 @@ class FunnelTrackingTest extends TestCase
             'user_id' => $this->user->id,
         ]);
 
-        $listener = new RecordAnalyticsOnOrderPaid;
+        $listener = new RecordAnalyticsOnOrderPaid(new \App\Services\Analytics\AnalyticsEventDispatcher);
         $listener->handle(new OrderPaid($order));
 
         Queue::assertPushed(IngestAnalyticsEventsJob::class, function (IngestAnalyticsEventsJob $job) use ($order): bool {

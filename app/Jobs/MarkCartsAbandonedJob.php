@@ -21,6 +21,7 @@ class MarkCartsAbandonedJob implements ShouldQueue
         $cutoff = now()->subMinutes(30);
 
         Cart::active()
+            ->withCount('items')
             ->where('updated_at', '<', $cutoff)
             ->chunkById(100, function ($carts) use ($dispatcher): void {
                 foreach ($carts as $cart) {
@@ -28,7 +29,7 @@ class MarkCartsAbandonedJob implements ShouldQueue
 
                     $dispatcher->trackForCart($cart, 'cart.abandoned', [
                         'cart_id' => $cart->id,
-                        'item_count' => $cart->items()->count(),
+                        'item_count' => $cart->items_count,
                         'checkout_started' => $cart->checkout_started_at !== null,
                         'last_step' => $cart->last_checkout_step,
                     ]);

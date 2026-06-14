@@ -5,14 +5,20 @@
 | Field | Value | PII? |
 |-------|-------|------|
 | `session_id` | SHA-256(IP + UA + tenantId + date + app.key) | Pseudonymous |
-| `event` | e.g. `page_viewed`, `scroll_50` | No |
+| `event` | e.g. `page_viewed`, `scroll_50`, `cart.abandoned` | No |
 | `url` | Full URL of visited page | Potentially (if URL contains PII) |
-| `referrer` | Referring URL | Potentially |
+| `referrer` | Referring URL (stored in `referrer` column, full URL) | Potentially |
+| `referrer_domain` | Extracted hostname only (e.g. `www.google.com`) | No |
 | `page_type` | e.g. `homepage`, `catalogue` | No |
 | `device_type` | `desktop` / `mobile` / `tablet` | No |
 | `viewport_w` | Viewport width in pixels | No |
 | `user_id` | FK to users table (logged-in only) | Yes |
+| `utm_source` | e.g. `google`, `facebook` (last-touch) | No |
+| `utm_medium` | e.g. `cpc`, `organic` (last-touch) | No |
+| `utm_campaign` | e.g. `summer2026` (last-touch) | No |
 | `occurred_at` | Timestamp of event | No |
+
+**`carts.customer_email`** — Reserved column added for Phase 5 email-capture recovery flow. **Not yet populated.** Will require separate GDPR assessment (legitimate interest for cart recovery emails) before the write path is activated.
 
 We do NOT store raw IP addresses.
 

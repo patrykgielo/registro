@@ -25,6 +25,9 @@ function captureUtm() {
     }
 }
 
+// Returns last-touch UTM for every event payload.
+// First-touch (_tk_utm_ft in localStorage) is intentionally not sent per-event —
+// it is reserved for Phase 3 PostHog integration where it will be sent once on session start.
 function getUtm() {
     const lt = sessionStorage.getItem('_tk_utm_lt');
     return lt ? JSON.parse(lt) : {};

@@ -52,11 +52,6 @@ class AnalyticsEvent extends Model
         return $query->whereBetween('occurred_at', [$from, $to]);
     }
 
-    public function scopeOfType(Builder $query, string $event): Builder
-    {
-        return $query->where('event', $event);
-    }
-
     public function scopeEvent(Builder $query, string $event): Builder
     {
         return $query->where('event', $event);

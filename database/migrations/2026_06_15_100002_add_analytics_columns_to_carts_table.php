@@ -18,12 +18,14 @@ return new class extends Migration
             $table->string('utm_source', 255)->nullable()->after('abandoned_at');
             $table->string('utm_medium', 100)->nullable()->after('utm_source');
             $table->string('utm_campaign', 255)->nullable()->after('utm_medium');
+            $table->index(['status', 'updated_at'], 'carts_status_updated_at_idx');
         });
     }
 
     public function down(): void
     {
         Schema::table('carts', function (Blueprint $table): void {
+            $table->dropIndex('carts_status_updated_at_idx');
             $table->dropColumn([
                 'customer_email',
                 'checkout_started_at',
