@@ -93,11 +93,13 @@ class FunnelTrackingTest extends TestCase
             'organization_id' => $this->org->id,
             'user_id' => $this->user->id,
             'status' => 'active',
+            'updated_at' => now()->subMinutes(35),
         ]);
 
-        Cart::withoutTimestamps(function () use ($cart) {
-            $cart->update(['updated_at' => now()->subMinutes(35)]);
-        });
+        // Force updated_at via raw DB to bypass Eloquent timestamp auto-fill
+        \Illuminate\Support\Facades\DB::table('carts')
+            ->where('id', $cart->id)
+            ->update(['updated_at' => now()->subMinutes(35)->toDateTimeString()]);
 
         (new MarkCartsAbandonedJob)->handle(
             new \App\Services\Analytics\AnalyticsEventDispatcher
@@ -105,7 +107,9 @@ class FunnelTrackingTest extends TestCase
 
         Queue::assertPushed(IngestAnalyticsEventsJob::class, function (IngestAnalyticsEventsJob $job): bool {
             $reflection = new \ReflectionClass($job);
-            $events = $reflection->getProperty('events')->getValue($job);
+            $property = $reflection->getProperty('events');
+            $property->setAccessible(true);
+            $events = $property->getValue($job);
 
             return isset($events[0]['event']) && $events[0]['event'] === 'cart.abandoned';
         });
