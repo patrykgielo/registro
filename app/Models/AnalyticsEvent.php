@@ -24,6 +24,10 @@ class AnalyticsEvent extends Model
         'viewport_w',
         'properties',
         'ip_hash',
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
+        'referrer_domain',
         'occurred_at',
         'received_at',
     ];
@@ -51,5 +55,15 @@ class AnalyticsEvent extends Model
     public function scopeOfType(Builder $query, string $event): Builder
     {
         return $query->where('event', $event);
+    }
+
+    public function scopeEvent(Builder $query, string $event): Builder
+    {
+        return $query->where('event', $event);
+    }
+
+    public function scopeEvents(Builder $query, array $events): Builder
+    {
+        return $query->whereIn('event', $events);
     }
 }

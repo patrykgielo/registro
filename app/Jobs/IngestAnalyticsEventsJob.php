@@ -64,10 +64,11 @@ class IngestAnalyticsEventsJob implements ShouldQueue
                 }
             }
 
-            $properties = null;
-            if (! empty($event['properties']) && is_array($event['properties'])) {
-                $properties = json_encode($event['properties']);
-            }
+            $props = ! empty($event['properties']) && is_array($event['properties'])
+                ? $event['properties']
+                : [];
+
+            $properties = empty($props) ? null : json_encode($props);
 
             $rows[] = [
                 'organization_id' => $this->serverProps['organization_id'],
@@ -80,6 +81,10 @@ class IngestAnalyticsEventsJob implements ShouldQueue
                 'device_type' => Str::substr((string) ($event['device_type'] ?? ''), 0, 20) ?: null,
                 'viewport_w' => isset($event['viewport_w']) ? (int) $event['viewport_w'] : null,
                 'properties' => $properties,
+                'utm_source' => Str::substr((string) ($props['utm_source'] ?? ''), 0, 255) ?: null,
+                'utm_medium' => Str::substr((string) ($props['utm_medium'] ?? ''), 0, 255) ?: null,
+                'utm_campaign' => Str::substr((string) ($props['utm_campaign'] ?? ''), 0, 255) ?: null,
+                'referrer_domain' => $this->extractDomain((string) ($event['referrer'] ?? '')),
                 'occurred_at' => $occurredAt->format('Y-m-d H:i:s'),
                 'received_at' => $receivedAt,
             ];
@@ -90,5 +95,16 @@ class IngestAnalyticsEventsJob implements ShouldQueue
         }
 
         DB::table('analytics_events')->insert($rows);
+    }
+
+    private function extractDomain(string $url): ?string
+    {
+        if ($url === '') {
+            return null;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? $host : null;
     }
 }

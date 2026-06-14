@@ -16,6 +16,7 @@ use App\Events\OrderPaid;
 use App\Events\PasswordResetRequested;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
+use App\Listeners\RecordAnalyticsOnOrderPaid;
 use App\Models\Appointment;
 use App\Models\Page as PageModel;
 use App\Models\User;
@@ -287,6 +288,9 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             }
         });
+
+        // Order Paid: record analytics
+        Event::listen(OrderPaid::class, RecordAnalyticsOnOrderPaid::class);
 
         // ========== SECURITY: SESSION REGENERATION ==========
 
