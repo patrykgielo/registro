@@ -13,7 +13,12 @@ class CheckMigrationsRollback extends Command
 
     public function handle(): int
     {
-        $files = File::glob(database_path('migrations/*.php'));
+        $files = collect(File::allFiles(database_path('migrations')))
+            ->filter(fn ($f) => $f->getExtension() === 'php')
+            ->map(fn ($f) => $f->getPathname())
+            ->sort()
+            ->values()
+            ->toArray();
         $violations = [];
 
         foreach ($files as $file) {
@@ -27,7 +32,7 @@ class CheckMigrationsRollback extends Command
             }
 
             if (preg_match('/function down\(\)[^{]*\{([^}]*)\}/s', $content, $matches)) {
-                $body = trim(preg_replace('/\/\/[^\n]*/', '', $matches[1]));
+                $body = trim(preg_replace('/(\/\*.*?\*\/|\/\/[^\n]*|#[^\n]*)/s', '', $matches[1]));
                 if ($body === '') {
                     $violations[] = [$basename, 'empty down() body — add rollback logic or throw RuntimeException'];
                 }

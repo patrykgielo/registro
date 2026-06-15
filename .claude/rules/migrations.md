@@ -91,9 +91,12 @@ public function down(): void
     Schema::dropIfExists('appointments');
 }
 
-// Column change — revert to previous state
+// Column change (nullable→NOT NULL): handle NULL rows FIRST or MySQL rejects the constraint
 public function down(): void
 {
+    DB::table('users')->whereNull('password')->update([
+        'password' => password_hash(\Illuminate\Support\Str::random(40), PASSWORD_BCRYPT),
+    ]);
     Schema::table('users', function (Blueprint $table) {
         $table->string('password')->nullable(false)->change();
     });

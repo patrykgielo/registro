@@ -1,31 +1,16 @@
 #!/bin/bash
-# Reject new migration files with empty/missing down() method
+# Reject new/modified migration files with empty/missing down() method.
+# Delegates to `migrations:check-rollback` in Docker — no host PHP dependency,
+# same logic as PHPUnit test.
 
-STAGED_MIGRATIONS=$(git diff --cached --name-only --diff-filter=A | grep '^database/migrations/.*\.php$')
+STAGED_MIGRATIONS=$(git diff --cached --name-only --diff-filter=AM | grep '^database/migrations/.*\.php$')
 
 [ -z "$STAGED_MIGRATIONS" ] && exit 0
 
-ERRORS=0
-for FILE in $STAGED_MIGRATIONS; do
-    if ! grep -q 'function down' "$FILE"; then
-        echo "Migration missing down() method: $FILE"
-        ERRORS=1
-        continue
-    fi
-
-    # Check if down() body is empty (just whitespace/comments between braces)
-    DOWN_BODY=$(php -r "
-        \$c = file_get_contents('$FILE');
-        if (preg_match('/function down\(\)[^{]*\{(.*?)\n    \}/s', \$c, \$m)) {
-            echo trim(preg_replace('/\/\/[^\n]*/', '', \$m[1]));
-        }
-    " 2>/dev/null)
-
-    if [ -z "$DOWN_BODY" ]; then
-        echo "Migration has empty down() method: $FILE"
-        echo "  Add rollback logic or use: throw new \\RuntimeException('Irreversible migration');"
-        ERRORS=1
-    fi
-done
-
-exit $ERRORS
+echo "Checking migration rollback safety..."
+if ! docker compose exec -T app php artisan migrations:check-rollback; then
+    echo ""
+    echo "Fix the violations above before committing."
+    echo "Every down() needs rollback logic or: throw new \\RuntimeException('Irreversible migration');"
+    exit 1
+fi

@@ -14,5 +14,6 @@ if echo "$CHANGED" | grep -qE '^database/migrations/.*\.php$'; then
         echo "Migrations complete."
     else
         echo "Migration failed! Run manually: docker compose exec app php artisan migrate"
+        exit 1
     fi
 fi
