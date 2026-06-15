@@ -20,12 +20,21 @@ class Cart extends Model
         'user_id',
         'status',
         'expires_at',
+        'customer_email',
+        'checkout_started_at',
+        'last_checkout_step',
+        'abandoned_at',
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
     ];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
+            'checkout_started_at' => 'datetime',
+            'abandoned_at' => 'datetime',
             'status' => 'string',
         ];
     }
@@ -62,5 +71,10 @@ class Cart extends Model
     public function scopeForUser(Builder $query, User $user): Builder
     {
         return $query->where('user_id', $user->id);
+    }
+
+    public function scopeAbandoned(Builder $query): Builder
+    {
+        return $query->where('status', 'abandoned');
     }
 }

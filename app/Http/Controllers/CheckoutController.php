@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\SubmitCheckoutRequest;
 use App\Models\Order;
+use App\Services\Analytics\AnalyticsEventDispatcher;
 use App\Services\Cart\CartService;
 use App\Services\Payment\Przelewy24Service;
 use App\Support\Settings\SettingsManager;
@@ -21,6 +22,7 @@ class CheckoutController extends Controller
         protected CartService $cart,
         protected Przelewy24Service $p24,
         protected SettingsManager $settings,
+        protected AnalyticsEventDispatcher $analytics,
     ) {}
 
     /**
@@ -37,6 +39,14 @@ class CheckoutController extends Controller
         if ($cart->items->isEmpty()) {
             return redirect()->route('cart.show')
                 ->withErrors(['general' => 'Twój koszyk jest pusty.']);
+        }
+
+        if ($cart->checkout_started_at === null) {
+            $cart->update(['checkout_started_at' => now()]);
+            $this->analytics->trackForCart($cart, 'checkout.started', [
+                'item_count' => $cart->items->count(),
+                'cart_total' => $cart->items->sum('total_price'),
+            ]);
         }
 
         $user = auth()->user();
@@ -94,6 +104,11 @@ class CheckoutController extends Controller
             );
 
             $paymentUrl = $this->p24->registerTransaction($order);
+
+            $this->analytics->trackForCart($cart, 'checkout.submitted', [
+                'order_id' => $order->id,
+                'total_amount' => $order->total_amount,
+            ]);
 
             return redirect($paymentUrl);
         } catch (\Exception $e) {

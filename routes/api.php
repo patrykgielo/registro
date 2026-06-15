@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\EventTrackingController;
 use App\Http\Controllers\Api\ServiceAreaController;
 use App\Http\Controllers\ServiceAreaWaitlistController;
 use Illuminate\Support\Facades\Route;
@@ -34,4 +35,10 @@ Route::middleware($isProduction ? 'throttle:30,1' : 'throttle:300,1')->group(fun
 Route::middleware($isProduction ? 'throttle:3,1' : 'throttle:30,1')->group(function () {
     Route::post('/service-area/waitlist', [ServiceAreaWaitlistController::class, 'store'])
         ->name('api.service-area.waitlist');
+});
+
+// Frontend event tracking (guest + authenticated, tenant-scoped)
+Route::middleware(['throttle:analytics', \App\Http\Middleware\ResolveTenant::class])->group(function () {
+    Route::post('/track', [EventTrackingController::class, 'store'])
+        ->name('api.analytics.track');
 });

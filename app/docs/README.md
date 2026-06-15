@@ -50,10 +50,12 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 
 | Section | Lokalizacja | Opis |
 |---------|-------------|------|
+| **Analytics** | `analytics/` | Tech reference + client guide dla systemu analitycznego |
 | **Features** | `features/` | Dokumentacja funkcjonalności |
 | **Guides** | `guides/` | How-to guides i best practices |
 | **Decisions** | `decisions/` | Architecture Decision Records (ADR) |
 | **Security** | `security/` | Baseline, audits, vulnerabilities |
+| **Legal** | `legal/` | GDPR assessments (analytics-gdpr-lia.md) |
 | **Deployment** | `deployment/` | Deploy scripts, pre-deployment checks |
 | **Dependencies** | `dependencies.md` | External packages i wersje |
 

@@ -2,6 +2,7 @@
 
 use App\Jobs\Email\CleanupOldEmailLogsJob;
 use App\Jobs\Email\SendAdminDigestJob;
+use App\Jobs\MarkCartsAbandonedJob;
 use App\Jobs\RecalculateDailyStatisticsJob;
 use App\Jobs\Reminder\ProcessRemindersJob;
 use App\Jobs\Sms\CleanupOldSmsLogsJob;
@@ -120,6 +121,28 @@ Schedule::command('carts:cleanup-abandoned')
     ->dailyAt('02:00')
     ->withoutOverlapping()
     ->name('carts:cleanup-abandoned')
+    ->onOneServer();
+
+// Mark active carts as abandoned after 30 min of inactivity + dispatch analytics event
+// Runs: Every 5 minutes
+Schedule::job(new MarkCartsAbandonedJob)
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->name('carts:mark-abandoned')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Analytics System
+|--------------------------------------------------------------------------
+*/
+
+// Delete analytics events older than 13 months (GDPR retention)
+// Runs: Monthly (first of month at midnight)
+Schedule::command('analytics:prune')
+    ->monthly()
+    ->withoutOverlapping()
+    ->name('analytics:prune')
     ->onOneServer();
 
 /*
