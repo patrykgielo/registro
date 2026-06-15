@@ -72,12 +72,47 @@ docker compose exec -T app php artisan migrate
 
 ---
 
-## Rollback Safety
+## Rollback Safety (CRITICAL — enforced automatically)
 
-Always implement `down()` method:
+### Rules
+- **MANDATORY:** Every `down()` must have a non-empty body. Empty body = blocked by `pre-commit` hook.
+- **ALWAYS:** `Schema::dropIfExists()` not `Schema::drop()` — never fails on missing table.
+- **Data-only migrations:** Cannot be reversed → use `throw new \RuntimeException('...')` explicitly.
+- `MigrationRollbackTest` catches violations in CI before they reach develop.
+- Manual audit: `php artisan migrations:check-rollback`
+- Auto-run on merge/checkout: `.githooks/post-merge` + `.githooks/post-checkout` (activated via `composer install`)
+
+### Patterns
+
 ```php
+// Schema migration — always revert the column/table change
 public function down(): void
 {
     Schema::dropIfExists('appointments');
 }
+
+// Column change — revert to previous state
+public function down(): void
+{
+    Schema::table('users', function (Blueprint $table) {
+        $table->string('password')->nullable(false)->change();
+    });
+}
+
+// Irreversible data migration — explicit, never silent
+public function down(): void
+{
+    throw new \RuntimeException('This migration is a data-only fix and cannot be rolled back safely.');
+}
 ```
+
+### Git Hooks Setup
+
+Hooks live in `.githooks/` (committed to repo). They are activated automatically on `composer install`:
+```bash
+git config core.hooksPath .githooks
+```
+
+- `pre-commit` — rejects new migrations with empty `down()` (strips comments before checking)
+- `post-merge` — auto-runs `php artisan migrate` if migration files changed
+- `post-checkout` — same but on branch switches only
