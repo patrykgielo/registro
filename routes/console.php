@@ -145,6 +145,14 @@ Schedule::command('analytics:prune')
     ->name('analytics:prune')
     ->onOneServer();
 
+// Roll up raw events into hourly aggregation buckets (default: previous 2 hours)
+// For catch-up after downtime: php artisan analytics:rollup-hourly --hours=24
+Schedule::command('analytics:rollup-hourly')
+    ->hourly()
+    ->withoutOverlapping(5)
+    ->name('analytics:rollup-hourly')
+    ->onOneServer();
+
 /*
 |--------------------------------------------------------------------------
 | Statistics System

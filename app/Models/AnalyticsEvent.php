@@ -8,6 +8,8 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
+// No BelongsToOrganization trait intentionally — platform super-admin needs cross-tenant
+// queries (StatisticsService, PlatformOverview). Tenant isolation enforced at call sites.
 class AnalyticsEvent extends Model
 {
     public $timestamps = false;
@@ -16,11 +18,14 @@ class AnalyticsEvent extends Model
         'organization_id',
         'user_id',
         'session_id',
+        'anonymous_id',
         'event',
         'url',
         'referrer',
         'page_type',
         'device_type',
+        'browser',
+        'os',
         'viewport_w',
         'properties',
         'ip_hash',
@@ -60,5 +65,27 @@ class AnalyticsEvent extends Model
     public function scopeEvents(Builder $query, array $events): Builder
     {
         return $query->whereIn('event', $events);
+    }
+
+    public function getProductSlugAttribute(): ?string
+    {
+        return $this->properties['service_slug'] ?? null;
+    }
+
+    public function getCartIdAttribute(): ?string
+    {
+        return $this->properties['cart_id'] ?? null;
+    }
+
+    public function getOrderIdAttribute(): ?string
+    {
+        return $this->properties['order_id'] ?? null;
+    }
+
+    public function getRevenueAttribute(): ?float
+    {
+        $value = $this->properties['total'] ?? null;
+
+        return ($value !== null && $value !== '') ? (float) $value : null;
     }
 }
