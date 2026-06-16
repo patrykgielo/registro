@@ -5,10 +5,33 @@ const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'ut
 
 let queue = [];
 let timer = null;
-let sessionId = sessionStorage.getItem('_tk_session') ?? null;
 let scrollFired = new Set();
 let intersectionObserver = null;
 let exitFired = false;
+
+// Storage guard — Safari ITP and some privacy extensions block storage access
+function safeGet(storage, key) {
+    try { return storage.getItem(key); } catch { return null; }
+}
+function safeSet(storage, key, val) {
+    try { storage.setItem(key, val); } catch { /* storage blocked */ }
+}
+
+let sessionId = safeGet(sessionStorage, '_tk_session');
+
+// Anonymous ID — persists across sessions in localStorage, survives cookie clearance
+function makeUuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+}
+let anonymousId = safeGet(localStorage, '_tk_anon_id');
+if (!anonymousId) {
+    anonymousId = makeUuid();
+    safeSet(localStorage, '_tk_anon_id', anonymousId);
+}
 
 // UTM capture: first-touch in localStorage, last-touch in sessionStorage
 function captureUtm() {
@@ -56,6 +79,7 @@ function push(eventName, props = {}) {
     queue.push({
         event: eventName,
         session_id: sessionId,
+        anonymous_id: anonymousId,
         url: location.href,
         referrer: document.referrer || null,
         page_type: document.body?.dataset.pageType ?? 'unknown',
@@ -104,20 +128,20 @@ function sendFetch(payload, keepalive = false) {
                 return res.json().then((data) => {
                     if (data.session_id && !sessionId) {
                         sessionId = data.session_id;
-                        sessionStorage.setItem('_tk_session', sessionId);
+                        safeSet(sessionStorage, '_tk_session', sessionId);
                     }
                 });
             }
         })
         .catch(() => {
-            sessionStorage.setItem('_tk_failed', payload);
+            safeSet(sessionStorage, '_tk_failed', payload);
         });
 }
 
 function retryFailed() {
-    const failed = sessionStorage.getItem('_tk_failed');
+    const failed = safeGet(sessionStorage, '_tk_failed');
     if (!failed) return;
-    sessionStorage.removeItem('_tk_failed');
+    try { sessionStorage.removeItem('_tk_failed'); } catch { /* blocked */ }
     sendFetch(failed);
 }
 
@@ -178,6 +202,50 @@ function setupIntersectionTracking() {
     });
 }
 
+// Checkout form tracking — field focus + abandon detection
+function setupCheckoutTracking() {
+    if (!location.pathname.includes('koszyk/zamowienie') &&
+        !location.pathname.includes('koszyk/checkout')) {
+        return;
+    }
+
+    let orderCompleted = false;
+    let lastField = null;
+    let fieldCount = 0;
+    const tracked = new Set();
+
+    document.querySelectorAll('[data-checkout-form] input, [data-checkout-form] select, [data-checkout-form] textarea')
+        .forEach((el) => {
+            el.addEventListener('focus', () => {
+                const fieldName = el.name || el.id || 'unknown';
+                if (!tracked.has(fieldName)) {
+                    tracked.add(fieldName);
+                    lastField = fieldName;
+                    fieldCount++;
+                    push('form_field_focused', { field: fieldName });
+                }
+            });
+        });
+
+    // Alpine dispatches this when form passes validation and will submit
+    window.addEventListener('checkout:submitted', () => {
+        orderCompleted = true;
+    });
+
+    // Abandon detection — must call flush(true) because the existing visibilitychange
+    // handler runs first and flushes before this listener fires
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && fieldCount > 0 && !orderCompleted) {
+            push('form_abandoned', {
+                last_field: lastField,
+                fields_interacted: fieldCount,
+                page: 'checkout',
+            });
+            flush(true);
+        }
+    });
+}
+
 // Page exit — flush remaining queue + record time spent
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
@@ -230,6 +298,32 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// Back navigation — track previous URL before Livewire SPA navigation
+document.addEventListener('livewire:navigate', () => {
+    safeSet(sessionStorage, '_tk_prev_url', location.href);
+});
+
+// Back navigation (browser back button through checkout funnel)
+// document.referrer doesn't update on popstate; use _tk_prev_url for SPA,
+// fall back to referrer for full page loads.
+window.addEventListener('popstate', () => {
+    const prevUrl = safeGet(sessionStorage, '_tk_prev_url') || document.referrer;
+    if (prevUrl.includes('koszyk')) {
+        push('back_navigation', {
+            from_page: 'checkout',
+            to_url: location.href,
+        });
+    }
+});
+
+// Calendar date selection — dispatched by Alpine component in services/show.blade.php
+window.addEventListener('calendar:date-selected', (e) => {
+    push('calendar_interacted', {
+        action: 'date_selected',
+        service_slug: e.detail?.slug ?? null,
+    });
+});
+
 // Livewire SPA navigation
 document.addEventListener('livewire:navigated', () => {
     exitFired = false;
@@ -239,6 +333,15 @@ document.addEventListener('livewire:navigated', () => {
     push('page_viewed');
     setupIntersectionTracking();
     setupScrollTracking();
+    setupCheckoutTracking();
+    if (document.body?.dataset.pageType === 'service') {
+        push('product_viewed', {
+            service_slug: document.body.dataset.serviceSlug ?? null,
+            service_id: document.body.dataset.serviceId ? parseInt(document.body.dataset.serviceId, 10) : null,
+            price: document.body.dataset.servicePrice ? parseFloat(document.body.dataset.servicePrice) : null,
+            currency: 'PLN',
+        });
+    }
 });
 
 // Init
@@ -246,6 +349,31 @@ captureUtm();
 retryFailed();
 setupScrollTracking();
 setupIntersectionTracking();
+setupCheckoutTracking();
 push('page_viewed');
+
+// product_viewed — fires on service detail pages
+if (document.body?.dataset.pageType === 'service') {
+    push('product_viewed', {
+        service_slug: document.body.dataset.serviceSlug ?? null,
+        service_id: document.body.dataset.serviceId ? parseInt(document.body.dataset.serviceId, 10) : null,
+        price: document.body.dataset.servicePrice ? parseFloat(document.body.dataset.servicePrice) : null,
+        currency: 'PLN',
+    });
+}
+
+// add_to_cart then cart_viewed (funnel order: item added before cart is viewed)
+if (
+    location.pathname.includes('/koszyk') &&
+    !location.pathname.includes('/koszyk/zamowienie') &&
+    document.referrer.includes('/uslugi/')
+) {
+    const slug = document.referrer.split('/uslugi/')[1]?.split('?')[0] ?? null;
+    push('add_to_cart', { referrer_service: slug });
+}
+
+if (location.pathname.replace(/\/$/, '') === '/koszyk') {
+    push('cart_viewed');
+}
 
 export { push, flush };

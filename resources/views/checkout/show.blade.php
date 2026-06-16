@@ -38,6 +38,7 @@
         method="POST"
         action="{{ route('checkout.submit') }}"
         novalidate
+        data-checkout-form
         x-data="{
             customerType: '{{ old('customer_type', $profileData['customer_type'] ?? 'natural_person') }}',
 
@@ -101,6 +102,8 @@
                             firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     });
+                } else {
+                    window.dispatchEvent(new CustomEvent('checkout:submitted'));
                 }
             }
         }"

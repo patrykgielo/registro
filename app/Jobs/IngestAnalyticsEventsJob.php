@@ -17,6 +17,24 @@ class IngestAnalyticsEventsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    private const VALID_EVENTS = [
+        // Existing tracker events
+        'page_viewed',
+        'scroll_25', 'scroll_50', 'scroll_75', 'scroll_90', 'scroll_100',
+        'exit_intent',
+        'rage_click',
+        'section_visible',
+        'page.time_spent',
+        // Phase C — new behavioral events
+        'product_viewed',
+        'calendar_interacted',
+        'add_to_cart',
+        'cart_viewed',
+        'form_field_focused',
+        'form_abandoned',
+        'back_navigation',
+    ];
+
     public int $tries = 3;
 
     public int $backoff = 5;
@@ -48,6 +66,10 @@ class IngestAnalyticsEventsJob implements ShouldQueue
                 continue;
             }
 
+            if (! in_array($eventName, self::VALID_EVENTS, true)) {
+                continue;
+            }
+
             // Parse client timestamp; clamp to [now-5min, now]
             $occurredAt = $maxOccurredAt->copy();
             if (! empty($event['timestamp'])) {
@@ -74,7 +96,10 @@ class IngestAnalyticsEventsJob implements ShouldQueue
                 'organization_id' => $this->serverProps['organization_id'],
                 'user_id' => $this->serverProps['user_id'],
                 'session_id' => Str::substr((string) ($this->serverProps['session_id'] ?? ''), 0, 64) ?: null,
+                'anonymous_id' => Str::substr((string) ($this->serverProps['anonymous_id'] ?? ''), 0, 64) ?: null,
                 'event' => $eventName,
+                'browser' => Str::substr((string) ($this->serverProps['browser'] ?? ''), 0, 100) ?: null,
+                'os' => Str::substr((string) ($this->serverProps['os'] ?? ''), 0, 100) ?: null,
                 'url' => Str::substr((string) ($event['url'] ?? ''), 0, 2048) ?: null,
                 'referrer' => Str::substr((string) ($event['referrer'] ?? ''), 0, 2048) ?: null,
                 'page_type' => Str::substr((string) ($event['page_type'] ?? ''), 0, 50) ?: null,

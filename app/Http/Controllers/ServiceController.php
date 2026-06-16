@@ -61,6 +61,7 @@ class ServiceController extends Controller
             'relatedServices' => $relatedServices,
             'schemaService' => $schemaService,
             'schemaBreadcrumbs' => $schemaBreadcrumbs,
+            'pageType' => 'service',
         ]);
     }
 
@@ -109,7 +110,7 @@ class ServiceController extends Controller
             $schema['image'] = \Storage::url($service->featured_image);
         }
 
-        return json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return json_encode($schema, JSON_PRETTY_PRINT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -142,6 +143,6 @@ class ServiceController extends Controller
             ],
         ];
 
-        return json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return json_encode($schema, JSON_PRETTY_PRINT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE);
     }
 }
