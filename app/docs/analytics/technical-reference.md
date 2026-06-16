@@ -1,8 +1,8 @@
 # Analytics Technical Reference
 
 > **Audience:** Developers, PMs, QA Engineers
-> **Last updated:** 2026-06-15
-> **Branch:** feature/analytics-phase2 (PR #69)
+> **Last updated:** 2026-06-16
+> **Branches:** PR #69 (Phase 2), PR #72 (Phase B schema), PR #73 (Phase C taxonomy), PR #74 (Phase D filters)
 
 ---
 
@@ -140,24 +140,56 @@ For today:
 | View | `resources/views/filament/pages/analytics-overview.blade.php` |
 | Navigation | Group "Raporty", label "Analityka", icon `heroicon-o-cursor-arrow-rays`, sort 100 |
 | Access | roles: admin, super-admin |
-| URL params | `?period=today\|this_week\|this_month\|last_month` |
-| Default period | `this_month` |
+| URL params | `?period=`, `?from=`, `?to=`, `?device=`, `?utm=` (all Livewire `#[Url]` persisted) |
+| Default period | `this_week` |
 
-**Components:**
+**Filter bar (Phase D):**
+
+All filters are URL-persisted via Livewire `#[Url]` attributes. Changing a filter triggers a full Livewire re-render — no page reload.
+
+| Filter | URL param | Type | Values |
+|--------|-----------|------|--------|
+| Period | `?period=` | Enum button | today, this_week, this_month, last_month, custom |
+| Date from | `?from=` | Date string (Y-m-d) | Custom range start; only shown when period = custom |
+| Date to | `?to=` | Date string (Y-m-d) | Custom range end |
+| Device | `?device=` | Comma-separated list | desktop, mobile, tablet (multi-select chips) |
+| UTM source | `?utm=` | Comma-separated list | Any utm_source value present in the data |
+
+Filter composition happens in `buildBaseQuery()` — all widgets except `getDeviceBreakdown()` share this base. Device breakdown intentionally ignores the device filter to always show full breakdown.
+
+`resolvedDateRange()` handles partial custom dates: if only `dateFrom` is set, `dateTo` defaults to `now()`; if only `dateTo` is set, `dateFrom` defaults to `startOfMonth`.
+
+**Components (all scoped via `buildBaseQuery()`):**
 
 | Component | Type | Query |
 |-----------|------|-------|
 | Page views | KPI | COUNT(*) WHERE event = 'page_viewed' |
-| Unique sessions | KPI | COUNT(DISTINCT session_id) WHERE event = 'page_viewed' |
+| Unique sessions | KPI | COUNT(DISTINCT session_id) |
 | Unique users | KPI | COUNT(DISTINCT user_id) WHERE user_id IS NOT NULL |
 | Avg events/session | KPI | COUNT(*) / COUNT(DISTINCT session_id) |
-| Device breakdown | Bar | GROUP BY device_type |
-| Page type distribution | Table/pie | GROUP BY page_type, COUNT(*) |
-| Top 10 pages | Table | GROUP BY url, COUNT(*) AS views, COUNT(DISTINCT session_id) |
-| Scroll depth | Progress bars | COUNT(*) WHERE event IN (scroll_25, scroll_50, scroll_75, scroll_90, scroll_100) |
-| Daily page views | Line chart | COUNT(*) WHERE event = 'page_viewed' GROUP BY DATE(occurred_at) |
+| Daily page views | Line chart (ApexCharts) | COUNT(*) WHERE event = 'page_viewed' GROUP BY DATE |
+| Page type distribution | Progress bars | GROUP BY page_type |
+| Device breakdown | Cards | GROUP BY device_type (ignores device filter) |
+| Scroll depth | Bar chart | COUNT(*) WHERE event IN (scroll_25…scroll_100) |
+| Top 10 pages | Table | GROUP BY url, COUNT(*) views, COUNT(DISTINCT session_id) |
+| **Lejek konwersji** (Phase D) | Progress bars | COUNT(DISTINCT session_id) per step event |
+| **Porzucenia koszyka** (Phase D) | Counters + field list | form_abandoned events + MySQL JSON path for last_field |
+| **Źródła ruchu** (Phase D) | Progress bars | COALESCE(utm_source, 'direct') GROUP BY source |
+| **Jakość sesji** (Phase D) | 4-metric grid | bounce rate, avg events/session, rage_clicks count, avg page.time_spent |
 
-All queries scoped to current tenant: `WHERE organization_id = :current_org_id AND occurred_at BETWEEN :from AND :to`.
+**Conversion funnel steps (in order):**
+
+| Step | Event | Label |
+|------|-------|-------|
+| 1 | `page_viewed` | Wyświetlenia |
+| 2 | `product_viewed` | Produkty |
+| 3 | `add_to_cart` | Do koszyka |
+| 4 | `cart_viewed` | Koszyk |
+| 5 | `form_field_focused` | Checkout |
+
+Funnel uses `COUNT(DISTINCT session_id)` per event — percentages are relative to step 1 (page_viewed sessions).
+
+**Security note:** All `wire:click` attributes that embed user-controlled URL parameters (device/UTM values) use `@js()` instead of `{{ }}` to prevent XSS via crafted query strings.
 
 ---
 
@@ -193,6 +225,8 @@ All events follow `object.verb` or `category_action` naming in snake_case.
 
 Fired by `resources/js/tracker/registro-tracker.js` via `POST /api/track`.
 
+**VALID_EVENTS allowlist** (`IngestAnalyticsEventsJob::VALID_EVENTS`): events not in this list are silently dropped at ingest time. Add new events here before tracking them.
+
 | Event | Trigger | Key properties |
 |-------|---------|---------------|
 | `page_viewed` | Page load + Livewire navigation | `page_type`, UTM (last-touch) |
@@ -205,6 +239,13 @@ Fired by `resources/js/tracker/registro-tracker.js` via `POST /api/track`.
 | `section_visible` | `[data-track-section]` enters viewport (IntersectionObserver) | `section_name`, `block_type`, `section_position` |
 | `rage_click` | 3+ clicks within 750ms, within 100px radius | `selector`, `count` |
 | `exit_intent` | `mouseleave` with `clientY ≤ 0` (desktop only) | `page_type` |
+| **`product_viewed`** (Phase C) | Service detail page load; re-fires on `livewire:navigated` | `product_slug`, `product_id`, `price` (from `body.dataset`) |
+| **`add_to_cart`** (Phase C) | "Dodaj do koszyka" button click on service page | `product_slug`, `product_id` |
+| **`cart_viewed`** (Phase C) | Any page load where `pathname === '/koszyk'` | — |
+| **`form_field_focused`** (Phase C) | First focus on each checkout form field (deduped per field name) | `field_name` |
+| **`form_abandoned`** (Phase C) | visibilitychange → hidden while on checkout page with incomplete form | `last_field`, `form_progress` |
+| **`calendar_interacted`** (Phase C) | `calendar:date-selected` window event from service booking calendar | `date`, `service_slug` |
+| **`back_navigation`** (Phase C) | popstate event where previous URL contained `/koszyk` | `from_url` |
 
 **scroll milestones:** Fire once per page load (not per scroll back up). Tracked via `scrollFired` Set.
 
@@ -213,11 +254,27 @@ Fired by `resources/js/tracker/registro-tracker.js` via `POST /api/track`.
 - Last-touch: `sessionStorage._tk_utm_lt` — overwritten on every new UTM-bearing URL. Merged into every event's `properties`.
 - First-touch is stored but not sent per-event (reserved for Phase 3 PostHog integration).
 
+**anonymous_id (Phase C):**
+- Client generates UUID v4 on first visit, stored in `localStorage._tk_anon_id`
+- Sent as `anonymous_id` on every event
+- `EventTrackingController` extracts from `events.0.anonymous_id` and stores in `analytics_events.anonymous_id`
+- Storage access uses `safeGet()`/`safeSet()` wrappers (try/catch) — Safari ITP guard
+
+**Browser/OS detection (Phase C):**
+- Server-side UA parsing in `EventTrackingController::detectBrowser()` / `detectOs()`
+- Results stored in `analytics_events.browser` and `analytics_events.os`
+- No client-side UA parsing — avoids fingerprinting
+
 **session_id lifecycle:**
 1. First `/api/track` request → no session_id sent
 2. Server generates: `SHA-256(IP + UserAgent + TenantID + Date + APP_KEY)` → returns in response
 3. Client stores in `sessionStorage._tk_session` → sent on subsequent requests
 4. Rotates daily (date component changes at midnight)
+
+**back_navigation detection:**
+- `livewire:navigate` listener saves current URL to `sessionStorage._tk_prev_url`
+- `popstate` checks `sessionStorage._tk_prev_url || document.referrer` for `/koszyk`
+- (document.referrer alone doesn't update on popstate — sessionStorage is the reliable source)
 
 ---
 
@@ -253,8 +310,14 @@ Fired by Laravel code directly to `IngestAnalyticsEventsJob`.
 | `checkout.submitted` | LIVE | 2026-06-15 | Server |
 | `order.completed` | LIVE | 2026-06-15 | Server |
 | `cart.abandoned` | LIVE | 2026-06-15 | Server |
+| `product_viewed` | LIVE | 2026-06-16 | Client JS (Phase C) |
+| `add_to_cart` | LIVE | 2026-06-16 | Client JS (Phase C) |
+| `cart_viewed` | LIVE | 2026-06-16 | Client JS (Phase C) |
+| `form_field_focused` | LIVE | 2026-06-16 | Client JS (Phase C) |
+| `form_abandoned` | LIVE | 2026-06-16 | Client JS (Phase C) |
+| `calendar_interacted` | LIVE | 2026-06-16 | Client JS (Phase C) |
+| `back_navigation` | LIVE | 2026-06-16 | Client JS (Phase C) |
 | `checkout.step_changed` | PLANNED | — | Client JS (requires JS hook on step form) |
-| `funnel.*` (widget) | PLANNED | Phase 4 | Derived from above |
 
 ---
 
@@ -326,13 +389,59 @@ Response:    202 Accepted
 | occurred_at | DATETIME | NO | Client timestamp, clamped ±5 min from received_at |
 | received_at | DATETIME | NO | Server timestamp at ingestion |
 
+**Phase B columns (migration `2026_06_16_100001`):**
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `anonymous_id` | VARCHAR(64) | UUID v4 from `localStorage._tk_anon_id`; persists across sessions |
+| `browser` | VARCHAR(100) | Server-side UA parse result (Chrome, Firefox, Safari, etc.) |
+| `os` | VARCHAR(100) | Server-side UA parse result (Windows, macOS, iOS, Android, Linux) |
+
+**Phase B virtual generated columns (migration `2026_06_16_100002`, MySQL only):**
+
+| Column | Expression | Purpose |
+|--------|-----------|---------|
+| `_product_slug` | `properties->>'$.product_slug'` | VIRTUAL; indexed — fast product-level queries |
+| `_cart_id` | `properties->>'$.cart_id'` | VIRTUAL; indexed |
+| `_order_id` | `properties->>'$.order_id'` | VIRTUAL; indexed |
+| `_revenue` | `CAST(properties->>'$.revenue' AS DECIMAL)` | VIRTUAL; indexed — revenue filtering |
+
+Virtual columns are computed on read; no storage overhead. Not available in SQLite test environment.
+
 **Indexes:**
 - `ae_org_time_event` on (organization_id, occurred_at, event) — primary read pattern
 - `ae_org_session` on (organization_id, session_id) — session lookups
 - `ae_org_user_time` on (organization_id, user_id, occurred_at) — user journeys
 - `idx_org_event` on (organization_id, event) — funnel aggregations
+- `ae_org_utm` on (organization_id, utm_source) — Phase B; UTM source filter
+- `ae_anon_id` on (anonymous_id) — Phase B; cross-session user tracking
+- `ae_product_slug` on (`_product_slug`) — Phase B virtual column index
+- `ae_cart_id`, `ae_order_id`, `ae_revenue` — Phase B virtual column indexes
 
 **Retention:** 13 months. Enforced by `php artisan analytics:prune`.
+
+---
+
+### analytics_events_hourly (Phase B)
+
+Pre-aggregated hourly rollups for fast dashboard queries.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | BIGINT UNSIGNED | PK |
+| organization_id | BIGINT UNSIGNED | FK → organizations (CASCADE DELETE) |
+| event | VARCHAR(100) | Event name |
+| hour_bucket | DATETIME | Rounded to hour: `2026-06-16 14:00:00` |
+| event_count | UNSIGNED INT | Total events in this bucket |
+| unique_sessions | UNSIGNED INT | COUNT(DISTINCT session_id) |
+| unique_users | UNSIGNED INT | COUNT(DISTINCT user_id) WHERE user_id IS NOT NULL |
+| total_revenue | DECIMAL(12,2) | SUM of `_revenue` virtual column |
+
+**Unique constraint:** `aeh_unique_bucket` on (organization_id, event, hour_bucket). Safe to re-run rollups.
+
+**Populated by:** `analytics:rollup-hourly` command → `RollupAnalyticsHourlyCommand`. Uses `REPLACE INTO ... SELECT` (avoids deprecated `VALUES()` in MySQL 8.0.20+).
+
+**Scheduler:** `hourly()->withoutOverlapping(5)->onOneServer()` — processes last 2 hours by default.
 
 ---
 
@@ -426,6 +535,21 @@ new RecalculateDailyStatisticsJob(Carbon $date, ?int $organizationId = null)
 // Processes: Cart::active()->where('updated_at', '<', now()->subMinutes(30))
 // Chunk size: 100 carts per chunk
 ```
+
+---
+
+### RollupAnalyticsHourlyCommand (Phase B)
+
+```bash
+php artisan analytics:rollup-hourly              # default: last 2 hours
+php artisan analytics:rollup-hourly --hours=24   # catch-up after downtime
+```
+
+Aggregates `analytics_events` into `analytics_events_hourly`. Uses `REPLACE INTO ... SELECT` for idempotency. Each call processes the specified number of completed past hours (current partial hour is never included).
+
+Scheduler: `hourly()->withoutOverlapping(5)->onOneServer()`. If the job crashes, the `withoutOverlapping(5)` TTL of 5 minutes ensures the next hourly tick still runs (unlike the default indefinite lock).
+
+SQLite fallback: uses `INSERT OR REPLACE INTO ... strftime()` instead of MySQL-specific syntax.
 
 ---
 
@@ -551,6 +675,10 @@ When adding a new event or widget:
 | `app/Console/Commands/PruneAnalyticsEventsCommand.php` | GDPR retention |
 | `app/Console/Commands/StatisticsRecalculateCommand.php` | Backfill CLI |
 | `resources/js/tracker/registro-tracker.js` | Browser JS tracker |
+| `app/Console/Commands/RollupAnalyticsHourlyCommand.php` | Hourly aggregation into analytics_events_hourly |
+| `database/migrations/2026_06_16_100001_enhance_analytics_events_table.php` | Phase B: anonymous_id, browser, os columns + indexes |
+| `database/migrations/2026_06_16_100002_add_analytics_virtual_columns.php` | Phase B: MySQL virtual generated columns + indexes |
+| `database/migrations/2026_06_16_100003_create_analytics_events_hourly_table.php` | Phase B: hourly rollup table |
 | `app/docs/legal/analytics-gdpr-lia.md` | GDPR LIA document |
 | `app/docs/features/statistics-analytics.md` | Statistics feature history |
 | `app/docs/features/analytics-event-tracking.md` | Tracking spec (Phase 1) |
