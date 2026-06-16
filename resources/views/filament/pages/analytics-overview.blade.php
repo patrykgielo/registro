@@ -78,7 +78,7 @@
                 @endphp
                 <button
                     type="button"
-                    wire:click="$set('deviceParam', {{ @js($newDeviceValue) }})"
+                    wire:click="$set('deviceParam', @js($newDeviceValue))"
                     @class([
                         'inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border cursor-pointer',
                         'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' => $isDeviceActive,
@@ -117,7 +117,7 @@
                     {{ $deviceChipLabel }}
                     <button
                         type="button"
-                        wire:click="$set('deviceParam', {{ @js($remainingDevices) }})"
+                        wire:click="$set('deviceParam', @js($remainingDevices))"
                         class="ml-0.5 hover:text-primary-900 dark:hover:text-primary-200 cursor-pointer"
                         aria-label="Usuń filtr {{ $deviceChipLabel }}"
                     >
@@ -133,7 +133,7 @@
                     UTM: {{ $activeUtm }}
                     <button
                         type="button"
-                        wire:click="$set('utmSourceParam', {{ @js($remainingUtm) }})"
+                        wire:click="$set('utmSourceParam', @js($remainingUtm))"
                         class="ml-0.5 hover:text-green-900 dark:hover:text-green-200 cursor-pointer"
                         aria-label="Usuń filtr UTM {{ $activeUtm }}"
                     >
