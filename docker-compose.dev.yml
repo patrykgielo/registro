@@ -117,7 +117,7 @@ services:
       - app
       - redis
       - mysql
-    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --queue=emails,reminders,default
+    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --queue=emails,reminders,analytics,default
 
   scheduler:
     build:
