@@ -247,6 +247,26 @@ Fired by `resources/js/tracker/registro-tracker.js` via `POST /api/track`.
 | **`calendar_interacted`** (Phase C) | `calendar:date-selected` window event from service booking calendar | `date`, `service_slug` |
 | **`back_navigation`** (Phase C) | popstate event where previous URL contained `/koszyk` | `from_url` |
 
+**alpine-tracker-plugin.js** — Alpine.js magic helper, registered in `app.js`:
+- `$track(eventName, props)` magic — fires `push()` with `section_name`/`block_type` context from nearest `[data-track-section]` ancestor
+- `Alpine.store('tracker').setStep(step)` — shared funnel step state (future widget)
+- Used by CMS blocks in `builder-blocks.blade.php` via `@click="$track('section_visible', {...})"`
+
+**PageTypeComposer** (`app/View/Composers/PageTypeComposer.php`) — sets `$pageType` variable on every frontend view; mapped via route names:
+
+| Route pattern | page_type value |
+|--------------|----------------|
+| `home`, `page.*` | homepage |
+| `service.show` | service |
+| `services.index`, `rental.*` | catalogue |
+| `cart.show` | cart |
+| `checkout.show` | checkout |
+| `checkout.return`, `orders.*` | confirmation |
+| `booking.*` | booking |
+| `post.show`, `promotion.show`, `portfolio.show` | article |
+
+Value is output as `data-page-type="{{ $pageType }}"` on `<body>` in `layouts/app.blade.php`. JS tracker reads it via `document.body?.dataset.pageType`. Falls back to `'unknown'` if route not mapped.
+
 **scroll milestones:** Fire once per page load (not per scroll back up). Tracked via `scrollFired` Set.
 
 **UTM capture:**
@@ -647,7 +667,7 @@ When adding a new event or widget:
 - [ ] Server-side: dispatched via `AnalyticsEventDispatcher` to `analytics` queue
 - [ ] Client-side: fired via `push('event_name', { prop: value })` in tracker
 - [ ] GDPR LIA updated if new PII-adjacent data collected (`app/docs/legal/analytics-gdpr-lia.md`)
-- [ ] Test written (see `tests/Feature/Analytics/`)
+- [ ] Test written (see `tests/Feature/Analytics/` — 4 test classes below)
 - [ ] Widget null state documented (what shows with zero data?)
 - [ ] Data availability lag documented (§6)
 
@@ -674,11 +694,18 @@ When adding a new event or widget:
 | `app/Models/StatisticsSnapshot.php` | Snapshot model |
 | `app/Console/Commands/PruneAnalyticsEventsCommand.php` | GDPR retention |
 | `app/Console/Commands/StatisticsRecalculateCommand.php` | Backfill CLI |
-| `resources/js/tracker/registro-tracker.js` | Browser JS tracker |
+| `resources/js/tracker/registro-tracker.js` | Browser JS tracker (core queue, flush, UTM, scroll, rage click) |
+| `resources/js/tracker/alpine-tracker-plugin.js` | Alpine.js magic `$track()` + `Alpine.store('tracker')` for CMS blocks |
+| `app/View/Composers/PageTypeComposer.php` | Maps route name → `page_type` string for `data-page-type` on `<body>` |
 | `app/Console/Commands/RollupAnalyticsHourlyCommand.php` | Hourly aggregation into analytics_events_hourly |
 | `database/migrations/2026_06_16_100001_enhance_analytics_events_table.php` | Phase B: anonymous_id, browser, os columns + indexes |
 | `database/migrations/2026_06_16_100002_add_analytics_virtual_columns.php` | Phase B: MySQL virtual generated columns + indexes |
 | `database/migrations/2026_06_16_100003_create_analytics_events_hourly_table.php` | Phase B: hourly rollup table |
+| `tests/Feature/Analytics/EventTrackingTest.php` | POST /api/track — validation, batching, session_id, anonymous_id, VALID_EVENTS |
+| `tests/Feature/Analytics/AnalyticsOverviewPageTest.php` | Admin /admin/analityka page — all widgets, period filter, access control |
+| `tests/Feature/Analytics/FunnelTrackingTest.php` | Funnel widget data correctness + device/UTM filter propagation |
+| `tests/Feature/Analytics/PruneAnalyticsEventsCommandTest.php` | analytics:prune retention logic |
+| `app/docs/analytics/behavioral-analytics-implementation-plan.md` | Phase B/C/D implementation plan + bot simulation spec |
 | `app/docs/legal/analytics-gdpr-lia.md` | GDPR LIA document |
 | `app/docs/features/statistics-analytics.md` | Statistics feature history |
 | `app/docs/features/analytics-event-tracking.md` | Tracking spec (Phase 1) |
