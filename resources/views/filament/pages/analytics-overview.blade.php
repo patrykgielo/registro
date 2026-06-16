@@ -205,14 +205,17 @@
 
     {{-- Page Views Chart --}}
     <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 mb-6">
-        <div class="flex items-center justify-between mb-1">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Odsłony w czasie</h3>
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Odsłony w czasie</h3>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Liczba odwiedzin strony dzień po dniu</p>
+            </div>
         </div>
         <div
             wire:ignore
             class="h-72"
-            x-data="revenueChart(@js($chartData['series']), @js($chartData['categories']), 'count')"
-            x-on:analytics-chart-refresh.window="refreshChart($event.detail)"
+            x-data="analyticsPageviewChart(@js($chartData['series']), @js($chartData['categories']))"
+            x-on:analytics-chart-refresh.window="refreshPageviewChart($event.detail)"
         ></div>
     </div>
 

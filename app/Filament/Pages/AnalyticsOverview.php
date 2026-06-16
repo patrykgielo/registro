@@ -29,7 +29,7 @@ class AnalyticsOverview extends Page
     protected string $view = 'filament.pages.analytics-overview';
 
     #[Url]
-    public string $period = 'this_week';
+    public string $period = 'last_14_days';
 
     #[Url(as: 'from', except: '')]
     public string $dateFrom = '';
@@ -45,13 +45,17 @@ class AnalyticsOverview extends Page
 
     public static function canAccess(): bool
     {
+        if (! TenantFeature::currentTenant()) {
+            return false;
+        }
+
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 
     public function mount(): void
     {
         if (! in_array($this->period, $this->validPeriods(), true)) {
-            $this->period = 'this_week';
+            $this->period = 'last_14_days';
         }
         if ($this->dateFrom && ! strtotime($this->dateFrom)) {
             $this->dateFrom = '';
@@ -64,7 +68,7 @@ class AnalyticsOverview extends Page
     public function updatedPeriod(): void
     {
         if (! in_array($this->period, $this->validPeriods(), true)) {
-            $this->period = 'this_week';
+            $this->period = 'last_14_days';
         }
         if ($this->period !== 'custom') {
             $this->dateFrom = '';
@@ -95,7 +99,7 @@ class AnalyticsOverview extends Page
         $this->dateTo = '';
         $this->deviceParam = '';
         $this->utmSourceParam = '';
-        $this->period = 'this_week';
+        $this->period = 'last_14_days';
         $this->dispatch('analytics-chart-refresh', ...$this->getChartData());
     }
 
@@ -488,11 +492,11 @@ class AnalyticsOverview extends Page
     public function periodOptions(): array
     {
         return [
-            ['value' => 'today',      'label' => 'Dziś'],
-            ['value' => 'this_week',  'label' => 'Ten tydzień'],
-            ['value' => 'this_month', 'label' => 'Ten miesiąc'],
-            ['value' => 'last_month', 'label' => 'Poprzedni miesiąc'],
-            ['value' => 'custom',     'label' => 'Własny zakres'],
+            ['value' => 'today',        'label' => 'Dziś'],
+            ['value' => 'last_14_days', 'label' => 'Ostatnie 14 dni'],
+            ['value' => 'this_month',   'label' => 'Ten miesiąc'],
+            ['value' => 'last_month',   'label' => 'Poprzedni miesiąc'],
+            ['value' => 'custom',       'label' => 'Własny zakres'],
         ];
     }
 
@@ -501,7 +505,7 @@ class AnalyticsOverview extends Page
      */
     public function validPeriods(): array
     {
-        return ['today', 'this_week', 'this_month', 'last_month', 'custom'];
+        return ['today', 'last_14_days', 'this_month', 'last_month', 'custom'];
     }
 
     /**
@@ -511,12 +515,12 @@ class AnalyticsOverview extends Page
     {
         return match ($period) {
             'today' => [Carbon::today(), Carbon::now()],
-            'this_week' => [Carbon::now()->startOfWeek(), Carbon::now()],
+            'last_14_days' => [Carbon::now()->subDays(13)->startOfDay(), Carbon::now()],
             'last_month' => [
                 Carbon::now()->subMonthNoOverflow()->startOfMonth(),
                 Carbon::now()->subMonthNoOverflow()->endOfMonth(),
             ],
-            default => [Carbon::now()->startOfMonth(), Carbon::now()], // this_month + custom fallback
+            default => [Carbon::now()->startOfMonth(), Carbon::now()],
         };
     }
 }
