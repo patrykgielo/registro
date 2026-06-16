@@ -13,7 +13,7 @@
         "filament/filament": "^4.11",
         "guava/calendar": "^2.0",
         "laravel/framework": "^12.60",
-        "laravel/horizon": "^5.39",
+        "laravel/horizon": "^5.47",
         "laravel/tinker": "^2.10.1",
         "laravel/ui": "^4.6",
         "mews/purifier": "*",
