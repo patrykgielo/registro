@@ -11,23 +11,27 @@ function buildOptions(series, categories, isDark) {
     return {
         chart: {
             type: 'bar',
-            height: 240,
+            width: '100%',
+            height: 300,
             toolbar: { show: false },
             fontFamily: 'inherit',
             background: 'transparent',
             animations: { enabled: true, easing: 'easeinout', speed: 400 },
         },
         plotOptions: {
-            bar: { borderRadius: 4, columnWidth: categories.length <= 3 ? '30%' : '60%' },
+            bar: { borderRadius: 4, columnWidth: '55%' },
         },
         series,
         xaxis: {
             categories,
             labels: {
                 style: { colors: isDark ? '#9ca3af' : '#6b7280', fontSize: '11px' },
-                rotate: -35,
-                rotateAlways: false,
-                hideOverlappingLabels: true,
+                rotate: -45,
+                rotateAlways: true,
+                formatter: (val, i) => {
+                    if (typeof i !== 'number') return val;
+                    return i % 2 === 0 ? val : '';
+                },
             },
             axisBorder: { show: false },
             axisTicks: { show: false },
@@ -46,7 +50,7 @@ function buildOptions(series, categories, isDark) {
             borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
             strokeDashArray: 4,
             xaxis: { lines: { show: false } },
-            padding: { top: 0, right: 8, bottom: 0, left: 8 },
+            padding: { top: 0, right: 30, bottom: 0, left: 8 },
         },
         legend: { show: false },
         tooltip: {
@@ -62,10 +66,17 @@ function buildOptions(series, categories, isDark) {
 export function analyticsPageviewChart(series, categories) {
     return {
         chart: null,
+        _resizeObserver: null,
         init() {
             const isDark = document.documentElement.classList.contains('dark');
             this.chart = new ApexCharts(this.$el, buildOptions(series, categories, isDark));
             this.chart.render();
+
+            this._resizeObserver = new ResizeObserver(() => {
+                const w = this.$el.offsetWidth;
+                if (w > 0) this.chart?.updateOptions({ chart: { width: w } }, false, false);
+            });
+            this._resizeObserver.observe(this.$el);
         },
         refreshPageviewChart({ series: newSeries, categories: newCategories }) {
             if (!this.chart) return;
@@ -73,6 +84,7 @@ export function analyticsPageviewChart(series, categories) {
             this.chart.updateOptions(buildOptions(newSeries, newCategories, isDark), true, true);
         },
         destroy() {
+            this._resizeObserver?.disconnect();
             this.chart?.destroy();
         },
     };

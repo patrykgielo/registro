@@ -148,39 +148,49 @@ class AnalyticsOverview extends Page
     }
 
     /**
-     * @return array{page_views: int, unique_sessions: int, unique_users: int, avg_session_events: float}
+     * @return array{page_views: int, unique_sessions: int, unique_users: int, avg_session_events: float, page_views_prev: int, unique_sessions_prev: int, unique_users_prev: int}
      */
     public function getKpiData(): array
     {
         $tenant = TenantFeature::currentTenant();
         if (! $tenant instanceof Organization) {
-            return ['page_views' => 0, 'unique_sessions' => 0, 'unique_users' => 0, 'avg_session_events' => 0.0];
+            return [
+                'page_views' => 0, 'unique_sessions' => 0, 'unique_users' => 0, 'avg_session_events' => 0.0,
+                'page_views_prev' => 0, 'unique_sessions_prev' => 0, 'unique_users_prev' => 0,
+            ];
         }
 
         $base = $this->buildBaseQuery();
 
         $pageViews = (clone $base)->where('event', 'page_viewed')->count();
-
-        $uniqueSessions = (clone $base)
-            ->whereNotNull('session_id')
-            ->distinct()
-            ->count('session_id');
-
-        $uniqueUsers = (clone $base)
-            ->whereNotNull('user_id')
-            ->distinct()
-            ->count('user_id');
-
+        $uniqueSessions = (clone $base)->whereNotNull('session_id')->distinct()->count('session_id');
+        $uniqueUsers = (clone $base)->whereNotNull('user_id')->distinct()->count('user_id');
         $totalEvents = (clone $base)->count();
-        $avgSessionEvents = $uniqueSessions > 0
-            ? round($totalEvents / $uniqueSessions, 1)
-            : 0.0;
+        $avgSessionEvents = $uniqueSessions > 0 ? round($totalEvents / $uniqueSessions, 1) : 0.0;
+
+        [$from, $to] = $this->resolvedDateRange();
+        $days = max(1, (int) $from->diffInDays($to));
+        $prevFrom = $from->copy()->subDays($days);
+        $prevTo = $from->copy()->subSecond();
+
+        $prevBase = DB::table('analytics_events')
+            ->where('organization_id', $tenant->id)
+            ->whereBetween('occurred_at', [$prevFrom, $prevTo]);
+        if ($this->getDeviceTypes()) {
+            $prevBase->whereIn('device_type', $this->getDeviceTypes());
+        }
+        if ($this->getUtmSources()) {
+            $prevBase->whereIn('utm_source', $this->getUtmSources());
+        }
 
         return [
             'page_views' => $pageViews,
             'unique_sessions' => $uniqueSessions,
             'unique_users' => $uniqueUsers,
             'avg_session_events' => $avgSessionEvents,
+            'page_views_prev' => (clone $prevBase)->where('event', 'page_viewed')->count(),
+            'unique_sessions_prev' => (clone $prevBase)->whereNotNull('session_id')->distinct()->count('session_id'),
+            'unique_users_prev' => (clone $prevBase)->whereNotNull('user_id')->distinct()->count('user_id'),
         ];
     }
 
@@ -209,7 +219,7 @@ class AnalyticsOverview extends Page
     }
 
     /**
-     * @return list<array{url: string, views: int, sessions: int}>
+     * @return list<array{url: string, path: string, views: int, sessions: int, avg_time_seconds: int|null, avg_scroll_pct: int|null, bounce_rate: float|null}>
      */
     public function getTopPages(): array
     {
@@ -218,7 +228,12 @@ class AnalyticsOverview extends Page
             return [];
         }
 
-        return $this->buildBaseQuery()
+        [$from, $to] = $this->resolvedDateRange();
+        $orgId = $tenant->id;
+        $deviceTypes = $this->getDeviceTypes();
+        $utmSources = $this->getUtmSources();
+
+        $baseRows = $this->buildBaseQuery()
             ->where('event', 'page_viewed')
             ->whereNotNull('url')
             ->selectRaw('url, COUNT(*) as views, COUNT(DISTINCT session_id) as sessions')
@@ -226,12 +241,117 @@ class AnalyticsOverview extends Page
             ->orderByDesc('views')
             ->limit(10)
             ->get()
-            ->map(fn ($row) => [
-                'url' => (string) $row->url,
+            ->keyBy('url');
+
+        if ($baseRows->isEmpty()) {
+            return [];
+        }
+
+        $urls = $baseRows->keys()->all();
+
+        // Avg time per page (MySQL-only JSON extraction)
+        $timeByUrl = collect();
+        if (DB::getDriverName() === 'mysql') {
+            $tq = DB::table('analytics_events')
+                ->where('organization_id', $orgId)
+                ->whereBetween('occurred_at', [$from, $to])
+                ->where('event', 'page.time_spent')
+                ->whereNotNull('properties')
+                ->whereIn('url', $urls);
+            if ($deviceTypes) {
+                $tq->whereIn('device_type', $deviceTypes);
+            }
+            if ($utmSources) {
+                $tq->whereIn('utm_source', $utmSources);
+            }
+            $timeByUrl = $tq
+                ->selectRaw("url, AVG(CAST(properties->>'$.seconds' AS UNSIGNED)) as avg_seconds")
+                ->groupBy('url')
+                ->get()
+                ->keyBy('url');
+        }
+
+        // Avg scroll pct per page (max scroll per session → average per URL)
+        $scrollByUrl = DB::table(function ($sub) use ($orgId, $from, $to, $deviceTypes, $utmSources, $urls) {
+            $sub->from('analytics_events')
+                ->where('organization_id', $orgId)
+                ->whereBetween('occurred_at', [$from, $to])
+                ->whereIn('event', ['scroll_25', 'scroll_50', 'scroll_75', 'scroll_90', 'scroll_100'])
+                ->whereIn('url', $urls)
+                ->select('url', 'session_id')
+                ->selectRaw("MAX(CASE WHEN event = 'scroll_100' THEN 100 WHEN event = 'scroll_90' THEN 90 WHEN event = 'scroll_75' THEN 75 WHEN event = 'scroll_50' THEN 50 WHEN event = 'scroll_25' THEN 25 ELSE 0 END) as max_scroll")
+                ->groupBy('url', 'session_id');
+            if ($deviceTypes) {
+                $sub->whereIn('device_type', $deviceTypes);
+            }
+            if ($utmSources) {
+                $sub->whereIn('utm_source', $utmSources);
+            }
+        }, 'sub')
+            ->selectRaw('url, ROUND(AVG(max_scroll)) as avg_scroll_pct')
+            ->groupBy('url')
+            ->get()
+            ->keyBy('url');
+
+        // Bounce rate per page (sessions with only 1 event total that visited this URL)
+        $sessionCountsSub = DB::table('analytics_events')
+            ->where('organization_id', $orgId)
+            ->whereBetween('occurred_at', [$from, $to])
+            ->whereNotNull('session_id')
+            ->selectRaw('session_id, COUNT(*) as event_count')
+            ->groupBy('session_id');
+        if ($deviceTypes) {
+            $sessionCountsSub->whereIn('device_type', $deviceTypes);
+        }
+        if ($utmSources) {
+            $sessionCountsSub->whereIn('utm_source', $utmSources);
+        }
+
+        $bounceQuery = DB::table('analytics_events as pv')
+            ->joinSub($sessionCountsSub, 'sc', 'sc.session_id', '=', 'pv.session_id')
+            ->where('pv.organization_id', $orgId)
+            ->whereBetween('pv.occurred_at', [$from, $to])
+            ->where('pv.event', 'page_viewed')
+            ->whereNotNull('pv.session_id')
+            ->whereIn('pv.url', $urls);
+        if ($deviceTypes) {
+            $bounceQuery->whereIn('pv.device_type', $deviceTypes);
+        }
+        if ($utmSources) {
+            $bounceQuery->whereIn('pv.utm_source', $utmSources);
+        }
+        $bounceByUrl = $bounceQuery
+            ->selectRaw('pv.url as url, COUNT(DISTINCT pv.session_id) as total_sessions, COUNT(DISTINCT CASE WHEN sc.event_count = 1 THEN pv.session_id END) as bounced_sessions')
+            ->groupBy('pv.url')
+            ->get()
+            ->keyBy('url');
+
+        return $baseRows->map(function ($row) use ($timeByUrl, $scrollByUrl, $bounceByUrl) {
+            $url = (string) $row->url;
+            $path = parse_url($url, PHP_URL_PATH) ?: $url;
+
+            $timeRow = $timeByUrl->get($url);
+            $avgTime = $timeRow ? (int) round((float) $timeRow->avg_seconds) : null;
+
+            $scrollRow = $scrollByUrl->get($url);
+            $avgScroll = $scrollRow ? (int) $scrollRow->avg_scroll_pct : null;
+
+            $bounceRow = $bounceByUrl->get($url);
+            $bounceRate = null;
+            if ($bounceRow && (int) $bounceRow->total_sessions >= 3) {
+                $bounceRate = round((int) $bounceRow->bounced_sessions / (int) $bounceRow->total_sessions * 100, 1);
+            }
+
+            return [
+                'url' => $url,
+                'path' => $path,
                 'views' => (int) $row->views,
                 'sessions' => (int) $row->sessions,
-            ])
-            ->all();
+                'avg_time_seconds' => $avgTime,
+                'avg_scroll_pct' => $avgScroll,
+                'bounce_rate' => $bounceRate,
+            ];
+        })->values()->all();
     }
 
     /**
