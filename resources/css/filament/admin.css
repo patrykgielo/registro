@@ -10,6 +10,20 @@
 /* Only scan Filament admin views — keeps bundle small */
 @source '../../views/filament/**/*.blade.php';
 
+/* Analytics badge classes — dynamic PHP closures can't be scanned by Tailwind JIT */
+.analytics-badge-green  { background-color: #dcfce7; color: #15803d; }
+.analytics-badge-yellow { background-color: #fef9c3; color: #a16207; }
+.analytics-badge-red    { background-color: #fee2e2; color: #b91c1c; }
+.analytics-text-green  { color: #16a34a; }
+.analytics-text-yellow { color: #ca8a04; }
+.analytics-text-red    { color: #ef4444; }
+:where(.dark, .dark *) .analytics-badge-green  { background-color: rgba(22,101,52,0.3); color: #4ade80; }
+:where(.dark, .dark *) .analytics-badge-yellow { background-color: rgba(113,63,18,0.3); color: #facc15; }
+:where(.dark, .dark *) .analytics-badge-red    { background-color: rgba(127,29,29,0.3); color: #f87171; }
+:where(.dark, .dark *) .analytics-text-green  { color: #4ade80; }
+:where(.dark, .dark *) .analytics-text-yellow { color: #facc15; }
+:where(.dark, .dark *) .analytics-text-red    { color: #f87171; }
+
 /* Design tokens — @theme registers them with Tailwind so utility classes are generated.
  * utilities.css alone doesn't include theme values; @theme is required for bg-*, text-*, etc. */
 @theme {

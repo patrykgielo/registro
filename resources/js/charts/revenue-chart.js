@@ -44,7 +44,7 @@ function buildOptions(series, categories, isDark, format = 'currency') {
             type: 'gradient',
             gradient: { shadeIntensity: 1, opacityFrom: 0.18, opacityTo: 0.02, stops: [0, 95, 100] },
         },
-        stroke: { curve: 'smooth', width: 2 },
+        stroke: { curve: 'monotoneCubic', width: 2 },
         dataLabels: { enabled: false },
         grid: {
             borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',

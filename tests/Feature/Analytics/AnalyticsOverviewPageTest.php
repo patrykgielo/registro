@@ -111,7 +111,7 @@ class AnalyticsOverviewPageTest extends TestCase
         $this->assertArrayHasKey('sessions', $topPages[0]);
     }
 
-    public function test_period_defaults_to_this_week(): void
+    public function test_period_defaults_to_last_14_days(): void
     {
         [$admin, $org] = $this->createAdminWithOrg();
 
@@ -120,10 +120,10 @@ class AnalyticsOverviewPageTest extends TestCase
         $page = new AnalyticsOverview;
         $page->mount();
 
-        $this->assertEquals('this_week', $page->period);
+        $this->assertEquals('last_14_days', $page->period);
     }
 
-    public function test_invalid_period_falls_back_to_this_week(): void
+    public function test_invalid_period_falls_back_to_last_14_days(): void
     {
         [$admin, $org] = $this->createAdminWithOrg();
 
@@ -133,7 +133,7 @@ class AnalyticsOverviewPageTest extends TestCase
         $page->period = 'invalid_period';
         $page->mount();
 
-        $this->assertEquals('this_week', $page->period);
+        $this->assertEquals('last_14_days', $page->period);
     }
 
     public function test_get_scroll_depth_returns_five_keys(): void

@@ -1,13 +1,61 @@
 <x-filament-panels::page>
     @php
-        $kpi          = $this->getKpiData();
-        $chartData    = $this->getChartData();
-        $topPages     = $this->getTopPages();
-        $pageTypes    = $this->getPageTypeDistribution();
-        $scrollDepth  = $this->getScrollDepth();
-        $devices      = $this->getDeviceBreakdown();
-        $maxPageViews = collect($pageTypes)->max('views') ?: 1;
-        $maxScroll    = max($scrollDepth['25'] ?: 1, 1);
+        $kpi       = $this->getKpiData();
+        $chartData = $this->getChartData();
+        $topPages  = $this->getTopPages();
+
+        [$from, $to] = $this->resolvedDateRange();
+        $periodDays = max(1, (int) $from->diffInDays($to));
+
+        $calcChange = fn(int $curr, int $prev) => $prev > 0 ? round(($curr - $prev) / $prev * 100) : null;
+        $pageViewsChange = $calcChange($kpi['page_views'], $kpi['page_views_prev'] ?? 0);
+        $sessionsChange  = $calcChange($kpi['unique_sessions'], $kpi['unique_sessions_prev'] ?? 0);
+        $usersChange     = $calcChange($kpi['unique_users'], $kpi['unique_users_prev'] ?? 0);
+
+        $formatTime = fn(?int $sec) => $sec === null ? '—'
+            : ($sec >= 60 ? floor($sec / 60) . ':' . str_pad($sec % 60, 2, '0', STR_PAD_LEFT) : $sec . 's');
+
+        $scrollBadgeClass = function(?int $pct): string {
+            if ($pct === null) return '';
+            return match(true) {
+                $pct >= 70 => 'analytics-badge-green',
+                $pct >= 40 => 'analytics-badge-yellow',
+                default    => 'analytics-badge-red',
+            };
+        };
+
+        $bounceClass = function(?float $pct): string {
+            if ($pct === null) return 'text-gray-400 dark:text-gray-500';
+            return match(true) {
+                $pct < 40  => 'analytics-text-green',
+                $pct <= 60 => 'analytics-text-yellow',
+                default    => 'analytics-text-red',
+            };
+        };
+
+        $sourceLabels = [
+            'direct'    => 'Bezpośrednie',
+            'google'    => 'Google',
+            'facebook'  => 'Facebook',
+            'instagram' => 'Instagram',
+            'organic'   => 'Wyszukiwarki',
+        ];
+
+        $fieldLabels = [
+            'first_name'     => 'Imię',
+            'last_name'      => 'Nazwisko',
+            'email'          => 'E-mail',
+            'phone'          => 'Telefon',
+            'company_name'   => 'Nazwa firmy',
+            'company_nip'    => 'NIP',
+            'company_regon'  => 'REGON',
+            'company_krs'    => 'KRS',
+            'street'         => 'Ulica',
+            'city'           => 'Miasto',
+            'postal_code'    => 'Kod pocztowy',
+            'pickup_person'  => 'Osoba odbioru',
+            'signatory_name' => 'Osoba podpisująca',
+        ];
     @endphp
 
     {{-- Filter Bar --}}
@@ -61,9 +109,7 @@
         @endif
 
         {{-- Row 2: Device filter --}}
-        @php
-            $activeDevices = $this->getDeviceTypes();
-        @endphp
+        @php $activeDevices = $this->getDeviceTypes(); @endphp
         <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Filtruj po urządzeniu">
             <div class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
                 <x-heroicon-o-device-phone-mobile class="w-4 h-4 flex-shrink-0" width="16" height="16" />
@@ -126,9 +172,7 @@
                 </span>
             @endforeach
             @foreach($this->getUtmSources() as $activeUtm)
-                @php
-                    $remainingUtm = implode(',', array_values(array_filter($this->getUtmSources(), fn($u) => $u !== $activeUtm)));
-                @endphp
+                @php $remainingUtm = implode(',', array_values(array_filter($this->getUtmSources(), fn($u) => $u !== $activeUtm))); @endphp
                 <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs rounded-full border border-green-200 dark:border-green-800">
                     UTM: {{ $activeUtm }}
                     <button
@@ -160,6 +204,23 @@
             <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
                 {{ number_format($kpi['page_views']) }}
             </div>
+            @if($pageViewsChange !== null)
+                @if($pageViewsChange > 0)
+                    <div class="flex items-center gap-1 mt-1.5 text-green-600 dark:text-green-400">
+                        <span class="text-xs font-semibold">↑ +{{ $pageViewsChange }}%</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
+                    </div>
+                @elseif($pageViewsChange < 0)
+                    <div class="flex items-center gap-1 mt-1.5 text-red-500 dark:text-red-400">
+                        <span class="text-xs font-semibold">↓ {{ $pageViewsChange }}%</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
+                    </div>
+                @else
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">= 0% vs poprzednie {{ $periodDays }} dni</p>
+                @endif
+            @else
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">—</p>
+            @endif
         </div>
 
         {{-- Unique Sessions --}}
@@ -173,6 +234,23 @@
             <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
                 {{ number_format($kpi['unique_sessions']) }}
             </div>
+            @if($sessionsChange !== null)
+                @if($sessionsChange > 0)
+                    <div class="flex items-center gap-1 mt-1.5 text-green-600 dark:text-green-400">
+                        <span class="text-xs font-semibold">↑ +{{ $sessionsChange }}%</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
+                    </div>
+                @elseif($sessionsChange < 0)
+                    <div class="flex items-center gap-1 mt-1.5 text-red-500 dark:text-red-400">
+                        <span class="text-xs font-semibold">↓ {{ $sessionsChange }}%</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
+                    </div>
+                @else
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">= 0% vs poprzednie {{ $periodDays }} dni</p>
+                @endif
+            @else
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">—</p>
+            @endif
         </div>
 
         {{-- Logged-in Users --}}
@@ -186,6 +264,23 @@
             <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
                 {{ number_format($kpi['unique_users']) }}
             </div>
+            @if($usersChange !== null)
+                @if($usersChange > 0)
+                    <div class="flex items-center gap-1 mt-1.5 text-green-600 dark:text-green-400">
+                        <span class="text-xs font-semibold">↑ +{{ $usersChange }}%</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
+                    </div>
+                @elseif($usersChange < 0)
+                    <div class="flex items-center gap-1 mt-1.5 text-red-500 dark:text-red-400">
+                        <span class="text-xs font-semibold">↓ {{ $usersChange }}%</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
+                    </div>
+                @else
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">= 0% vs poprzednie {{ $periodDays }} dni</p>
+                @endif
+            @else
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">—</p>
+            @endif
         </div>
 
         {{-- Avg events per session --}}
@@ -194,148 +289,94 @@
                 <div class="p-2 rounded-xl bg-amber-50 dark:bg-amber-900/30">
                     <x-heroicon-o-cursor-arrow-rays class="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" width="20" height="20" />
                 </div>
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Zdarzenia/sesja</span>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Aktywność</span>
             </div>
             <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
                 {{ number_format($kpi['avg_session_events'], 1, ',', ' ') }}
             </div>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">zdarzeń na sesję (im więcej, tym lepiej)</p>
         </div>
 
     </div>
 
     {{-- Page Views Chart --}}
     <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 mb-6">
-        <div class="flex items-center justify-between mb-1">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Odsłony w czasie</h3>
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Odsłony w czasie</h3>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Liczba odwiedzin strony dzień po dniu</p>
+            </div>
         </div>
         <div
             wire:ignore
-            class="h-72"
-            x-data="revenueChart(@js($chartData['series']), @js($chartData['categories']), 'count')"
-            x-on:analytics-chart-refresh.window="refreshChart($event.detail)"
+            class="h-80"
+            x-data="analyticsPageviewChart(@js($chartData['series']), @js($chartData['categories']))"
+            x-on:analytics-chart-refresh.window="refreshPageviewChart($event.detail)"
         ></div>
     </div>
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
-
-        {{-- Page Type Distribution --}}
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Typy stron</h3>
-            </div>
-            @if(count($pageTypes) > 0)
-            <div class="p-5 space-y-3">
-                @foreach($pageTypes as $pt)
-                <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm text-gray-700 dark:text-gray-300 font-medium">{{ $pt['page_type'] }}</span>
-                        <span class="text-sm text-gray-500 dark:text-gray-400 tabular-nums">{{ number_format($pt['views']) }}</span>
-                    </div>
-                    <div class="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2">
-                        <div
-                            class="bg-primary-500 h-2 rounded-full"
-                            style="width: {{ $maxPageViews > 0 ? round($pt['views'] / $maxPageViews * 100) : 0 }}%"
-                        ></div>
-                    </div>
-                </div>
-                @endforeach
-            </div>
-            @else
-            <div class="py-10 text-center">
-                <x-heroicon-o-chart-bar class="w-10 h-10 flex-shrink-0 text-gray-300 dark:text-gray-600 mx-auto mb-3" width="40" height="40" />
-                <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych w wybranym okresie.</p>
-            </div>
-            @endif
-        </div>
-
-        {{-- Devices --}}
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Urządzenia</h3>
-            </div>
-            @php
-                $deviceIcons = ['desktop' => 'heroicon-o-computer-desktop', 'mobile' => 'heroicon-o-device-phone-mobile', 'tablet' => 'heroicon-o-device-tablet'];
-                $deviceLabels = ['desktop' => 'Komputer', 'mobile' => 'Telefon', 'tablet' => 'Tablet'];
-                $totalDevices = collect($devices)->sum('count') ?: 1;
-            @endphp
-            @if(count($devices) > 0)
-            <div class="p-5">
-                <div class="grid grid-cols-3 gap-4 text-center">
-                    @foreach(['desktop', 'mobile', 'tablet'] as $dt)
-                        @php
-                            $entry = collect($devices)->firstWhere('device', $dt);
-                            $cnt = $entry ? $entry['count'] : 0;
-                            $pct = $totalDevices > 0 ? round($cnt / $totalDevices * 100) : 0;
-                        @endphp
-                    <div class="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                        <x-dynamic-component :component="$deviceIcons[$dt]" class="w-8 h-8 flex-shrink-0 text-gray-400 dark:text-gray-500" width="32" height="32" />
-                        <div class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{{ $pct }}%</div>
-                        <div class="text-xs text-gray-500 dark:text-gray-400">{{ $deviceLabels[$dt] }}</div>
-                        <div class="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{{ number_format($cnt) }}</div>
-                    </div>
-                    @endforeach
-                </div>
-            </div>
-            @else
-            <div class="py-10 text-center">
-                <x-heroicon-o-device-phone-mobile class="w-10 h-10 flex-shrink-0 text-gray-300 dark:text-gray-600 mx-auto mb-3" width="40" height="40" />
-                <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych w wybranym okresie.</p>
-            </div>
-            @endif
-        </div>
-
-    </div>
-
-    {{-- Scroll Depth --}}
-    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 mb-6">
-        <div class="mb-4">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Głębokość scrollowania</h3>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Ile sesji dotarło do danego progu strony</p>
-        </div>
-        @if(array_sum($scrollDepth) > 0)
-        <div class="flex items-end gap-3 h-32">
-            @foreach(['25', '50', '75', '90', '100'] as $depth)
-                @php $count = $scrollDepth[$depth]; $barH = $maxScroll > 0 ? max(4, round($count / $maxScroll * 100)) : 4; @endphp
-            <div class="flex-1 flex flex-col items-center gap-1">
-                <span class="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">{{ number_format($count) }}</span>
-                <div class="w-full rounded-t-lg bg-primary-500 dark:bg-primary-400" style="height: {{ $barH }}%"></div>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ $depth }}%</span>
-            </div>
-            @endforeach
-        </div>
-        @else
-        <div class="py-6 text-center">
-            <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych o scrollowaniu w wybranym okresie.</p>
-        </div>
-        @endif
-    </div>
-
-    {{-- Top Pages --}}
-    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    {{-- Top Pages — 5 columns --}}
+    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
         <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
             <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Najpopularniejsze strony (top 10)</h3>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Czas, zaangażowanie i współczynnik odrzuceń</p>
         </div>
         @if(count($topPages) > 0)
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="bg-gray-50 dark:bg-gray-700/40">
-                    <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-10">#</th>
-                    <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">URL</th>
-                    <th class="px-5 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Odsłony</th>
-                    <th class="px-5 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Sesje</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
-                @foreach($topPages as $index => $page)
-                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors duration-100">
-                    <td class="px-5 py-3.5 text-gray-400 dark:text-gray-500 font-mono text-xs">{{ $index + 1 }}</td>
-                    <td class="px-5 py-3.5 text-gray-900 dark:text-white font-medium max-w-xs truncate" title="{{ $page['url'] }}">{{ $page['url'] }}</td>
-                    <td class="px-5 py-3.5 text-right text-gray-600 dark:text-gray-400 tabular-nums font-semibold">{{ number_format($page['views']) }}</td>
-                    <td class="px-5 py-3.5 text-right text-gray-500 dark:text-gray-400 tabular-nums">{{ number_format($page['sessions']) }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 dark:bg-gray-700/40">
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-10">#</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Strona</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Wizyty</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Śr. czas</th>
+                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Scroll</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Bounce</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
+                    @foreach($topPages as $index => $page)
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors duration-100">
+                        <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 font-mono text-xs">{{ $index + 1 }}</td>
+                        <td class="px-4 py-3.5 max-w-xs">
+                            <a
+                                href="{{ $page['url'] }}"
+                                target="_blank"
+                                rel="noopener"
+                                class="inline-flex items-center gap-1 text-gray-900 dark:text-white font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-100"
+                                title="{{ $page['url'] }}"
+                            >
+                                <span class="truncate max-w-[220px]">{{ $page['path'] }}</span>
+                                <x-heroicon-o-arrow-top-right-on-square class="w-3 h-3 flex-shrink-0 text-gray-400" width="12" height="12" />
+                            </a>
+                        </td>
+                        <td class="px-4 py-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums font-semibold">
+                            {{ number_format($page['views']) }}
+                        </td>
+                        <td class="px-4 py-3.5 text-right text-gray-500 dark:text-gray-400 tabular-nums">
+                            {{ $formatTime($page['avg_time_seconds']) }}
+                        </td>
+                        <td class="px-4 py-3.5 text-center">
+                            @if($page['avg_scroll_pct'] !== null)
+                                <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {{ $scrollBadgeClass($page['avg_scroll_pct']) }}">
+                                    {{ $page['avg_scroll_pct'] }}%
+                                </span>
+                            @else
+                                <span class="text-gray-400 dark:text-gray-500">—</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3.5 text-right tabular-nums">
+                            @if($page['bounce_rate'] !== null)
+                                <span class="font-semibold {{ $bounceClass($page['bounce_rate']) }}">{{ $page['bounce_rate'] }}%</span>
+                            @else
+                                <span class="text-gray-400 dark:text-gray-500">—</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
         @else
         <div class="py-12 text-center">
             <x-heroicon-o-globe-alt class="w-10 h-10 flex-shrink-0 text-gray-300 dark:text-gray-600 mx-auto mb-3" width="40" height="40" />
@@ -346,7 +387,7 @@
 
     {{-- Conversion Funnel --}}
     @php $funnel = $this->getFunnelData(); @endphp
-    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden mt-6">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
         <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <div>
                 <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Lejek konwersji</h3>
@@ -382,8 +423,8 @@
         @endif
     </div>
 
-    {{-- Bottom row: Cart Abandonment + Traffic Sources + Session Quality --}}
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3 mt-6">
+    {{-- Bottom row: Cart Abandonment + Traffic Sources --}}
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 
         {{-- Cart Abandonment --}}
         @php $abandon = $this->getCartAbandonmentData(); @endphp
@@ -412,8 +453,9 @@
                     <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Porzucone pola</p>
                     <div class="space-y-1.5">
                         @foreach($abandon['top_fields'] as $field)
+                        @php $fieldName = $fieldLabels[$field['field']] ?? ucfirst(str_replace('_', ' ', $field['field'])); @endphp
                         <div class="flex items-center justify-between">
-                            <span class="text-xs text-gray-600 dark:text-gray-400 font-mono">{{ $field['field'] }}</span>
+                            <span class="text-xs text-gray-600 dark:text-gray-400">{{ $fieldName }}</span>
                             <span class="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">{{ $field['count'] }}×</span>
                         </div>
                         @endforeach
@@ -428,15 +470,21 @@
         <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
                 <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Źródła ruchu</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">UTM source</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Skąd przychodzą odwiedzający</p>
             </div>
             @if(count($sources) > 0)
-            <div class="p-5 space-y-2.5">
+            <div class="p-5 space-y-3">
                 @foreach($sources as $src)
+                @php $srcLabel = $sourceLabels[$src['source']] ?? ucfirst($src['source']); @endphp
                 <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm text-gray-700 dark:text-gray-300 font-medium capitalize">{{ $src['source'] }}</span>
-                        <div class="flex items-center gap-2">
+                    <div class="flex items-start justify-between mb-1">
+                        <div>
+                            <span class="text-sm text-gray-700 dark:text-gray-300 font-medium">{{ $srcLabel }}</span>
+                            @if($src['source'] === 'direct')
+                            <p class="text-xs text-gray-400 dark:text-gray-500">wejścia bezpośrednie: zakładki, wpisany adres</p>
+                            @endif
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0 ml-2 mt-0.5">
                             <span class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{{ number_format($src['sessions']) }}</span>
                             <span class="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums w-10 text-right">{{ $src['pct'] }}%</span>
                         </div>
@@ -452,33 +500,6 @@
                 <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych UTM.</p>
             </div>
             @endif
-        </div>
-
-        {{-- Session Quality --}}
-        @php $quality = $this->getSessionQuality(); @endphp
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Jakość sesji</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Zaangażowanie użytkowników</p>
-            </div>
-            <div class="p-5 grid grid-cols-2 gap-4">
-                <div class="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                    <div class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{{ $quality['bounce_rate'] }}%</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Bounce rate</div>
-                </div>
-                <div class="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                    <div class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{{ number_format($quality['avg_events'], 1, ',', ' ') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Zdarzeń/sesja</div>
-                </div>
-                <div class="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                    <div class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{{ $quality['rage_clicks'] }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Rage clicks</div>
-                </div>
-                <div class="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                    <div class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{{ number_format($quality['avg_time_on_page'], 0, ',', ' ') }}s</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Śr. czas</div>
-                </div>
-            </div>
         </div>
 
     </div>
