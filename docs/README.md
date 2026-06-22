@@ -42,6 +42,24 @@ See **[Planned Features README](./features/planned/README.md)** for full roadmap
 
 ---
 
+## 🗺️ User Journeys & Flow Diagrams
+
+**(New — June 2026)** Complete Mermaid diagrams for all flows, generated from live code audit.
+
+### Architecture Reference
+- **[User Journeys Master Map](./architecture/user-journeys.md)** — all customer paths, entry points, notifications
+- **[Status Machines](./architecture/status-machines.md)** — every status enum for Order, Appointment, Rental, Cart, Payment (with stateDiagram-v2)
+
+### Feature Flows (with embedded Mermaid diagrams)
+- **[Checkout & Order Flow](./features/checkout-order-flow.md)** — cart → checkout wizard → P24 → order lifecycle
+- **[Rental Flow](./features/rental-flow.md)** — wypożyczalnia catalogue → reserve → pickup → return → deposit
+- **[Booking Wizard Flow](./features/booking-wizard-flow.md)** — 4/5-step wizard, service area, cancellation
+- **[Payment Flow](./features/payment-flow.md)** — P24 sequence diagram, kaucja state machine, webhooks
+- **[Auth & Onboarding Flow](./features/auth-onboarding-flow.md)** — registration, org setup, roles, trial
+- **[Admin Panel Flows](./features/admin-panel-flows.md)** — order/appointment/rental management, module gating
+
+---
+
 ## 📚 Features Documentation
 
 ### Email System & Notifications
