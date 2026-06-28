@@ -24,7 +24,7 @@ class ServiceController extends Controller
                 });
             })
             ->ordered()
-            ->get();
+            ->paginate(24);
 
         return view('services.index', compact('services'));
     }

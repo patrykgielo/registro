@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Rental;
 use App\Models\Service;
 use App\Support\TenantFeature;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -98,21 +99,63 @@ class RentalAvailabilityService
 
     /**
      * Get per-day availability for a month (for calendar display).
+     * Uses 2 bulk queries instead of 2×daysInMonth individual queries.
      *
      * @return array<string, array{available_quantity: int, status: string}>
      */
     public function getMonthlyAvailability(Service $service, int $year, int $month): array
     {
-        $daysInMonth = Carbon::create($year, $month)->daysInMonth;
+        $monthStart = Carbon::create($year, $month, 1)->startOfDay();
+        $monthEnd = $monthStart->copy()->endOfMonth();
+
+        $blockedStatuses = collect(RentalStatus::cases())
+            ->filter(fn (RentalStatus $s) => $s->blocksAvailability())
+            ->map(fn (RentalStatus $s) => $s->value)
+            ->values()
+            ->all();
+
+        $monthRentals = Rental::where('service_id', $service->id)
+            ->whereIn('status', $blockedStatuses)
+            ->where('start_date', '<=', $monthEnd->toDateString())
+            ->where('end_date', '>=', $monthStart->toDateString())
+            ->select('start_date', 'end_date', 'quantity')
+            ->get();
+
+        $monthOrderItems = OrderItem::where('service_id', $service->id)
+            ->whereDate('start_date', '<=', $monthEnd)
+            ->whereDate('end_date', '>=', $monthStart)
+            ->whereHas('order', function (Builder $q) {
+                $q->where(function (Builder $inner) {
+                    $inner->whereIn('status', ['paid', 'confirmed', 'in_progress'])
+                        ->orWhere(function (Builder $pending) {
+                            $pending->where('status', 'pending_payment')
+                                ->where('expires_at', '>', now());
+                        });
+                });
+            })
+            ->select('start_date', 'end_date', 'quantity')
+            ->get();
+
+        $daysInMonth = $monthStart->daysInMonth;
+        $quantityTotal = $service->quantity_total ?? 0;
         $result = [];
 
         for ($day = 1; $day <= $daysInMonth; $day++) {
             $date = Carbon::create($year, $month, $day);
-            $available = $this->getAvailableQuantity($service, $date->copy()->startOfDay(), $date->copy()->endOfDay());
+
+            $reservedViaRentals = (int) $monthRentals
+                ->filter(fn ($r) => $r->start_date->lte($date) && $r->end_date->gte($date))
+                ->sum('quantity');
+
+            $reservedViaOrders = (int) $monthOrderItems
+                ->filter(fn ($r) => $r->start_date->lte($date) && $r->end_date->gte($date))
+                ->sum('quantity');
+
+            $available = max(0, $quantityTotal - $reservedViaRentals - $reservedViaOrders);
 
             $status = match (true) {
                 $available <= 0 => 'unavailable',
-                $available < ($service->quantity_total ?? 0) => 'partial',
+                $available < $quantityTotal => 'partial',
                 default => 'available',
             };
 

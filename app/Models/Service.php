@@ -6,7 +6,9 @@ use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
 use App\Models\Concerns\HasRentalBehavior;
 use App\Models\Concerns\HasTimeSlotBehavior;
+use App\Support\Services\ServiceQueryParams;
 use App\Traits\BelongsToOrganization;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -182,6 +184,25 @@ class Service extends Model
     public function scopeBookable($query)
     {
         return $query->where('service_type', ServiceType::TimeSlot->value);
+    }
+
+    /**
+     * Scope: Filter by ServiceQueryParams — WP_Query equivalent for services.
+     * Composes with existing scopes; caller must chain ->get() or ->paginate().
+     */
+    public function scopeFilterBy(Builder $query, ServiceQueryParams $params): Builder
+    {
+        return $query
+            ->active()
+            ->when($params->type, fn ($q) => $q->where('service_type', $params->type))
+            ->when($params->category, fn ($q) => $q->whereHas('category', fn ($c) => $c->where('slug', $params->category)))
+            ->when($params->featured !== null, fn ($q) => $q->where('is_popular', $params->featured))
+            ->when($params->exclude, fn ($q) => $q->whereNotIn('id', $params->exclude))
+            ->when($params->orderBy === 'price_asc', fn ($q) => $q->orderBy('price_per_day')->orderBy('price'))
+            ->when($params->orderBy === 'price_desc', fn ($q) => $q->orderByDesc('price_per_day')->orderByDesc('price'))
+            ->when($params->orderBy === 'newest', fn ($q) => $q->latest())
+            ->when($params->orderBy === 'sort_order', fn ($q) => $q->ordered())
+            ->when($params->limit > 0, fn ($q) => $q->limit($params->limit));
     }
 
     /**
