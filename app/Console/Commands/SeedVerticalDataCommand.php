@@ -85,6 +85,7 @@ class SeedVerticalDataCommand extends Command
                 'org_name' => $org->name,
                 'services_to_delete' => $existingServices,
                 'categories_to_delete' => $existingCategories,
+                'interactive' => $this->input->isInteractive(),
             ]);
 
             $this->warn("Zostanie usuniętych: {$existingServices} usług i {$existingCategories} kategorii dla \"{$org->name}\" (ID: {$org->id}).");
@@ -98,28 +99,41 @@ class SeedVerticalDataCommand extends Command
 
         // Purge (if needed) and seed in a single transaction.
         // Prevents a failed seed from leaving the org with an empty catalogue and no retry path.
-        DB::transaction(function () use ($org, $seeder, $needsPurge) {
-            if ($needsPurge) {
-                $this->purgeExistingData($org);
-            }
-            $seeder->seed($org);
-        });
+        try {
+            DB::transaction(function () use ($org, $seeder, $needsPurge) {
+                if ($needsPurge) {
+                    $this->purgeExistingData($org);
+                }
+                $seeder->seed($org);
+            });
+        } catch (\Throwable $e) {
+            Log::error('onboarding:seed-vertical transaction failed — rolled back', [
+                'org_id' => $org->id,
+                'exception' => $e->getMessage(),
+            ]);
+            $this->error('Seed nie powiódł się (rollback): '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        Log::info('onboarding:seed-vertical completed', [
+            'org_id' => $org->id,
+            'purge_done' => $needsPurge,
+        ]);
 
         if ($needsPurge) {
             $this->warn('Usunięto istniejące usługi i kategorie (--force).');
         }
 
-        // In both paths (purge+seed / fresh seed) the pre-seed baseline is 0,
-        // so the post-transaction count equals exactly what the seeder created.
-        $servicesAdded = Service::withoutGlobalScope('organization')->where('organization_id', $org->id)->count();
-        $categoriesAdded = RentalCategory::withoutGlobalScope('organization')->where('organization_id', $org->id)->count();
+        $serviceCount = Service::withoutGlobalScope('organization')->where('organization_id', $org->id)->count();
+        $categoryCount = RentalCategory::withoutGlobalScope('organization')->where('organization_id', $org->id)->count();
 
         $this->info("Branża: {$industry->label()} ({$industry->value})");
         $this->info("Organizacja: {$org->name} (ID: {$org->id})");
-        $this->info("Dodano usług: {$servicesAdded}");
+        $this->info("Dodano usług: {$serviceCount}");
 
-        if ($categoriesAdded > 0) {
-            $this->info("Dodano kategorii: {$categoriesAdded}");
+        if ($categoryCount > 0) {
+            $this->info("Dodano kategorii: {$categoryCount}");
         }
 
         return self::SUCCESS;
@@ -129,6 +143,12 @@ class SeedVerticalDataCommand extends Command
     {
         $this->info("[DRY-RUN] Org: {$org->name} (ID: {$org->id})");
         $this->info("[DRY-RUN] Branża: {$industry->label()} ({$industry->value})");
+
+        if (! $this->option('force') && $this->hasExistingData($org)) {
+            $this->warn('[DRY-RUN] Prawdziwe uruchomienie ZAKOŃCZYŁOBY SIĘ BŁĘDEM — org ma dane, brak --force.');
+
+            return self::FAILURE;
+        }
 
         if ($this->option('force') && $this->hasExistingData($org)) {
             $services = Service::withoutGlobalScope('organization')->where('organization_id', $org->id)->count();
