@@ -51,6 +51,15 @@ class StaffDeleteGuardTest extends TestCase
         return $method->invoke(null, $staff);
     }
 
+    /**
+     * Simulates ResolveTenant middleware by placing the org on the request attributes,
+     * so TenantFeature::currentTenant() resolves to $org inside hasFutureActiveAppointments().
+     */
+    private function setTenant(Organization $org): void
+    {
+        $this->app['request']->attributes->set('tenant', $org);
+    }
+
     public function test_returns_true_when_staff_has_future_pending_appointment(): void
     {
         $org = Organization::factory()->create();
@@ -62,6 +71,8 @@ class StaffDeleteGuardTest extends TestCase
             'status' => AppointmentStatus::Pending,
             'appointment_date' => now()->addDay()->toDateString(),
         ]);
+
+        $this->setTenant($org);
 
         $this->assertTrue($this->hasFuture($staff));
     }
@@ -78,6 +89,8 @@ class StaffDeleteGuardTest extends TestCase
             'appointment_date' => now()->addWeek()->toDateString(),
         ]);
 
+        $this->setTenant($org);
+
         $this->assertTrue($this->hasFuture($staff));
     }
 
@@ -92,6 +105,8 @@ class StaffDeleteGuardTest extends TestCase
             'status' => AppointmentStatus::Pending,
             'appointment_date' => now()->subDay()->toDateString(),
         ]);
+
+        $this->setTenant($org);
 
         $this->assertFalse($this->hasFuture($staff));
     }
@@ -108,6 +123,8 @@ class StaffDeleteGuardTest extends TestCase
             'appointment_date' => now()->addDay()->toDateString(),
         ]);
 
+        $this->setTenant($org);
+
         $this->assertFalse($this->hasFuture($staff));
     }
 
@@ -122,6 +139,8 @@ class StaffDeleteGuardTest extends TestCase
             'status' => AppointmentStatus::Completed,
             'appointment_date' => now()->addDay()->toDateString(),
         ]);
+
+        $this->setTenant($org);
 
         $this->assertFalse($this->hasFuture($staff));
     }
@@ -145,6 +164,28 @@ class StaffDeleteGuardTest extends TestCase
             'status' => AppointmentStatus::Pending,
             'appointment_date' => now()->addDay()->toDateString(),
         ]);
+
+        $this->setTenant($org);
+
+        $this->assertFalse($this->hasFuture($staff));
+    }
+
+    public function test_does_not_count_appointments_from_other_org(): void
+    {
+        $orgA = Organization::factory()->create();
+        $orgB = Organization::factory()->create();
+        $staff = $this->createStaff();
+
+        // Staff has a future active appointment in orgA
+        $this->makeAppointment([
+            'organization_id' => $orgA->id,
+            'staff_id' => $staff->id,
+            'status' => AppointmentStatus::Pending,
+            'appointment_date' => now()->addDay()->toDateString(),
+        ]);
+
+        // Tenant context is orgB → must not see orgA's appointments
+        $this->setTenant($orgB);
 
         $this->assertFalse($this->hasFuture($staff));
     }

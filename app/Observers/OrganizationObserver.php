@@ -49,9 +49,11 @@ class OrganizationObserver
         }
 
         $original = $org->getOriginal('lifecycle_state');
-        $from = is_string($original)
-            ? OrganizationLifecycleState::from($original)
-            : $original;
+        $from = match (true) {
+            $original instanceof OrganizationLifecycleState => $original,
+            is_string($original) => OrganizationLifecycleState::from($original),
+            default => OrganizationLifecycleState::Active,
+        };
 
         $to = $org->lifecycle_state;
 

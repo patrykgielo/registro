@@ -17,6 +17,13 @@ class Organization extends Model
     use HasFactory;
 
     /**
+     * Default lifecycle_state mirrors the DB column default ('active').
+     * Ensures getOriginal('lifecycle_state') is never null on freshly created models,
+     * so OrganizationObserver::updating() can always derive a valid $from state.
+     */
+    protected $attributes = ['lifecycle_state' => 'active'];
+
+    /**
      * Bypass lifecycle-state obligation check in OrganizationObserver::updating().
      * Set to true before calling save() to skip the guard.
      * Reset automatically by OrganizationObserver::updated() after each successful save.

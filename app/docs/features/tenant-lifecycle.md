@@ -156,6 +156,14 @@ Organization::factory()->closed()->create()    // Closed
 
 **Never do:** `Organization::create(['lifecycle_state' => 'closed'])` — lifecycle_state not fillable.
 
+**Model default attribute (Faza 5.1-cr2, 2026-06-29):**
+
+`Organization` now declares `protected $attributes = ['lifecycle_state' => 'active']` to mirror the DB column default. This ensures `getOriginal('lifecycle_state')` is never `null` on a freshly inserted model instance, which prevented `OrganizationObserver::updating()` from deriving a valid `$from` state when the observer was called immediately after `factory()->create()` (no lifecycle state set explicitly). Without this default, `syncOriginal()` after INSERT copied `null` for `lifecycle_state`, causing a `TypeError` in `assertTransitionAllowed()`.
+
+**Observer null-safe guard (defense-in-depth):**
+
+`OrganizationObserver::updating()` derives `$from` via `match(true)` with a `default → Active` arm, so that even if `getOriginal('lifecycle_state')` returns `null` (e.g., via `forceFill` bypassing the default), the guard falls back to `Active` rather than crashing.
+
 ### Platform Filament lifecycle actions (F004)
 
 `app/Filament/Platform/Resources/OrganizationResource.php`
@@ -187,6 +195,16 @@ Replaced the `Toggle::make('is_active')` form field with:
 `DeleteAction` and `DeleteBulkAction` guarded by `hasFutureActiveAppointments(User $staff)`:
 - When `TenantFeature::currentTenant() === null`, returns `false` immediately (no cross-tenant leak)
 - Requires explicit `organization_id` scope (no `->when($tenant, ...)` which would silently scan all orgs if tenant is null)
+
+**Testing `hasFutureActiveAppointments()` in isolation:**
+
+The method reads `TenantFeature::currentTenant()`, which resolves from Filament context → request attributes → session. Tests must set the tenant on the request before invoking the method:
+
+```php
+$this->app['request']->attributes->set('tenant', $org);
+```
+
+Without this, `currentTenant()` returns `null` and the guard immediately returns `false`, masking any business-logic assertions.
 
 ### Exceptions
 
