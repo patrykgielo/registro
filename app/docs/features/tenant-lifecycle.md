@@ -400,7 +400,7 @@ These items were identified during 5.3a implementation but deferred — each req
 
 Art. 28 ust. 3 lit. g RODO: the processor (Registro) must return all personal data to the controller (tenant/organization owner) upon termination of processing services. Art. 12 ust. 3 RODO: deadline for responding to such requests is 1 month.
 
-The 30-day signed URL validity maps directly to the 1-month RODO deadline.
+The signed URL is valid **7 days** (privacy-by-design minimisation, Art. 25 — the export holds PESEL/NIP/full customer base; well inside the 1-month RODO deadline).
 
 ### Architecture
 
@@ -409,7 +409,9 @@ The 30-day signed URL validity maps directly to the 1-month RODO deadline.
 - Method `generate(Organization $org): string` — returns relative path on disk `local`
 - Uses `DB::table()` with `chunk(500)` for each dataset (bypasses Eloquent global scopes; all queries include explicit `WHERE organization_id = ?`)
 - Writes streaming JSON (array format, one row per line) + CSV (UTF-8 BOM, semicolons) to temp files, then bundles them into a ZIP via `ZipArchive`
-- ZIP path: `storage/app/exports/org-{id}/{Ymd_His}.zip` — disk `local` (PRIVATE, not `public`)
+- ZIP path: `storage/app/private/exports/org-{id}/{Ymd_His}.zip` — disk `local` (PRIVATE, not `public`)
+- **CSV formula-injection guard**: data-row values starting with `= + - @ \t \r` are prefixed with `'` (`sanitizeCsvValue()`) so the owner's Excel treats them as literal text
+- Temp files are unlinked even if the chunk loop throws (local try/catch per builder)
 - ZIP contents: `manifest.json` + `{dataset}.json` + `{dataset}.csv` for: `orders`, `appointments`, `rentals`, `payments`, `tenant_payments`, `settings`
 - Temp files are deleted after `$zip->close()` (in `finally` block)
 
@@ -431,18 +433,26 @@ The `/platform/` prefix is explicitly excluded from the CMS catch-all route `/{s
 ```php
 URL::temporarySignedRoute(
     'platform.organization.data-export',
-    now()->addDays(30),
+    now()->addDays(7),
     ['organization' => $org->id, 'file' => $relativePath]
 )
 ```
-The `file` parameter is included in the signature — cannot be tampered without invalidating the signature.
+The `file` parameter is included in the signature — cannot be tampered without invalidating the signature. The route is rate-limited (`throttle:10,1440` — 10 downloads/24 h/IP).
 
 **Notification:** `app/Notifications/OrganizationDataExportReadyNotification.php`
 
-- `implements ShouldQueue`, `onQueue('emails')`, `via=['mail']`
-- Constructor: `(string $downloadUrl, string $organizationName)`
-- Email: PL, MailMessage with `->action('Pobierz dane firmy', $url)`, mentions art. 28(3)(g) RODO, 30-day link validity
+- `implements ShouldQueue, ShouldBeUnique`, `onQueue('emails')`, `via=['mail']`; `uniqueId('data-export:{orgId}')` / `uniqueFor(3600)` prevents duplicate emails on retry/re-run
+- Constructor: `(string $downloadUrl, string $organizationName, int $organizationId)`
+- Email: PL, MailMessage with `->action('Pobierz dane firmy', $url)`, mentions art. 28(3)(g) RODO, 7-day link validity
 - Sent to `$org->owner`
+
+### Export retention (GDPR Art. 5(1)(e))
+
+Generated ZIPs hold full PII, so they are not kept indefinitely. `organizations:cleanup-exports {--days=}` deletes export files older than `config('retention.export_files_days', 8)` (signed URL TTL 7 days + 1-day margin). Scheduled daily at 04:00 (`routes/console.php`).
+
+### Follow-up (documented debt)
+
+`buildDatasetTempFiles` / `buildSettingsTempFiles` are near-identical — candidate for a shared `buildTempFilesFromQuery(callable)` refactor.
 
 **Command:** `app/Console/Commands/ExportOrganizationDataCommand.php`
 

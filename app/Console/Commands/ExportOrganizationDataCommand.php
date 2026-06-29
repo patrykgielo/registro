@@ -68,25 +68,26 @@ class ExportOrganizationDataCommand extends Command
 
         $signedUrl = URL::temporarySignedRoute(
             'platform.organization.data-export',
-            now()->addDays(30),
+            now()->addDays(7),
             [
                 'organization' => $org->id,
                 'file' => $relativePath,
             ]
         );
 
-        $owner->notify(new OrganizationDataExportReadyNotification($signedUrl, $org->name));
+        $owner->notify(new OrganizationDataExportReadyNotification($signedUrl, $org->name, $org->id));
 
         Log::info('organizations:export-data completed', [
             'org_id' => $org->id,
             'path' => $relativePath,
             'owner_notified' => $owner->email,
-            'link_expires_days' => 30,
+            'link_expires_days' => 7,
         ]);
 
         $this->info('Eksport zapisany: '.Storage::disk('local')->path($relativePath));
-        $this->info("Link wysłany do: {$owner->email} (ważny 30 dni)");
+        $this->info("Link wysłany do: {$owner->email} (ważny 7 dni)");
         $this->line('');
+        $this->warn('Ten URL daje dostęp do PEŁNYCH danych firmy — NIE udostępniaj w logach/ticketach.');
         $this->line('Bezpośredni URL (dla admina):');
         $this->line($signedUrl);
 

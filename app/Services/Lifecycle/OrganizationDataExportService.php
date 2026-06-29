@@ -130,39 +130,51 @@ class OrganizationDataExportService
         $jsonHandle = fopen($jsonTmp, 'w');
         $csvHandle = fopen($csvTmp, 'w');
 
-        fwrite($csvHandle, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
-        fwrite($jsonHandle, "[\n");
+        if (! is_resource($jsonHandle) || ! is_resource($csvHandle)) {
+            @unlink($jsonTmp);
+            @unlink($csvTmp);
+            throw new \RuntimeException("Cannot open temp files for {$table} export.");
+        }
 
-        $isFirst = true;
-        $headersWritten = false;
+        try {
+            fwrite($csvHandle, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
+            fwrite($jsonHandle, "[\n");
 
-        DB::table($table)
-            ->where('organization_id', $orgId)
-            ->orderBy('id')
-            ->chunk(500, function ($rows) use ($jsonHandle, $csvHandle, &$isFirst, &$headersWritten): void {
-                foreach ($rows as $row) {
-                    $arr = (array) $row;
+            $isFirst = true;
+            $headersWritten = false;
 
-                    if (! $headersWritten) {
-                        fputcsv($csvHandle, array_keys($arr), ';');
-                        $headersWritten = true;
+            DB::table($table)
+                ->where('organization_id', $orgId)
+                ->orderBy('id')
+                ->chunk(500, function ($rows) use ($jsonHandle, $csvHandle, &$isFirst, &$headersWritten): void {
+                    foreach ($rows as $row) {
+                        $arr = (array) $row;
+
+                        if (! $headersWritten) {
+                            fputcsv($csvHandle, array_keys($arr), ';');
+                            $headersWritten = true;
+                        }
+
+                        if (! $isFirst) {
+                            fwrite($jsonHandle, ",\n");
+                        }
+                        fwrite($jsonHandle, '  '.json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                        $isFirst = false;
+
+                        fputcsv($csvHandle, array_map($this->sanitizeCsvValue(...), array_values($arr)), ';');
                     }
+                });
 
-                    if (! $isFirst) {
-                        fwrite($jsonHandle, ",\n");
-                    }
-                    fwrite($jsonHandle, '  '.json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                    $isFirst = false;
+            fwrite($jsonHandle, "\n]");
+            fclose($jsonHandle);
+            fclose($csvHandle);
 
-                    fputcsv($csvHandle, array_values($arr), ';');
-                }
-            });
-
-        fwrite($jsonHandle, "\n]");
-        fclose($jsonHandle);
-        fclose($csvHandle);
-
-        return [$jsonTmp, $csvTmp];
+            return [$jsonTmp, $csvTmp];
+        } catch (\Throwable $e) {
+            @unlink($jsonTmp);
+            @unlink($csvTmp);
+            throw $e;
+        }
     }
 
     /**
@@ -181,38 +193,66 @@ class OrganizationDataExportService
         $jsonHandle = fopen($jsonTmp, 'w');
         $csvHandle = fopen($csvTmp, 'w');
 
-        fwrite($csvHandle, "\xEF\xBB\xBF");
-        fwrite($jsonHandle, "[\n");
+        if (! is_resource($jsonHandle) || ! is_resource($csvHandle)) {
+            @unlink($jsonTmp);
+            @unlink($csvTmp);
+            throw new \RuntimeException('Cannot open temp files for settings export.');
+        }
 
-        $isFirst = true;
-        $headersWritten = false;
+        try {
+            fwrite($csvHandle, "\xEF\xBB\xBF");
+            fwrite($jsonHandle, "[\n");
 
-        DB::table('settings')
-            ->where('organization_id', $orgId)
-            ->orderBy('id')
-            ->chunk(500, function ($rows) use ($jsonHandle, $csvHandle, &$isFirst, &$headersWritten): void {
-                foreach ($rows as $row) {
-                    $arr = (array) $row;
+            $isFirst = true;
+            $headersWritten = false;
 
-                    if (! $headersWritten) {
-                        fputcsv($csvHandle, array_keys($arr), ';');
-                        $headersWritten = true;
+            DB::table('settings')
+                ->where('organization_id', $orgId)
+                ->orderBy('id')
+                ->chunk(500, function ($rows) use ($jsonHandle, $csvHandle, &$isFirst, &$headersWritten): void {
+                    foreach ($rows as $row) {
+                        $arr = (array) $row;
+
+                        if (! $headersWritten) {
+                            fputcsv($csvHandle, array_keys($arr), ';');
+                            $headersWritten = true;
+                        }
+
+                        if (! $isFirst) {
+                            fwrite($jsonHandle, ",\n");
+                        }
+                        fwrite($jsonHandle, '  '.json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                        $isFirst = false;
+
+                        fputcsv($csvHandle, array_map($this->sanitizeCsvValue(...), array_values($arr)), ';');
                     }
+                });
 
-                    if (! $isFirst) {
-                        fwrite($jsonHandle, ",\n");
-                    }
-                    fwrite($jsonHandle, '  '.json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                    $isFirst = false;
+            fwrite($jsonHandle, "\n]");
+            fclose($jsonHandle);
+            fclose($csvHandle);
 
-                    fputcsv($csvHandle, array_values($arr), ';');
-                }
-            });
+            return [$jsonTmp, $csvTmp];
+        } catch (\Throwable $e) {
+            @unlink($jsonTmp);
+            @unlink($csvTmp);
+            throw $e;
+        }
+    }
 
-        fwrite($jsonHandle, "\n]");
-        fclose($jsonHandle);
-        fclose($csvHandle);
+    /**
+     * Prevent CSV formula injection (CWE-1236).
+     *
+     * Excel/LibreOffice evaluate cells starting with = + - @ \t \r as formulas.
+     * Prefixing with a single quote forces the cell to be treated as plain text.
+     * The quote is visible in the formula bar but suppressed in cell display.
+     */
+    private function sanitizeCsvValue(mixed $v): mixed
+    {
+        if (is_string($v) && $v !== '' && in_array($v[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'".$v;
+        }
 
-        return [$jsonTmp, $csvTmp];
+        return $v;
     }
 }
