@@ -3,7 +3,6 @@
 namespace Tests\Feature\Auth;
 
 use App\Enums\Industry;
-use App\Enums\ServiceType;
 use App\Models\Organization;
 use App\Models\RentalCategory;
 use App\Models\Service;
@@ -212,7 +211,7 @@ class BusinessRegistrationTest extends TestCase
         $this->assertEquals(Industry::EquipmentRental, $org->industry);
     }
 
-    public function test_equipment_rental_seeds_categories_and_items(): void
+    public function test_equipment_rental_registration_has_empty_catalog(): void
     {
         $this->withSession([
             'business_register.step1' => [
@@ -231,19 +230,18 @@ class BusinessRegistrationTest extends TestCase
 
         $org = Organization::where('slug', 'narzedzia')->first();
 
-        $categories = RentalCategory::withoutGlobalScope('organization')
-            ->where('organization_id', $org->id)
-            ->count();
-        $this->assertEquals(7, $categories);
+        $this->assertEquals(
+            0,
+            RentalCategory::withoutGlobalScope('organization')->where('organization_id', $org->id)->count()
+        );
 
-        $items = Service::withoutGlobalScope('organization')
-            ->where('organization_id', $org->id)
-            ->where('service_type', ServiceType::ItemRental)
-            ->count();
-        $this->assertEquals(13, $items);
+        $this->assertEquals(
+            0,
+            Service::withoutGlobalScope('organization')->where('organization_id', $org->id)->count()
+        );
     }
 
-    public function test_auto_detailing_seeds_services(): void
+    public function test_auto_detailing_registration_has_empty_catalog_and_features_set(): void
     {
         $this->withSession([
             'business_register.step1' => [
@@ -262,17 +260,17 @@ class BusinessRegistrationTest extends TestCase
 
         $org = Organization::where('slug', 'detailing')->first();
 
-        $services = Service::withoutGlobalScope('organization')
-            ->where('organization_id', $org->id)
-            ->count();
-        $this->assertEquals(8, $services);
+        $this->assertEquals(
+            0,
+            Service::withoutGlobalScope('organization')->where('organization_id', $org->id)->count()
+        );
 
-        // Check features are enabled
+        // Industry feature flags ARE set during registration
         $this->assertTrue($org->hasFeature('vehicles'));
         $this->assertTrue($org->hasFeature('mobile_service'));
     }
 
-    public function test_general_services_seeds_placeholder(): void
+    public function test_general_services_registration_has_empty_catalog(): void
     {
         $this->withSession([
             'business_register.step1' => [
@@ -291,10 +289,10 @@ class BusinessRegistrationTest extends TestCase
 
         $org = Organization::where('slug', 'general')->first();
 
-        $services = Service::withoutGlobalScope('organization')
-            ->where('organization_id', $org->id)
-            ->count();
-        $this->assertEquals(1, $services);
+        $this->assertEquals(
+            0,
+            Service::withoutGlobalScope('organization')->where('organization_id', $org->id)->count()
+        );
     }
 
     public function test_step3_page_loads(): void

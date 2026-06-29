@@ -62,10 +62,13 @@ new OnboardingData(
 
 ### Vertical Seeders — dodawanie nowej branży
 
+**KRYTYCZNE: Nowy tenant startuje z PUSTYM katalogiem.** `SeedOrganizationDefaults::execute()` seeduje tylko settings i feature flags — nigdy produkty/usługi. Vertical seed to operacja opt-in, wyłącznie ręczna.
+
 1. Dodaj case do `app/Enums/Industry.php`
 2. Implementuj `VerticalSeeder` interface w `app/Actions/Onboarding/Seeders/`
 3. Dodaj `seederClass()` return w enum
-4. Gotowe — `SeedOrganizationDefaults` automatycznie wywołuje seeder
+4. Seeder NIE jest wywoływany automatycznie. Ładowanie ręczne:
+   `php artisan onboarding:seed-vertical {id_lub_slug} [--industry=...] [--force]`
 
 ```php
 interface VerticalSeeder {
@@ -124,10 +127,15 @@ $org->hasModule('services')  // true jeśli industry to umożliwia
 
 Super-admin może nadpisać moduły w Platform panel (zapisuje do `settings.modules.*`).
 
-## Seed data — referencja
+## Seed data — referencja (opt-in manualny, nie auto)
 
-| Industry | Seed | Ilość |
-|----------|------|-------|
+Vertical seedery są dostępne, ale **NIE są wywoływane automatycznie** podczas onboardingu.
+Uruchom ręcznie: `php artisan onboarding:seed-vertical {id_lub_slug}`
+
+| Industry | Seeder | Ilość |
+|----------|--------|-------|
 | equipment_rental | SeedEquipmentRental | 7 kategorii + 13 itemów |
 | auto_detailing | SeedAutoDetailing | 8 usług z metadata |
 | general_services | SeedGeneralServices | 1 placeholder usługa |
+
+Guard: jeśli org ma już usługi lub kategorie — komenda odmawia (użyj `--force` aby ominąć).
