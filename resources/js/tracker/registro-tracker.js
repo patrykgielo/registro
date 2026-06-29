@@ -154,6 +154,7 @@ function sendFetch(payload, keepalive = false) {
 }
 
 function retryFailed() {
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;
     const failed = safeGet(sessionStorage, '_tk_failed');
     if (!failed) return;
     try { sessionStorage.removeItem('_tk_failed'); } catch { /* blocked */ }
@@ -315,6 +316,7 @@ document.addEventListener('click', (e) => {
 
 // Back navigation — track previous URL before Livewire SPA navigation
 document.addEventListener('livewire:navigate', () => {
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;
     safeSet(sessionStorage, '_tk_prev_url', location.href);
 });
 

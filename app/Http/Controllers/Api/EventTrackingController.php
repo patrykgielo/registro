@@ -34,6 +34,14 @@ class EventTrackingController extends Controller
             'events.*.properties.*' => [
                 'nullable',
                 function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+                    if (is_array($value) || is_object($value)) {
+                        $fail('Property values must be scalar.');
+
+                        return;
+                    }
                     if (is_string($value) && mb_strlen($value) > 256) {
                         $fail('Property string value must not exceed 256 characters.');
                     }

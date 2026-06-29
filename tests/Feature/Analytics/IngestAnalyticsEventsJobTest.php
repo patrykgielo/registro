@@ -138,4 +138,35 @@ class IngestAnalyticsEventsJobTest extends TestCase
 
         $this->assertDatabaseMissing('analytics_events', ['url' => 'javascript:alert(1)']);
     }
+
+    public function test_javascript_scheme_referrer_is_stored_as_null_in_job(): void
+    {
+        $this->ingest([
+            $this->makeEvent('page_viewed', [
+                'url' => 'https://example.com/uslugi',
+                'referrer' => 'javascript:void(0)',
+            ]),
+        ]);
+
+        $this->assertDatabaseHas('analytics_events', [
+            'event' => 'page_viewed',
+            'referrer' => null,
+        ]);
+
+        $this->assertDatabaseMissing('analytics_events', ['referrer' => 'javascript:void(0)']);
+    }
+
+    public function test_port_is_preserved_in_url_after_query_strip(): void
+    {
+        $this->ingest([
+            $this->makeEvent('page_viewed', [
+                'url' => 'https://registro.local:8444/katalog?token=abc',
+            ]),
+        ]);
+
+        $this->assertDatabaseHas('analytics_events', [
+            'event' => 'page_viewed',
+            'url' => 'https://registro.local:8444/katalog',
+        ]);
+    }
 }

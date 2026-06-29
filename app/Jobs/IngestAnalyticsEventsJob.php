@@ -146,7 +146,7 @@ class IngestAnalyticsEventsJob implements ShouldQueue
             return null;
         }
 
-        $result = ($parsed['scheme'] ?? '').'://'.($parsed['host'] ?? '').($parsed['path'] ?? '');
+        $result = ($parsed['scheme'] ?? '').'://'.($parsed['host'] ?? '').(isset($parsed['port']) ? ':'.$parsed['port'] : '').($parsed['path'] ?? '');
 
         return Str::substr($result, 0, 2048) ?: null;
     }

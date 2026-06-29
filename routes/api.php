@@ -38,7 +38,8 @@ Route::middleware($isProduction ? 'throttle:3,1' : 'throttle:30,1')->group(funct
 });
 
 // Frontend event tracking (guest + authenticated, tenant-scoped)
-Route::middleware(['throttle:analytics', \App\Http\Middleware\ResolveTenant::class])->group(function () {
+// ResolveTenant must run BEFORE throttle:analytics so the per-tenant bucket key is available.
+Route::middleware([\App\Http\Middleware\ResolveTenant::class, 'throttle:analytics'])->group(function () {
     Route::post('/track', [EventTrackingController::class, 'store'])
         ->name('api.analytics.track');
 });
