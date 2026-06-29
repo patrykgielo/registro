@@ -27,7 +27,8 @@ class Organization extends Model
     /**
      * Bypass lifecycle-state obligation check in OrganizationObserver::updating().
      * Set to true before calling save() to skip the guard.
-     * Reset automatically by OrganizationObserver::updated() after each successful save.
+     * Reset automatically by OrganizationObserver::saved() after each successful save
+     * (saved() fires even on no-op saves, unlike updated()).
      */
     public bool $forceLifecycleTransition = false;
 

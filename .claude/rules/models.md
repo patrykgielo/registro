@@ -515,7 +515,7 @@ $org->purge_after           // Carbon|null (Faza 5.3) — cleared when Closing �
 $org->closure_requested_at  // Carbon|null
 
 // Transient flags (not persisted — reset after save)
-$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating()); auto-reset by updated()
+$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating()); auto-reset by saved()
 $org->bypassDeleteGuard = true;         // bypasses all checks (observer deleting()); auto-reset by deleted()
 ```
 
@@ -526,7 +526,7 @@ $org->bypassDeleteGuard = true;         // bypasses all checks (observer deletin
   - ✅ Przy aktualizacji: `$org->lifecycle_state = State::Foo; $org->save();`
 - Nie ustawiaj `is_active` bezpośrednio — NIE jest w `$fillable`, ustawiane WYŁĄCZNIE przez `OrganizationObserver`
 - `OrganizationObserver` egzekwuje: state machine + obligacje + is_active sync + timestamps + flag reset
-- Flagi transient (nie persystowane): `forceLifecycleTransition` resetowany przez `updated()`, `bypassDeleteGuard` przez `deleted()`
+- Flagi transient (nie persystowane): `forceLifecycleTransition` resetowany przez `saved()` (odpala się też na no-op save), `bypassDeleteGuard` przez `deleted()`
 - State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php` — `transitions()` jest PRIVATE
 - Wyjątki: `InvalidLifecycleTransitionException` (nielegalne przejście), `OrganizationNotClosedException` (delete gdy nie Closed), `OrganizationHasActiveObligationsException` (blokada przez in-flight obligacje)
 - `completed` order NIE jest in-flight — nie blokuje zamknięcia org! Tylko: pending_payment/paid/confirmed/in_progress

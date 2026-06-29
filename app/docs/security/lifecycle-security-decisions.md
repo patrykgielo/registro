@@ -153,7 +153,7 @@ Kontekst: każda Faza lifecycle przechodziła `code-reviewer` + `agent-security-
 - **OWASP/RODO:** A01 Broken Access Control · A04 Insecure Design · RODO art. 28(3)(g) / art. 12(3)
 - **Gdzie:** `app/Services/Lifecycle/OrganizationDataExportService.php`, route `platform.organization.data-export` + cienki controller
 - **Ryzyko:** Eksport ZIP z pełnym kompletem danych tenanta (orders+invoices, appointments, rentals, payments, settings) to skoncentrowane PII. Bez twardej kontroli dostępu = IDOR / wyciek między tenantami.
-- **Jak naprawiono:** ZIP zapisywany na **prywatnym** dysku `local` (`storage/app/private`) — nigdy public. Download tylko przez **signed URL** (`temporarySignedRoute`) **albo** rola super-admin; guard path-traversal; `StreamedResponse`. TTL signed URL skrócony 30→**7 dni** (minimalizacja PII). `throttle:10,1440` na route. Notyfikacja `ShouldBeUnique` (per-org, 1h). Testy: signature valid/expired/tampered/missing, super-admin, 404, traversal (`OrganizationDataExportTest`, 16).
+- **Jak naprawiono:** ZIP zapisywany na **prywatnym** dysku `local` (`storage/app/private`) — nigdy public. Download tylko przez **signed URL** (`temporarySignedRoute`) **albo** rola super-admin; guard path-traversal; `StreamedResponse`. TTL signed URL skrócony 30→**7 dni** (minimalizacja PII). `throttle:10,1440` na route. Notyfikacja `ShouldBeUnique` (per-org, 1h). Testy: signature valid/expired/tampered/missing, super-admin, 404, traversal, CSV-escape, null-owner, cleanup (`OrganizationDataExportTest`, 20).
 - **PR:** #89
 
 ### LC-5 — Export ZIP-y zalegają na dysku
