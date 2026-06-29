@@ -2,7 +2,7 @@
 
 ## Overview
 
-3-krokowy wizard do zakładania konta firmowego. Tworzy User + Organization + seed data na podstawie wybranej branży.
+3-krokowy wizard do zakładania konta firmowego. Tworzy User + Organization + domyślne ustawienia na podstawie wybranej branży. Nowy tenant startuje z **pustym katalogiem** — przykładowe dane branżowe ładuje się ręcznie (opt-in).
 
 ## Flow
 
@@ -14,7 +14,7 @@
 /register/step/2             ← guest
   → Dane właściciela: imię, nazwisko, email, hasło, terms
   → POST creates: User (admin role) + Organization (14-day trial)
-  → Seeduje: settings + feature flags + vertical data
+  → Seeduje: settings + feature flags (NIE produkty/usługi!)
   → Loguje użytkownika
 
 /register/step/3             ← auth (optional)
@@ -39,7 +39,15 @@
 
 **Metody:** `label()`, `icon()`, `description()`, `bookingType()`, `defaultFeatures()`, `terminology()`, `seederClass()`
 
-## Vertical Seeders
+## Vertical Seeders (opt-in, tylko ręcznie)
+
+**WAŻNE:** Seedery NIE są wywoływane automatycznie podczas onboardingu. Nowy tenant startuje z pustym katalogiem. Uruchom ręcznie gdy potrzeba załadować przykładowe dane:
+
+```bash
+php artisan onboarding:seed-vertical {id_lub_slug}
+php artisan onboarding:seed-vertical {id_lub_slug} --industry=equipment_rental
+php artisan onboarding:seed-vertical {id_lub_slug} --force   # ignoruj istniejące dane
+```
 
 Interface: `app/Actions/Onboarding/Seeders/VerticalSeeder.php`
 
@@ -65,7 +73,8 @@ Interface: `app/Actions/Onboarding/Seeders/VerticalSeeder.php`
 | `app/Enums/Industry.php` | Enum branż |
 | `app/Actions/Onboarding/OnboardingData.php` | Value object (readonly) |
 | `app/Actions/Onboarding/CreateOrganizationWithOwner.php` | Transaction: User + Org + Seed |
-| `app/Actions/Onboarding/SeedOrganizationDefaults.php` | Settings + features + vertical seeder |
+| `app/Actions/Onboarding/SeedOrganizationDefaults.php` | Settings + feature flags (NIE produkty) |
+| `app/Console/Commands/SeedVerticalDataCommand.php` | Ręczny seed: `onboarding:seed-vertical` |
 | `app/Actions/Onboarding/Seeders/VerticalSeeder.php` | Interface |
 | `app/Actions/Onboarding/Seeders/Seed*.php` | 3 implementacje |
 | `app/Http/Controllers/Auth/BusinessRegisterController.php` | Controller (7 metod) |
@@ -80,7 +89,7 @@ Interface: `app/Actions/Onboarding/Seeders/VerticalSeeder.php`
 2. Stwórz seeder implementujący `VerticalSeeder` w `app/Actions/Onboarding/Seeders/`
 3. Zwróć FQCN seedera w `Industry::seederClass()`
 4. Dodaj test w `tests/Unit/Actions/VerticalSeederTest.php`
-5. Gotowe — `SeedOrganizationDefaults` automatycznie wywołuje seeder
+5. Gotowe — seeder jest dostępny przez `php artisan onboarding:seed-vertical` (nie auto-wywoływany)
 
 ## DNS / Subdomain Setup
 

@@ -4,20 +4,15 @@ declare(strict_types=1);
 
 namespace App\Actions\Onboarding;
 
-use App\Actions\Onboarding\Seeders\VerticalSeeder;
 use App\Models\Organization;
 use App\Models\Setting;
 
 class SeedOrganizationDefaults
 {
-    /**
-     * Seed default settings for a newly created organization.
-     */
     public function execute(Organization $org): void
     {
         $this->seedSettings($org);
         $this->seedIndustryFeatures($org);
-        $this->seedVerticalData($org);
     }
 
     private function seedSettings(Organization $org): void
@@ -76,20 +71,6 @@ class SeedOrganizationDefaults
 
         if (! empty($settings)) {
             $org->update(['settings' => $settings]);
-        }
-    }
-
-    private function seedVerticalData(Organization $org): void
-    {
-        if ($org->industry === null) {
-            return;
-        }
-
-        $seederClass = $org->industry->seederClass();
-        $seeder = app($seederClass);
-
-        if ($seeder instanceof VerticalSeeder) {
-            $seeder->seed($org);
         }
     }
 }
