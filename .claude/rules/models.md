@@ -496,7 +496,7 @@ Suma `order_items.deposit_amount` = `orders.deposit_amount` (obliczone w `CartSe
 
 ---
 
-## Organization — Lifecycle State (Faza 5.0, 2026-06-29)
+## Organization — Lifecycle State (Faza 5.0+5.1, 2026-06-29)
 
 ```php
 // Cast → App\Enums\OrganizationLifecycleState
@@ -508,17 +508,25 @@ $org->lifecycle_state->allowsPublicSite()   // true tylko dla Active
 $org->lifecycle_state->allowsNewBookings()  // true tylko dla Active
 $org->lifecycle_state->isTerminal()         // true dla Closed
 
-// Daty lifecycle
-$org->closing_initiated_at  // Carbon|null
-$org->closed_at             // Carbon|null
-$org->purge_after           // Carbon|null (Faza 5.3)
+// Daty lifecycle (set automatically by OrganizationObserver)
+$org->closing_initiated_at  // Carbon|null — set when → Closing, cleared when Closing → Active
+$org->closed_at             // Carbon|null — set when → Closed
+$org->purge_after           // Carbon|null (Faza 5.3) — cleared when Closing → Active
 $org->closure_requested_at  // Carbon|null
+
+// Transient flags (not persisted — reset after save)
+$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating())
+$org->bypassDeleteGuard = true;         // bypasses all checks (observer deleting())
 ```
 
-**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest derived:**
-- Nie ustawiaj `lifecycle_state` przez mass-assignment — pole NIE jest w `$fillable`
-- Zmiany lifecycle WYŁĄCZNIE przez `OrganizationLifecycleStateMachine::transition()`
+**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest fully derived (Faza 5.1):**
+- `lifecycle_state` JEST w `$fillable` — dla tworzenia (initial state). Na UPDATE observer waliduje przejście.
+- Nie ustawiaj `is_active` bezpośrednio — NIE jest w `$fillable`, ustawiane WYŁĄCZNIE przez `OrganizationObserver`
+- Zmiana lifecycle po stworzeniu: `$org->lifecycle_state = OrganizationLifecycleState::Suspended; $org->save();`
+- `OrganizationObserver` (zarejestrowany w AppServiceProvider) egzekwuje: state machine + obligacje + is_active sync + timestamps
 - State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php`
-- Wyjątek przy nielegalnym przejściu: `InvalidLifecycleTransitionException`
-- Guardy egzekwujące lifecycle w middleware/route scope wchodzą dopiero w Fazie 5.1
-- `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.1)
+  - `canTransition($from, $to): bool` — sprawdza czy przejście legalne
+  - `assertTransitionAllowed($from, $to): void` — throws `InvalidLifecycleTransitionException`
+  - `transitions()` jest PRIVATE — nie wywołuj go bezpośrednio
+- Wyjątki: `InvalidLifecycleTransitionException` (nielegalne przejście), `OrganizationHasActiveObligationsException` (zablokowane przez obligacje)
+- `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.2)

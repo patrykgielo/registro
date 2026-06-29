@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\Industry;
+use App\Enums\OrganizationLifecycleState;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -69,7 +70,7 @@ class OrganizationFactory extends Factory
     public function inactive(): static
     {
         return $this->state(fn (array $attributes) => [
-            'is_active' => false,
+            'lifecycle_state' => OrganizationLifecycleState::Suspended,
         ]);
     }
 }

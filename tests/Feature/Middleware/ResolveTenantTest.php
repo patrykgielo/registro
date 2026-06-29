@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Middleware;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Http\Middleware\ResolveTenant;
 use App\Models\Organization;
 use App\Models\User;
@@ -87,7 +88,7 @@ class ResolveTenantTest extends TestCase
             'slug' => 'inactive',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'is_active' => false,
+            'lifecycle_state' => OrganizationLifecycleState::Suspended,
         ]);
 
         $request = Request::create('https://inactive.registro.local/');

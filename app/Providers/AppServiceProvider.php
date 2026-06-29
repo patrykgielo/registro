@@ -18,6 +18,7 @@ use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
 use App\Listeners\RecordAnalyticsOnOrderPaid;
 use App\Models\Appointment;
+use App\Models\Organization;
 use App\Models\Page as PageModel;
 use App\Models\User;
 use App\Notifications\AdminCreatedUserNotification;
@@ -30,6 +31,7 @@ use App\Notifications\OrderPaidNotification;
 use App\Notifications\PasswordResetNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
+use App\Observers\OrganizationObserver;
 use App\Observers\PageObserver;
 use App\Observers\UserObserver;
 use App\Services\Email\EmailGatewayInterface;
@@ -85,6 +87,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Appointment::observe(AppointmentObserver::class);
+        Organization::observe(OrganizationObserver::class);
         PageModel::observe(PageObserver::class);
         User::observe(UserObserver::class);
 
