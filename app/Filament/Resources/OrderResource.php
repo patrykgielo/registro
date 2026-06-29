@@ -8,16 +8,22 @@ use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers;
 use App\Models\Order;
 use App\Models\User;
+use App\Rules\ValidPolishNIP;
+use App\Rules\ValidPolishPESEL;
+use App\Rules\ValidPolishREGON;
 use App\Services\Order\OrderService;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Get;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 class OrderResource extends BaseResource
@@ -42,9 +48,29 @@ class OrderResource extends BaseResource
             Section::make('Klient')
                 ->columns(1)
                 ->schema([
+                    // KNOWN LIMITATION: scope shows only users who already have an order in this org.
+                    // A brand-new user (no orders yet) will not appear — acceptable because canCreate()=false
+                    // means this form is edit-only; the user_id was set at checkout time.
                     Select::make('user_id')
                         ->label('Przypisany klient')
-                        ->relationship('user', 'email')
+                        ->relationship(
+                            name: 'user',
+                            titleAttribute: 'email',
+                            modifyQueryUsing: function (Builder $query): void {
+                                $tenantId = TenantFeature::currentTenant()?->id;
+                                if ($tenantId === null) {
+                                    // Fail-safe: no tenant context → return no users rather than all users.
+                                    // Same risk class as the cross-tenant PII leak fixed in this branch.
+                                    $query->whereNull('id');
+
+                                    return;
+                                }
+                                $query->whereHas(
+                                    'orders',
+                                    fn (Builder $q) => $q->where('organization_id', $tenantId)
+                                );
+                            },
+                        )
                         ->getOptionLabelFromRecordUsing(
                             fn (User $record) => "{$record->first_name} {$record->last_name} ({$record->email})"
                         )
@@ -55,7 +81,18 @@ class OrderResource extends BaseResource
                             if (! $state) {
                                 return;
                             }
-                            $user = User::find($state);
+                            $tenantId = TenantFeature::currentTenant()?->id;
+                            if ($tenantId === null) {
+                                // Fail-safe: no tenant context → clear selection rather than risk cross-tenant autofill.
+                                $set('user_id', null);
+
+                                return;
+                            }
+                            $userQuery = User::query()->whereHas(
+                                'orders',
+                                fn (Builder $q) => $q->where('organization_id', $tenantId)
+                            );
+                            $user = $userQuery->find($state);
                             if (! $user) {
                                 return;
                             }
@@ -128,17 +165,18 @@ class OrderResource extends BaseResource
 
             Section::make('Weryfikacja tożsamości')
                 ->columns(2)
-                ->visible(fn (?Order $record): bool => $record?->customer_type === 'natural_person')
+                ->visible(fn (Get $get): bool => $get('customer_type') === 'natural_person')
                 ->schema([
                     TextInput::make('customer_pesel')
                         ->label('PESEL')
                         ->nullable()
-                        ->maxLength(11),
+                        ->maxLength(11)
+                        ->rules(['nullable', new ValidPolishPESEL]),
                 ]),
 
             Section::make('Dane firmy — do korekty')
                 ->columns(2)
-                ->visible(fn (?Order $record): bool => $record?->customer_type === 'business')
+                ->visible(fn (Get $get): bool => $get('customer_type') === 'business')
                 ->schema([
                     TextInput::make('company_contact_name')
                         ->label('Osoba podpisująca umowę')
@@ -146,7 +184,9 @@ class OrderResource extends BaseResource
 
                     TextInput::make('signatory_id_number')
                         ->label('PESEL / dowód podpisującego')
-                        ->nullable(),
+                        ->nullable()
+                        ->minLength(9)
+                        ->maxLength(11),
 
                     TextInput::make('pickup_person_name')
                         ->label('Osoba odbierająca sprzęt')
@@ -155,12 +195,14 @@ class OrderResource extends BaseResource
 
                     TextInput::make('pickup_person_id_number')
                         ->label('Dowód osoby odbierającej')
-                        ->nullable(),
+                        ->nullable()
+                        ->minLength(9)
+                        ->maxLength(11),
                 ]),
 
             Section::make('Dane do faktury')
                 ->columns(2)
-                ->visible(fn (?Order $record): bool => $record?->customer_type === 'business')
+                ->visible(fn (Get $get): bool => $get('customer_type') === 'business')
                 ->schema([
                     TextInput::make('invoice_company_name')
                         ->label('Nazwa firmy')
@@ -168,11 +210,13 @@ class OrderResource extends BaseResource
 
                     TextInput::make('invoice_nip')
                         ->label('NIP')
-                        ->nullable(),
+                        ->nullable()
+                        ->rules(['nullable', new ValidPolishNIP]),
 
                     TextInput::make('company_regon')
                         ->label('REGON')
-                        ->nullable(),
+                        ->nullable()
+                        ->rules(['nullable', new ValidPolishREGON]),
 
                     TextInput::make('company_krs')
                         ->label('KRS')

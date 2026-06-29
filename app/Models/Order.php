@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\StateMachines\OrderStatusStateMachine;
+use App\Traits\Auditable;
 use App\Traits\BelongsToOrganization;
 use Asantibanez\LaravelEloquentStateMachines\Traits\HasStateMachines;
 use Illuminate\Database\Eloquent\Builder;
@@ -15,7 +16,55 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
-    use BelongsToOrganization, HasFactory, HasStateMachines;
+    use Auditable, BelongsToOrganization, HasFactory, HasStateMachines;
+
+    protected array $auditInclude = [
+        'user_id',
+        'status',
+        'customer_type',
+        'customer_first_name',
+        'customer_last_name',
+        'customer_email',
+        'customer_phone',
+        'customer_pesel',
+        'customer_street',
+        'customer_building',
+        'customer_apartment',
+        'customer_city',
+        'customer_postal_code',
+        'invoice_company_name',
+        'invoice_nip',
+        'company_regon',
+        'company_krs',
+        'company_contact_name',
+        'signatory_id_number',
+        'pickup_person_name',
+        'pickup_person_id_number',
+        'invoice_street',
+        'invoice_street_number',
+        'invoice_postal_code',
+        'invoice_city',
+        'rodo_accepted_at',
+        'terms_accepted_at',
+        'withdrawal_exclusion_accepted_at',
+        // Financial audit timestamps — moment of payment receipt / cancellation / completion
+        'paid_at',
+        'cancelled_at',
+        'completed_at',
+    ];
+
+    // Defensive: fields outside $auditInclude are already rejected by the allowlist.
+    // $auditExclude adds defense-in-depth in case the Auditable trait ever changes to opt-out mode.
+    protected array $auditExclude = [
+        'p24_session_id',
+        'p24_order_id',
+        'p24_token',
+        'p24_amount',
+        'expires_at',
+        'cart_id',
+        'ip_address',
+        'rodo_accepted_ip',
+    ];
 
     /** @var array<string, class-string> */
     public $stateMachines = [
@@ -107,6 +156,33 @@ class Order extends Model
             'terms_accepted_at' => 'datetime',
             'withdrawal_exclusion_accepted_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $order): void {
+            $immutable = [
+                'organization_id',
+                'order_number',
+                'total_amount',
+                'subtotal',
+                'discount_amount',
+                'tax_amount',
+                'deposit_amount',
+                'rodo_accepted_at',
+                'rodo_accepted_ip',
+                'terms_accepted_at',
+                'withdrawal_exclusion_accepted_at',
+            ];
+
+            foreach ($immutable as $field) {
+                if ($order->isDirty($field)) {
+                    throw new \LogicException(
+                        "Field '{$field}' is immutable on Order and cannot be changed after creation."
+                    );
+                }
+            }
+        });
     }
 
     /**

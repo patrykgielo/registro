@@ -77,10 +77,9 @@ class Organization extends Model
         'owner_id',
         'settings',
         'trial_ends_at',
-        'subscription_status',
-        'monthly_fee',
-        'subscribed_at',
-        'subscription_expires_at',
+        // subscription_status, monthly_fee, subscribed_at, subscription_expires_at
+        // are intentionally excluded — only super-admin may set them via direct assignment
+        // (e.g. $org->subscription_status = 'active'; $org->save()), never mass-assignment.
     ];
 
     protected $casts = [

@@ -10,12 +10,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class TenantPayment extends Model
 {
     protected $fillable = [
-        'organization_id',
+        // organization_id excluded — set via relationship or direct assignment only
+        // recorded_by excluded — must be set explicitly, never mass-assigned
         'amount',
         'currency',
         'period_month',
         'notes',
-        'recorded_by',
         'paid_at',
     ];
 

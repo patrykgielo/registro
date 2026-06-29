@@ -532,3 +532,76 @@ $org->bypassDeleteGuard = true;         // bypasses all checks (observer deletin
 - `completed` order NIE jest in-flight — nie blokuje zamknięcia org! Tylko: pending_payment/paid/confirmed/in_progress
 - Factory states: `->inactive()` (Suspended), `->closing()` (Closing), `->closed()` (Closed) — wszystkie używają `afterMaking`
 - `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.2)
+
+## Organization — Billing Fields (NIE w fillable!)
+
+`subscription_status`, `monthly_fee`, `subscribed_at`, `subscription_expires_at` są celowo wykluczone z `$fillable`.
+
+```php
+// ❌ ZAKAZANE — mass-assignment billing fields
+Organization::create(['subscription_status' => 'active']);  // IGNOROWANE
+$org->update(['monthly_fee' => 999]);  // IGNOROWANE
+
+// ✅ Tylko bezpośrednie przypisanie (super-admin actions)
+$org->subscription_status = 'active';
+$org->monthly_fee = 999;
+$org->save();
+```
+
+## TenantPayment — organization_id i recorded_by NIE w fillable
+
+```php
+// ❌ ZAKAZANE
+TenantPayment::create(['organization_id' => $org->id, 'recorded_by' => auth()->id()]);
+
+// ✅ Przez relację + bezpośrednie przypisanie
+$payment = $org->tenantPayments()->create(['amount' => 599, 'currency' => 'PLN', 'paid_at' => now()]);
+$payment->recorded_by = auth()->id();
+$payment->save();
+```
+
+## Order — Auditable + Immutable Fields (2026-06-29)
+
+Order model używa `App\Traits\Auditable` z explicit `$auditInclude` (PII + status) i `$auditExclude` (p24_*, expires_at, cart_id, ip_address).
+
+### Immutable fields (booted() guard)
+
+Poniższe pola rzucają `\LogicException` przy próbie zmiany przez `update()`:
+
+```
+organization_id, order_number, total_amount, subtotal, discount_amount,
+tax_amount, deposit_amount, rodo_accepted_at, rodo_accepted_ip,
+terms_accepted_at, withdrawal_exclusion_accepted_at
+```
+
+```php
+// ❌ LogicException!
+$order->update(['total_amount' => 999]);
+
+// ✅ Mutable — dozwolone
+$order->update(['customer_city' => 'Kraków']);        // dane adresowe
+$order->update(['deposit_status' => 'collected']);    // kaucja
+$order->update(['notes' => 'Admin note']);             // notatka
+$order->status()->transitionTo('confirmed');           // state machine
+```
+
+### OrderService::cancel() — allowed statuses
+
+`pending_payment`, `paid`, **`confirmed`** — wszystkie trzy mogą być anulowane przez admina.
+State machine potwierdza: `confirmed → cancelled` jest legalnym przejściem.
+
+### UWAGA: `saveQuietly()` omija immutable guard
+
+`Order::saveQuietly()` suppresses model events → `updating()` hook NIE jest wywoływany → immutable field guard jest pominięty.
+
+```php
+// ❌ NIGDY dla pól immutable — guard pominięty, brak LogicException!
+$order->saveQuietly();  // gdy dirty: total_amount, order_number itp.
+
+// ✅ saveQuietly() tylko dla pól operacyjnych (events OK to suppress)
+$order->p24_token = '...';
+$order->saveQuietly();  // OK — p24_* nie jest immutable ani w $auditInclude
+```
+
+Pola OK dla `saveQuietly()`: `p24_*`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`.
+Pola ZAKAZANE dla `saveQuietly()`: wszystkie z listy immutable (`total_amount`, `order_number`, `rodo_accepted_at`, itp.).
