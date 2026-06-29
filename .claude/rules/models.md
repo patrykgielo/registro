@@ -493,3 +493,32 @@ $orderItem->deposit_amount  // DECIMAL(10,2) — kaucja za tę pozycję
 ```
 
 Suma `order_items.deposit_amount` = `orders.deposit_amount` (obliczone w `CartService::convertToOrder()`).
+
+---
+
+## Organization — Lifecycle State (Faza 5.0, 2026-06-29)
+
+```php
+// Cast → App\Enums\OrganizationLifecycleState
+$org->lifecycle_state          // OrganizationLifecycleState enum instance
+$org->lifecycle_state->value   // 'active' | 'suspended' | 'closing' | 'closed'
+
+// Helpers
+$org->lifecycle_state->allowsPublicSite()   // true tylko dla Active
+$org->lifecycle_state->allowsNewBookings()  // true tylko dla Active
+$org->lifecycle_state->isTerminal()         // true dla Closed
+
+// Daty lifecycle
+$org->closing_initiated_at  // Carbon|null
+$org->closed_at             // Carbon|null
+$org->purge_after           // Carbon|null (Faza 5.3)
+$org->closure_requested_at  // Carbon|null
+```
+
+**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest derived:**
+- Nie ustawiaj `lifecycle_state` przez mass-assignment — pole NIE jest w `$fillable`
+- Zmiany lifecycle WYŁĄCZNIE przez `OrganizationLifecycleStateMachine::transition()`
+- State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php`
+- Wyjątek przy nielegalnym przejściu: `InvalidLifecycleTransitionException`
+- Guardy egzekwujące lifecycle w middleware/route scope wchodzą dopiero w Fazie 5.1
+- `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.1)
