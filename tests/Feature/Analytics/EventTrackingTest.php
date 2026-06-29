@@ -143,6 +143,25 @@ class EventTrackingTest extends TestCase
         });
     }
 
+    public function test_javascript_url_is_rejected_with_422(): void
+    {
+        Queue::fake();
+
+        $this->withTenant($this->org)
+            ->postJson('/api/track', [
+                'events' => [
+                    [
+                        'event' => 'page_viewed',
+                        'url' => 'javascript:alert(document.cookie)',
+                        'timestamp' => now()->toIso8601String(),
+                    ],
+                ],
+            ])
+            ->assertStatus(422);
+
+        Queue::assertNotPushed(IngestAnalyticsEventsJob::class);
+    }
+
     public function test_missing_events_key_is_rejected(): void
     {
         Queue::fake();

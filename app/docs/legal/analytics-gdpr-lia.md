@@ -55,9 +55,12 @@ Risk is low because:
 - ✅ No IP address stored
 - ✅ Daily-rotating pseudonymous session ID
 - ✅ No persistent tracking cookies
-- ✅ DNT header respected
+- ✅ DNT header respected — `anonymous_id` is created lazily on first `push()` call; `captureUtm()` is also skipped for DNT users. No localStorage writes occur before the DNT check.
+- ✅ Query string stripped from `url` and `referrer` before DB insert (GDPR minimisation — prevents tokens/emails in query params from being stored)
 - ✅ Automatic deletion after 13 months
 - ✅ Data isolated per tenant (organization_id scoping)
+
+**Open item:** `carts.customer_email` column reserved but not yet populated. Will require a separate LIA update before activation (cart-recovery email flow).
 
 ## Tenant obligations
 
