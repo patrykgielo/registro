@@ -27,24 +27,39 @@ function makeUuid() {
         return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
     });
 }
-let anonymousId = safeGet(localStorage, '_tk_anon_id');
-if (!anonymousId) {
-    anonymousId = makeUuid();
-    safeSet(localStorage, '_tk_anon_id', anonymousId);
+// anonymous_id is lazy — only created on first push() call when DNT is not active.
+// Initialising it unconditionally at module load would write to localStorage before
+// the DNT check in push(), violating ePrivacy Directive Art. 5(3).
+let anonymousId = null;
+
+function getOrCreateAnonymousId() {
+    if (!anonymousId) {
+        anonymousId = safeGet(localStorage, '_tk_anon_id');
+        if (!anonymousId) {
+            anonymousId = makeUuid();
+            safeSet(localStorage, '_tk_anon_id', anonymousId);
+        }
+    }
+    return anonymousId;
 }
 
-// UTM capture: first-touch in localStorage, last-touch in sessionStorage
+// UTM capture: first-touch in localStorage, last-touch in sessionStorage.
+// Skipped when DNT is active — writing UTM to localStorage before the push() guard
+// would store identifiable campaign data for users who opted out.
 function captureUtm() {
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') {
+        return;
+    }
     const params = new URLSearchParams(window.location.search);
     const utm = {};
     UTM_KEYS.forEach((k) => {
         if (params.has(k)) utm[k] = params.get(k);
     });
     if (Object.keys(utm).length) {
-        if (!localStorage.getItem('_tk_utm_ft')) {
-            localStorage.setItem('_tk_utm_ft', JSON.stringify({ ...utm, _ts: Date.now() }));
+        if (!safeGet(localStorage, '_tk_utm_ft')) {
+            safeSet(localStorage, '_tk_utm_ft', JSON.stringify({ ...utm, _ts: Date.now() }));
         }
-        sessionStorage.setItem('_tk_utm_lt', JSON.stringify({ ...utm, _ts: Date.now() }));
+        safeSet(sessionStorage, '_tk_utm_lt', JSON.stringify({ ...utm, _ts: Date.now() }));
     }
 }
 
@@ -52,7 +67,7 @@ function captureUtm() {
 // First-touch (_tk_utm_ft in localStorage) is intentionally not sent per-event —
 // it is reserved for Phase 3 PostHog integration where it will be sent once on session start.
 function getUtm() {
-    const lt = sessionStorage.getItem('_tk_utm_lt');
+    const lt = safeGet(sessionStorage, '_tk_utm_lt');
     return lt ? JSON.parse(lt) : {};
 }
 
@@ -79,7 +94,7 @@ function push(eventName, props = {}) {
     queue.push({
         event: eventName,
         session_id: sessionId,
-        anonymous_id: anonymousId,
+        anonymous_id: getOrCreateAnonymousId(),
         url: location.href,
         referrer: document.referrer || null,
         page_type: document.body?.dataset.pageType ?? 'unknown',
@@ -139,6 +154,7 @@ function sendFetch(payload, keepalive = false) {
 }
 
 function retryFailed() {
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;
     const failed = safeGet(sessionStorage, '_tk_failed');
     if (!failed) return;
     try { sessionStorage.removeItem('_tk_failed'); } catch { /* blocked */ }
@@ -300,6 +316,7 @@ document.addEventListener('click', (e) => {
 
 // Back navigation — track previous URL before Livewire SPA navigation
 document.addEventListener('livewire:navigate', () => {
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;
     safeSet(sessionStorage, '_tk_prev_url', location.href);
 });
 

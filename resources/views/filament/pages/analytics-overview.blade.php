@@ -339,16 +339,20 @@
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors duration-100">
                         <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 font-mono text-xs">{{ $index + 1 }}</td>
                         <td class="px-4 py-3.5 max-w-xs">
-                            <a
-                                href="{{ $page['url'] }}"
-                                target="_blank"
-                                rel="noopener"
-                                class="inline-flex items-center gap-1 text-gray-900 dark:text-white font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-100"
-                                title="{{ $page['url'] }}"
-                            >
-                                <span class="truncate max-w-[220px]">{{ $page['path'] }}</span>
-                                <x-heroicon-o-arrow-top-right-on-square class="w-3 h-3 flex-shrink-0 text-gray-400" width="12" height="12" />
-                            </a>
+                            @if(str_starts_with($page['url'] ?? '', 'http'))
+                                <a
+                                    href="{{ $page['url'] }}"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="inline-flex items-center gap-1 text-gray-900 dark:text-white font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-100"
+                                    title="{{ $page['url'] }}"
+                                >
+                                    <span class="truncate max-w-[220px]">{{ $page['path'] }}</span>
+                                    <x-heroicon-o-arrow-top-right-on-square class="w-3 h-3 flex-shrink-0 text-gray-400" width="12" height="12" />
+                                </a>
+                            @else
+                                <span class="inline-flex items-center text-gray-900 dark:text-white font-medium truncate max-w-[220px]">{{ $page['path'] }}</span>
+                            @endif
                         </td>
                         <td class="px-4 py-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums font-semibold">
                             {{ number_format($page['views']) }}

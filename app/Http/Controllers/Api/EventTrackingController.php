@@ -24,13 +24,29 @@ class EventTrackingController extends Controller
         $request->validate([
             'events' => ['required', 'array', 'min:1', 'max:30'],
             'events.*.event' => ['required', 'string', 'max:100'],
-            'events.*.url' => ['nullable', 'string', 'max:2048'],
-            'events.*.referrer' => ['nullable', 'string', 'max:2048'],
+            'events.*.url' => ['nullable', 'string', 'max:2048', 'starts_with:http://,https://'],
+            'events.*.referrer' => ['nullable', 'string', 'max:2048', 'starts_with:http://,https://'],
             'events.*.timestamp' => ['nullable', 'string'],
             'events.*.page_type' => ['nullable', 'string', 'max:50'],
             'events.*.device_type' => ['nullable', 'string', 'max:20'],
             'events.*.viewport_w' => ['nullable', 'integer', 'min:0', 'max:65535'],
             'events.*.properties' => ['nullable', 'array', 'max:20'],
+            'events.*.properties.*' => [
+                'nullable',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+                    if (is_array($value) || is_object($value)) {
+                        $fail('Property values must be scalar.');
+
+                        return;
+                    }
+                    if (is_string($value) && mb_strlen($value) > 256) {
+                        $fail('Property string value must not exceed 256 characters.');
+                    }
+                },
+            ],
             'events.*.anonymous_id' => ['nullable', 'string', 'max:64'],
         ]);
 

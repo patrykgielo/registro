@@ -106,8 +106,19 @@ class AppServiceProvider extends ServiceProvider
         // Share brand design variables with mail views
         $this->shareMailBrandVariables();
 
-        // Register analytics rate limiter
-        RateLimiter::for('analytics', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip()));
+        // Register analytics rate limiter — per-IP bucket + per-tenant burst guard
+        RateLimiter::for('analytics', function (Request $request): array {
+            /** @var \App\Models\Organization|null $tenant */
+            $tenant = $request->attributes->get('tenant');
+
+            $limits = [Limit::perMinute(120)->by($request->ip())];
+
+            if ($tenant) {
+                $limits[] = Limit::perMinute(600)->by('analytics-tenant:'.$tenant->id);
+            }
+
+            return $limits;
+        });
 
         // Inject $pageType into frontend layout for analytics tracking
         view()->composer('layouts.app', \App\View\Composers\PageTypeComposer::class);

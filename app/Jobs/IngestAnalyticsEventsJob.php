@@ -33,6 +33,11 @@ class IngestAnalyticsEventsJob implements ShouldQueue
         'form_field_focused',
         'form_abandoned',
         'back_navigation',
+        // Server-side funnel events (dispatched via AnalyticsEventDispatcher)
+        'cart.abandoned',
+        'checkout.started',
+        'checkout.submitted',
+        'order.completed',
     ];
 
     public int $tries = 3;
@@ -100,8 +105,8 @@ class IngestAnalyticsEventsJob implements ShouldQueue
                 'event' => $eventName,
                 'browser' => Str::substr((string) ($this->serverProps['browser'] ?? ''), 0, 100) ?: null,
                 'os' => Str::substr((string) ($this->serverProps['os'] ?? ''), 0, 100) ?: null,
-                'url' => Str::substr((string) ($event['url'] ?? ''), 0, 2048) ?: null,
-                'referrer' => Str::substr((string) ($event['referrer'] ?? ''), 0, 2048) ?: null,
+                'url' => $this->stripQueryString((string) ($event['url'] ?? '')),
+                'referrer' => $this->stripQueryString((string) ($event['referrer'] ?? '')),
                 'page_type' => Str::substr((string) ($event['page_type'] ?? ''), 0, 50) ?: null,
                 'device_type' => Str::substr((string) ($event['device_type'] ?? ''), 0, 20) ?: null,
                 'viewport_w' => isset($event['viewport_w']) ? (int) $event['viewport_w'] : null,
@@ -120,6 +125,30 @@ class IngestAnalyticsEventsJob implements ShouldQueue
         }
 
         DB::table('analytics_events')->insert($rows);
+    }
+
+    /**
+     * Strip query string and fragment from a URL, returning scheme+host+path only.
+     * Discards non-http(s) URLs (e.g. javascript:) and relative paths.
+     */
+    private function stripQueryString(string $url): ?string
+    {
+        if ($url === '') {
+            return null;
+        }
+
+        if (! str_starts_with($url, 'http://') && ! str_starts_with($url, 'https://')) {
+            return null;
+        }
+
+        $parsed = parse_url($url);
+        if ($parsed === false) {
+            return null;
+        }
+
+        $result = ($parsed['scheme'] ?? '').'://'.($parsed['host'] ?? '').(isset($parsed['port']) ? ':'.$parsed['port'] : '').($parsed['path'] ?? '');
+
+        return Str::substr($result, 0, 2048) ?: null;
     }
 
     private function extractDomain(string $url): ?string

@@ -45,7 +45,19 @@ Indexes:
 - `organization_id` is always set from `$request->attributes->get('tenant')` — never from client payload
 - IP is hashed daily: `SHA-256(ip + app.key + YYYY-MM-DD)` — GDPR-compliant, not reversible
 - Route requires `ResolveTenant` middleware — returns 400 if no tenant context
-- Rate limited to 120 req/min/IP via named limiter `analytics`
+- Rate limited: 120 req/min/IP **and** 600 req/min/tenant (double bucket via named limiter `analytics`)
+- `events.*.url` / `events.*.referrer`: must start with `http://` or `https://` — rejects `javascript:` URLs (XSS, stored)
+- `events.*.properties.*`: string values are rejected when longer than 256 chars (blocks PII injection)
+- `IngestAnalyticsEventsJob`: strips query string from `url`/`referrer` before INSERT (GDPR minimisation — removes tokens, emails from query params); also acts as second `javascript:` guard
+- Blade `analytics-overview`: `href` is rendered only when `url` starts with `http` — belt-and-suspenders against stored XSS
+
+## VALID_EVENTS (allow-list)
+
+`IngestAnalyticsEventsJob::VALID_EVENTS` — events not in this list are silently dropped:
+
+**Client-side (tracker JS):** `page_viewed`, `scroll_25/50/75/90/100`, `exit_intent`, `rage_click`, `section_visible`, `page.time_spent`, `product_viewed`, `calendar_interacted`, `add_to_cart`, `cart_viewed`, `form_field_focused`, `form_abandoned`, `back_navigation`
+
+**Server-side (AnalyticsEventDispatcher):** `cart.abandoned`, `checkout.started`, `checkout.submitted`, `order.completed`
 
 ## Queue
 
