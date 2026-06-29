@@ -18,8 +18,8 @@ class Organization extends Model
 
     /**
      * Bypass lifecycle-state obligation check in OrganizationObserver::updating().
-     * Set to true before calling update(['lifecycle_state' => ...]) to skip the guard.
-     * Resets after each update via observer reset (or manually).
+     * Set to true before calling save() to skip the guard.
+     * Reset automatically by OrganizationObserver::updated() after each successful save.
      */
     public bool $forceLifecycleTransition = false;
 
@@ -74,7 +74,6 @@ class Organization extends Model
         'monthly_fee',
         'subscribed_at',
         'subscription_expires_at',
-        'lifecycle_state', // initial state only — transitions validated by OrganizationObserver::updating()
     ];
 
     protected $casts = [

@@ -6,6 +6,7 @@ use App\Enums\AppointmentStatus;
 use App\Enums\OrganizationLifecycleState;
 use App\Exceptions\InvalidLifecycleTransitionException;
 use App\Exceptions\OrganizationHasActiveObligationsException;
+use App\Exceptions\OrganizationNotClosedException;
 use App\Models\Appointment;
 use App\Models\Organization;
 use App\Models\User;
@@ -56,9 +57,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_creating_suspended_org_derives_is_active_false(): void
     {
-        $org = Organization::factory()->create([
-            'lifecycle_state' => OrganizationLifecycleState::Suspended,
-        ]);
+        $org = Organization::factory()->inactive()->create();
 
         $this->assertFalse($org->is_active, 'in-memory is_active after create');
         $this->assertFalse($org->fresh()->is_active, 'DB is_active after create');
@@ -77,7 +76,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_illegal_transition_throws_exception(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
 
         $this->expectException(InvalidLifecycleTransitionException::class);
 
@@ -87,7 +86,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_legal_transition_without_obligations_succeeds(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
 
         $this->setLifecycleState($org, OrganizationLifecycleState::Closing);
 
@@ -101,10 +100,8 @@ class OrganizationObserverTest extends TestCase
 
     public function test_transition_to_active_sets_is_active_true_and_clears_closing_timestamps(): void
     {
-        $org = Organization::factory()->create([
-            'lifecycle_state' => 'closing',
-            'closing_initiated_at' => now()->subDay(),
-        ]);
+        $org = Organization::factory()->closing()->create();
+        $org->update(['closing_initiated_at' => now()->subDay()]);
 
         $this->setLifecycleState($org, OrganizationLifecycleState::Active);
 
@@ -119,7 +116,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_transition_to_suspended_sets_is_active_false(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
 
         $this->setLifecycleState($org, OrganizationLifecycleState::Suspended);
 
@@ -131,7 +128,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_transition_to_closing_with_active_obligations_throws(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
         $staff = $this->createStaff();
 
         $this->makeAppointment([
@@ -147,7 +144,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_transition_to_closing_with_force_flag_bypasses_obligation_check(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
         $staff = $this->createStaff();
 
         $this->makeAppointment([
@@ -162,9 +159,18 @@ class OrganizationObserverTest extends TestCase
         $this->assertSame(OrganizationLifecycleState::Closing, $org->fresh()->lifecycle_state);
     }
 
+    public function test_force_flag_resets_after_successful_save(): void
+    {
+        $org = Organization::factory()->create();
+        $org->forceLifecycleTransition = true;
+        $this->setLifecycleState($org, OrganizationLifecycleState::Suspended);
+
+        $this->assertFalse($org->forceLifecycleTransition, 'flag must be reset by updated() hook');
+    }
+
     public function test_transition_to_closed_with_active_obligations_throws(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'closing']);
+        $org = Organization::factory()->closing()->create();
         $staff = $this->createStaff();
 
         $this->makeAppointment([
@@ -180,7 +186,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_updating_other_fields_does_not_trigger_lifecycle_validation(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
 
         // Should not throw even though lifecycle_state remains Active
         $org->update(['name' => 'Updated Name']);
@@ -190,9 +196,43 @@ class OrganizationObserverTest extends TestCase
 
     // ─── Delete guards ────────────────────────────────────────────────────
 
-    public function test_delete_with_active_obligations_throws(): void
+    public function test_delete_of_non_closed_org_throws_not_closed_exception(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
+        $staff = $this->createStaff();
+
+        $this->makeAppointment([
+            'organization_id' => $org->id,
+            'staff_id' => $staff->id,
+            'status' => AppointmentStatus::Pending,
+        ]);
+
+        $this->expectException(OrganizationNotClosedException::class);
+
+        $org->delete();
+    }
+
+    public function test_delete_when_not_closed_throws_even_without_obligations(): void
+    {
+        $org = Organization::factory()->create();
+
+        $this->expectException(OrganizationNotClosedException::class);
+
+        $org->delete();
+    }
+
+    public function test_delete_blocked_when_lifecycle_is_closing_no_obligations(): void
+    {
+        $org = Organization::factory()->closing()->create();
+
+        $this->expectException(OrganizationNotClosedException::class);
+
+        $org->delete();
+    }
+
+    public function test_delete_of_closed_org_with_obligations_throws_obligations_exception(): void
+    {
+        $org = Organization::factory()->closed()->create();
         $staff = $this->createStaff();
 
         $this->makeAppointment([
@@ -206,28 +246,10 @@ class OrganizationObserverTest extends TestCase
         $org->delete();
     }
 
-    public function test_delete_when_not_closed_throws_even_without_obligations(): void
-    {
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
-
-        $this->expectException(OrganizationHasActiveObligationsException::class);
-
-        $org->delete();
-    }
-
-    public function test_delete_blocked_when_lifecycle_is_closing_no_obligations(): void
-    {
-        $org = Organization::factory()->create(['lifecycle_state' => 'closing']);
-
-        $this->expectException(OrganizationHasActiveObligationsException::class);
-
-        $org->delete();
-    }
-
     public function test_delete_with_bypass_flag_skips_all_guards(): void
     {
         // Even with Active lifecycle and obligations, bypass = true allows deletion
-        $org = Organization::factory()->create(['lifecycle_state' => 'active']);
+        $org = Organization::factory()->create();
         $staff = $this->createStaff();
 
         $this->makeAppointment([
@@ -244,7 +266,7 @@ class OrganizationObserverTest extends TestCase
 
     public function test_delete_of_closed_org_with_no_obligations_succeeds(): void
     {
-        $org = Organization::factory()->create(['lifecycle_state' => 'closed']);
+        $org = Organization::factory()->closed()->create();
 
         $org->delete();
 

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Middleware;
 
-use App\Enums\OrganizationLifecycleState;
 use App\Http\Middleware\ResolveTenant;
 use App\Models\Organization;
 use App\Models\User;
@@ -48,7 +47,6 @@ class ResolveTenantTest extends TestCase
             'slug' => 'demo',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'is_active' => true,
         ]);
 
         $request = Request::create('https://demo.registro.local/');
@@ -83,12 +81,11 @@ class ResolveTenantTest extends TestCase
         config(['app.domain' => 'registro.local']);
 
         $owner = User::factory()->create();
-        Organization::create([
+        Organization::factory()->inactive()->create([
             'name' => 'Inactive Salon',
             'slug' => 'inactive',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'lifecycle_state' => OrganizationLifecycleState::Suspended,
         ]);
 
         $request = Request::create('https://inactive.registro.local/');
@@ -139,7 +136,6 @@ class ResolveTenantTest extends TestCase
             'slug' => 'cached',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'is_active' => true,
         ]);
 
         // First request populates cache

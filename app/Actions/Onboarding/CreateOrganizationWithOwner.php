@@ -45,7 +45,6 @@ class CreateOrganizationWithOwner
                 'booking_type' => $bookingType,
                 'industry' => $data->industry,
                 'owner_id' => $user->id,
-                'is_active' => true,
                 'trial_ends_at' => now()->addDays(14),
             ]);
 

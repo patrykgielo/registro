@@ -2,6 +2,7 @@
 
 namespace App\Filament\Platform\Resources\OrganizationResource\Pages;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Filament\Platform\Resources\OrganizationResource;
 use App\Models\Organization;
 use App\Services\TenantObligationService;
@@ -18,6 +19,19 @@ class EditOrganization extends EditRecord
         return [
             Actions\DeleteAction::make()
                 ->before(function (Organization $record, Actions\DeleteAction $action): void {
+                    if ($record->lifecycle_state !== OrganizationLifecycleState::Closed) {
+                        Notification::make()
+                            ->title('Nie można usunąć organizacji')
+                            ->body('Organizacja musi być w stanie Zamknięta — zainicjuj proces zamknięcia.')
+                            ->danger()
+                            ->persistent()
+                            ->send();
+
+                        $action->halt();
+
+                        return;
+                    }
+
                     $service = app(TenantObligationService::class);
                     $counts = $service->activeObligations($record);
 

@@ -1,6 +1,6 @@
 # Tenant Lifecycle — Workstream Overview
 
-## Status: Faza 5.1 merged (guards + lifecycle actions)
+## Status: Faza 5.1 merged + code-review hardening (2026-06-29)
 
 Workstream introduces an explicit lifecycle state for Organization, replacing the implicit boolean `is_active` as the authoritative source of truth for tenant health. The migration is additive and non-breaking — `is_active` is now a fully derived field, synced automatically from `lifecycle_state` by the observer.
 
@@ -12,6 +12,7 @@ Workstream introduces an explicit lifecycle state for Organization, replacing th
 |------|--------|--------|
 | 5.0 | Enum + state machine + schema + backfill | Done |
 | 5.1 | Guards + observer (is_active sync, obligation checks, delete guard) + Platform lifecycle actions | Done |
+| 5.1-cr | Code-review hardening (see below) | Done |
 | 5.2 | Public site / new-booking middleware based on lifecycle_state | Planned |
 | 5.3 | SoftDeletes on Organization + purge scheduler | Planned |
 
@@ -51,10 +52,10 @@ Closed    (terminal — no exits)
 
 The state machine is a plain PHP class (not Eloquent-integrated). It validates transitions and throws `InvalidLifecycleTransitionException` on illegal moves. Callers are responsible for persisting `lifecycle_state` to the database.
 
-**Public API (Faza 5.1 changes: W4/W6/W7):**
+**Public API:**
 - `canTransition($from, $to): bool` — accepts enum or string; invalid string `$from` throws `\ValueError`
-- `assertTransitionAllowed($from, $to): void` — throws `InvalidLifecycleTransitionException` on illegal transition (renamed from `transition()`)
-- `transitions()` is now **private** — use `canTransition()` to probe allowed moves
+- `assertTransitionAllowed($from, $to): void` — throws `InvalidLifecycleTransitionException` on illegal transition
+- `transitions()` is **private** — use `canTransition()` to probe allowed moves
 
 ### Schema additions (organizations table)
 
@@ -75,13 +76,6 @@ The state machine is a plain PHP class (not Eloquent-integrated). It validates t
 
 The backfill migration (`2026_06_29_130000`) set initial values. `is_active` is now kept in sync automatically by `OrganizationObserver` (Faza 5.1). `ResolveTenant` middleware still reads `is_active`; changing it to use `lifecycle_state` directly is deferred to Faza 5.2.
 
-### What is NOT in Faza 5.0
-
-- No observers, no event dispatching, no policy guards
-- No changes to `ResolveTenant` (still uses `is_active` — updated in Faza 5.2)
-- No `SoftDeletes` trait on Organization (added in Faza 5.3 together with `deleted_at` column)
-- No Filament lifecycle actions (those ship in Faza 5.1)
-
 ---
 
 ## Faza 5.1 — Guards + Observer + Platform Lifecycle Actions
@@ -90,47 +84,77 @@ The backfill migration (`2026_06_29_130000`) set initial values. `is_active` is 
 
 `app/Services/TenantObligationService.php`
 
-Counts active obligations for a given Organization, bypassing the `BelongsToOrganization` global scope via `withoutGlobalScope('organization')`.
+Counts **active (in-flight)** obligations for a given Organization, bypassing the `BelongsToOrganization` global scope via `withoutGlobalScope('organization')`.
 
 ```php
 $service->activeObligations(Organization $org): array
 // Returns: ['appointments' => int, 'orders' => int, 'rentals' => int, 'total' => int]
-// Counts: Pending+Confirmed appointments; pending_payment/paid/confirmed/in_progress orders;
-//         Held/Pending/Confirmed/Active rentals
 
 $service->hasActiveObligations(Organization $org): bool
 // Returns true when total > 0
 ```
 
+**Obligation definitions (what counts as in-flight):**
+
+| Domain | In-flight states | Notes |
+|--------|-----------------|-------|
+| Appointments | `pending`, `confirmed` | cancelled/completed are terminal |
+| Orders | `pending_payment`, `paid`, `confirmed`, `in_progress` | `completed` is terminal — does NOT block closure |
+| Rentals | `held`, `pending`, `confirmed`, `active` | returned/cancelled/expired are terminal |
+
+**CRITICAL:** `completed` order does NOT block closure. A completed order is a finished transaction.
+Only in-flight orders (pending_payment → in_progress) block the org from being wound down.
+
 ### OrganizationObserver
 
 `app/Observers/OrganizationObserver.php` — registered in `AppServiceProvider::boot()`.
 
+**`creating()` hook:**
+- Derives `is_active` from `lifecycle_state` on INSERT. Defaults to Active if not set.
+
 **`updating()` hook** (fires when lifecycle_state changes):
 1. Calls `StateMachine::assertTransitionAllowed($from, $to)` — throws `InvalidLifecycleTransitionException` on illegal transitions
-2. For `Closing` and `Closed` destinations: checks `TenantObligationService::hasActiveObligations()` unless `$org->forceLifecycleTransition === true` — throws `OrganizationHasActiveObligationsException`
-3. Syncs `is_active` from `lifecycle_state` (F003): `$org->is_active = ($to === Active)`
-4. Sets lifecycle timestamps (W8):
-   - `→ Closing`: `closing_initiated_at = now()`
-   - `→ Closed`: `closed_at = now()`
-   - `Closing → Active`: `closing_initiated_at = null`, `purge_after = null`
+2. For `Closing` and `Closed` destinations (and `!$org->forceLifecycleTransition`): calls `activeObligations()` once and throws `OrganizationHasActiveObligationsException` if total > 0
+3. Syncs `is_active` from `lifecycle_state` (F003)
+4. Sets lifecycle timestamps (W8)
 
-**`deleting()` hook**:
-- Blocked unless `$org->lifecycle_state === Closed` AND `!$org->hasActiveObligations()` OR `$org->bypassDeleteGuard === true`
-- Throws `OrganizationHasActiveObligationsException` on violation
+**`updated()` hook:**
+- Resets `$org->forceLifecycleTransition = false` after every successful save. Prevents flag from leaking when the same model instance is reused.
 
-**Transient model flags** (not persisted — set before save, reset after):
+**`deleting()` hook** — guards (in order):
+1. `bypassDeleteGuard = true` → skip all checks
+2. `lifecycle_state !== Closed` → throw `OrganizationNotClosedException`
+3. Active obligations exist → throw `OrganizationHasActiveObligationsException`
+
+**`deleted()` hook:**
+- Resets `$org->bypassDeleteGuard = false` after deletion.
+
+**Transient model flags** (`app/Models/Organization.php`, not persisted):
 
 ```php
-$org->forceLifecycleTransition = true;  // bypasses obligation check in updating()
-$org->bypassDeleteGuard = true;         // bypasses all checks in deleting()
+$org->forceLifecycleTransition = true;  // bypass obligation check in updating(); reset by updated()
+$org->bypassDeleteGuard = true;         // bypass all delete checks; reset by deleted()
 ```
 
-### F003 — is_active is now fully derived
+### F003 — lifecycle_state is NOT in $fillable
 
-`is_active` removed from `Organization::$fillable`. Setting it directly is a no-op (mass assignment guard). It is exclusively set by `OrganizationObserver::updating()` as a side-effect of lifecycle_state transitions.
+`lifecycle_state` was removed from `Organization::$fillable` (code-review hardening).
 
-**Never set `$org->is_active` directly** — change `lifecycle_state` instead.
+- Setting it via mass-assignment (`Organization::create(['lifecycle_state' => ...])`) is a no-op.
+- **On create:** set directly on the model instance before `save()` — observer `creating()` picks it up.
+- **On update:** set directly (`$org->lifecycle_state = State::Foo; $org->save()`) — observer `updating()` fires.
+- **In factories:** use `->afterMaking(fn ($o) => $o->lifecycle_state = State)` or named factory states.
+
+**Factory states available:**
+
+```php
+Organization::factory()->create()          // Active (default)
+Organization::factory()->inactive()->create()  // Suspended
+Organization::factory()->closing()->create()   // Closing
+Organization::factory()->closed()->create()    // Closed
+```
+
+**Never do:** `Organization::create(['lifecycle_state' => 'closed'])` — lifecycle_state not fillable.
 
 ### Platform Filament lifecycle actions (F004)
 
@@ -139,7 +163,7 @@ $org->bypassDeleteGuard = true;         // bypasses all checks in deleting()
 Replaced the `Toggle::make('is_active')` form field with:
 - A read-only `Placeholder::make('lifecycle_state')` in the edit form
 - A `lifecycle_state` SelectFilter + badge TextColumn in the table
-- Three row `Action`s:
+- Three row `Action`s (all visible only to super-admin):
 
 | Action | Label | Transition | Obligation check |
 |--------|-------|-----------|-----------------|
@@ -147,34 +171,56 @@ Replaced the `Toggle::make('is_active')` form field with:
 | `reactivate` | Reaktywuj | Suspended/Closing → Active | No |
 | `initiateClosing` | Zamknij | Active/Suspended → Closing | Yes (via `->before()`, then `forceLifecycleTransition = true`) |
 
-The `initiateClosing` action checks obligations in its own `->before()` callback and halts with a Filament notification if any exist. When proceeding, it sets `forceLifecycleTransition = true` before saving to avoid the observer running the check a second time.
+**Delete guard in Filament:**
+- `EditOrganization::DeleteAction::before()`: checks lifecycle_state === Closed first, then checks obligations
+- `OrganizationResource::DeleteBulkAction::before()`: per-record, checks lifecycle_state then obligations
+- Both halt with Notification on violation — no 500 errors from observer throwing into unhandled context.
+
+**Authorization (defense-in-depth):**
+- `OrganizationResource::canViewAny()` and `canDelete()` require `super-admin` role
+- Lifecycle action `->visible()` callbacks also check `auth()->user()?->hasRole('super-admin')`
 
 ### Staff delete guard
 
 `app/Filament/Resources/EmployeeResource.php`
 
-`DeleteAction` and `DeleteBulkAction` are guarded by `hasFutureActiveAppointments(User $staff): bool` (private static method). Blocks deletion when staff has future `Pending` or `Confirmed` appointments. Uses `withoutGlobalScope('organization')` so it works cross-tenant for super-admin.
+`DeleteAction` and `DeleteBulkAction` guarded by `hasFutureActiveAppointments(User $staff)`:
+- When `TenantFeature::currentTenant() === null`, returns `false` immediately (no cross-tenant leak)
+- Requires explicit `organization_id` scope (no `->when($tenant, ...)` which would silently scan all orgs if tenant is null)
 
 ### Exceptions
 
 | Class | Path | When thrown |
 |-------|------|-------------|
 | `InvalidLifecycleTransitionException` | `app/Exceptions/` | Illegal state transition |
-| `OrganizationHasActiveObligationsException` | `app/Exceptions/` | Lifecycle/delete blocked by obligations |
+| `OrganizationNotClosedException` | `app/Exceptions/` | Delete attempted when lifecycle_state !== Closed |
+| `OrganizationHasActiveObligationsException` | `app/Exceptions/` | Lifecycle/delete blocked by in-flight obligations |
 
 ### Tests
 
 | Test class | Count | Covers |
 |------------|-------|--------|
-| `TenantObligationServiceTest` | 10 | Appointment/Order/Rental counts, cross-org isolation |
-| `OrganizationObserverTest` | 13 | Transitions, obligations, is_active sync, timestamps, delete guard |
+| `TenantObligationServiceTest` | 12 | Appointment/Order/Rental counts, completed order excluded, cross-org isolation |
+| `OrganizationObserverTest` | 17 | Transitions, obligations, is_active sync, timestamps, delete guard, force flag reset |
 | `StaffDeleteGuardTest` | 7 | Staff delete guard (past/future, status filters, isolation) |
 | `OrganizationLifecycleStateMachineTest` | 13 | Legal/illegal transitions, string API, W7 ValueError |
+| `OrganizationLifecycleCastTest` | 4 | Enum cast, factory states |
+| `ResolveTenantTest` | 7 | Middleware: active/inactive/unknown tenants |
 
-**Test patterns introduced:**
-- `setLifecycleState(Organization $org, OrganizationLifecycleState $state)` helper — direct property assignment (lifecycle_state is fillable but updating() validation requires a prior save; helper sets it post-create)
-- Shared `$this->vehicleType` in setUp to avoid VehicleTypeFactory unique slug collisions
-- `Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'web'])` in setUp (AppointmentObserver requires staff role)
+**Test patterns:**
+- Factory states (`->inactive()`, `->closing()`, `->closed()`) instead of `create(['lifecycle_state' => ...])`
+- `setLifecycleState()` helper — sets attribute directly on model, triggers `updating()` observer
+- `Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'web'])` in setUp
+- Shared `$this->vehicleType` in setUp to avoid VehicleType unique slug collisions
+
+---
+
+## Faza 5.2 Acceptance Criteria (Planned)
+
+- `ResolveTenant.php` updated to check `lifecycle_state->allowsPublicSite()` instead of `is_active`
+- `CheckOrganizationLifecycle` middleware added for public routes (booking, rental catalogue)
+- `is_active` remains for backward compatibility (derived, kept in sync by observer)
+- All `ResolveTenantTest` tests updated to use `lifecycle_state`-based assertions
 
 ---
 

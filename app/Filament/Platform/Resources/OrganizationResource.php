@@ -18,6 +18,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
 class OrganizationResource extends Resource
@@ -29,6 +30,16 @@ class OrganizationResource extends Resource
     protected static ?string $navigationLabel = 'Organizations';
 
     protected static ?int $navigationSort = 1;
+
+    public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -215,7 +226,8 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-pause-circle')
                     ->color('warning')
                     ->requiresConfirmation()
-                    ->visible(fn (Organization $record) => $record->lifecycle_state === OrganizationLifecycleState::Active)
+                    ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
+                        && $record->lifecycle_state === OrganizationLifecycleState::Active)
                     ->action(function (Organization $record): void {
                         $record->lifecycle_state = OrganizationLifecycleState::Suspended;
                         $record->save();
@@ -227,11 +239,12 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-play-circle')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (Organization $record) => in_array(
-                        $record->lifecycle_state,
-                        [OrganizationLifecycleState::Suspended, OrganizationLifecycleState::Closing],
-                        true
-                    ))
+                    ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
+                        && in_array(
+                            $record->lifecycle_state,
+                            [OrganizationLifecycleState::Suspended, OrganizationLifecycleState::Closing],
+                            true
+                        ))
                     ->action(function (Organization $record): void {
                         $record->lifecycle_state = OrganizationLifecycleState::Active;
                         $record->save();
@@ -243,15 +256,17 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn (Organization $record) => in_array(
-                        $record->lifecycle_state,
-                        [OrganizationLifecycleState::Active, OrganizationLifecycleState::Suspended],
-                        true
-                    ))
+                    ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
+                        && in_array(
+                            $record->lifecycle_state,
+                            [OrganizationLifecycleState::Active, OrganizationLifecycleState::Suspended],
+                            true
+                        ))
                     ->before(function (Organization $record, Actions\Action $action): void {
                         $service = app(TenantObligationService::class);
-                        if ($service->hasActiveObligations($record)) {
-                            $counts = $service->activeObligations($record);
+                        $counts = $service->activeObligations($record);
+
+                        if ($counts['total'] > 0) {
                             Notification::make()
                                 ->title('Nie można zainicjować zamknięcia')
                                 ->body(sprintf(
@@ -282,6 +297,16 @@ class OrganizationResource extends Resource
                             $blocked = [];
 
                             foreach ($records as $record) {
+                                if ($record->lifecycle_state !== OrganizationLifecycleState::Closed) {
+                                    $blocked[] = sprintf(
+                                        '%s (stan: %s — wymagany: Zamknięta)',
+                                        $record->name,
+                                        $record->lifecycle_state?->label() ?? '?',
+                                    );
+
+                                    continue;
+                                }
+
                                 $counts = $service->activeObligations($record);
                                 if ($counts['total'] > 0) {
                                     $blocked[] = sprintf(
@@ -297,7 +322,7 @@ class OrganizationResource extends Resource
                             if (! empty($blocked)) {
                                 Notification::make()
                                     ->title('Nie można usunąć organizacji')
-                                    ->body('Aktywne zobowiązania uniemożliwiają usunięcie: '.implode('; ', $blocked).'. Rozwiąż je lub uruchom proces zamknięcia.')
+                                    ->body('Blokady uniemożliwiają usunięcie: '.implode('; ', $blocked).'. Zamknij organizacje przed usunięciem.')
                                     ->danger()
                                     ->persistent()
                                     ->send();

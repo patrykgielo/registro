@@ -275,9 +275,13 @@ class EmployeeResource extends BaseResource
     {
         $tenant = TenantFeature::currentTenant();
 
+        if ($tenant === null) {
+            return false;
+        }
+
         return Appointment::withoutGlobalScope('organization')
             ->where('staff_id', $staff->id)
-            ->when($tenant, fn (Builder $q) => $q->where('organization_id', $tenant->id))
+            ->where('organization_id', $tenant->id)
             ->whereIn('status', [
                 AppointmentStatus::Pending->value,
                 AppointmentStatus::Confirmed->value,

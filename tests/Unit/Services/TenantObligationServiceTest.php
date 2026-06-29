@@ -116,6 +116,34 @@ class TenantObligationServiceTest extends TestCase
         $this->assertSame(0, $counts['orders']);
     }
 
+    public function test_completed_order_does_not_count_as_obligation(): void
+    {
+        // completed = transaction finished; does NOT block org closure
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'completed']);
+
+        $counts = $this->service->activeObligations($this->org);
+
+        $this->assertSame(0, $counts['orders']);
+        $this->assertFalse($this->service->hasActiveObligations($this->org));
+    }
+
+    public function test_only_inflight_order_statuses_count_as_obligations(): void
+    {
+        // In-flight: pending_payment, paid, confirmed, in_progress
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'pending_payment']);
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'paid']);
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'confirmed']);
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'in_progress']);
+        // Terminal / finished: must NOT count
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'completed']);
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'cancelled']);
+        Order::factory()->create(['organization_id' => $this->org->id, 'status' => 'refunded']);
+
+        $counts = $this->service->activeObligations($this->org);
+
+        $this->assertSame(4, $counts['orders']);
+    }
+
     // ─── Rentals ───────────────────────────────────────────────────────────
 
     public function test_counts_blocking_rentals(): void

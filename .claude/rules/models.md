@@ -515,18 +515,20 @@ $org->purge_after           // Carbon|null (Faza 5.3) — cleared when Closing �
 $org->closure_requested_at  // Carbon|null
 
 // Transient flags (not persisted — reset after save)
-$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating())
-$org->bypassDeleteGuard = true;         // bypasses all checks (observer deleting())
+$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating()); auto-reset by updated()
+$org->bypassDeleteGuard = true;         // bypasses all checks (observer deleting()); auto-reset by deleted()
 ```
 
-**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest fully derived (Faza 5.1):**
-- `lifecycle_state` JEST w `$fillable` — dla tworzenia (initial state). Na UPDATE observer waliduje przejście.
+**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest fully derived (Faza 5.1 + code-review hardening):**
+- `lifecycle_state` NIE JEST w `$fillable` — nie można ustawiać przez mass-assignment!
+  - ❌ `Organization::create(['lifecycle_state' => 'closed'])` → ignorowane (MassAssignmentGuard)
+  - ✅ Przy tworzeniu: ustaw bezpośrednio przed `save()` lub użyj factory state (`->closed()`)
+  - ✅ Przy aktualizacji: `$org->lifecycle_state = State::Foo; $org->save();`
 - Nie ustawiaj `is_active` bezpośrednio — NIE jest w `$fillable`, ustawiane WYŁĄCZNIE przez `OrganizationObserver`
-- Zmiana lifecycle po stworzeniu: `$org->lifecycle_state = OrganizationLifecycleState::Suspended; $org->save();`
-- `OrganizationObserver` (zarejestrowany w AppServiceProvider) egzekwuje: state machine + obligacje + is_active sync + timestamps
-- State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php`
-  - `canTransition($from, $to): bool` — sprawdza czy przejście legalne
-  - `assertTransitionAllowed($from, $to): void` — throws `InvalidLifecycleTransitionException`
-  - `transitions()` jest PRIVATE — nie wywołuj go bezpośrednio
-- Wyjątki: `InvalidLifecycleTransitionException` (nielegalne przejście), `OrganizationHasActiveObligationsException` (zablokowane przez obligacje)
+- `OrganizationObserver` egzekwuje: state machine + obligacje + is_active sync + timestamps + flag reset
+- Flagi transient (nie persystowane): `forceLifecycleTransition` resetowany przez `updated()`, `bypassDeleteGuard` przez `deleted()`
+- State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php` — `transitions()` jest PRIVATE
+- Wyjątki: `InvalidLifecycleTransitionException` (nielegalne przejście), `OrganizationNotClosedException` (delete gdy nie Closed), `OrganizationHasActiveObligationsException` (blokada przez in-flight obligacje)
+- `completed` order NIE jest in-flight — nie blokuje zamknięcia org! Tylko: pending_payment/paid/confirmed/in_progress
+- Factory states: `->inactive()` (Suspended), `->closing()` (Closing), `->closed()` (Closed) — wszystkie używają `afterMaking`
 - `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.2)

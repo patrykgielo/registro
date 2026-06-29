@@ -6,6 +6,7 @@ namespace App\Observers;
 
 use App\Enums\OrganizationLifecycleState;
 use App\Exceptions\OrganizationHasActiveObligationsException;
+use App\Exceptions\OrganizationNotClosedException;
 use App\Models\Organization;
 use App\Services\TenantObligationService;
 use App\StateMachines\OrganizationLifecycleStateMachine;
@@ -60,19 +61,18 @@ class OrganizationObserver
         // Guard 2: block Closing/Closed when active obligations exist
         $blocksOnObligations = [OrganizationLifecycleState::Closing, OrganizationLifecycleState::Closed];
 
-        if (in_array($to, $blocksOnObligations, true)
-            && ! $org->forceLifecycleTransition
-            && $this->obligations->hasActiveObligations($org)
-        ) {
+        if (in_array($to, $blocksOnObligations, true) && ! $org->forceLifecycleTransition) {
             $counts = $this->obligations->activeObligations($org);
 
-            throw new OrganizationHasActiveObligationsException(
-                "Cannot transition organization [{$org->id}] to [{$to->value}]: "
-                ."{$counts['appointments']} active appointment(s), "
-                ."{$counts['orders']} active order(s), "
-                ."{$counts['rentals']} active rental(s). "
-                .'Resolve them first or set $forceLifecycleTransition = true.'
-            );
+            if ($counts['total'] > 0) {
+                throw new OrganizationHasActiveObligationsException(
+                    "Cannot transition organization [{$org->id}] to [{$to->value}]: "
+                    ."{$counts['appointments']} active appointment(s), "
+                    ."{$counts['orders']} active order(s), "
+                    ."{$counts['rentals']} active rental(s). "
+                    .'Resolve them first or set $forceLifecycleTransition = true.'
+                );
+            }
         }
 
         // F003: keep is_active in sync with lifecycle_state (derived field)
@@ -93,7 +93,21 @@ class OrganizationObserver
     }
 
     /**
+     * Resets the forceLifecycleTransition flag so it cannot leak to future saves
+     * on the same model instance.
+     */
+    public function updated(Organization $org): void
+    {
+        $org->forceLifecycleTransition = false;
+    }
+
+    /**
      * Prevents hard-delete unless the organization is Closed and has no active obligations.
+     *
+     * Guards (in order):
+     * 1. bypassDeleteGuard = true → skip all checks
+     * 2. lifecycle_state !== Closed → OrganizationNotClosedException
+     * 3. Active obligations exist → OrganizationHasActiveObligationsException
      *
      * Set $org->bypassDeleteGuard = true to skip all checks (CLI offboarding tools only).
      */
@@ -103,9 +117,17 @@ class OrganizationObserver
             return;
         }
 
-        if ($this->obligations->hasActiveObligations($org)) {
-            $counts = $this->obligations->activeObligations($org);
+        if ($org->lifecycle_state !== OrganizationLifecycleState::Closed) {
+            throw new OrganizationNotClosedException(
+                "Cannot delete organization [{$org->id}]: "
+                ."lifecycle_state must be 'closed' (current: '{$org->lifecycle_state?->value}'). "
+                .'Initiate the closure process first.'
+            );
+        }
 
+        $counts = $this->obligations->activeObligations($org);
+
+        if ($counts['total'] > 0) {
             throw new OrganizationHasActiveObligationsException(
                 "Cannot delete organization [{$org->id}]: resolve "
                 ."{$counts['appointments']} appointment(s), "
@@ -114,13 +136,13 @@ class OrganizationObserver
                 .'then initiate the closure process.'
             );
         }
+    }
 
-        if ($org->lifecycle_state !== OrganizationLifecycleState::Closed) {
-            throw new OrganizationHasActiveObligationsException(
-                "Cannot delete organization [{$org->id}]: "
-                ."lifecycle_state must be 'closed' (current: '{$org->lifecycle_state?->value}'). "
-                .'Initiate the closure process first.'
-            );
-        }
+    /**
+     * Resets the bypassDeleteGuard flag after deletion completes.
+     */
+    public function deleted(Organization $org): void
+    {
+        $org->bypassDeleteGuard = false;
     }
 }
