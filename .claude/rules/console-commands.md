@@ -166,6 +166,34 @@ protected function schedule(Schedule $schedule): void
 }
 ```
 
+## Destructive Commands Pattern (MANDATORY)
+
+For commands that permanently delete or overwrite business data, ALWAYS implement all five:
+
+1. **`--dry-run`** — show what would change; if org has data and `--force` is absent, return FAILURE (mirrors real outcome)
+2. **Confirm gate** — `$this->input->isInteractive() && !$this->confirm(...)` before any purge; skipped when `--no-interaction` / piped input
+3. **Audit log** — `Log::info(start)` + `Log::warning(before purge, include 'interactive' => $this->input->isInteractive())` + `Log::info(completed)` — distinguishes operator-confirmed from non-interactive automation (GDPR art. 5(1)(f))
+4. **Transaction with try/catch** — wrap purge + seed/write in `DB::transaction()`; catch `\Throwable`, `Log::error` with org_id + message, `$this->error(...)`, return `FAILURE`
+5. **Guard before purge** — validate dependent objects (e.g. seeder implements interface) BEFORE any destructive step; a broken dependency must never trigger data loss
+
+```php
+try {
+    DB::transaction(function () use ($org, $seeder, $needsPurge) {
+        if ($needsPurge) { $this->purgeExistingData($org); }
+        $seeder->seed($org);
+    });
+} catch (\Throwable $e) {
+    Log::error('command transaction failed — rolled back', ['org_id' => $org->id, 'exception' => $e->getMessage()]);
+    $this->error('Seed nie powiódł się (rollback): '.$e->getMessage());
+    return self::FAILURE;
+}
+Log::info('command completed', ['org_id' => $org->id, 'purge_done' => $needsPurge]);
+```
+
+Tests: use `->expectsConfirmation('exact question string', 'yes/no')` — PendingCommand uses EXACT match, not substring. Keep the confirm question static (no dynamic content) so it can be matched in tests.
+
+Reference implementation: `onboarding:seed-vertical` (`app/Console/Commands/SeedVerticalDataCommand.php`)
+
 ## Istniejące Commands (reference)
 
 - `FixInvalidStaffAssignments` - napraw błędne przypisania staff
@@ -174,3 +202,4 @@ protected function schedule(Schedule $schedule): void
 - `MaintenanceStatusCommand` - status maintenance
 - `TestEmailFlowCommand` - testuj flow emaili
 - `Reset*BookingStats` - resetuj statystyki
+- `SeedVerticalDataCommand` - ręczne seedowanie danych branżowych (dry-run + confirm + audit log)

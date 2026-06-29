@@ -21,6 +21,9 @@ return new class extends Migration
         // Uses DB::table() to bypass Eloquent models/global scopes.
         DB::table('organizations')->where('is_active', true)->update(['lifecycle_state' => 'active']);
         DB::table('organizations')->where('is_active', false)->update(['lifecycle_state' => 'suspended']);
+        // Defensive: rows with is_active=NULL would otherwise keep the column DEFAULT ('active').
+        // Treat NULL (unknown/legacy) as suspended rather than silently granting active access.
+        DB::table('organizations')->whereNull('is_active')->update(['lifecycle_state' => 'suspended']);
     }
 
     public function down(): void
