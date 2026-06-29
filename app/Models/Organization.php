@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\Industry;
+use App\Enums\OrganizationLifecycleState;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -65,8 +66,13 @@ class Organization extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'industry' => Industry::class,
+        'lifecycle_state' => OrganizationLifecycleState::class,
         'settings' => 'array',
         'trial_ends_at' => 'datetime',
+        'closing_initiated_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'purge_after' => 'datetime',
+        'closure_requested_at' => 'datetime',
         'monthly_fee' => 'decimal:2',
         'subscribed_at' => 'datetime',
         'subscription_expires_at' => 'datetime',
