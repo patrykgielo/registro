@@ -15,7 +15,7 @@ class OrderService
      */
     public function cancel(Order $order, string $reason): Order
     {
-        if (! in_array($order->status, ['pending_payment', 'paid'], strict: true)) {
+        if (! in_array($order->status, ['pending_payment', 'paid', 'confirmed'], strict: true)) {
             throw new \LogicException("Zamówienie o statusie '{$order->status}' nie może zostać anulowane");
         }
 

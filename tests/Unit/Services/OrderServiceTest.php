@@ -60,16 +60,17 @@ class OrderServiceTest extends TestCase
         $this->assertTrue($order->cancelled_at->diffInSeconds(now()) < 5);
     }
 
-    public function test_cancel_throws_for_confirmed_order(): void
+    public function test_cancel_transitions_confirmed_order_to_cancelled(): void
     {
         $order = Order::factory()->confirmed()->create();
 
         $svc = $this->makeService();
+        $result = $svc->cancel($order, 'Admin cancellation of confirmed order');
 
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage("Zamówienie o statusie 'confirmed' nie może zostać anulowane");
+        $result->refresh();
 
-        $svc->cancel($order, 'Cannot cancel confirmed');
+        $this->assertEquals('cancelled', $result->status);
+        $this->assertNotNull($result->cancelled_at);
     }
 
     public function test_cancel_throws_for_in_progress_order(): void
