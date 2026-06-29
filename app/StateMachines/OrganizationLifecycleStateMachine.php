@@ -13,7 +13,7 @@ class OrganizationLifecycleStateMachine
      * Allowed transitions keyed by $from state value.
      * Closed is terminal — no outgoing transitions.
      */
-    public function transitions(): array
+    private function transitions(): array
     {
         return [
             'active' => ['suspended', 'closing'],
@@ -22,23 +22,33 @@ class OrganizationLifecycleStateMachine
         ];
     }
 
+    /**
+     * Returns true when the transition $from → $to is in the allowed set.
+     *
+     * @throws \ValueError when $from is not a valid OrganizationLifecycleState value
+     */
     public function canTransition(
         string|OrganizationLifecycleState $from,
         string|OrganizationLifecycleState $to,
     ): bool {
-        $fromValue = $from instanceof OrganizationLifecycleState ? $from->value : $from;
+        $fromEnum = $from instanceof OrganizationLifecycleState
+            ? $from
+            : (OrganizationLifecycleState::tryFrom($from)
+                ?? throw new \ValueError("Invalid lifecycle state value: '{$from}'"));
+
         $toValue = $to instanceof OrganizationLifecycleState ? $to->value : $to;
 
-        return in_array($toValue, $this->transitions()[$fromValue] ?? [], true);
+        return in_array($toValue, $this->transitions()[$fromEnum->value] ?? [], true);
     }
 
     /**
      * Assert the transition is legal; throws on illegal transitions.
-     * Does not persist anything — persistence is the caller's responsibility.
+     * Does NOT persist anything — persistence is the caller's responsibility.
      *
      * @throws InvalidLifecycleTransitionException
+     * @throws \ValueError when $from is not a valid OrganizationLifecycleState value
      */
-    public function transition(
+    public function assertTransitionAllowed(
         string|OrganizationLifecycleState $from,
         string|OrganizationLifecycleState $to,
     ): void {

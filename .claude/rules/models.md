@@ -496,7 +496,7 @@ Suma `order_items.deposit_amount` = `orders.deposit_amount` (obliczone w `CartSe
 
 ---
 
-## Organization — Lifecycle State (Faza 5.0, 2026-06-29)
+## Organization — Lifecycle State (Faza 5.0+5.1, 2026-06-29)
 
 ```php
 // Cast → App\Enums\OrganizationLifecycleState
@@ -508,17 +508,27 @@ $org->lifecycle_state->allowsPublicSite()   // true tylko dla Active
 $org->lifecycle_state->allowsNewBookings()  // true tylko dla Active
 $org->lifecycle_state->isTerminal()         // true dla Closed
 
-// Daty lifecycle
-$org->closing_initiated_at  // Carbon|null
-$org->closed_at             // Carbon|null
-$org->purge_after           // Carbon|null (Faza 5.3)
+// Daty lifecycle (set automatically by OrganizationObserver)
+$org->closing_initiated_at  // Carbon|null — set when → Closing, cleared when Closing → Active
+$org->closed_at             // Carbon|null — set when → Closed
+$org->purge_after           // Carbon|null (Faza 5.3) — cleared when Closing → Active
 $org->closure_requested_at  // Carbon|null
+
+// Transient flags (not persisted — reset after save)
+$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating()); auto-reset by updated()
+$org->bypassDeleteGuard = true;         // bypasses all checks (observer deleting()); auto-reset by deleted()
 ```
 
-**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest derived:**
-- Nie ustawiaj `lifecycle_state` przez mass-assignment — pole NIE jest w `$fillable`
-- Zmiany lifecycle WYŁĄCZNIE przez `OrganizationLifecycleStateMachine::transition()`
-- State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php`
-- Wyjątek przy nielegalnym przejściu: `InvalidLifecycleTransitionException`
-- Guardy egzekwujące lifecycle w middleware/route scope wchodzą dopiero w Fazie 5.1
-- `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.1)
+**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest fully derived (Faza 5.1 + code-review hardening):**
+- `lifecycle_state` NIE JEST w `$fillable` — nie można ustawiać przez mass-assignment!
+  - ❌ `Organization::create(['lifecycle_state' => 'closed'])` → ignorowane (MassAssignmentGuard)
+  - ✅ Przy tworzeniu: ustaw bezpośrednio przed `save()` lub użyj factory state (`->closed()`)
+  - ✅ Przy aktualizacji: `$org->lifecycle_state = State::Foo; $org->save();`
+- Nie ustawiaj `is_active` bezpośrednio — NIE jest w `$fillable`, ustawiane WYŁĄCZNIE przez `OrganizationObserver`
+- `OrganizationObserver` egzekwuje: state machine + obligacje + is_active sync + timestamps + flag reset
+- Flagi transient (nie persystowane): `forceLifecycleTransition` resetowany przez `updated()`, `bypassDeleteGuard` przez `deleted()`
+- State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php` — `transitions()` jest PRIVATE
+- Wyjątki: `InvalidLifecycleTransitionException` (nielegalne przejście), `OrganizationNotClosedException` (delete gdy nie Closed), `OrganizationHasActiveObligationsException` (blokada przez in-flight obligacje)
+- `completed` order NIE jest in-flight — nie blokuje zamknięcia org! Tylko: pending_payment/paid/confirmed/in_progress
+- Factory states: `->inactive()` (Suspended), `->closing()` (Closing), `->closed()` (Closed) — wszystkie używają `afterMaking`
+- `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.2)

@@ -17,6 +17,27 @@ class Organization extends Model
     use HasFactory;
 
     /**
+     * Default lifecycle_state mirrors the DB column default ('active').
+     * Ensures getOriginal('lifecycle_state') is never null on freshly created models,
+     * so OrganizationObserver::updating() can always derive a valid $from state.
+     */
+    protected $attributes = ['lifecycle_state' => 'active'];
+
+    /**
+     * Bypass lifecycle-state obligation check in OrganizationObserver::updating().
+     * Set to true before calling save() to skip the guard.
+     * Reset automatically by OrganizationObserver::updated() after each successful save.
+     */
+    public bool $forceLifecycleTransition = false;
+
+    /**
+     * Bypass the delete guard in OrganizationObserver::deleting().
+     * Set to true before calling delete() to skip obligation/lifecycle checks.
+     * Use only in controlled contexts (tests, CLI offboarding tools).
+     */
+    public bool $bypassDeleteGuard = false;
+
+    /**
      * Default modules per booking_type.
      * Override per-tenant via settings.modules JSON.
      */
@@ -54,7 +75,6 @@ class Organization extends Model
         'booking_type',
         'industry',
         'owner_id',
-        'is_active',
         'settings',
         'trial_ends_at',
         'subscription_status',

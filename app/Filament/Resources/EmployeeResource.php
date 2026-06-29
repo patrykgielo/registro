@@ -2,18 +2,22 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\AppointmentStatus;
 use App\Filament\Resources\EmployeeResource\Pages;
 use App\Filament\Resources\EmployeeResource\RelationManagers;
+use App\Models\Appointment;
 use App\Models\User;
 use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use UnitEnum;
 
@@ -190,12 +194,37 @@ class EmployeeResource extends BaseResource
                 Actions\EditAction::make()
                     ->label('Edytuj'),
                 Actions\DeleteAction::make()
-                    ->label('Usuń'),
+                    ->label('Usuń')
+                    ->before(function (User $record, Actions\DeleteAction $action): void {
+                        if (self::hasFutureActiveAppointments($record)) {
+                            Notification::make()
+                                ->title('Nie można usunąć pracownika')
+                                ->body('Pracownik ma przyszłe wizyty — przypisz je ponownie przed usunięciem.')
+                                ->danger()
+                                ->send();
+
+                            $action->halt();
+                        }
+                    }),
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make()
-                        ->label('Usuń zaznaczonych'),
+                        ->label('Usuń zaznaczonych')
+                        ->before(function (Collection $records, Actions\DeleteBulkAction $action): void {
+                            $blocked = $records->filter(fn (User $user) => self::hasFutureActiveAppointments($user));
+
+                            if ($blocked->isNotEmpty()) {
+                                Notification::make()
+                                    ->title('Nie można usunąć pracowników')
+                                    ->body('Następujący pracownicy mają przyszłe wizyty — przypisz je ponownie przed usunięciem: '
+                                        .$blocked->map(fn (User $u) => $u->name)->implode(', ').'.')
+                                    ->danger()
+                                    ->send();
+
+                                $action->halt();
+                            }
+                        }),
                 ]),
             ])
             ->emptyStateHeading('Brak pracowników')
@@ -233,5 +262,31 @@ class EmployeeResource extends BaseResource
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    /**
+     * Checks whether the given staff member has future active (pending/confirmed) appointments
+     * within the current tenant scope. Used to guard delete actions.
+     *
+     * Faza 5.7 will add a ReassignStaffAppointments flow; for now, deletion is blocked
+     * until the admin manually reassigns all future appointments.
+     */
+    private static function hasFutureActiveAppointments(User $staff): bool
+    {
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant === null) {
+            return false;
+        }
+
+        return Appointment::withoutGlobalScope('organization')
+            ->where('staff_id', $staff->id)
+            ->where('organization_id', $tenant->id)
+            ->whereIn('status', [
+                AppointmentStatus::Pending->value,
+                AppointmentStatus::Confirmed->value,
+            ])
+            ->where('appointment_date', '>=', now()->toDateString())
+            ->exists();
     }
 }
