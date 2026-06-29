@@ -169,6 +169,25 @@ Schedule::command('horizon:snapshot')
 
 /*
 |--------------------------------------------------------------------------
+| Tenant Lifecycle — Purge
+|--------------------------------------------------------------------------
+|
+| Anonymize PII and soft-delete closed organizations past their purge_after date.
+| Legal records (orders, payments, rentals) are retained — already anonymized.
+| Retention: config/retention.php (legal_records_years = 6 per Art. 112 VAT).
+|
+*/
+
+// Purge closed organizations (PII anonymization + soft-delete)
+// Runs: Daily at 03:00 AM (low-traffic window)
+Schedule::command('organizations:purge --force')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->name('organizations:purge')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
 | Statistics System
 |--------------------------------------------------------------------------
 */

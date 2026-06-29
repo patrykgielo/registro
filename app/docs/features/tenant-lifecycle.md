@@ -1,6 +1,6 @@
 # Tenant Lifecycle — Workstream Overview
 
-## Status: Faza 5.1 merged + code-review hardening (2026-06-29)
+## Status: Faza 5.3a done (2026-06-30) — SoftDeletes + PII anonymization + purge command
 
 Workstream introduces an explicit lifecycle state for Organization, replacing the implicit boolean `is_active` as the authoritative source of truth for tenant health. The migration is additive and non-breaking — `is_active` is now a fully derived field, synced automatically from `lifecycle_state` by the observer.
 
@@ -12,9 +12,11 @@ Workstream introduces an explicit lifecycle state for Organization, replacing th
 |------|--------|--------|
 | 5.0 | Enum + state machine + schema + backfill | Done |
 | 5.1 | Guards + observer (is_active sync, obligation checks, delete guard) + Platform lifecycle actions | Done |
-| 5.1-cr | Code-review hardening (see below) | Done |
-| 5.2 | Public site / new-booking middleware based on lifecycle_state | Planned |
-| 5.3 | SoftDeletes on Organization + purge scheduler | Planned |
+| 5.1-cr | Code-review hardening | Done |
+| 5.2 | FK onDelete policy + public site middleware | Done |
+| 5.3a | SoftDeletes on Organization + PII anonymization + purge command | Done |
+| 5.3b | Offboarding email / grace-period notifications | Planned |
+| 5.4 | Hard-delete legal records after retention period (6 yrs) | Planned |
 
 ---
 
@@ -255,7 +257,104 @@ DB-level enforcement behind the 5.1 application guards, plus the lifecycle autho
 
 ---
 
+## Faza 5.3a — SoftDeletes + PII Anonymization + Purge Command
+
+### SoftDeletes on Organization
+
+`database/migrations/2026_06_30_100001_add_soft_deletes_to_organizations.php` adds `deleted_at` (nullable timestamp) to `organizations`.
+
+`Organization` model gains `use SoftDeletes`. Behavioral change:
+- `$org->delete()` = `UPDATE organizations SET deleted_at = now()` (NOT a hard DELETE)
+- `Organization::all()` / `find()` / `where()` automatically exclude soft-deleted rows
+- FK `RESTRICT` onDelete does **not** fire on soft-delete (it's an UPDATE, not DELETE) — the FK remains the backstop for future hard-delete (Faza 5.4)
+- `Organization::withTrashed()->find($id)` retrieves soft-deleted rows
+- `$org->bypassDeleteGuard = true; $org->delete()` — still a soft-delete after this migration; `forceDelete()` would be the hard-delete (reserved for Faza 5.4)
+
+`OrganizationObserver::deleting()` guards against accidental deletion; `bypassDeleteGuard = true` bypasses the app guard (FK remains). `deleted()` resets the flag.
+
+### config/retention.php
+
+`config/retention.php` centralizes all retention periods with legal basis:
+
+| Key | Value | Legal basis |
+|---|---|---|
+| `legal_records_years` | 6 | Art. 112 VAT / Art. 70 Ordynacja Podatkowa — invoices/payments |
+| `claims_b2c_years` | 6 | KC art. 118 — B2C claim limitation |
+| `claims_b2b_years` | 3 | KC art. 118 — B2B claim limitation |
+| `purge_grace_days` | 30 | Offboarding grace window (Closing → Closed → purge_after) |
+| `analytics_months` | 13 | Ephemeral analytics data |
+| `carts_days` | 7 | Abandoned cart retention |
+| `statistics_days` | 365 | Statistics snapshots |
+
+All commands and observers read from this config — no magic numbers.
+
+### purge_after set automatically on Closed transition
+
+`OrganizationObserver::updating()` when `$to === Closed`: sets `purge_after = now()->addDays(config('retention.purge_grace_days'))` if not already set. This ensures every org that reaches `Closed` has a deterministic purge window, even without an explicit offboarding flow.
+
+### OrganizationAnonymizationService
+
+`app/Services/Lifecycle/OrganizationAnonymizationService`
+
+Method `anonymize(Organization $org): array` — returns `['orders' => int, 'appointments' => int, 'rentals' => int, 'payments' => int]`.
+
+**PII vs accounting distinction (RODO art. 5(1)(e) + Art. 112 VAT):**
+
+| Model | ANONYMIZED (PII) | PRESERVED (accounting/legal) |
+|---|---|---|
+| Order | first_name→`Anonimizowane`, last_name→`Anonimizowane`, email→`anon_{id}@anonymized.local`, phone, PESEL, address fields, signatory_id, pickup_person_*, IP, rodo_accepted_ip, notes, company_contact_name | order_number, amounts, dates, customer_type, invoice_* (NIP/REGON/KRS/address), rodo_accepted_at, terms_accepted_at, p24_* |
+| Appointment | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone | invoice_*, amounts, dates, status |
+| Rental | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone | invoice_*, amounts, dates, status |
+| Payment | webhook_payload→null | p24_session_id, p24_order_id, amount, currency, status |
+
+**Implementation notes:**
+- All updates use `DB::table()` (NOT Eloquent) to bypass Order's `booted() updating()` immutable guard that protects `rodo_accepted_ip` and accounting fields.
+- `chunkById(500)` loop for per-row unique email placeholder.
+- `customer_last_name` uses `'Anonimizowane'` placeholder (NOT NULL column in schema).
+- Wrapped in `DB::transaction()`. Idempotent — safe to re-run.
+
+### PurgeClosedOrganizationsCommand (`organizations:purge`)
+
+`app/Console/Commands/PurgeClosedOrganizationsCommand`
+
+Signature: `organizations:purge {--dry-run} {--force}`
+
+Eligibility query: `lifecycle_state = closed AND purge_after <= now() AND deleted_at IS NULL` (SoftDeletes global scope auto-excludes already-purged orgs).
+
+Per eligible org (in `DB::transaction`, `catch \Throwable → Log::error + FAILURE`):
+1. `OrganizationAnonymizationService::anonymize($org)` — PII cleared
+2. Hard-delete ephemeral: `carts`, `analytics_events`, `statistics_daily_snapshots`
+3. Legal records (orders, payments, tenant_payments) — **NOT deleted** (retain ≥6 yrs)
+4. Soft-delete org: `$org->bypassDeleteGuard = true; $org->delete()`
+
+Audit log: `Log::info` (start/completed), `Log::warning` (before each purge).
+Dry-run: prints what would be purged, makes zero changes.
+Confirm gate: `isInteractive() && !--force → confirm('Continue?')`.
+
+FUTURE (Faza 5.4): hard-delete legal records after `legal_records_years` — not implemented here.
+
+### Schedule
+
+`routes/console.php`:
+```php
+Schedule::command('organizations:purge --force')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->name('organizations:purge')
+    ->onOneServer();
+```
+
+### Tests
+
+`tests/Feature/Organizations/OrganizationPurgeTest` — 14 tests, 69 assertions.
+
+Covers: PII cleared / accounting preserved, payment webhook_payload, appointment PII, rental PII, idempotence, observer sets purge_after, observer does not overwrite existing purge_after, soft-delete exclusion from normal queries, soft-delete retrievable with `withTrashed()`, command processes eligible org, command skips future purge_after, command skips non-Closed, dry-run makes no changes.
+
+**SQLite note:** `assertSame()` fails for decimal columns — SQLite returns numeric int (`500`), not string (`'500.00'`). All decimal assertions use `assertEquals()`.
+
+---
+
 ## Notes for Future Phases
 
-- **Faza 5.3**: Add `SoftDeletes` to Organization, schedule a `PurgeClosedOrganizationsJob` that runs nightly, checks `purge_after <= now()` and soft-deletes.
-- **Faza 5.4**: Hard-delete job + GDPR purge of user PII after retention period.
+- **Faza 5.3b**: Offboarding email sent when org transitions to `Closing`; reminder before `purge_after`.
+- **Faza 5.4**: Hard-delete legal records (orders/payments) after `legal_records_years` (6) from `closed_at`. Requires `closed_at + 6yr <= now()` check. FK RESTRICT will be dropped for these tables before hard-delete.
