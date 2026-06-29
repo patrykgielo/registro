@@ -5,6 +5,34 @@ paths:
 
 # Database Migration Rules
 
+## Tenant-Scoped Unique Constraints (CRITICAL)
+
+**Any table with `organization_id` MUST use composite unique constraints that include `organization_id`.**
+Single-column uniques on tenant-scoped tables break multi-tenant onboarding: vertical seeders inserting
+records (e.g., service names, page slugs) fail when a 2nd tenant signs up with the same data.
+
+```php
+// ❌ WRONG — breaks multi-tenancy
+$table->unique('name');                    // services_name_unique
+$table->unique('slug');                    // pages_slug_unique
+
+// ✅ CORRECT — scoped per tenant
+$table->unique(['organization_id', 'name'], 'services_org_name_unique');
+$table->unique(['organization_id', 'slug'], 'pages_org_slug_unique');
+```
+
+**Exception — globally unique by design (no organization_id):** `orders.p24_session_id`,
+`payments.p24_session_id`, `email_sends.message_key`, `sms_sends.message_key`.
+
+**Exception — NULL-org global templates:** `email_templates` and `sms_templates` use
+`(key, language)` global unique because all rows are NULL-org system templates. MySQL treats
+NULL as distinct in unique indexes — converting to composite would break seed migration
+idempotency (`insertOrIgnore` would allow duplicate NULL-org rows).
+
+Incident 2026-06-29: 2nd equipment-rental tenant 500s on `UniqueConstraintViolationException`
+at `services.services_name_unique`. Migration `2026_06_29_120000_fix_tenant_scoped_unique_constraints.php`
+converted 9 constraints.
+
 ## Security First
 
 ### Never in Migrations
