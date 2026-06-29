@@ -573,7 +573,7 @@ docker compose ps
 docker compose exec app php artisan optimize:clear
 
 # Restart containers (clears PHP-FPM OPcache)
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 ```
 
 **Prevention:**

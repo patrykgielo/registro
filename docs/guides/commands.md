@@ -175,7 +175,7 @@ docker compose logs -f
 docker compose logs -f app
 docker compose logs -f nginx
 docker compose logs -f mysql
-docker compose logs -f queue
+docker compose logs -f horizon
 
 # View last 100 lines
 docker compose logs --tail=100 app

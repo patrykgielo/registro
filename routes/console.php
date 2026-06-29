@@ -163,7 +163,7 @@ Schedule::command('analytics:rollup-hourly')
 // Without this, Horizon shows blank charts even when queue is healthy
 Schedule::command('horizon:snapshot')
     ->everyFiveMinutes()
-    ->withoutOverlapping()
+    ->withoutOverlapping(5)
     ->name('horizon:snapshot')
     ->onOneServer();
 

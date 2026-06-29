@@ -1334,7 +1334,7 @@ SESSION_ENCRYPT=true  # Was false
 
 **Restart Required**:
 ```bash
-docker compose restart app horizon queue
+docker compose restart app horizon
 php artisan config:cache
 ```
 

@@ -505,7 +505,7 @@ Action::make('preview')
 
 ```bash
 # Restart kontenerów (OPcache)
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 
 # Clear Laravel caches
 docker compose exec app php artisan optimize:clear

@@ -266,7 +266,7 @@ See [filament-admin.md](filament-admin.md) for screenshots and usage.
 1. **Check Global Enable**: Admin → System Settings → SMS → SMS Enabled
 2. **Check Notification Type**: Ensure specific notification is enabled (e.g., Booking Confirmation)
 3. **Check Suppression**: Verify phone number not in suppression list
-4. **Check Queue**: `docker compose logs -f queue` - ensure jobs processing
+4. **Check Queue**: `docker compose logs -f horizon` - ensure jobs processing
 5. **Check Logs**: `storage/logs/laravel.log` for error messages
 
 ### Invalid API Token
