@@ -7,6 +7,8 @@ use App\Enums\OrganizationLifecycleState;
 use App\Filament\Platform\Resources\OrganizationResource\Pages;
 use App\Filament\Platform\Resources\OrganizationResource\RelationManagers;
 use App\Models\Organization;
+use App\Models\Payment;
+use App\Models\TenantPayment;
 use App\Rules\ValidOrganizationSlug;
 use App\Services\TenantObligationService;
 use BackedEnum;
@@ -325,6 +327,28 @@ class OrganizationResource extends Resource
                                         $counts['appointments'],
                                         $counts['orders'],
                                         $counts['rentals'],
+                                    );
+
+                                    continue;
+                                }
+
+                                // Mirror OrganizationObserver Guard 4: legal records must be
+                                // anonymised/archived before deletion (Art. 112 VAT / Art. 70 Ordynacja).
+                                $legalOrders = $record->orders()->withoutGlobalScope('organization')->count();
+                                $legalPayments = Payment::withoutGlobalScope('organization')
+                                    ->where('organization_id', $record->id)->count();
+                                $legalRentals = $record->rentals()->withoutGlobalScope('organization')->count();
+                                $legalTenantPayments = TenantPayment::where('organization_id', $record->id)->count();
+                                $totalLegal = $legalOrders + $legalPayments + $legalRentals + $legalTenantPayments;
+
+                                if ($totalLegal > 0) {
+                                    $blocked[] = sprintf(
+                                        '%s (rekordy prawne: %d zam., %d płat., %d wyp., %d SaaS — wymagana archiwizacja)',
+                                        $record->name,
+                                        $legalOrders,
+                                        $legalPayments,
+                                        $legalRentals,
+                                        $legalTenantPayments,
                                     );
                                 }
                             }

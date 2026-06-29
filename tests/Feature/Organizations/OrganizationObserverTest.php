@@ -13,6 +13,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Models\VehicleType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -316,10 +317,10 @@ class OrganizationObserverTest extends TestCase
         ]);
 
         // bypassDeleteGuard skips the application-level OrganizationHasLegalRecordsException,
-        // but the DB-level FK is the final backstop: deleting an org that still has legal
-        // records throws a QueryException (FK violation) on both SQLite and MySQL. Getting a
-        // QueryException here — rather than OrganizationHasLegalRecordsException — proves the
-        // app guard was bypassed and the DB constraint caught the deletion.
+        // but the DB RESTRICT FK is the final backstop. Laravel 12 performs a table-rebuild to
+        // apply FK changes on SQLite, so RESTRICT is enforced on both SQLite and MySQL.
+        // Getting a QueryException here — rather than OrganizationHasLegalRecordsException —
+        // proves the app guard was bypassed and the DB constraint caught the deletion.
         $org->bypassDeleteGuard = true;
         $this->expectException(\Illuminate\Database\QueryException::class);
         $org->delete();
@@ -354,5 +355,22 @@ class OrganizationObserverTest extends TestCase
         $org->save(); // nothing is dirty → no DB write → updated() NOT fired → saved() IS fired
 
         $this->assertFalse($org->forceLifecycleTransition, 'saved() must reset forceLifecycleTransition even on no-op saves');
+    }
+
+    // ─── Faza 5.2: cache invalidation on suspension ──────────────────────────
+
+    public function test_transition_to_suspended_invalidates_tenant_cache(): void
+    {
+        $org = Organization::factory()->create(['slug' => 'cachetest']);
+        $cacheKey = "tenant:slug:{$org->slug}";
+
+        // Simulate the middleware having previously cached this tenant
+        Cache::put($cacheKey, $org, 300);
+        $this->assertTrue(Cache::has($cacheKey), 'precondition: cache must be populated');
+
+        $org->lifecycle_state = OrganizationLifecycleState::Suspended;
+        $org->save();
+
+        $this->assertFalse(Cache::has($cacheKey), 'cache must be cleared after transition to Suspended');
     }
 }

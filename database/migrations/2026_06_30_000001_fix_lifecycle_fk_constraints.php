@@ -17,8 +17,9 @@ use Illuminate\Support\Facades\Schema;
  * appointments.staff_id → nullOnDelete:
  *   Deleting a staff member (User) preserves historical appointments with staff_id = null.
  *   Future appointments are blocked by EmployeeResource::canDelete() guard (Faza 5.7).
- *   The column must be made nullable first on MySQL; SQLite is skipped (no Doctrine ALTER
- *   support) — the FK change is a no-op on SQLite anyway.
+ *   The column must be made nullable first on MySQL; the nullable change is skipped on SQLite
+ *   (no Doctrine ALTER COLUMN support). The FK drop/re-add IS applied on SQLite via Laravel 12's
+ *   table-rebuild, so the nullOnDelete constraint is enforced there too.
  *
  * Untouched (stay cascade/null):
  *   carts.organization_id        — ephemeral, OK to cascade
@@ -67,8 +68,9 @@ return new class extends Migration
 
         // ── appointments.staff_id: cascade → nullOnDelete ─────────────────────
 
-        // Step 1: make staff_id nullable (MySQL only; SQLite has no ALTER COLUMN support).
-        // The column remains NOT NULL in SQLite test environments — test behaviour at app level.
+        // Step 1: make staff_id nullable. Guarded to MySQL-only because ->nullable()->change()
+        // relies on Doctrine DBAL ALTER COLUMN, which is not supported on SQLite. The column
+        // therefore remains NOT NULL in SQLite test environments; app-level tests cover nullability.
         if (DB::getDriverName() !== 'sqlite') {
             Schema::table('appointments', function (Blueprint $table) {
                 $table->unsignedBigInteger('staff_id')->nullable()->change();
@@ -76,7 +78,9 @@ return new class extends Migration
         }
 
         // Step 2: replace cascade FK with nullOnDelete FK.
-        // dropForeign is a no-op on SQLite; the re-add is also a no-op (no real FK enforcement).
+        // On SQLite, Laravel 12 performs a full table-rebuild to apply FK changes, so the new
+        // constraint IS enforced (dropForeign + re-add are NOT no-ops). The Step 1 guard above
+        // is unrelated — it only skips the Doctrine ALTER COLUMN call, not the FK rebuild.
         Schema::table('appointments', function (Blueprint $table) {
             $table->dropForeign(['staff_id']);
             $table->foreign('staff_id')

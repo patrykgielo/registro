@@ -13,6 +13,7 @@ use App\Models\Payment;
 use App\Models\TenantPayment;
 use App\Services\TenantObligationService;
 use App\StateMachines\OrganizationLifecycleStateMachine;
+use Illuminate\Support\Facades\Cache;
 
 class OrganizationObserver
 {
@@ -106,21 +107,34 @@ class OrganizationObserver
      * on a non-dirty model, updated() is skipped — leaving the flag set for the
      * next save that DOES touch lifecycle_state. saved() fires after every save(),
      * including no-op saves, and is therefore the correct cleanup hook.
+     *
+     * Also invalidates the tenant resolution cache when the org becomes non-Active,
+     * preventing a suspended/closing/closed org from being served from cache (TTL 300s).
+     * Covers CLI and programmatic transitions, not just Filament actions.
      */
     public function saved(Organization $org): void
     {
         $org->forceLifecycleTransition = false;
+
+        if ($org->wasChanged('lifecycle_state')
+            && $org->lifecycle_state !== OrganizationLifecycleState::Active
+        ) {
+            Cache::forget("tenant:slug:{$org->slug}");
+        }
     }
 
     /**
-     * Prevents hard-delete unless the organization is Closed and has no active obligations.
+     * Prevents hard-delete unless the organization is Closed and has no active obligations
+     * or outstanding legal records.
      *
      * Guards (in order):
      * 1. bypassDeleteGuard = true → skip all checks
      * 2. lifecycle_state !== Closed → OrganizationNotClosedException
      * 3. Active obligations exist → OrganizationHasActiveObligationsException
+     * 4. Legal records exist → OrganizationHasLegalRecordsException
      *
      * Set $org->bypassDeleteGuard = true to skip all checks (CLI offboarding tools only).
+     * The DB RESTRICT FK on legal-record tables is the final backstop for bypass scenarios.
      */
     public function deleting(Organization $org): void
     {
@@ -157,8 +171,7 @@ class OrganizationObserver
         $legalPayments = Payment::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)->count();
         $legalRentals = $org->rentals()->withoutGlobalScope('organization')->count();
-        $legalTenantPayments = TenantPayment::withoutGlobalScope('organization')
-            ->where('organization_id', $org->id)->count();
+        $legalTenantPayments = TenantPayment::where('organization_id', $org->id)->count();
         $totalLegal = $legalOrders + $legalPayments + $legalRentals + $legalTenantPayments;
 
         if ($totalLegal > 0) {

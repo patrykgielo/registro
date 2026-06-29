@@ -20,6 +20,7 @@ class ResolveTenantTest extends TestCase
     {
         parent::setUp();
         $this->middleware = new ResolveTenant;
+        Cache::flush();
     }
 
     public function test_root_domain_passes_through_without_tenant(): void
