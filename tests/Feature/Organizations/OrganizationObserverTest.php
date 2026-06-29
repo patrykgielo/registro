@@ -6,12 +6,14 @@ use App\Enums\AppointmentStatus;
 use App\Enums\OrganizationLifecycleState;
 use App\Exceptions\InvalidLifecycleTransitionException;
 use App\Exceptions\OrganizationHasActiveObligationsException;
+use App\Exceptions\OrganizationHasLegalRecordsException;
 use App\Exceptions\OrganizationNotClosedException;
 use App\Models\Appointment;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\VehicleType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -271,5 +273,104 @@ class OrganizationObserverTest extends TestCase
         $org->delete();
 
         $this->assertDatabaseMissing('organizations', ['id' => $org->id]);
+    }
+
+    // ─── Faza 5.2: Legal records guard ───────────────────────────────────────
+
+    public function test_delete_of_closed_org_with_legal_records_throws_exception(): void
+    {
+        $org = Organization::factory()->closed()->create();
+
+        // A completed order is NOT an active obligation (won't block at step 3),
+        // but IS a legal record (must be retained ≥5 years per Art. 112 VAT).
+        \Illuminate\Support\Facades\DB::table('tenant_payments')->insert([
+            'organization_id' => $org->id,
+            'amount' => '599.00',
+            'currency' => 'PLN',
+            'period_month' => '2026-06',
+            'recorded_by' => $org->owner_id,
+            'paid_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->expectException(OrganizationHasLegalRecordsException::class);
+
+        $org->delete();
+    }
+
+    public function test_delete_with_bypass_skips_legal_records_guard(): void
+    {
+        // bypassDeleteGuard = true skips the application-level check.
+        // The DB-level RESTRICT FK is the final backstop (MySQL only, not in SQLite tests).
+        $org = Organization::factory()->closed()->create();
+
+        \Illuminate\Support\Facades\DB::table('tenant_payments')->insert([
+            'organization_id' => $org->id,
+            'amount' => '599.00',
+            'currency' => 'PLN',
+            'period_month' => '2026-06',
+            'recorded_by' => $org->owner_id,
+            'paid_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // bypassDeleteGuard skips the application-level OrganizationHasLegalRecordsException,
+        // but the DB RESTRICT FK is the final backstop. Laravel 12 performs a table-rebuild to
+        // apply FK changes on SQLite, so RESTRICT is enforced on both SQLite and MySQL.
+        // Getting a QueryException here — rather than OrganizationHasLegalRecordsException —
+        // proves the app guard was bypassed and the DB constraint caught the deletion.
+        $org->bypassDeleteGuard = true;
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        $org->delete();
+    }
+
+    // ─── Faza 5.2: closed_at timestamp ───────────────────────────────────────
+
+    public function test_closed_at_is_set_when_transitioning_to_closed(): void
+    {
+        $org = Organization::factory()->closing()->create();
+
+        $org->lifecycle_state = OrganizationLifecycleState::Closed;
+        $org->save();
+
+        $fresh = $org->fresh();
+        $this->assertSame(OrganizationLifecycleState::Closed, $fresh->lifecycle_state);
+        $this->assertNotNull($fresh->closed_at, 'closed_at must be set when transitioning to Closed');
+    }
+
+    // ─── Faza 5.2: force-flag leak fix ───────────────────────────────────────
+
+    public function test_force_flag_reset_by_saved_even_when_nothing_is_dirty(): void
+    {
+        // If save() is called on a non-dirty model, Eloquent skips the DB write
+        // and never fires updated(). Before Faza 5.2 the flag was only reset in
+        // updated() — so a set flag + no-op save() would leave it true, making
+        // the NEXT save() (with lifecycle_state change) bypass the obligation guard
+        // unintentionally. saved() fires after every save(), including no-ops.
+        $org = Organization::factory()->create();
+        $org->forceLifecycleTransition = true;
+
+        $org->save(); // nothing is dirty → no DB write → updated() NOT fired → saved() IS fired
+
+        $this->assertFalse($org->forceLifecycleTransition, 'saved() must reset forceLifecycleTransition even on no-op saves');
+    }
+
+    // ─── Faza 5.2: cache invalidation on suspension ──────────────────────────
+
+    public function test_transition_to_suspended_invalidates_tenant_cache(): void
+    {
+        $org = Organization::factory()->create(['slug' => 'cachetest']);
+        $cacheKey = "tenant:slug:{$org->slug}";
+
+        // Simulate the middleware having previously cached this tenant
+        Cache::put($cacheKey, $org, 300);
+        $this->assertTrue(Cache::has($cacheKey), 'precondition: cache must be populated');
+
+        $org->lifecycle_state = OrganizationLifecycleState::Suspended;
+        $org->save();
+
+        $this->assertFalse(Cache::has($cacheKey), 'cache must be cleared after transition to Suspended');
     }
 }

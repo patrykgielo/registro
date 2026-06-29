@@ -365,6 +365,10 @@ class AppointmentService
         $staffIds = $staffMembers->pluck('id')->toArray();
 
         // Query 2: Get all appointments in date range (bulk fetch)
+        // TODO(Faza 5.7): appointments with staff_id = null (staff deleted after Faza 5.2 made the
+        // column nullable) are invisible to whereIn('staff_id', $staffIds). A slot occupied by a
+        // null-staff appointment will appear free → double-booking vector. Fix in Faza 5.7:
+        // add ->orWhere(fn ($q) => $q->whereNull('staff_id')->where('organization_id', $orgId)).
         $appointments = Appointment::query()
             ->whereIn('staff_id', $staffIds)
             ->whereBetween('appointment_date', [

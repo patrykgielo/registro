@@ -233,17 +233,29 @@ Without this, `currentTenant()` returns `null` and the guard immediately returns
 
 ---
 
-## Faza 5.2 Acceptance Criteria (Planned)
+## Faza 5.2 — FK backstop + lifecycle resolution (Done)
 
-- `ResolveTenant.php` updated to check `lifecycle_state->allowsPublicSite()` instead of `is_active`
-- `CheckOrganizationLifecycle` middleware added for public routes (booking, rental catalogue)
-- `is_active` remains for backward compatibility (derived, kept in sync by observer)
-- All `ResolveTenantTest` tests updated to use `lifecycle_state`-based assertions
+DB-level enforcement behind the 5.1 application guards, plus the lifecycle authority switch.
+
+**FK onDelete policy** (migration `2026_06_30_000001_fix_lifecycle_fk_constraints.php`):
+
+| Category | Tables (`organization_id` unless noted) | onDelete | Why |
+|---|---|---|---|
+| Legal records | `orders`, `payments`, `tenant_payments`, `rentals` | **restrict** | Must survive org deletion — retain ≥5–6 yrs (Art. 112 VAT / Art. 70 Ordynacja). Last-resort backstop behind the observer guard. |
+| Staff link | `appointments.staff_id` (was NOT NULL cascade) | **nullable + nullOnDelete** | Deleting a staff member preserves historical appointments (`staff_id = null`). Aligns with the 5.1 guard that blocks only *future* appointments. |
+| Ephemeral | `carts`, `statistics_daily_snapshots`; `analytics_events` already null | cascade / null (unchanged) | OK to drop with the org. |
+
+`down()` leaves `staff_id` nullable on rollback (restoring NOT NULL would fail if any staff was deleted while applied; nullable is a safe superset).
+
+**Observer legal-records guard:** `OrganizationObserver::deleting()` throws `OrganizationHasLegalRecordsException` when the org still has any order/payment/rental/tenant_payment — a human-readable error *before* the DB RESTRICT FK fires. `bypassDeleteGuard = true` skips the app guard, leaving the FK as the final backstop (for the Faza 5.3 purge tool, used only after records are anonymised/archived).
+
+**ResolveTenant:** resolution gates on `lifecycle_state = Active` (authoritative) instead of `is_active`. `is_active` stays as a derived column (kept in sync by the observer) for the platform panel column/filter. Cache key `tenant:slug:{slug}` (300 s TTL) unchanged.
+
+**5.1 follow-ups closed here:** `forceLifecycleTransition` reset moved to `saved()` (fires on no-op saves too); `->authorize(super-admin)` on Suspend/Reactivate/InitiateClosing; `canDelete()` hides delete for non-Closed orgs; `closed_at` timestamp test added.
 
 ---
 
 ## Notes for Future Phases
 
-- **Faza 5.2**: Public route middleware — add `CheckOrganizationLifecycle` that checks `$org->lifecycle_state->allowsPublicSite()`. Update `ResolveTenant` to use `lifecycle_state` directly instead of `is_active`.
 - **Faza 5.3**: Add `SoftDeletes` to Organization, schedule a `PurgeClosedOrganizationsJob` that runs nightly, checks `purge_after <= now()` and soft-deletes.
 - **Faza 5.4**: Hard-delete job + GDPR purge of user PII after retention period.

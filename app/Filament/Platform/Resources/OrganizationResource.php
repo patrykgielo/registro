@@ -7,6 +7,8 @@ use App\Enums\OrganizationLifecycleState;
 use App\Filament\Platform\Resources\OrganizationResource\Pages;
 use App\Filament\Platform\Resources\OrganizationResource\RelationManagers;
 use App\Models\Organization;
+use App\Models\Payment;
+use App\Models\TenantPayment;
 use App\Rules\ValidOrganizationSlug;
 use App\Services\TenantObligationService;
 use BackedEnum;
@@ -38,7 +40,12 @@ class OrganizationResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        // Hide the delete button for non-Closed organisations. The observer's deleting()
+        // hook remains as a backstop, but surfacing the button only when deletion is
+        // actually permissible reduces confusion and accidental clicks.
+        return (auth()->user()?->hasRole('super-admin') ?? false)
+            && $record instanceof Organization
+            && $record->lifecycle_state === OrganizationLifecycleState::Closed;
     }
 
     public static function form(Schema $schema): Schema
@@ -220,12 +227,15 @@ class OrganizationResource extends Resource
                     ]))
                     ->requiresConfirmation(),
 
-                // Lifecycle state actions — go through the state machine via OrganizationObserver
+                // Lifecycle state actions — go through the state machine via OrganizationObserver.
+                // ->authorize() provides defense-in-depth on top of EnsureSuperAdmin middleware
+                // and ->visible() state checks.
                 Actions\Action::make('suspend')
                     ->label('Zawieś')
                     ->icon('heroicon-o-pause-circle')
                     ->color('warning')
                     ->requiresConfirmation()
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && $record->lifecycle_state === OrganizationLifecycleState::Active)
                     ->action(function (Organization $record): void {
@@ -239,6 +249,7 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-play-circle')
                     ->color('success')
                     ->requiresConfirmation()
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && in_array(
                             $record->lifecycle_state,
@@ -256,6 +267,7 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && in_array(
                             $record->lifecycle_state,
@@ -315,6 +327,28 @@ class OrganizationResource extends Resource
                                         $counts['appointments'],
                                         $counts['orders'],
                                         $counts['rentals'],
+                                    );
+
+                                    continue;
+                                }
+
+                                // Mirror OrganizationObserver Guard 4: legal records must be
+                                // anonymised/archived before deletion (Art. 112 VAT / Art. 70 Ordynacja).
+                                $legalOrders = $record->orders()->withoutGlobalScope('organization')->count();
+                                $legalPayments = Payment::withoutGlobalScope('organization')
+                                    ->where('organization_id', $record->id)->count();
+                                $legalRentals = $record->rentals()->withoutGlobalScope('organization')->count();
+                                $legalTenantPayments = TenantPayment::where('organization_id', $record->id)->count();
+                                $totalLegal = $legalOrders + $legalPayments + $legalRentals + $legalTenantPayments;
+
+                                if ($totalLegal > 0) {
+                                    $blocked[] = sprintf(
+                                        '%s (rekordy prawne: %d zam., %d płat., %d wyp., %d SaaS — wymagana archiwizacja)',
+                                        $record->name,
+                                        $legalOrders,
+                                        $legalPayments,
+                                        $legalRentals,
+                                        $legalTenantPayments,
                                     );
                                 }
                             }
