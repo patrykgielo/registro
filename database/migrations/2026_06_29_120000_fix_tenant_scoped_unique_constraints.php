@@ -28,6 +28,9 @@ return new class extends Migration
         });
 
         // categories: slug
+        // NOTE: organization_id is nullable on categories (NULL = global/system category).
+        // MySQL treats each NULL as distinct in a unique index, so two NULL-org rows with the
+        // same slug ARE allowed by the composite unique — same behaviour as the old global unique.
         Schema::table('categories', function (Blueprint $table) {
             $table->dropUnique('categories_slug_unique');
             $table->unique(['organization_id', 'slug'], 'categories_org_slug_unique');
@@ -72,47 +75,11 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('services', function (Blueprint $table) {
-            $table->dropUnique('services_org_name_unique');
-            $table->unique('name', 'services_name_unique');
-
-            $table->dropUnique('services_org_slug_unique');
-            $table->unique('slug', 'services_slug_unique');
-        });
-
-        Schema::table('categories', function (Blueprint $table) {
-            $table->dropUnique('categories_org_slug_unique');
-            $table->unique('slug', 'categories_slug_unique');
-        });
-
-        Schema::table('pages', function (Blueprint $table) {
-            $table->dropUnique('pages_org_slug_unique');
-            $table->unique('slug', 'pages_slug_unique');
-        });
-
-        Schema::table('posts', function (Blueprint $table) {
-            $table->dropUnique('posts_org_slug_unique');
-            $table->unique('slug', 'posts_slug_unique');
-        });
-
-        Schema::table('portfolio_items', function (Blueprint $table) {
-            $table->dropUnique('portfolio_items_org_slug_unique');
-            $table->unique('slug', 'portfolio_items_slug_unique');
-        });
-
-        Schema::table('promotions', function (Blueprint $table) {
-            $table->dropUnique('promotions_org_slug_unique');
-            $table->unique('slug', 'promotions_slug_unique');
-        });
-
-        Schema::table('service_areas', function (Blueprint $table) {
-            $table->dropUnique('service_areas_org_coords_unique');
-            $table->unique(['latitude', 'longitude', 'radius_km'], 'unique_service_area');
-        });
-
-        Schema::table('orders', function (Blueprint $table) {
-            $table->dropUnique('orders_org_order_number_unique');
-            $table->unique('order_number', 'orders_order_number_unique');
-        });
+        // Cannot roll back: after up() runs in production, different tenants may share the
+        // same name/slug values (which the composite unique allows). Restoring the old global
+        // single-column uniques would fail with SQLSTATE[23000] Duplicate entry on those rows.
+        throw new \RuntimeException(
+            'Cannot roll back: data may contain cross-tenant duplicates on the restored global unique constraints.'
+        );
     }
 };

@@ -166,6 +166,19 @@ protected function schedule(Schedule $schedule): void
 }
 ```
 
+## Destructive Commands Pattern (MANDATORY)
+
+For commands that permanently delete or overwrite business data, ALWAYS implement all four:
+
+1. **`--dry-run`** — show what would change, return SUCCESS without executing
+2. **Confirm gate** — `$this->input->isInteractive() && !$this->confirm(...)` before any purge; skipped when `--no-interaction` / piped input
+3. **Audit log** — `Log::info(start)` + `Log::warning(before purge)` with org id/name and counts (GDPR art. 5(1)(f))
+4. **Transaction** — wrap purge + seed/write in `DB::transaction()` to prevent partial state on failure
+
+Tests: use `->expectsConfirmation('exact question string', 'yes/no')` — PendingCommand uses EXACT match, not substring. Keep the confirm question static (no dynamic content) so it can be matched in tests.
+
+Reference implementation: `onboarding:seed-vertical` (`app/Console/Commands/SeedVerticalDataCommand.php`)
+
 ## Istniejące Commands (reference)
 
 - `FixInvalidStaffAssignments` - napraw błędne przypisania staff
@@ -174,3 +187,4 @@ protected function schedule(Schedule $schedule): void
 - `MaintenanceStatusCommand` - status maintenance
 - `TestEmailFlowCommand` - testuj flow emaili
 - `Reset*BookingStats` - resetuj statystyki
+- `SeedVerticalDataCommand` - ręczne seedowanie danych branżowych (dry-run + confirm + audit log)
