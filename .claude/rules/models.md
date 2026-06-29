@@ -589,3 +589,19 @@ $order->status()->transitionTo('confirmed');           // state machine
 
 `pending_payment`, `paid`, **`confirmed`** — wszystkie trzy mogą być anulowane przez admina.
 State machine potwierdza: `confirmed → cancelled` jest legalnym przejściem.
+
+### UWAGA: `saveQuietly()` omija immutable guard
+
+`Order::saveQuietly()` suppresses model events → `updating()` hook NIE jest wywoływany → immutable field guard jest pominięty.
+
+```php
+// ❌ NIGDY dla pól immutable — guard pominięty, brak LogicException!
+$order->saveQuietly();  // gdy dirty: total_amount, order_number itp.
+
+// ✅ saveQuietly() tylko dla pól operacyjnych (events OK to suppress)
+$order->p24_token = '...';
+$order->saveQuietly();  // OK — p24_* nie jest immutable ani w $auditInclude
+```
+
+Pola OK dla `saveQuietly()`: `p24_*`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`.
+Pola ZAKAZANE dla `saveQuietly()`: wszystkie z listy immutable (`total_amount`, `order_number`, `rodo_accepted_at`, itp.).

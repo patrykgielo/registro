@@ -47,8 +47,14 @@ class Order extends Model
         'rodo_accepted_at',
         'terms_accepted_at',
         'withdrawal_exclusion_accepted_at',
+        // Financial audit timestamps — moment of payment receipt / cancellation / completion
+        'paid_at',
+        'cancelled_at',
+        'completed_at',
     ];
 
+    // Defensive: fields outside $auditInclude are already rejected by the allowlist.
+    // $auditExclude adds defense-in-depth in case the Auditable trait ever changes to opt-out mode.
     protected array $auditExclude = [
         'p24_session_id',
         'p24_order_id',

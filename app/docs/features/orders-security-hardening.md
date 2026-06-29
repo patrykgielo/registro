@@ -1,6 +1,6 @@
 # Orders Security Hardening
 
-**Branch:** `feature/fix-services-tenant-unique` (retro-audit PR)
+**Branch:** `fix/orders-billing-security`
 **Date:** 2026-06-29
 
 ## Findings Fixed
@@ -80,3 +80,21 @@ Three section visibility closures used `fn (?Order $record)` to check `customer_
 ## Architecture Rules Updated
 
 See `.claude/rules/models.md` additions.
+
+## Known Limitations / Follow-ups
+
+### Customer Select scope (edit form)
+
+The `user_id` Select in `OrderResource` scopes to users who already have at least one order in the current tenant. A user who is new to this organisation (zero orders) will not appear in the dropdown. This is **acceptable** because `canCreate() = false` — the form is edit-only, and `user_id` is set at checkout time. Any future "create order" flow must revisit this scope.
+
+### `saveQuietly()` bypasses the immutable guard
+
+`Order::saveQuietly()` suppresses Eloquent model events. The `updating()` hook that enforces immutable fields (total_amount, order_number, etc.) runs on the `updating` event — so `saveQuietly()` silently skips it. **Only use `saveQuietly()` on Order for operational fields** (`p24_*`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`) where the guard is not relevant. Never use it to touch immutable fields.
+
+### PESEL / NIP validation is form-layer only
+
+`ValidPolishPESEL` and `ValidPolishNIP` are enforced by the Filament form and the checkout controller. Any future API endpoint that writes to `orders` must add these rules independently at the controller / request layer.
+
+### PESEL in audit_logs.new_values
+
+`customer_pesel` is included in `$auditInclude` for compliance (admin changes must be auditable). The `audit_logs` table therefore stores PESEL in plaintext. A data-retention / access policy for this table is a pre-existing concern and should be addressed before production go-live.

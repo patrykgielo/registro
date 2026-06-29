@@ -48,6 +48,9 @@ class OrderResource extends BaseResource
             Section::make('Klient')
                 ->columns(1)
                 ->schema([
+                    // KNOWN LIMITATION: scope shows only users who already have an order in this org.
+                    // A brand-new user (no orders yet) will not appear — acceptable because canCreate()=false
+                    // means this form is edit-only; the user_id was set at checkout time.
                     Select::make('user_id')
                         ->label('Przypisany klient')
                         ->relationship(
@@ -55,12 +58,17 @@ class OrderResource extends BaseResource
                             titleAttribute: 'email',
                             modifyQueryUsing: function (Builder $query): void {
                                 $tenantId = TenantFeature::currentTenant()?->id;
-                                if ($tenantId !== null) {
-                                    $query->whereHas(
-                                        'orders',
-                                        fn (Builder $q) => $q->where('organization_id', $tenantId)
-                                    );
+                                if ($tenantId === null) {
+                                    // Fail-safe: no tenant context → return no users rather than all users.
+                                    // Same risk class as the cross-tenant PII leak fixed in this branch.
+                                    $query->whereNull('id');
+
+                                    return;
                                 }
+                                $query->whereHas(
+                                    'orders',
+                                    fn (Builder $q) => $q->where('organization_id', $tenantId)
+                                );
                             },
                         )
                         ->getOptionLabelFromRecordUsing(
@@ -74,13 +82,16 @@ class OrderResource extends BaseResource
                                 return;
                             }
                             $tenantId = TenantFeature::currentTenant()?->id;
-                            $userQuery = User::query();
-                            if ($tenantId !== null) {
-                                $userQuery->whereHas(
-                                    'orders',
-                                    fn (Builder $q) => $q->where('organization_id', $tenantId)
-                                );
+                            if ($tenantId === null) {
+                                // Fail-safe: no tenant context → clear selection rather than risk cross-tenant autofill.
+                                $set('user_id', null);
+
+                                return;
                             }
+                            $userQuery = User::query()->whereHas(
+                                'orders',
+                                fn (Builder $q) => $q->where('organization_id', $tenantId)
+                            );
                             $user = $userQuery->find($state);
                             if (! $user) {
                                 return;
