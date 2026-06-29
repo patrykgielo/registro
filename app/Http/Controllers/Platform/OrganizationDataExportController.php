@@ -16,7 +16,7 @@ class OrganizationDataExportController extends Controller
      * Stream the organization data export ZIP to the requester.
      *
      * Authorization (either condition must hold):
-     *   1. Valid signed URL (issued by organizations:export-data command, valid 30 days)
+     *   1. Valid signed URL (issued by organizations:export-data command, valid 7 days)
      *   2. Authenticated super-admin (for platform-side access)
      *
      * The `file` query parameter (path on disk 'local') is signed and cannot be tampered.

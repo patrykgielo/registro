@@ -1,489 +1,413 @@
-# Tenant Lifecycle — Workstream Overview
+# Tenant Lifecycle — Reference
 
-## Status: Faza 5.3b done (2026-06-30) — Tenant data export (Art. 28(3)(g) RODO)
+Single authoritative reference for the entire Tenant Lifecycle workstream (Fazy 5.0–5.3). It replaces the implicit boolean `is_active` with an explicit, state-machine-governed `lifecycle_state` on `Organization`, and adds the offboarding machinery around it: obligation/delete guards, FK backstops, PII anonymization, soft-delete + purge, retention policy, and tenant data export (RODO art. 28(3)(g)).
 
-Workstream introduces an explicit lifecycle state for Organization, replacing the implicit boolean `is_active` as the authoritative source of truth for tenant health. The migration is additive and non-breaking — `is_active` is now a fully derived field, synced automatically from `lifecycle_state` by the observer.
+The migration is additive and non-breaking. `is_active` is now a **fully derived** column, kept in sync from `lifecycle_state` by `OrganizationObserver`.
 
----
-
-## Phases
-
-| Faza | Zakres | Status |
-|------|--------|--------|
-| 5.0 | Enum + state machine + schema + backfill | Done |
-| 5.1 | Guards + observer (is_active sync, obligation checks, delete guard) + Platform lifecycle actions | Done |
-| 5.1-cr | Code-review hardening | Done |
-| 5.2 | FK onDelete policy + public site middleware | Done |
-| 5.3a | SoftDeletes on Organization + PII anonymization + purge command | Done |
-| 5.3b | Tenant data export — full org data copy for owner (Art. 28(3)(g) RODO) | Done |
-| 5.4 | Hard-delete legal records after retention period (6 yrs) | Planned |
+> **Verification note (2026-06-30):** every claim below was checked against the code on `develop`. Discrepancies found vs the previous version of this doc are listed in [§11](#11-doc-vs-code-corrections).
 
 ---
 
-## Faza 5.0 — Schema Foundation
+## Table of Contents
 
-### OrganizationLifecycleState enum
-
-`app/Enums/OrganizationLifecycleState.php`
-
-| Case | Value | allowsPublicSite | allowsNewBookings | isTerminal |
-|------|-------|-----------------|-------------------|------------|
-| Active | `active` | true | true | false |
-| Suspended | `suspended` | false | false | false |
-| Closing | `closing` | false | false | false |
-| Closed | `closed` | false | false | true |
-
-- `Closing` represents the grace-period window before permanent closure. Existing orders/rentals may continue being fulfilled, but no new intake is allowed and the public catalog is hidden.
-- `Closed` is terminal — no outgoing transitions exist.
-
-### State Machine
-
-`app/StateMachines/OrganizationLifecycleStateMachine.php`
-
-Allowed transitions:
-
-```
-Active    ──→ Suspended    (admin suspend)
-Active    ──→ Closing      (closure request accepted)
-Suspended ──→ Active       (reactivate)
-Suspended ──→ Closing      (suspend → initiate closure)
-Closing   ──→ Active       (restore during grace period)
-Closing   ──→ Closed       (grace period expired / confirmed)
-Closed    (terminal — no exits)
-```
-
-The state machine is a plain PHP class (not Eloquent-integrated). It validates transitions and throws `InvalidLifecycleTransitionException` on illegal moves. Callers are responsible for persisting `lifecycle_state` to the database.
-
-**Public API:**
-- `canTransition($from, $to): bool` — accepts enum or string; invalid string `$from` throws `\ValueError`
-- `assertTransitionAllowed($from, $to): void` — throws `InvalidLifecycleTransitionException` on illegal transition
-- `transitions()` is **private** — use `canTransition()` to probe allowed moves
-
-### Schema additions (organizations table)
-
-| Column | Type | Default | Notes |
-|--------|------|---------|-------|
-| `lifecycle_state` | string(20) | `'active'` | Indexed. Cast to `OrganizationLifecycleState`. |
-| `closing_initiated_at` | timestamp nullable | null | Set when entering Closing state |
-| `closed_at` | timestamp nullable | null | Set when entering Closed state |
-| `purge_after` | timestamp nullable | null | Scheduled date for hard-delete (Faza 5.3) |
-| `closure_requested_at` | timestamp nullable | null | Timestamp of tenant's self-service closure request |
-
-### Authoritative truth principle
-
-`lifecycle_state` is the authoritative field. `is_active` is now a derived signal:
-
-- `is_active = true` ↔ `lifecycle_state = 'active'`
-- `is_active = false` ↔ `lifecycle_state in ('suspended', 'closing', 'closed')`
-
-The backfill migration (`2026_06_29_130000`) set initial values. `is_active` is now kept in sync automatically by `OrganizationObserver` (Faza 5.1). `ResolveTenant` middleware still reads `is_active`; changing it to use `lifecycle_state` directly is deferred to Faza 5.2.
+1. [Overview & phase status](#1-overview--phase-status)
+2. [State machine](#2-state-machine)
+3. [Guards & exceptions](#3-guards--exceptions)
+4. [FK onDelete policy](#4-fk-ondelete-policy)
+5. [PII anonymization](#5-pii-anonymization)
+6. [Soft-delete, purge & retention](#6-soft-delete-purge--retention)
+7. [Tenant data export](#7-tenant-data-export)
+8. [Tenant resolution](#8-tenant-resolution)
+9. [Test coverage](#9-test-coverage)
+10. [Follow-ups & technical debt](#10-follow-ups--technical-debt)
+11. [Doc vs code corrections](#11-doc-vs-code-corrections)
 
 ---
 
-## Faza 5.1 — Guards + Observer + Platform Lifecycle Actions
+## 1. Overview & phase status
 
-### TenantObligationService
+`lifecycle_state` is the **authoritative** signal for tenant health. It governs three things: whether the public site is served, whether new bookings/orders may be created, and whether the tenant may be wound down (suspended → closing → closed → purged). Around it sits a guard system that enforces legal retention (Polish tax/civil law) and RODO obligations during offboarding.
 
-`app/Services/TenantObligationService.php`
+| Faza | Scope | Status |
+|------|-------|--------|
+| 5.0 | Enum + state machine + schema columns + backfill | Done |
+| 5.1 | Guards + `OrganizationObserver` (is_active sync, obligation checks, delete guard) + Platform lifecycle actions | Done |
+| 5.1-cr | Code-review hardening (`lifecycle_state` out of `$fillable`, `$attributes` default, null-safe `$from`) | Done |
+| 5.2 | FK `onDelete` policy (DB backstop) + legal-records guard + `ResolveTenant` switched to `lifecycle_state` | Done |
+| 5.3a | `SoftDeletes` on Organization + PII anonymization service + `organizations:purge` + `config/retention.php` | Done |
+| 5.3b | Tenant data export (full org copy for owner, RODO art. 28(3)(g)) + cleanup command | Done |
 
-Counts **active (in-flight)** obligations for a given Organization, bypassing the `BelongsToOrganization` global scope via `withoutGlobalScope('organization')`.
+**Planned / not implemented:**
 
-```php
-$service->activeObligations(Organization $org): array
-// Returns: ['appointments' => int, 'orders' => int, 'rentals' => int, 'total' => int]
+- **5.4** — hard-delete of legal records (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Requires dropping the RESTRICT FK before `forceDelete()`. See [§10](#10-follow-ups--technical-debt).
+- **5.5 / 5.7** — staff `null`-on-delete double-booking follow-up and DPO open questions (JDG REGON, `order_status_history.properties`, `customer_id` nulling). See [§10](#10-follow-ups--technical-debt).
 
-$service->hasActiveObligations(Organization $org): bool
-// Returns true when total > 0
+**Schema columns added to `organizations`** (cast in `app/Models/Organization.php:86`):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `lifecycle_state` | string(20), indexed, default `'active'` | Cast to `OrganizationLifecycleState`. NOT in `$fillable`. |
+| `closing_initiated_at` | timestamp nullable | Set on → Closing, cleared on Closing → Active. |
+| `closed_at` | timestamp nullable | Set on → Closed. |
+| `purge_after` | timestamp nullable | Set on → Closed (`now() + purge_grace_days`); cleared on Closing → Active. |
+| `closure_requested_at` | timestamp nullable | Tenant self-service closure request timestamp. |
+| `deleted_at` | timestamp nullable | `SoftDeletes` (migration `2026_06_30_100001`). |
+
+The model declares `protected $attributes = ['lifecycle_state' => 'active']` (`Organization.php:25`) so `getOriginal('lifecycle_state')` is never `null` on a freshly inserted instance — without it, `syncOriginal()` after INSERT copied `null` and crashed `assertTransitionAllowed()` with a `TypeError`.
+
+---
+
+## 2. State machine
+
+`app/StateMachines/OrganizationLifecycleStateMachine.php` — a plain PHP class (not Eloquent-integrated). It validates transitions and throws; **persisting `lifecycle_state` is the caller's responsibility**.
+
+### States — `app/Enums/OrganizationLifecycleState.php`
+
+| Case | Value | `label()` | `allowsPublicSite()` | `allowsNewBookings()` | `isTerminal()` |
+|------|-------|-----------|----------------------|-----------------------|----------------|
+| `Active` | `active` | Aktywna | true | true | false |
+| `Suspended` | `suspended` | Zawieszona | false | false | false |
+| `Closing` | `closing` | W trakcie zamknięcia | false | false | false |
+| `Closed` | `closed` | Zamknięta | false | false | true |
+
+All three helpers return `true` only for `Active` (`OrganizationLifecycleState.php:28-48`). `Closing` is the grace-period window: in-flight orders/rentals may still be fulfilled, but no new intake and the public catalog is hidden. `Closed` is terminal.
+
+### Transition map — `transitions()` (private, `:16-23`)
+
+```
+active     → suspended, closing
+suspended  → active, closing
+closing    → active, closed
+closed     → (terminal — no outgoing transitions)
 ```
 
-**Obligation definitions (what counts as in-flight):**
-
-| Domain | In-flight states | Notes |
-|--------|-----------------|-------|
-| Appointments | `pending`, `confirmed` | cancelled/completed are terminal |
-| Orders | `pending_payment`, `paid`, `confirmed`, `in_progress` | `completed` is terminal — does NOT block closure |
-| Rentals | `held`, `pending`, `confirmed`, `active` | returned/cancelled/expired are terminal |
-
-**CRITICAL:** `completed` order does NOT block closure. A completed order is a finished transaction.
-Only in-flight orders (pending_payment → in_progress) block the org from being wound down.
-
-### OrganizationObserver
-
-`app/Observers/OrganizationObserver.php` — registered in `AppServiceProvider::boot()`.
-
-**`creating()` hook:**
-- Derives `is_active` from `lifecycle_state` on INSERT. Defaults to Active if not set.
-
-**`updating()` hook** (fires when lifecycle_state changes):
-1. Calls `StateMachine::assertTransitionAllowed($from, $to)` — throws `InvalidLifecycleTransitionException` on illegal transitions
-2. For `Closing` and `Closed` destinations (and `!$org->forceLifecycleTransition`): calls `activeObligations()` once and throws `OrganizationHasActiveObligationsException` if total > 0
-3. Syncs `is_active` from `lifecycle_state` (F003)
-4. Sets lifecycle timestamps (W8)
-
-**`updated()` hook:**
-- Resets `$org->forceLifecycleTransition = false` after every successful save. Prevents flag from leaking when the same model instance is reused.
-
-**`deleting()` hook** — guards (in order):
-1. `bypassDeleteGuard = true` → skip all checks
-2. `lifecycle_state !== Closed` → throw `OrganizationNotClosedException`
-3. Active obligations exist → throw `OrganizationHasActiveObligationsException`
-
-**`deleted()` hook:**
-- Resets `$org->bypassDeleteGuard = false` after deletion.
-
-**Transient model flags** (`app/Models/Organization.php`, not persisted):
-
-```php
-$org->forceLifecycleTransition = true;  // bypass obligation check in updating(); reset by updated()
-$org->bypassDeleteGuard = true;         // bypass all delete checks; reset by deleted()
+```
+Active ──────► Suspended        (suspend)
+Active ──────► Closing          (initiate closing)
+Suspended ───► Active           (reactivate)
+Suspended ───► Closing          (initiate closing)
+Closing ─────► Active           (restore during grace — clears closing_initiated_at + purge_after)
+Closing ─────► Closed           (grace expired / confirmed — sets closed_at + purge_after)
 ```
 
-### F003 — lifecycle_state is NOT in $fillable
+### Public API
 
-`lifecycle_state` was removed from `Organization::$fillable` (code-review hardening).
+- `canTransition($from, $to): bool` — accepts enum or string for either side. An invalid string `$from` throws `\ValueError` (`:30-42`).
+- `assertTransitionAllowed($from, $to): void` — throws `InvalidLifecycleTransitionException` on illegal moves (`:51-63`).
+- `transitions()` is **private** — probe with `canTransition()`.
 
-- Setting it via mass-assignment (`Organization::create(['lifecycle_state' => ...])`) is a no-op.
-- **On create:** set directly on the model instance before `save()` — observer `creating()` picks it up.
-- **On update:** set directly (`$org->lifecycle_state = State::Foo; $org->save()`) — observer `updating()` fires.
-- **In factories:** use `->afterMaking(fn ($o) => $o->lifecycle_state = State)` or named factory states.
+### Where it is enforced
 
-**Factory states available:**
+The state machine is invoked from a single place: `OrganizationObserver::updating()` (`app/Observers/OrganizationObserver.php:65`), which runs on every `lifecycle_state` change. The observer is registered in `AppServiceProvider::boot()` (`app/Providers/AppServiceProvider.php:90`). All callers (Filament actions, CLI, tests) go through Eloquent `save()` → the observer, so there is no bypass except the explicit transient flags below.
 
-```php
-Organization::factory()->create()          // Active (default)
-Organization::factory()->inactive()->create()  // Suspended
-Organization::factory()->closing()->create()   // Closing
-Organization::factory()->closed()->create()    // Closed
-```
+---
 
-**Never do:** `Organization::create(['lifecycle_state' => 'closed'])` — lifecycle_state not fillable.
+## 3. Guards & exceptions
 
-**Model default attribute (Faza 5.1-cr2, 2026-06-29):**
+All lifecycle enforcement lives in `OrganizationObserver`. Two transient, non-persisted flags on the model can bypass specific guards; both are auto-reset after the operation so they cannot leak to a reused instance.
 
-`Organization` now declares `protected $attributes = ['lifecycle_state' => 'active']` to mirror the DB column default. This ensures `getOriginal('lifecycle_state')` is never `null` on a freshly inserted model instance, which prevented `OrganizationObserver::updating()` from deriving a valid `$from` state when the observer was called immediately after `factory()->create()` (no lifecycle state set explicitly). Without this default, `syncOriginal()` after INSERT copied `null` for `lifecycle_state`, causing a `TypeError` in `assertTransitionAllowed()`.
+### 3.1 Transient model flags (`Organization.php:32,39`)
 
-**Observer null-safe guard (defense-in-depth):**
+| Flag | Bypasses | Reset by |
+|------|----------|----------|
+| `forceLifecycleTransition` | obligation check in `updating()` (Guard 2) | `saved()` — fires after **every** save, incl. no-ops |
+| `bypassDeleteGuard` | all of `deleting()` (Guards 2–4) | `deleted()` |
 
-`OrganizationObserver::updating()` derives `$from` via `match(true)` with a `default → Active` arm, so that even if `getOriginal('lifecycle_state')` returns `null` (e.g., via `forceFill` bypassing the default), the guard falls back to `Active` rather than crashing.
+`forceLifecycleTransition` is reset in `saved()` rather than `updated()` on purpose: `updated()` only fires when Eloquent actually writes (dirty model). A no-op `save()` would otherwise leave the flag set for the next save that *does* touch `lifecycle_state`. See `OrganizationObserver.php:106-129`.
 
-### Platform Filament lifecycle actions (F004)
+### 3.2 `updating()` guards (`:49-104`)
 
-`app/Filament/Platform/Resources/OrganizationResource.php`
+Runs only when `isDirty('lifecycle_state')`. Derives `$from` via a null-safe `match(true)` that falls back to `Active` if `getOriginal()` is `null` (defense-in-depth on top of the `$attributes` default).
 
-Replaced the `Toggle::make('is_active')` form field with:
-- A read-only `Placeholder::make('lifecycle_state')` in the edit form
-- A `lifecycle_state` SelectFilter + badge TextColumn in the table
-- Three row `Action`s (all visible only to super-admin):
+1. **Transition validation** — `stateMachine->assertTransitionAllowed($from, $to)` → `InvalidLifecycleTransitionException`.
+2. **Obligations** — when `$to ∈ {Closing, Closed}` **and** `! forceLifecycleTransition`: calls `TenantObligationService::activeObligations()` once; if `total > 0` throws `OrganizationHasActiveObligationsException`.
+3. **Derived `is_active`** — set to `($to === Active)`.
+4. **Timestamps** — `Closing` sets `closing_initiated_at`; `Closed` sets `closed_at` and `purge_after = now() + purge_grace_days` (only if not already set); `Closing → Active` clears both `closing_initiated_at` and `purge_after`.
+
+### 3.3 `deleting()` guards (`:144-191`)
+
+Hard-delete only. Guards in order:
+
+1. `bypassDeleteGuard === true` → **skip all** (return early).
+2. `lifecycle_state !== Closed` → `OrganizationNotClosedException`.
+3. Active obligations exist (`TenantObligationService`) → `OrganizationHasActiveObligationsException`.
+4. **Legal records exist** → `OrganizationHasLegalRecordsException`. Counts orders + payments + rentals + tenant_payments via `withoutGlobalScope('organization')` + explicit `where('organization_id', …)`. Even completed/cancelled records count — they must survive 5–6 years. The DB RESTRICT FK ([§4](#4-fk-ondelete-policy)) is the final backstop when `bypassDeleteGuard` skips this check (purge command path).
+
+> Note: `deleting()` fires on **hard** delete (`forceDelete()`), not on soft-delete. `$org->delete()` is an `UPDATE deleted_at` and does **not** trip the RESTRICT FK. The purge command soft-deletes with `bypassDeleteGuard = true` ([§6](#6-soft-delete-purge--retention)).
+
+### 3.4 Obligation definitions — `app/Services/TenantObligationService.php`
+
+`activeObligations(Organization $org): array{appointments,orders,rentals,total}` and `hasActiveObligations(): bool`. All queries bypass the `BelongsToOrganization` global scope (super-admin context has no bound tenant) and filter explicitly by `organization_id`.
+
+| Domain | "In-flight" statuses (block closure) | Terminal (do NOT block) |
+|--------|--------------------------------------|-------------------------|
+| Appointments | `pending`, `confirmed` | `cancelled`, `completed` |
+| Orders | `pending_payment`, `paid`, `confirmed`, `in_progress` | `completed`, `refunded`, `cancelled` |
+| Rentals | `held`, `pending`, `confirmed`, `active` | `returned`, `cancelled`, `expired` |
+
+**Critical:** a `completed` order is a finished transaction and does **not** block closure. Only in-flight obligations do. (`TenantObligationService.php:42-73`.)
+
+### 3.5 Filament Platform actions — `app/Filament/Platform/Resources/OrganizationResource.php`
+
+The `is_active` toggle was replaced by a read-only `Placeholder` (`:89`), a `lifecycle_state` badge column (`:182`) + `SelectFilter` (`:214`), and three row actions. Each has `->authorize(super-admin)` **and** a `->visible()` super-admin check (defense-in-depth on top of `EnsureSuperAdmin` middleware).
 
 | Action | Label | Transition | Obligation check |
-|--------|-------|-----------|-----------------|
-| `suspend` | Zawieś | Active → Suspended | No |
-| `reactivate` | Reaktywuj | Suspended/Closing → Active | No |
-| `initiateClosing` | Zamknij | Active/Suspended → Closing | Yes (via `->before()`, then `forceLifecycleTransition = true`) |
+|--------|-------|-----------|------------------|
+| `suspend` (`:233`) | Zawieś | Active → Suspended | No |
+| `reactivate` (`:247`) | Reaktywuj | Suspended/Closing → Active | No |
+| `initiateClosing` (`:265`) | Zamknij | Active/Suspended → Closing | Yes — `->before()` checks obligations, halts with a `persistent()` notification on `total > 0`; the `->action()` then sets `forceLifecycleTransition = true` to skip the observer's double-check |
 
-**Delete guard in Filament:**
-- `EditOrganization::DeleteAction::before()`: checks lifecycle_state === Closed first, then checks obligations
-- `OrganizationResource::DeleteBulkAction::before()`: per-record, checks lifecycle_state then obligations
-- Both halt with Notification on violation — no 500 errors from observer throwing into unhandled context.
+`canViewAny()` and `canDelete()` (`:36,41`) require `super-admin`; `canDelete()` additionally hides the button unless `lifecycle_state === Closed`.
 
-**Authorization (defense-in-depth):**
-- `OrganizationResource::canViewAny()` and `canDelete()` require `super-admin` role
-- Lifecycle action `->visible()` callbacks also check `auth()->user()?->hasRole('super-admin')`
+**Delete guards mirror the observer** (so a violation surfaces as a notification, never a 500):
+- `EditOrganization::DeleteAction::before()` (`OrganizationResource/Pages/EditOrganization.php:21`) — checks Closed first, then obligations.
+- `DeleteBulkAction::before()` (`OrganizationResource.php:306`) — per record: Closed → obligations → **legal records** (orders/payments/rentals/tenant_payments). Builds a `$blocked[]` list and halts if non-empty.
 
-### Staff delete guard
+### 3.6 Staff delete guard — `app/Filament/Resources/EmployeeResource.php`
 
-`app/Filament/Resources/EmployeeResource.php`
+`DeleteAction` + `DeleteBulkAction` are guarded by `hasFutureActiveAppointments(User $staff)` (`:274-291`):
+- `TenantFeature::currentTenant() === null` → returns `false` immediately (no cross-tenant leak).
+- Requires explicit `where('organization_id', $tenant->id)` — no `->when($tenant, …)` that would silently scan all orgs.
+- Blocks only **future** (`appointment_date >= today`) `pending`/`confirmed` appointments. Past/terminal appointments don't block — they are preserved via `staff_id` null-on-delete ([§4](#4-fk-ondelete-policy)).
 
-`DeleteAction` and `DeleteBulkAction` guarded by `hasFutureActiveAppointments(User $staff)`:
-- When `TenantFeature::currentTenant() === null`, returns `false` immediately (no cross-tenant leak)
-- Requires explicit `organization_id` scope (no `->when($tenant, ...)` which would silently scan all orgs if tenant is null)
+Testing in isolation: set `$this->app['request']->attributes->set('tenant', $org)` first, or `currentTenant()` returns `null` and the guard short-circuits to `false`.
 
-**Testing `hasFutureActiveAppointments()` in isolation:**
+### 3.7 Exceptions — `app/Exceptions/`
 
-The method reads `TenantFeature::currentTenant()`, which resolves from Filament context → request attributes → session. Tests must set the tenant on the request before invoking the method:
+All extend `RuntimeException`.
 
-```php
-$this->app['request']->attributes->set('tenant', $org);
-```
+| Class | Thrown when |
+|-------|-------------|
+| `InvalidLifecycleTransitionException` | Illegal state transition (state machine). |
+| `OrganizationHasActiveObligationsException` | Lifecycle change or delete blocked by in-flight obligations. |
+| `OrganizationNotClosedException` | Delete attempted when `lifecycle_state !== Closed`. |
+| `OrganizationHasLegalRecordsException` | Delete blocked by outstanding legal records (Art. 74 Ustawy o rachunkowości + Art. 112 VAT). Bypassed by `bypassDeleteGuard`; FK RESTRICT remains the backstop. |
 
-Without this, `currentTenant()` returns `null` and the guard immediately returns `false`, masking any business-logic assertions.
+### 3.8 `lifecycle_state` is NOT mass-assignable (F003)
 
-### Exceptions
-
-| Class | Path | When thrown |
-|-------|------|-------------|
-| `InvalidLifecycleTransitionException` | `app/Exceptions/` | Illegal state transition |
-| `OrganizationNotClosedException` | `app/Exceptions/` | Delete attempted when lifecycle_state !== Closed |
-| `OrganizationHasActiveObligationsException` | `app/Exceptions/` | Lifecycle/delete blocked by in-flight obligations |
-
-### Tests
-
-| Test class | Count | Covers |
-|------------|-------|--------|
-| `TenantObligationServiceTest` | 12 | Appointment/Order/Rental counts, completed order excluded, cross-org isolation |
-| `OrganizationObserverTest` | 17 | Transitions, obligations, is_active sync, timestamps, delete guard, force flag reset |
-| `StaffDeleteGuardTest` | 7 | Staff delete guard (past/future, status filters, isolation) |
-| `OrganizationLifecycleStateMachineTest` | 13 | Legal/illegal transitions, string API, W7 ValueError |
-| `OrganizationLifecycleCastTest` | 4 | Enum cast, factory states |
-| `ResolveTenantTest` | 7 | Middleware: active/inactive/unknown tenants |
-
-**Test patterns:**
-- Factory states (`->inactive()`, `->closing()`, `->closed()`) instead of `create(['lifecycle_state' => ...])`
-- `setLifecycleState()` helper — sets attribute directly on model, triggers `updating()` observer
-- `Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'web'])` in setUp
-- Shared `$this->vehicleType` in setUp to avoid VehicleType unique slug collisions
+Removed from `$fillable` (`Organization.php:73-84`). `Organization::create(['lifecycle_state' => …])` is a no-op.
+- **On create:** set on the instance before `save()` (observer `creating()` picks it up), or use a factory state.
+- **On update:** `$org->lifecycle_state = State::Foo; $org->save();`.
+- **Factories:** `->inactive()` (Suspended), `->closing()`, `->closed()` (all via `afterMaking`). Default `factory()->create()` = Active.
+- `is_active` is likewise not directly settable — only the observer writes it. Billing fields (`subscription_status`, `monthly_fee`, `subscribed_at`, `subscription_expires_at`) are also excluded from `$fillable`.
 
 ---
 
-## Faza 5.2 — FK backstop + lifecycle resolution (Done)
+## 4. FK onDelete policy
 
-DB-level enforcement behind the 5.1 application guards, plus the lifecycle authority switch.
+Migration `database/migrations/2026_06_30_000001_fix_lifecycle_fk_constraints.php` — the DB-level backstop behind the application guards. FK behaviour is **category-driven**, not uniform.
 
-**FK onDelete policy** (migration `2026_06_30_000001_fix_lifecycle_fk_constraints.php`):
+| Category | Tables (`organization_id` unless noted) | onDelete | Rationale |
+|----------|------------------------------------------|----------|-----------|
+| Legal records | `orders`, `payments`, `tenant_payments`, `rentals` | **restrict** | Must survive org deletion ≥5–6 yrs (Art. 112 VAT / Art. 70 Ordynacja). Last-resort engine-level enforcement behind `OrganizationHasLegalRecordsException` and a soft-delete-first purge. |
+| Staff link | `appointments.staff_id` (was NOT NULL cascade) | **nullable + nullOnDelete** | Deleting a staff `User` preserves historical appointments (`staff_id = null`). Aligns with the 5.1 guard that blocks only *future* appointments. Never `restrict` here. |
+| Ephemeral | `carts.organization_id`, `statistics_daily_snapshots.organization_id` | cascade (unchanged) | OK to drop with the org. |
+| Ephemeral | `analytics_events.organization_id` | nullOnDelete (already, unchanged) | Set by `2026_03_08_000003`. |
+| Bound child | `payments.order_id` | unchanged | Payment is bound to its order; `organization_id` is the legal backstop. |
 
-| Category | Tables (`organization_id` unless noted) | onDelete | Why |
-|---|---|---|---|
-| Legal records | `orders`, `payments`, `tenant_payments`, `rentals` | **restrict** | Must survive org deletion — retain ≥5–6 yrs (Art. 112 VAT / Art. 70 Ordynacja). Last-resort backstop behind the observer guard. |
-| Staff link | `appointments.staff_id` (was NOT NULL cascade) | **nullable + nullOnDelete** | Deleting a staff member preserves historical appointments (`staff_id = null`). Aligns with the 5.1 guard that blocks only *future* appointments. |
-| Ephemeral | `carts`, `statistics_daily_snapshots`; `analytics_events` already null | cascade / null (unchanged) | OK to drop with the org. |
+**SQLite nuance:** `staff_id` is made nullable only on MySQL (`DB::getDriverName() !== 'sqlite'`, `:74`) because Doctrine `ALTER COLUMN` is unsupported on SQLite. The FK drop/re-add **is** applied on SQLite via Laravel 12's table-rebuild, so the `nullOnDelete` constraint is enforced in tests too; app-level tests cover nullability.
 
-`down()` leaves `staff_id` nullable on rollback (restoring NOT NULL would fail if any staff was deleted while applied; nullable is a safe superset).
-
-**Observer legal-records guard:** `OrganizationObserver::deleting()` throws `OrganizationHasLegalRecordsException` when the org still has any order/payment/rental/tenant_payment — a human-readable error *before* the DB RESTRICT FK fires. `bypassDeleteGuard = true` skips the app guard, leaving the FK as the final backstop (for the Faza 5.3 purge tool, used only after records are anonymised/archived).
-
-**ResolveTenant:** resolution gates on `lifecycle_state = Active` (authoritative) instead of `is_active`. `is_active` stays as a derived column (kept in sync by the observer) for the platform panel column/filter. Cache key `tenant:slug:{slug}` (300 s TTL) unchanged.
-
-**5.1 follow-ups closed here:** `forceLifecycleTransition` reset moved to `saved()` (fires on no-op saves too); `->authorize(super-admin)` on Suspend/Reactivate/InitiateClosing; `canDelete()` hides delete for non-Closed orgs; `closed_at` timestamp test added.
+**Rollback (`down()`):** restores legal-record FKs to cascade and `staff_id` to cascade, but **leaves `staff_id` nullable** — restoring NOT NULL would fail if any staff was deleted while the migration was applied (those rows now hold `staff_id = null`). Nullable is a safe superset; re-running `up()` stays safe.
 
 ---
 
-## Faza 5.3a — SoftDeletes + PII Anonymization + Purge Command
+## 5. PII anonymization
 
-### SoftDeletes on Organization
+`app/Services/Lifecycle/OrganizationAnonymizationService.php`. `anonymize(Organization $org): array{orders,appointments,rentals,payments}` wraps four private methods in a single `DB::transaction()`. Returns per-model affected counts.
 
-`database/migrations/2026_06_30_100001_add_soft_deletes_to_organizations.php` adds `deleted_at` (nullable timestamp) to `organizations`.
+**Why `DB::table()` (not Eloquent):** the `Order` model has a `booted() updating()` immutable guard protecting `rodo_accepted_ip` and accounting fields. `DB::table()` bypasses Eloquent events entirely, allowing those PII fields to be cleared while leaving the accounting fields untouched. It also avoids loading models for bulk updates.
 
-`Organization` model gains `use SoftDeletes`. Behavioral change:
-- `$org->delete()` = `UPDATE organizations SET deleted_at = now()` (NOT a hard DELETE)
-- `Organization::all()` / `find()` / `where()` automatically exclude soft-deleted rows
-- FK `RESTRICT` onDelete does **not** fire on soft-delete (it's an UPDATE, not DELETE) — the FK remains the backstop for future hard-delete (Faza 5.4)
-- `Organization::withTrashed()->find($id)` retrieves soft-deleted rows
-- `$org->bypassDeleteGuard = true; $org->delete()` — still a soft-delete after this migration; `forceDelete()` would be the hard-delete (reserved for Faza 5.4)
+**Idempotent:** safe to re-run. Email placeholders embed the row id (`anon_{id}@anonymized.local`) so they stay unique per row across repeated runs. Per-row uniqueness requires the `chunkById(500)` loop (orders/appointments/rentals); payments use a single bulk `update`.
 
-`OrganizationObserver::deleting()` guards against accidental deletion; `bypassDeleteGuard = true` bypasses the app guard (FK remains). `deleted()` resets the flag.
+**Principle:** anonymize PII of natural persons (RODO art. 5(1)(e), art. 17); preserve accounting data (NIP, REGON for B2B, amounts, dates, order numbers, fiscal timestamps) for the retention window (Art. 112 VAT / Art. 70 Ordynacja). Consent **timestamps** (`rodo_accepted_at`, `terms_accepted_at`) are retained as proof of a legal act; the consent **IP** is PII and cleared.
 
-### config/retention.php
-
-`config/retention.php` centralizes all retention periods with legal basis:
-
-| Key | Value | Legal basis |
-|---|---|---|
-| `legal_records_years` | 6 | Art. 112 VAT / Art. 70 Ordynacja Podatkowa — invoices/payments |
-| `claims_b2c_years` | 6 | KC art. 118 — B2C claim limitation |
-| `claims_b2b_years` | 3 | KC art. 118 — B2B claim limitation |
-| `purge_grace_days` | 30 | Offboarding grace window (Closing → Closed → purge_after) |
-| `analytics_months` | 13 | Ephemeral analytics data |
-| `carts_days` | 7 | Abandoned cart retention |
-| `statistics_days` | 365 | Statistics snapshots |
-
-All commands and observers read from this config — no magic numbers.
-
-### purge_after set automatically on Closed transition
-
-`OrganizationObserver::updating()` when `$to === Closed`: sets `purge_after = now()->addDays(config('retention.purge_grace_days'))` if not already set. This ensures every org that reaches `Closed` has a deterministic purge window, even without an explicit offboarding flow.
-
-### OrganizationAnonymizationService
-
-`app/Services/Lifecycle/OrganizationAnonymizationService`
-
-Method `anonymize(Organization $org): array` — returns `['orders' => int, 'appointments' => int, 'rentals' => int, 'payments' => int]`.
-
-**PII vs accounting distinction (RODO art. 5(1)(e) + Art. 112 VAT):**
+### Per-model field map
 
 | Model | ANONYMIZED (PII) | PRESERVED (accounting/legal) |
-|---|---|---|
-| Order | first_name→`Anonimizowane`, last_name→`Anonimizowane`, email→`anon_{id}@anonymized.local`, phone, PESEL, address fields, signatory_id, pickup_person_*, IP, rodo_accepted_ip, notes, company_contact_name, deposit_notes; for `customer_type=natural_person`: company_regon, company_krs (JDG REGON identifies the person) | order_number, amounts, dates, customer_type, invoice_* (NIP/KRS address), deposit_amount/status/timestamps, rodo_accepted_at, terms_accepted_at, p24_*; for `business`: company_regon, company_krs |
-| Appointment | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone, location_address/lat/lng/components/place_id/service_location_type (CRITICAL — mobile service client address), registration_number (vehicle plate = PII per UODO), notes, cancellation_reason | invoice_*, amounts, dates, status |
-| Rental | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone, notes, cancellation_reason | invoice_*, amounts, dates, status |
-| Payment | webhook_payload→null | p24_session_id, p24_order_id, amount, currency, status |
+|-------|------------------|------------------------------|
+| **Order** (`:85`) | `customer_first_name`→`'Anonimizowane'`, `customer_last_name`→`'Anonimizowane'` (NOT NULL → placeholder), `customer_email`→`anon_{id}@…`, `customer_phone`, `customer_pesel`, `customer_street/building/apartment/city/postal_code`, `signatory_id_number`, `pickup_person_name`, `pickup_person_id_number`, `ip_address`, `rodo_accepted_ip`, `notes`, `company_contact_name`, `deposit_notes`; **if `customer_type='natural_person'`:** `company_regon`, `company_krs` (JDG REGON identifies the person) | `order_number`, `status`, `currency`, `subtotal`, `discount_amount`, `tax_amount`, `total_amount`, `deposit_amount/status/collected_at/returned_at`, `customer_type`, `invoice_*` (company_name/nip/street/postal/city), `rodo_accepted_at`, `terms_accepted_at`, `withdrawal_exclusion_accepted_at`, `p24_*`, `paid_at`, `cancelled_at`, `completed_at`, timestamps; **if `customer_type='business'`:** `company_regon`, `company_krs` (appear on B2B invoice, Art. 106e VAT) |
+| **Appointment** (`:149`) | `first_name`→`'Anonimizowane'`, `last_name`→`null`, `email`→`anon_{id}@…`, `phone`, `location_address/latitude/longitude/components/place_id`, `service_location_type` (mobile-service client location — **critical PII**), `registration_number` (vehicle plate = PII per UODO), `notes`, `cancellation_reason` | `invoice_*`, `service_price_at_booking`, `service_name_at_booking`, `service_duration_at_booking`, `appointment_date`, `start_time`, `end_time`, `status`, `completed_at`, `cancelled_at`, timestamps |
+| **Rental** (`:194`) | `first_name`→`'Anonimizowane'`, `last_name`→`null`, `email`→`anon_{id}@…`, `phone`, `notes`, `cancellation_reason` | `invoice_*`, `total_price`, `unit_price_at_booking`, `deposit_amount`, `quantity`, `start_date`, `end_date`, `status`, timestamps |
+| **Payment** (`:228`) | `webhook_payload`→`null` (raw P24 JSON blob — may hold buyer name/email/IP) | `p24_session_id`, `p24_order_id`, `amount`, `currency`, `status`, `verified_at`, `order_id`, `organization_id`, timestamps |
 
-**Implementation notes:**
-- All updates use `DB::table()` (NOT Eloquent) to bypass Order's `booted() updating()` immutable guard that protects `rodo_accepted_ip` and accounting fields.
-- `chunkById(500)` loop for per-row unique email placeholder.
-- `customer_last_name` uses `'Anonimizowane'` placeholder (NOT NULL column in schema).
-- For orders: `customer_type` is checked per row — `natural_person` gets `company_regon/krs` nulled; `business` retains them.
-- Wrapped in `DB::transaction()`. Idempotent — safe to re-run.
+The asymmetry per `customer_type` is checked per row inside the chunk loop. Payments are counted/updated only `whereNotNull('webhook_payload')`.
 
-### PurgeClosedOrganizationsCommand (`organizations:purge`)
+> **`customer_id` is NOT nulled** — orders/appointments/rentals keep their FK to `users`. This is pseudonymization, not full anonymization. See [§10](#10-follow-ups--technical-debt) FU-3.
 
-`app/Console/Commands/PurgeClosedOrganizationsCommand`
+---
 
-Signature: `organizations:purge {--dry-run} {--force}`
+## 6. Soft-delete, purge & retention
 
-Eligibility query: `lifecycle_state = closed AND purge_after <= now() AND deleted_at IS NULL` (SoftDeletes global scope auto-excludes already-purged orgs).
+### 6.1 SoftDeletes
 
-Per eligible org (in `DB::transaction`, `catch \Throwable → Log::error + continue to next org`):
-1. `OrganizationAnonymizationService::anonymize($org)` — PII cleared (nested transaction via SAVEPOINT — safe)
-2. Hard-delete ephemeral: `carts`, `analytics_events`, `statistics_daily_snapshots`
-3. Legal records (orders, payments, tenant_payments) — **NOT deleted** (retain ≥6 yrs)
-4. Soft-delete org: `$org->bypassDeleteGuard = true; $org->delete()`
+`Organization use SoftDeletes` (`Organization.php:18`); `deleted_at` added by `2026_06_30_100001_add_soft_deletes_to_organizations.php`.
+- `$org->delete()` → `UPDATE deleted_at` (not a hard DELETE) → does **not** trip the RESTRICT FK.
+- Normal queries auto-exclude trashed rows; `withTrashed()` retrieves them.
+- `$org->forceDelete()` = hard-delete — reserved for Faza 5.4; would trip `deleting()` guards + FK.
 
-Audit log: `Log::info` (start/completed with `failed` count), `Log::warning` (before each purge).
-Dry-run: prints what would be purged (payment count uses `whereNotNull('webhook_payload')` for consistency with what actually anonymizes), makes zero changes.
-Confirm gate: `isInteractive() && !--force → confirm('Continue?')`.
-Failure behavior: one failing org logs error and `continue`s — the cohort is not blocked. Returns `FAILURE` at the end if `$failed > 0`.
+### 6.2 `config/retention.php`
 
-FUTURE (Faza 5.4): hard-delete legal records after `legal_records_years` — not implemented here.
+All periods centralized with legal basis — no magic numbers. Read via `config('retention.*')`.
 
-### Schedule
+| Key | Value | Basis |
+|-----|-------|-------|
+| `legal_records_years` | 6 | Art. 112 VAT / Art. 70 Ordynacja (invoices/payments; 5 full yrs + margin). |
+| `claims_b2c_years` | 6 | KC art. 118 — B2C claim limitation. |
+| `claims_b2b_years` | 3 | KC art. 118 — B2B claim limitation. |
+| `purge_grace_days` | 30 | Grace window Closed → purge (appeal/reactivate before PII destroyed). |
+| `analytics_months` | 13 | GDPR LIA cap (1 yr comparisons + current month). |
+| `carts_days` | 7 | Abandoned cart retention. |
+| `statistics_days` | 365 | Daily snapshot value horizon. |
+| `export_files_days` | 8 | Export ZIP retention (signed-URL TTL 7 d + 1 d margin). |
 
-`routes/console.php`:
+### 6.3 `organizations:purge` — `app/Console/Commands/PurgeClosedOrganizationsCommand.php`
+
+Signature: `organizations:purge {--dry-run} {--force}`. Follows the mandatory destructive-command pattern (dry-run / confirm gate / audit log / per-org transaction).
+
+**Eligibility:** `lifecycle_state = 'closed' AND purge_after <= now()`. The `SoftDeletes` global scope auto-excludes already-purged (trashed) orgs.
+
+**Per eligible org**, inside `DB::transaction()`, with `catch \Throwable → Log::error + continue` (one failure must not block the cohort):
+1. `OrganizationAnonymizationService::anonymize($org)` — its inner `DB::transaction()` nests via SAVEPOINT (safe).
+2. Hard-delete ephemeral: `carts` (`withoutGlobalScope`), `analytics_events`, `statistics_daily_snapshots`.
+3. Legal records (orders/payments/tenant_payments/rentals) — **left in place**, already anonymized, retained ≥6 yrs.
+4. Soft-delete the org: `$org->bypassDeleteGuard = true; $org->delete()`.
+
+**Controls:**
+- `--dry-run` — prints counts per org (payments via `whereNotNull('webhook_payload')` to match what actually anonymizes), zero writes.
+- Confirm gate — `isInteractive() && !--force → confirm()`.
+- Audit — `Log::info(start)`, `Log::warning(before purge, incl. org_ids + interactive flag)`, `Log::info(completed)`.
+- Returns `FAILURE` if any org failed; otherwise `SUCCESS`.
+
+### 6.4 Schedule — `routes/console.php`
+
 ```php
-Schedule::command('organizations:purge --force')
-    ->dailyAt('03:00')
-    ->withoutOverlapping()
-    ->name('organizations:purge')
-    ->onOneServer();
+Schedule::command('organizations:purge --force')->dailyAt('03:00')
+    ->withoutOverlapping()->name('organizations:purge')->onOneServer();          // :183
+
+Schedule::command('organizations:cleanup-exports')->dailyAt('04:00')
+    ->withoutOverlapping()->name('organizations:cleanup-exports')->onOneServer(); // :191
 ```
 
-### Tests
+### 6.5 `organizations:cleanup-exports` — `app/Console/Commands/CleanupOrganizationExportsCommand.php`
 
-`tests/Feature/Organizations/OrganizationPurgeTest` — 16 tests, 128 assertions.
-
-Covers: PII cleared / accounting preserved (incl. deposit_notes, company_regon/krs per customer_type, location/registration for appointments, notes/cancellation_reason for appointments+rentals), business customer retains company_regon/krs, payment webhook_payload, idempotence, cross-org isolation (Org B untouched when anonymizing Org A), observer sets purge_after, observer does not overwrite existing purge_after, soft-delete exclusion from normal queries, soft-delete retrievable with `withTrashed()`, command processes eligible org, command skips future purge_after, command skips non-Closed, dry-run makes no changes.
-
-**SQLite note:** `assertSame()` fails for decimal columns — SQLite returns numeric int (`500`), not string (`'500.00'`). All decimal assertions use `assertEquals()`.
+`{--days=}` (default `config('retention.export_files_days', 8)`). Iterates `Storage::disk('local')->allFiles('exports')` and deletes any whose `lastModified < now()->subDays($days)`. Logs the deleted count. GDPR art. 5(1)(e) — export ZIPs hold full PII and must not accumulate.
 
 ---
 
-## Faza 5.3a Follow-ups / DPO Review (dług techniczny)
+## 7. Tenant data export
 
-These items were identified during 5.3a implementation but deferred — each requires either a DPO legal opinion or a scale-related architectural decision before proceeding.
+Returns a full copy of an organization's data to its owner on service termination. Legal basis: **RODO art. 28 ust. 3 lit. g** (processor returns data to controller); art. 12 ust. 3 deadline = 1 month. Signed link TTL = **7 days** (art. 25 minimisation; the ZIP holds PESEL/NIP/full customer base, well inside the deadline).
 
-### FU-1 — JDG REGON/KRS on invoices (DPO opinion needed)
+### 7.1 Service — `app/Services/Lifecycle/OrganizationDataExportService.php`
 
-**Status:** FIXME comment in `OrganizationAnonymizationService::anonymizeOrders()`.
+`generate(Organization $org): string` → relative path on disk **`local`** (e.g. `exports/org-1/20260630_120000.zip`).
+- `DB::table(...)->where('organization_id', $orgId)->chunk(500)` per dataset (bypasses Eloquent global scopes; every query explicitly org-scoped → no cross-tenant data).
+- Streams JSON (array, one row per line) + CSV (UTF-8 BOM, semicolon-delimited) to temp files, then bundles via `ZipArchive`.
+- ZIP contents: `manifest.json` + `{dataset}.json` + `{dataset}.csv` for `orders`, `appointments`, `rentals`, `payments`, `tenant_payments`, `settings` (settings = org-specific rows only, `organization_id = $orgId`).
+- **CSV formula-injection guard** (`sanitizeCsvValue()`, CWE-1236): data values starting with `= + - @ \t \r` are prefixed with `'` so Excel/LibreOffice treat them as text.
+- Temp files unlinked in a `finally` block and on any throw; on failure the partial ZIP is deleted and the exception re-thrown.
 
-**Problem:** For sole traders (JDG — jednoosobowa działalność gospodarcza), `customer_type = 'natural_person'` but the order may carry `invoice_company_name` (the trader's name, typically "Jan Kowalski") and `invoice_nip`. These are retained because of Art. 112 VAT obligation on invoice data.
+**Disk `local` only — never `public`.** Export data contains full customer PII. The path is resolved via `Storage::disk('local')->path()` because the `local` root is `storage/app/private`. The global `FILESYSTEM_DISK=public` rule applies to user-facing uploads, not these private exports.
 
-**Open question for DPO:** After the Art. 112 retention period expires, is retention of JDG `invoice_company_name` / `invoice_nip` still proportionate (RODO art. 5(1)(c)), or should those also be anonymized? The current implementation retains them in all cases per a safe-default policy.
+### 7.2 Route — `routes/web.php:334`
 
-**Action:** DPO review → update `PRESERVED` comment in service if policy changes.
-
-### FU-2 — `order_status_history.properties` (potential PII)
-
-**Status:** Not anonymized (not in scope for 5.3a).
-
-**Problem:** `order_status_history` stores a `properties` JSON column. Depending on application code, staff may log customer details (names, addresses) in status history entries when transitioning orders.
-
-**Action:** Audit all callers that write `properties` to `order_status_history`. If PII is found, add `anonymizeOrderStatusHistory()` method to `OrganizationAnonymizationService` and clear `properties` (retain `from_status`, `to_status`, `created_at`, `user_id`).
-
-### FU-3 — `customer_id` FK = pseudonymization, not anonymization
-
-**Status:** By design (5.3a decision).
-
-**Note:** Orders, appointments, rentals keep `customer_id` (FK to `users`). This is pseudonymization — the link to a real user row is preserved. True anonymization would require setting `customer_id = null` (requires making the column nullable first). Per 5.3a scope, this is acceptable because the `users` table is tenant-scoped and the user row is not deleted by the purge. **DPO should review** whether `customer_id` must be nulled for full Art. 17 compliance or whether pseudonymization is sufficient given the Art. 112 retention basis.
-
-### FU-4 — `lazyById` for large-scale tenants
-
-**Status:** `chunkById(500)` currently used (adequate for early production).
-
-**Problem:** At scale (tenants with 10k+ orders), `chunkById` in a long-running transaction can cause lock contention or long GC pauses.
-
-**Action:** When tenant P95 order count exceeds ~5,000, switch to `lazyById(500)` (PHP generator, no intermediate Collection allocation) and move purge to a dedicated `purge` queue so it doesn't block Horizon's default queue.
-
----
-
-## Faza 5.3b — Tenant Data Export (Art. 28(3)(g) RODO)
-
-### Legal Basis
-
-Art. 28 ust. 3 lit. g RODO: the processor (Registro) must return all personal data to the controller (tenant/organization owner) upon termination of processing services. Art. 12 ust. 3 RODO: deadline for responding to such requests is 1 month.
-
-The signed URL is valid **7 days** (privacy-by-design minimisation, Art. 25 — the export holds PESEL/NIP/full customer base; well inside the 1-month RODO deadline).
-
-### Architecture
-
-**Service:** `app/Services/Lifecycle/OrganizationDataExportService.php`
-
-- Method `generate(Organization $org): string` — returns relative path on disk `local`
-- Uses `DB::table()` with `chunk(500)` for each dataset (bypasses Eloquent global scopes; all queries include explicit `WHERE organization_id = ?`)
-- Writes streaming JSON (array format, one row per line) + CSV (UTF-8 BOM, semicolons) to temp files, then bundles them into a ZIP via `ZipArchive`
-- ZIP path: `storage/app/private/exports/org-{id}/{Ymd_His}.zip` — disk `local` (PRIVATE, not `public`)
-- **CSV formula-injection guard**: data-row values starting with `= + - @ \t \r` are prefixed with `'` (`sanitizeCsvValue()`) so the owner's Excel treats them as literal text
-- Temp files are unlinked even if the chunk loop throws (local try/catch per builder)
-- ZIP contents: `manifest.json` + `{dataset}.json` + `{dataset}.csv` for: `orders`, `appointments`, `rentals`, `payments`, `tenant_payments`, `settings`
-- Temp files are deleted after `$zip->close()` (in `finally` block)
-
-**CRITICAL: disk `local` only.** Export data contains full customer PII (names, emails, PESEL, addresses). It MUST NOT be placed on disk `public`. The `FILESYSTEM_DISK=public` global rule applies only to user-facing uploads; export files use the private local disk explicitly.
-
-**Controller:** `app/Http/Controllers/Platform/OrganizationDataExportController.php`
-
-- `download(Request $request, Organization $organization): StreamedResponse`
-- Authorization: either valid signed URL (`$request->hasValidSignature()`) OR authenticated super-admin (`$user->hasRole('super-admin')`)
-- Defense-in-depth: validates `file` query param starts with `exports/org-{org->id}/` and contains no `..`
-- Uses `Storage::disk('local')->download($filePath, ...)` to stream ZIP without loading into memory
-
-**Route:** `GET /platform/organizations/{organization}/data-export`
-Named: `platform.organization.data-export`
-No auth middleware — signed URL is the authorization mechanism (owner may not have a login session).
-The `/platform/` prefix is explicitly excluded from the CMS catch-all route `/{slug}`.
-
-**Signed URL Generation:**
 ```php
-URL::temporarySignedRoute(
-    'platform.organization.data-export',
-    now()->addDays(7),
-    ['organization' => $org->id, 'file' => $relativePath]
-)
-```
-The `file` parameter is included in the signature — cannot be tampered without invalidating the signature. The route is rate-limited (`throttle:10,1440` — 10 downloads/24 h/IP).
-
-**Notification:** `app/Notifications/OrganizationDataExportReadyNotification.php`
-
-- `implements ShouldQueue, ShouldBeUnique`, `onQueue('emails')`, `via=['mail']`; `uniqueId('data-export:{orgId}')` / `uniqueFor(3600)` prevents duplicate emails on retry/re-run
-- Constructor: `(string $downloadUrl, string $organizationName, int $organizationId)`
-- Email: PL, MailMessage with `->action('Pobierz dane firmy', $url)`, mentions art. 28(3)(g) RODO, 7-day link validity
-- Sent to `$org->owner`
-
-### Export retention (GDPR Art. 5(1)(e))
-
-Generated ZIPs hold full PII, so they are not kept indefinitely. `organizations:cleanup-exports {--days=}` deletes export files older than `config('retention.export_files_days', 8)` (signed URL TTL 7 days + 1-day margin). Scheduled daily at 04:00 (`routes/console.php`).
-
-### Follow-up (documented debt)
-
-`buildDatasetTempFiles` / `buildSettingsTempFiles` are near-identical — candidate for a shared `buildTempFilesFromQuery(callable)` refactor.
-
-**Command:** `app/Console/Commands/ExportOrganizationDataCommand.php`
-
-```bash
-php artisan organizations:export-data {organization}   # ID or slug
+Route::get('/platform/organizations/{organization}/data-export',
+    [OrganizationDataExportController::class, 'download'])
+    ->name('platform.organization.data-export')
+    ->middleware('throttle:10,1440');   // 10 downloads / 24 h
 ```
 
-- Resolves org (ctype_digit → by ID, else → by slug)
-- Calls `OrganizationDataExportService::generate($org)` → gets relative path
-- Generates signed URL (30 days) → sends `OrganizationDataExportReadyNotification` to `$org->owner`
-- Audit log: `Log::info(start)` + `Log::info(completed)` (includes path, owner email, expiry)
-- Outputs the direct URL to stdout (for super-admin use)
-- Returns `Command::FAILURE` if org not found or owner is null
+No auth middleware — the signed URL is the authorization mechanism (the owner may have no login session). The `/platform/` prefix is excluded from the CMS catch-all `/{slug}` route (which must be last).
 
-### Security Notes
+### 7.3 Controller — `app/Http/Controllers/Platform/OrganizationDataExportController.php`
 
-- Export files are on disk `local` (not `public`) → not served by webserver directly
-- Signed URLs: HMAC-based, include expiry timestamp; tampered params invalidate signature
-- Path traversal defense: `str_contains($filePath, '..')` check even for signed requests
-- Cross-org isolation: file path must start with `exports/org-{org->id}/` (enforced in controller)
-- Super-admin bypass: allows platform ops to re-download exports without re-generating signed URL
+`download(Request, Organization): StreamedResponse`. Authorization (either holds):
+1. Valid signed URL (`$request->hasValidSignature()`), or
+2. Authenticated super-admin (`$user?->hasRole('super-admin')`) — lets platform ops re-download without re-issuing a link.
 
-### Tests
+Otherwise `403`. Defense-in-depth on the `file` query param: must start with `exports/org-{organization->id}/` and contain no `..`, else `403`; missing file → `404`. Streams via `Storage::disk('local')->download()` (no full load into memory).
 
-`tests/Feature/Organizations/OrganizationDataExportTest.php` (12 test cases):
-- Service: ZIP structure, manifest metadata, cross-tenant isolation, path scoping
-- Route: valid signed URL → 200, expired → 403, tampered → 403, unauthenticated no-sig → 403, regular user → 403, super-admin → 200, missing file → 404, path traversal → 403, cross-org path → 403
-- Command: generates file + sends notification, accepts slug, fails on unknown org
+The `file` param is part of the signature (`URL::temporarySignedRoute(…, ['organization' => id, 'file' => $relativePath])`) — tampering invalidates the signature.
+
+### 7.4 Command — `app/Console/Commands/ExportOrganizationDataCommand.php`
+
+`organizations:export-data {organization}` (ID if `ctype_digit`, else slug).
+1. Resolve org; `FAILURE` if not found or `owner === null`.
+2. `OrganizationDataExportService::generate($org)` (wrapped in try/catch → `Log::error` + `FAILURE`).
+3. `URL::temporarySignedRoute('platform.organization.data-export', now()->addDays(7), ['organization' => id, 'file' => $path])` — **7-day** TTL.
+4. `$owner->notify(new OrganizationDataExportReadyNotification($signedUrl, $org->name, $org->id))`.
+5. Audit (`Log::info` start/completed with path, owner email, `link_expires_days: 7`); prints the direct URL to stdout for super-admin use, with a warning not to leak it.
+
+### 7.5 Notification — `app/Notifications/OrganizationDataExportReadyNotification.php`
+
+`implements ShouldQueue, ShouldBeUnique`; `onQueue('emails')`; `via = ['mail']`. `uniqueId() = 'data-export:{orgId}'`, `uniqueFor() = 3600` — prevents duplicate emails on retry/re-run. Constructor `(string $downloadUrl, string $organizationName, int $organizationId)`. PL `MailMessage` with `->action('Pobierz dane firmy', $url)`, cites art. 28(3)(g) RODO and the 7-day validity. Sent to `$org->owner`.
+
+### 7.6 Documented refactor debt
+
+`buildDatasetTempFiles()` and `buildSettingsTempFiles()` are near-identical — candidates for a shared `buildTempFilesFromQuery(callable)`.
 
 ---
 
-## Notes for Future Phases
+## 8. Tenant resolution
 
-- **Faza 5.4**: Hard-delete legal records (orders/payments) after `legal_records_years` (6) from `closed_at`. Requires `closed_at + 6yr <= now()` check. FK RESTRICT will be dropped for these tables before hard-delete.
+`app/Http/Middleware/ResolveTenant.php` resolves the tenant from subdomain (`{slug}.registro.app`). Root domain → no tenant (marketplace). Unknown/invalid subdomain → redirect to root (fail closed). Slug is regex-validated to block Host-header injection.
+
+**Lifecycle gating (Faza 5.2):** resolution filters on `lifecycle_state = 'active'` (authoritative), **not** `is_active` (`:53-57`):
+
+```php
+$tenant = Cache::remember("tenant:slug:{$slug}", 300, fn () =>
+    Organization::where('slug', $slug)
+        ->where('lifecycle_state', OrganizationLifecycleState::Active->value)
+        ->first());
+```
+
+- Only `Active` tenants serve the public site; suspended/closing/closed (and soft-deleted) orgs resolve to `null` → redirect to root.
+- `null` results are **not** cached (`Cache::forget`) — a freshly created/activated tenant resolves immediately.
+- Cache TTL = 300 s. On any transition to a non-`Active` state, `OrganizationObserver::saved()` calls `Cache::forget("tenant:slug:{$org->slug}")` (`:124-128`), so a suspend/close takes effect without waiting out the TTL. This covers CLI/programmatic transitions, not just Filament actions.
+- `is_active` remains a derived column used by the platform panel's `IconColumn` + `TernaryFilter`, and is kept in sync by the observer.
+
+Resolved tenant is stored in `$request->attributes` and `session('tenant_id')` (so Livewire update requests, which skip this middleware, can still resolve via `TenantFeature::currentTenant()`). Authenticated admin/staff are redirected to root if they don't belong to the resolved tenant.
+
+---
+
+## 9. Test coverage
+
+| Test class | Tests | Covers |
+|------------|-------|--------|
+| `tests/Unit/StateMachines/OrganizationLifecycleStateMachineTest.php` | 13 | Legal/illegal transitions, string & enum API, `\ValueError` on bad string `$from`. |
+| `tests/Unit/Services/TenantObligationServiceTest.php` | 12 | Appointment/order/rental counts, `completed` order excluded, cross-org isolation. |
+| `tests/Unit/Enums/OrganizationLifecycleStateTest.php` | 6 | `label()`, `allowsPublicSite/NewBookings`, `isTerminal` per case. |
+| `tests/Feature/Organizations/OrganizationLifecycleCastTest.php` | 4 | Enum cast, factory states. |
+| `tests/Feature/Organizations/OrganizationObserverTest.php` | 22 | Transitions, obligations, `is_active` sync, timestamps, delete guards (incl. legal records), force/bypass flag reset, cache invalidation. |
+| `tests/Feature/Organizations/OrganizationPurgeTest.php` | 16 | PII cleared / accounting preserved per model, business vs natural_person REGON/KRS, payment `webhook_payload`, idempotence, cross-org isolation, `purge_after` set/not-overwritten, soft-delete exclusion + `withTrashed`, command eligibility/skip/dry-run. |
+| `tests/Feature/Organizations/OrganizationDataExportTest.php` | 20 | Service ZIP structure/manifest/isolation/path-scoping; route 200/403 (expired, tampered, no-sig, regular user) / 200 (super-admin) / 404 (missing) / 403 (traversal, cross-org); command file+notification, slug, unknown-org. |
+| `tests/Feature/Employee/StaffDeleteGuardTest.php` | 8 | Staff delete guard: past/future, status filters, null-tenant isolation. |
+| `tests/Feature/Middleware/ResolveTenantTest.php` | 10 | Active/inactive/unknown tenants, lifecycle_state gating, cache behaviour. |
+
+**Patterns:** factory states over `create(['lifecycle_state' => …])`; set `lifecycle_state` directly on the model to trigger `updating()`; `Role::firstOrCreate` in `setUp`; SQLite decimal columns return numeric (`500`, not `'500.00'`) so anonymization assertions use `assertEquals()` not `assertSame()`; set `request->attributes['tenant']` before testing tenant-scoped guards.
+
+---
+
+## 10. Follow-ups & technical debt
+
+| ID | Item | Status |
+|----|------|--------|
+| **5.4** | **Hard-delete legal records** (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Needs `closed_at + 6yr <= now()`, dropping RESTRICT FK before `forceDelete()`. Suggested separate command `organizations:purge-legal-records --after-years=6`. | Planned |
+| **5.7** | **Staff null-on-delete** — `appointments.staff_id = null` after staff deletion could enable double-booking of the freed slot. Future-appointment guard mitigates but a full review is deferred. | Open |
+| **FU-1 (DPO)** | **JDG REGON/KRS on invoices** — `FIXME(DPO)` in `anonymizeOrders()`. For sole traders (`natural_person` + `invoice_nip`/`invoice_company_name` = trader's name/NIP), retention is kept as a safe default under Art. 112 VAT. DPO must confirm whether retaining JDG `invoice_nip`/`invoice_company_name` past the retention window is proportionate (RODO art. 5(1)(c)). | Needs legal opinion |
+| **FU-2 (DPO)** | **`order_status_history.properties`** — JSON column not anonymized (out of 5.3a scope). Staff may log customer details on transitions. Action: audit all writers; if PII found, add `anonymizeOrderStatusHistory()` clearing `properties` (retain `from_status`/`to_status`/`created_at`/`user_id`). | Open |
+| **FU-3 (DPO)** | **`customer_id` = pseudonymization** — orders/appointments/rentals keep their `users` FK by design (5.3a). True Art. 17 anonymization would require nulling `customer_id` (column must be made nullable first). Acceptable now because the `users` row is tenant-scoped and not deleted by purge; DPO to confirm sufficiency given the Art. 112 retention basis. | By design / review |
+| **FU-4** | **`lazyById` at scale** — `chunkById(500)` is fine for early production. At ~5k+ orders/tenant, switch to `lazyById(500)` and move purge to a dedicated `purge` queue to avoid locking Horizon's default queue. | Deferred |
+| **Refactor** | `OrganizationDataExportService::buildDatasetTempFiles` / `buildSettingsTempFiles` near-duplicate → extract `buildTempFilesFromQuery(callable)`. | Cosmetic |
+
+---
+
+## 11. Doc vs code corrections
+
+Differences found between the **previous** version of this doc and the code on `develop` (2026-06-30):
+
+- **Export signed-URL TTL.** Previous doc stated the `organizations:export-data` command and controller issue a **30-day** signed URL. The command actually uses `now()->addDays(7)` (`ExportOrganizationDataCommand.php:71`). The controller docblock still says "valid 30 days" (`OrganizationDataExportController.php:21`) — a **stale code comment**; the real TTL is **7 days**, consistent with `export_files_days = 8` and the notification copy. *(Code comment is wrong; this doc now states 7 days.)*
+- **Test counts updated** to current reality: `OrganizationObserverTest` 17 → **22**; `ResolveTenantTest` 7 → **10**; `OrganizationDataExportTest` 12 → **20**; `StaffDeleteGuardTest` 7 → **8**. A previously undocumented unit test `tests/Unit/Enums/OrganizationLifecycleStateTest.php` (**6**) was added to the table. `StateMachine` (13) and `TenantObligationService` (12) matched.
+- **Test paths.** Several suites live under `tests/Unit/...` (StateMachine, ObligationService, Enum), not `tests/Feature/...` as some prior prose implied. Paths in [§9](#9-test-coverage) are now exact.
+- **`saved()` does double duty.** The cache-invalidation responsibility (`Cache::forget` on non-Active transition) lives in `OrganizationObserver::saved()` alongside the `forceLifecycleTransition` reset — previously documented only as a flag-reset hook.
