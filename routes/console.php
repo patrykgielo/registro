@@ -155,6 +155,20 @@ Schedule::command('analytics:rollup-hourly')
 
 /*
 |--------------------------------------------------------------------------
+| Horizon
+|--------------------------------------------------------------------------
+*/
+
+// Required for Horizon metrics dashboard (throughput/runtime graphs)
+// Without this, Horizon shows blank charts even when queue is healthy
+Schedule::command('horizon:snapshot')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->name('horizon:snapshot')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
 | Statistics System
 |--------------------------------------------------------------------------
 */

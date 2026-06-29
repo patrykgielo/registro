@@ -107,23 +107,6 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
-  queue:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: registro-queue
-    restart: unless-stopped
-    working_dir: /var/www
-    volumes:
-      - .:/var/www
-    networks:
-      - registro
-    depends_on:
-      - app
-      - redis
-      - mysql
-    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --queue=emails,reminders,analytics,default
-
   scheduler:
     build:
       context: .
