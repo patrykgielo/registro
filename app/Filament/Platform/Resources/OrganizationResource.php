@@ -38,7 +38,12 @@ class OrganizationResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        // Hide the delete button for non-Closed organisations. The observer's deleting()
+        // hook remains as a backstop, but surfacing the button only when deletion is
+        // actually permissible reduces confusion and accidental clicks.
+        return (auth()->user()?->hasRole('super-admin') ?? false)
+            && $record instanceof Organization
+            && $record->lifecycle_state === OrganizationLifecycleState::Closed;
     }
 
     public static function form(Schema $schema): Schema
@@ -220,12 +225,15 @@ class OrganizationResource extends Resource
                     ]))
                     ->requiresConfirmation(),
 
-                // Lifecycle state actions — go through the state machine via OrganizationObserver
+                // Lifecycle state actions — go through the state machine via OrganizationObserver.
+                // ->authorize() provides defense-in-depth on top of EnsureSuperAdmin middleware
+                // and ->visible() state checks.
                 Actions\Action::make('suspend')
                     ->label('Zawieś')
                     ->icon('heroicon-o-pause-circle')
                     ->color('warning')
                     ->requiresConfirmation()
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && $record->lifecycle_state === OrganizationLifecycleState::Active)
                     ->action(function (Organization $record): void {
@@ -239,6 +247,7 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-play-circle')
                     ->color('success')
                     ->requiresConfirmation()
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && in_array(
                             $record->lifecycle_state,
@@ -256,6 +265,7 @@ class OrganizationResource extends Resource
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && in_array(
                             $record->lifecycle_state,

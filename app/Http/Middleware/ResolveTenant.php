@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Models\Organization;
 use Closure;
 use Illuminate\Http\Request;
@@ -45,10 +46,13 @@ class ResolveTenant
             return redirect()->to($this->rootUrl($request));
         }
 
-        // Resolve tenant with cache (5 min TTL)
+        // Resolve tenant with cache (5 min TTL).
+        // lifecycle_state is authoritative (Faza 5.2): only Active tenants serve the public site.
+        // is_active is kept as a derived column for other internal uses but is no longer
+        // the gating condition here. Stale cache entries (from pre-5.2) expire in 300 s.
         $tenant = Cache::remember("tenant:slug:{$slug}", 300, function () use ($slug) {
             return Organization::where('slug', $slug)
-                ->where('is_active', true)
+                ->where('lifecycle_state', OrganizationLifecycleState::Active->value)
                 ->first();
         });
 

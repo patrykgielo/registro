@@ -98,6 +98,77 @@ class ResolveTenantTest extends TestCase
         $this->assertTrue($response->isRedirection());
     }
 
+    public function test_suspended_lifecycle_tenant_redirects_to_root(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->inactive()->create([
+            'name' => 'Suspended Salon',
+            'slug' => 'suspended',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://suspended.registro.local/');
+        $request->headers->set('HOST', 'suspended.registro.local');
+
+        $response = $this->middleware->handle($request, function ($req) {
+            return response('ok');
+        });
+
+        // Suspended lifecycle_state is not Active — public site must be blocked
+        $this->assertTrue($response->isRedirection());
+        $this->assertStringContains('registro.local', $response->headers->get('Location'));
+    }
+
+    public function test_closing_lifecycle_tenant_redirects_to_root(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->closing()->create([
+            'name' => 'Closing Salon',
+            'slug' => 'closingorg',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://closingorg.registro.local/');
+        $request->headers->set('HOST', 'closingorg.registro.local');
+
+        $response = $this->middleware->handle($request, function ($req) {
+            return response('ok');
+        });
+
+        // Closing state does not allow public site access
+        $this->assertTrue($response->isRedirection());
+    }
+
+    public function test_active_lifecycle_tenant_resolves_successfully(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        $org = Organization::create([
+            'name' => 'Active Salon',
+            'slug' => 'activeslug',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+            // lifecycle_state defaults to 'active' via DB default + observer
+        ]);
+
+        $request = Request::create('https://activeslug.registro.local/');
+        $request->headers->set('HOST', 'activeslug.registro.local');
+
+        $response = $this->middleware->handle($request, function ($req) {
+            return response('ok');
+        });
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertEquals($org->id, $request->attributes->get('tenant')->id);
+    }
+
     public function test_invalid_slug_format_redirects_to_root(): void
     {
         config(['app.domain' => 'registro.local']);
