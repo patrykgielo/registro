@@ -89,10 +89,15 @@ class OrganizationObserver
             $org->closing_initiated_at = now();
         } elseif ($to === OrganizationLifecycleState::Closed) {
             $org->closed_at = now();
+            // Faza 5.3a: schedule PII purge after the grace window.
+            // Only set if not already set — purge command may have been pre-staged externally.
+            if ($org->purge_after === null) {
+                $org->purge_after = now()->addDays((int) config('retention.purge_grace_days', 30));
+            }
         } elseif ($to === OrganizationLifecycleState::Active
             && $from === OrganizationLifecycleState::Closing
         ) {
-            // Closing → Active (restore): clear closing timestamps
+            // Closing → Active (restore): clear closing timestamps and purge schedule
             $org->closing_initiated_at = null;
             $org->purge_after = null;
         }

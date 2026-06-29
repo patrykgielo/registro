@@ -605,3 +605,34 @@ $order->saveQuietly();  // OK — p24_* nie jest immutable ani w $auditInclude
 
 Pola OK dla `saveQuietly()`: `p24_*`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`.
 Pola ZAKAZANE dla `saveQuietly()`: wszystkie z listy immutable (`total_amount`, `order_number`, `rodo_accepted_at`, itp.).
+
+---
+
+## Organization SoftDeletes (Faza 5.3a)
+
+Organization używa `use SoftDeletes` od migracji `2026_06_30_100001_add_soft_deletes_to_organizations.php`.
+
+- `$org->delete()` = soft-delete (UPDATE deleted_at). Nie triggeruje FK RESTRICT.
+- `$org->forceDelete()` = hard-delete (zarezerwowane dla Faza 5.4 po upływie retention).
+- `Organization::withTrashed()` — do odczytu soft-deleted orgs (np. w purge command).
+- `$org->bypassDeleteGuard = true` — pomija guard w ObserverOrganiozacjix; soft-delete nadal działa.
+
+### config/retention.php — centralizacja okresów retencji
+
+**ZAWSZE czytaj okresy z `config('retention.*')`, nie hardcoduj:**
+
+```php
+config('retention.purge_grace_days', 30)   // dni od Closed do purge_after
+config('retention.legal_records_years', 6) // faktury (Art. 112 VAT)
+config('retention.analytics_months', 13)   // analytics_events
+config('retention.carts_days', 7)          // carts
+```
+
+### Anonimizacja PII vs dane księgowe (RODO + Art. 112 VAT)
+
+`OrganizationAnonymizationService` (`app/Services/Lifecycle/`) — używa wyłącznie `DB::table()` (NIE Eloquent), by ominąć immutable guard na Order.
+
+**Reguła:** PII osoby fizycznej → anonymize. Dane księgowe (NIP, REGON, kwoty, daty, numery zamówień) → zostają przez okres retencji.
+
+`customer_last_name` na `orders` jest NOT NULL → placeholder `'Anonimizowane'`, NIE null.
+Anonimizowany email: `"anon_{id}@anonymized.local"` — unikalny per rząd (chunkById).

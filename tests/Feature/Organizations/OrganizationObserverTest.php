@@ -250,7 +250,9 @@ class OrganizationObserverTest extends TestCase
 
     public function test_delete_with_bypass_flag_skips_all_guards(): void
     {
-        // Even with Active lifecycle and obligations, bypass = true allows deletion
+        // Even with Active lifecycle and obligations, bypass = true soft-deletes the org.
+        // Faza 5.3a: Organization now uses SoftDeletes — delete() sets deleted_at instead
+        // of removing the row. assertSoftDeleted verifies deleted_at IS NOT NULL.
         $org = Organization::factory()->create();
         $staff = $this->createStaff();
 
@@ -263,16 +265,18 @@ class OrganizationObserverTest extends TestCase
         $org->bypassDeleteGuard = true;
         $org->delete();
 
-        $this->assertDatabaseMissing('organizations', ['id' => $org->id]);
+        $this->assertSoftDeleted('organizations', ['id' => $org->id]);
     }
 
     public function test_delete_of_closed_org_with_no_obligations_succeeds(): void
     {
+        // Faza 5.3a: SoftDeletes — delete() now soft-deletes (sets deleted_at).
+        // A Closed org with no obligations and no legal records soft-deletes successfully.
         $org = Organization::factory()->closed()->create();
 
         $org->delete();
 
-        $this->assertDatabaseMissing('organizations', ['id' => $org->id]);
+        $this->assertSoftDeleted('organizations', ['id' => $org->id]);
     }
 
     // ─── Faza 5.2: Legal records guard ───────────────────────────────────────
@@ -301,8 +305,16 @@ class OrganizationObserverTest extends TestCase
 
     public function test_delete_with_bypass_skips_legal_records_guard(): void
     {
-        // bypassDeleteGuard = true skips the application-level check.
-        // The DB-level RESTRICT FK is the final backstop (MySQL only, not in SQLite tests).
+        // Faza 5.3a: bypassDeleteGuard + SoftDeletes behavioral change.
+        //
+        // BEFORE SoftDeletes: bypass + delete() = hard DELETE → FK RESTRICT fires → QueryException.
+        // AFTER  SoftDeletes: bypass + delete() = UPDATE deleted_at → FK RESTRICT does NOT fire
+        //   (RESTRICT only triggers on hard DELETE, not UPDATE). The org is soft-deleted and
+        //   legal records remain intact — which is the DESIRED behavior for the purge command.
+        //
+        // The DB-level RESTRICT FK backstop is still in effect for forceDelete() scenarios
+        // (e.g. tinker, raw SQL). SoftDeletes naturally separates soft-delete (safe) from
+        // hard-delete (DB-enforced), removing the need for the app-level exception here.
         $org = Organization::factory()->closed()->create();
 
         \Illuminate\Support\Facades\DB::table('tenant_payments')->insert([
@@ -316,14 +328,12 @@ class OrganizationObserverTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // bypassDeleteGuard skips the application-level OrganizationHasLegalRecordsException,
-        // but the DB RESTRICT FK is the final backstop. Laravel 12 performs a table-rebuild to
-        // apply FK changes on SQLite, so RESTRICT is enforced on both SQLite and MySQL.
-        // Getting a QueryException here — rather than OrganizationHasLegalRecordsException —
-        // proves the app guard was bypassed and the DB constraint caught the deletion.
         $org->bypassDeleteGuard = true;
-        $this->expectException(\Illuminate\Database\QueryException::class);
-        $org->delete();
+        $org->delete();  // soft-delete — no FK violation (UPDATE, not DELETE)
+
+        // Org is soft-deleted; legal records are intact.
+        $this->assertSoftDeleted('organizations', ['id' => $org->id]);
+        $this->assertDatabaseHas('tenant_payments', ['organization_id' => $org->id]);
     }
 
     // ─── Faza 5.2: closed_at timestamp ───────────────────────────────────────
