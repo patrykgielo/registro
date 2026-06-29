@@ -1,6 +1,6 @@
 # Tenant Lifecycle — Workstream Overview
 
-## Status: Faza 5.3a done (2026-06-30) — SoftDeletes + PII anonymization + purge command
+## Status: Faza 5.3b done (2026-06-30) — Tenant data export (Art. 28(3)(g) RODO)
 
 Workstream introduces an explicit lifecycle state for Organization, replacing the implicit boolean `is_active` as the authoritative source of truth for tenant health. The migration is additive and non-breaking — `is_active` is now a fully derived field, synced automatically from `lifecycle_state` by the observer.
 
@@ -15,7 +15,7 @@ Workstream introduces an explicit lifecycle state for Organization, replacing th
 | 5.1-cr | Code-review hardening | Done |
 | 5.2 | FK onDelete policy + public site middleware | Done |
 | 5.3a | SoftDeletes on Organization + PII anonymization + purge command | Done |
-| 5.3b | Offboarding email / grace-period notifications | Planned |
+| 5.3b | Tenant data export — full org data copy for owner (Art. 28(3)(g) RODO) | Done |
 | 5.4 | Hard-delete legal records after retention period (6 yrs) | Planned |
 
 ---
@@ -394,7 +394,86 @@ These items were identified during 5.3a implementation but deferred — each req
 
 ---
 
+## Faza 5.3b — Tenant Data Export (Art. 28(3)(g) RODO)
+
+### Legal Basis
+
+Art. 28 ust. 3 lit. g RODO: the processor (Registro) must return all personal data to the controller (tenant/organization owner) upon termination of processing services. Art. 12 ust. 3 RODO: deadline for responding to such requests is 1 month.
+
+The 30-day signed URL validity maps directly to the 1-month RODO deadline.
+
+### Architecture
+
+**Service:** `app/Services/Lifecycle/OrganizationDataExportService.php`
+
+- Method `generate(Organization $org): string` — returns relative path on disk `local`
+- Uses `DB::table()` with `chunk(500)` for each dataset (bypasses Eloquent global scopes; all queries include explicit `WHERE organization_id = ?`)
+- Writes streaming JSON (array format, one row per line) + CSV (UTF-8 BOM, semicolons) to temp files, then bundles them into a ZIP via `ZipArchive`
+- ZIP path: `storage/app/exports/org-{id}/{Ymd_His}.zip` — disk `local` (PRIVATE, not `public`)
+- ZIP contents: `manifest.json` + `{dataset}.json` + `{dataset}.csv` for: `orders`, `appointments`, `rentals`, `payments`, `tenant_payments`, `settings`
+- Temp files are deleted after `$zip->close()` (in `finally` block)
+
+**CRITICAL: disk `local` only.** Export data contains full customer PII (names, emails, PESEL, addresses). It MUST NOT be placed on disk `public`. The `FILESYSTEM_DISK=public` global rule applies only to user-facing uploads; export files use the private local disk explicitly.
+
+**Controller:** `app/Http/Controllers/Platform/OrganizationDataExportController.php`
+
+- `download(Request $request, Organization $organization): StreamedResponse`
+- Authorization: either valid signed URL (`$request->hasValidSignature()`) OR authenticated super-admin (`$user->hasRole('super-admin')`)
+- Defense-in-depth: validates `file` query param starts with `exports/org-{org->id}/` and contains no `..`
+- Uses `Storage::disk('local')->download($filePath, ...)` to stream ZIP without loading into memory
+
+**Route:** `GET /platform/organizations/{organization}/data-export`
+Named: `platform.organization.data-export`
+No auth middleware — signed URL is the authorization mechanism (owner may not have a login session).
+The `/platform/` prefix is explicitly excluded from the CMS catch-all route `/{slug}`.
+
+**Signed URL Generation:**
+```php
+URL::temporarySignedRoute(
+    'platform.organization.data-export',
+    now()->addDays(30),
+    ['organization' => $org->id, 'file' => $relativePath]
+)
+```
+The `file` parameter is included in the signature — cannot be tampered without invalidating the signature.
+
+**Notification:** `app/Notifications/OrganizationDataExportReadyNotification.php`
+
+- `implements ShouldQueue`, `onQueue('emails')`, `via=['mail']`
+- Constructor: `(string $downloadUrl, string $organizationName)`
+- Email: PL, MailMessage with `->action('Pobierz dane firmy', $url)`, mentions art. 28(3)(g) RODO, 30-day link validity
+- Sent to `$org->owner`
+
+**Command:** `app/Console/Commands/ExportOrganizationDataCommand.php`
+
+```bash
+php artisan organizations:export-data {organization}   # ID or slug
+```
+
+- Resolves org (ctype_digit → by ID, else → by slug)
+- Calls `OrganizationDataExportService::generate($org)` → gets relative path
+- Generates signed URL (30 days) → sends `OrganizationDataExportReadyNotification` to `$org->owner`
+- Audit log: `Log::info(start)` + `Log::info(completed)` (includes path, owner email, expiry)
+- Outputs the direct URL to stdout (for super-admin use)
+- Returns `Command::FAILURE` if org not found or owner is null
+
+### Security Notes
+
+- Export files are on disk `local` (not `public`) → not served by webserver directly
+- Signed URLs: HMAC-based, include expiry timestamp; tampered params invalidate signature
+- Path traversal defense: `str_contains($filePath, '..')` check even for signed requests
+- Cross-org isolation: file path must start with `exports/org-{org->id}/` (enforced in controller)
+- Super-admin bypass: allows platform ops to re-download exports without re-generating signed URL
+
+### Tests
+
+`tests/Feature/Organizations/OrganizationDataExportTest.php` (12 test cases):
+- Service: ZIP structure, manifest metadata, cross-tenant isolation, path scoping
+- Route: valid signed URL → 200, expired → 403, tampered → 403, unauthenticated no-sig → 403, regular user → 403, super-admin → 200, missing file → 404, path traversal → 403, cross-org path → 403
+- Command: generates file + sends notification, accepts slug, fails on unknown org
+
+---
+
 ## Notes for Future Phases
 
-- **Faza 5.3b**: Offboarding email sent when org transitions to `Closing`; reminder before `purge_after`.
 - **Faza 5.4**: Hard-delete legal records (orders/payments) after `legal_records_years` (6) from `closed_at`. Requires `closed_at + 6yr <= now()` check. FK RESTRICT will be dropped for these tables before hard-delete.
