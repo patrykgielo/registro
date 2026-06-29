@@ -58,20 +58,29 @@ class OrganizationAnonymizationService
      *
      * PRESERVED (accounting/legal):
      *   order_number, status, currency, subtotal, discount_amount, tax_amount,
-     *   total_amount, deposit_*, customer_type, invoice_requested,
-     *   invoice_company_name, invoice_nip, invoice_street*, invoice_postal_code,
-     *   invoice_city, company_regon, company_krs, rodo_accepted_at,
-     *   terms_accepted_at, withdrawal_exclusion_accepted_at, p24_*, paid_at,
-     *   cancelled_at, completed_at, created_at, updated_at.
+     *   total_amount, deposit_amount, deposit_status, deposit_collected_at, deposit_returned_at,
+     *   customer_type, invoice_requested, invoice_company_name, invoice_nip, invoice_street*,
+     *   invoice_postal_code, invoice_city, rodo_accepted_at, terms_accepted_at,
+     *   withdrawal_exclusion_accepted_at, p24_*, paid_at, cancelled_at, completed_at,
+     *   created_at, updated_at.
+     *   For customer_type='business': company_regon, company_krs (retained — appear on invoice).
      *
      * ANONYMIZED (PII):
      *   customer_first_name, customer_last_name, customer_email (per-row unique),
      *   customer_phone, customer_pesel, customer_street, customer_building,
      *   customer_apartment, customer_city, customer_postal_code,
      *   signatory_id_number, pickup_person_name, pickup_person_id_number,
-     *   ip_address, rodo_accepted_ip (*), notes, company_contact_name.
+     *   ip_address, rodo_accepted_ip (*), notes, company_contact_name, deposit_notes.
+     *   For customer_type='natural_person': company_regon, company_krs (JDG REGON = identifies person).
      *
      * (*) rodo_accepted_ip is in Order's Eloquent immutable guard — only safe via DB::table().
+     *
+     * FIXME(DPO): JDG edge case — for sole traders (jednoosobowa działalność gospodarcza), REGON
+     *   identifies the natural person. We null company_regon/company_krs for 'natural_person' rows
+     *   as a safe default. However, invoice_nip and invoice_company_name for JDG typically contain
+     *   the trader's NIP and full name — these are retained here under Art. 112 VAT obligation.
+     *   DPO must confirm whether JDG invoice_nip/invoice_company_name retention is proportionate
+     *   after the legal retention period expires, or whether pseudonymization is sufficient.
      */
     private function anonymizeOrders(int $orgId): int
     {
@@ -83,7 +92,7 @@ class OrganizationAnonymizationService
             ->where('organization_id', $orgId)
             ->chunkById(500, function ($chunk) {
                 foreach ($chunk as $row) {
-                    DB::table('orders')->where('id', $row->id)->update([
+                    $update = [
                         'customer_first_name' => 'Anonimizowane',
                         // customer_last_name is NOT NULL in schema — use placeholder, not null
                         'customer_last_name' => 'Anonimizowane',
@@ -102,7 +111,18 @@ class OrganizationAnonymizationService
                         'rodo_accepted_ip' => null,
                         'notes' => null,
                         'company_contact_name' => null,
-                    ]);
+                        'deposit_notes' => null,
+                    ];
+
+                    // For natural persons: REGON/KRS must be cleared — they are either
+                    // empty (correct) or contain JDG data that identifies the natural person.
+                    // For business: retain — they appear on B2B invoices (Art. 106e VAT).
+                    if ($row->customer_type === 'natural_person') {
+                        $update['company_regon'] = null;
+                        $update['company_krs'] = null;
+                    }
+
+                    DB::table('orders')->where('id', $row->id)->update($update);
                 }
             });
 
@@ -120,7 +140,11 @@ class OrganizationAnonymizationService
      *   cancelled_at, created_at, updated_at.
      *
      * ANONYMIZED (PII):
-     *   first_name, last_name, email (per-row unique), phone.
+     *   first_name, last_name, email (per-row unique), phone,
+     *   location_address, location_latitude, location_longitude, location_components,
+     *   location_place_id, service_location_type (mobile service client location — CRITICAL PII),
+     *   registration_number (vehicle plate = PII per UODO guidance),
+     *   notes, cancellation_reason (free-text — may contain PII).
      */
     private function anonymizeAppointments(int $orgId): int
     {
@@ -135,6 +159,18 @@ class OrganizationAnonymizationService
                         'last_name' => null,
                         'email' => "anon_{$row->id}@anonymized.local",
                         'phone' => null,
+                        // Mobile service client location (CRITICAL PII — identifies where customer lives/works)
+                        'location_address' => null,
+                        'location_latitude' => null,
+                        'location_longitude' => null,
+                        'location_components' => null,
+                        'location_place_id' => null,
+                        'service_location_type' => null,
+                        // Vehicle registration plate (PII per UODO guidance — identifies natural person)
+                        'registration_number' => null,
+                        // Free-text fields that may contain customer PII entered by staff
+                        'notes' => null,
+                        'cancellation_reason' => null,
                     ]);
                 }
             });
@@ -152,7 +188,8 @@ class OrganizationAnonymizationService
      *   updated_at.
      *
      * ANONYMIZED (PII):
-     *   first_name, last_name, email (per-row unique), phone.
+     *   first_name, last_name, email (per-row unique), phone,
+     *   notes, cancellation_reason (free-text — may contain customer PII entered by staff).
      */
     private function anonymizeRentals(int $orgId): int
     {
@@ -167,6 +204,8 @@ class OrganizationAnonymizationService
                         'last_name' => null,
                         'email' => "anon_{$row->id}@anonymized.local",
                         'phone' => null,
+                        'notes' => null,
+                        'cancellation_reason' => null,
                     ]);
                 }
             });

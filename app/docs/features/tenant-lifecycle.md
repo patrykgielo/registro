@@ -302,15 +302,16 @@ Method `anonymize(Organization $org): array` — returns `['orders' => int, 'app
 
 | Model | ANONYMIZED (PII) | PRESERVED (accounting/legal) |
 |---|---|---|
-| Order | first_name→`Anonimizowane`, last_name→`Anonimizowane`, email→`anon_{id}@anonymized.local`, phone, PESEL, address fields, signatory_id, pickup_person_*, IP, rodo_accepted_ip, notes, company_contact_name | order_number, amounts, dates, customer_type, invoice_* (NIP/REGON/KRS/address), rodo_accepted_at, terms_accepted_at, p24_* |
-| Appointment | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone | invoice_*, amounts, dates, status |
-| Rental | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone | invoice_*, amounts, dates, status |
+| Order | first_name→`Anonimizowane`, last_name→`Anonimizowane`, email→`anon_{id}@anonymized.local`, phone, PESEL, address fields, signatory_id, pickup_person_*, IP, rodo_accepted_ip, notes, company_contact_name, deposit_notes; for `customer_type=natural_person`: company_regon, company_krs (JDG REGON identifies the person) | order_number, amounts, dates, customer_type, invoice_* (NIP/KRS address), deposit_amount/status/timestamps, rodo_accepted_at, terms_accepted_at, p24_*; for `business`: company_regon, company_krs |
+| Appointment | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone, location_address/lat/lng/components/place_id/service_location_type (CRITICAL — mobile service client address), registration_number (vehicle plate = PII per UODO), notes, cancellation_reason | invoice_*, amounts, dates, status |
+| Rental | first_name→`Anonimizowane`, last_name→null, email→`anon_{id}@anonymized.local`, phone, notes, cancellation_reason | invoice_*, amounts, dates, status |
 | Payment | webhook_payload→null | p24_session_id, p24_order_id, amount, currency, status |
 
 **Implementation notes:**
 - All updates use `DB::table()` (NOT Eloquent) to bypass Order's `booted() updating()` immutable guard that protects `rodo_accepted_ip` and accounting fields.
 - `chunkById(500)` loop for per-row unique email placeholder.
 - `customer_last_name` uses `'Anonimizowane'` placeholder (NOT NULL column in schema).
+- For orders: `customer_type` is checked per row — `natural_person` gets `company_regon/krs` nulled; `business` retains them.
 - Wrapped in `DB::transaction()`. Idempotent — safe to re-run.
 
 ### PurgeClosedOrganizationsCommand (`organizations:purge`)
@@ -321,15 +322,16 @@ Signature: `organizations:purge {--dry-run} {--force}`
 
 Eligibility query: `lifecycle_state = closed AND purge_after <= now() AND deleted_at IS NULL` (SoftDeletes global scope auto-excludes already-purged orgs).
 
-Per eligible org (in `DB::transaction`, `catch \Throwable → Log::error + FAILURE`):
-1. `OrganizationAnonymizationService::anonymize($org)` — PII cleared
+Per eligible org (in `DB::transaction`, `catch \Throwable → Log::error + continue to next org`):
+1. `OrganizationAnonymizationService::anonymize($org)` — PII cleared (nested transaction via SAVEPOINT — safe)
 2. Hard-delete ephemeral: `carts`, `analytics_events`, `statistics_daily_snapshots`
 3. Legal records (orders, payments, tenant_payments) — **NOT deleted** (retain ≥6 yrs)
 4. Soft-delete org: `$org->bypassDeleteGuard = true; $org->delete()`
 
-Audit log: `Log::info` (start/completed), `Log::warning` (before each purge).
-Dry-run: prints what would be purged, makes zero changes.
+Audit log: `Log::info` (start/completed with `failed` count), `Log::warning` (before each purge).
+Dry-run: prints what would be purged (payment count uses `whereNotNull('webhook_payload')` for consistency with what actually anonymizes), makes zero changes.
 Confirm gate: `isInteractive() && !--force → confirm('Continue?')`.
+Failure behavior: one failing org logs error and `continue`s — the cohort is not blocked. Returns `FAILURE` at the end if `$failed > 0`.
 
 FUTURE (Faza 5.4): hard-delete legal records after `legal_records_years` — not implemented here.
 
@@ -346,11 +348,49 @@ Schedule::command('organizations:purge --force')
 
 ### Tests
 
-`tests/Feature/Organizations/OrganizationPurgeTest` — 14 tests, 69 assertions.
+`tests/Feature/Organizations/OrganizationPurgeTest` — 16 tests, 128 assertions.
 
-Covers: PII cleared / accounting preserved, payment webhook_payload, appointment PII, rental PII, idempotence, observer sets purge_after, observer does not overwrite existing purge_after, soft-delete exclusion from normal queries, soft-delete retrievable with `withTrashed()`, command processes eligible org, command skips future purge_after, command skips non-Closed, dry-run makes no changes.
+Covers: PII cleared / accounting preserved (incl. deposit_notes, company_regon/krs per customer_type, location/registration for appointments, notes/cancellation_reason for appointments+rentals), business customer retains company_regon/krs, payment webhook_payload, idempotence, cross-org isolation (Org B untouched when anonymizing Org A), observer sets purge_after, observer does not overwrite existing purge_after, soft-delete exclusion from normal queries, soft-delete retrievable with `withTrashed()`, command processes eligible org, command skips future purge_after, command skips non-Closed, dry-run makes no changes.
 
 **SQLite note:** `assertSame()` fails for decimal columns — SQLite returns numeric int (`500`), not string (`'500.00'`). All decimal assertions use `assertEquals()`.
+
+---
+
+## Faza 5.3a Follow-ups / DPO Review (dług techniczny)
+
+These items were identified during 5.3a implementation but deferred — each requires either a DPO legal opinion or a scale-related architectural decision before proceeding.
+
+### FU-1 — JDG REGON/KRS on invoices (DPO opinion needed)
+
+**Status:** FIXME comment in `OrganizationAnonymizationService::anonymizeOrders()`.
+
+**Problem:** For sole traders (JDG — jednoosobowa działalność gospodarcza), `customer_type = 'natural_person'` but the order may carry `invoice_company_name` (the trader's name, typically "Jan Kowalski") and `invoice_nip`. These are retained because of Art. 112 VAT obligation on invoice data.
+
+**Open question for DPO:** After the Art. 112 retention period expires, is retention of JDG `invoice_company_name` / `invoice_nip` still proportionate (RODO art. 5(1)(c)), or should those also be anonymized? The current implementation retains them in all cases per a safe-default policy.
+
+**Action:** DPO review → update `PRESERVED` comment in service if policy changes.
+
+### FU-2 — `order_status_history.properties` (potential PII)
+
+**Status:** Not anonymized (not in scope for 5.3a).
+
+**Problem:** `order_status_history` stores a `properties` JSON column. Depending on application code, staff may log customer details (names, addresses) in status history entries when transitioning orders.
+
+**Action:** Audit all callers that write `properties` to `order_status_history`. If PII is found, add `anonymizeOrderStatusHistory()` method to `OrganizationAnonymizationService` and clear `properties` (retain `from_status`, `to_status`, `created_at`, `user_id`).
+
+### FU-3 — `customer_id` FK = pseudonymization, not anonymization
+
+**Status:** By design (5.3a decision).
+
+**Note:** Orders, appointments, rentals keep `customer_id` (FK to `users`). This is pseudonymization — the link to a real user row is preserved. True anonymization would require setting `customer_id = null` (requires making the column nullable first). Per 5.3a scope, this is acceptable because the `users` table is tenant-scoped and the user row is not deleted by the purge. **DPO should review** whether `customer_id` must be nulled for full Art. 17 compliance or whether pseudonymization is sufficient given the Art. 112 retention basis.
+
+### FU-4 — `lazyById` for large-scale tenants
+
+**Status:** `chunkById(500)` currently used (adequate for early production).
+
+**Problem:** At scale (tenants with 10k+ orders), `chunkById` in a long-running transaction can cause lock contention or long GC pauses.
+
+**Action:** When tenant P95 order count exceeds ~5,000, switch to `lazyById(500)` (PHP generator, no intermediate Collection allocation) and move purge to a dedicated `purge` queue so it doesn't block Horizon's default queue.
 
 ---
 

@@ -74,6 +74,9 @@ class OrganizationPurgeTest extends TestCase
             'invoice_postal_code' => '00-100',
             'invoice_city' => 'Warszawa',
             'company_contact_name' => 'Piotr Nowak',
+            'company_regon' => '123456785',
+            'company_krs' => '0000123456',
+            'deposit_notes' => 'Klient Jan K. wpłacił kaucję w gotówce',
             'ip_address' => '192.168.1.1',
             'rodo_accepted_ip' => '192.168.1.1',
             'rodo_accepted_at' => now(),
@@ -104,6 +107,11 @@ class OrganizationPurgeTest extends TestCase
         $this->assertNull($row->rodo_accepted_ip);
         $this->assertNull($row->notes);
         $this->assertNull($row->company_contact_name);
+        // deposit_notes cleared — free-text that may contain customer name/details
+        $this->assertNull($row->deposit_notes);
+        // For natural_person: REGON/KRS cleared (JDG REGON identifies the natural person)
+        $this->assertNull($row->company_regon);
+        $this->assertNull($row->company_krs);
 
         // Accounting fields MUST be preserved
         $this->assertSame('TEST-001', $row->order_number);
@@ -119,6 +127,48 @@ class OrganizationPurgeTest extends TestCase
         $this->assertSame('Warszawa', $row->invoice_city);
         $this->assertNotNull($row->rodo_accepted_at);
         $this->assertNotNull($row->terms_accepted_at);
+    }
+
+    public function test_anonymize_order_business_keeps_regon_krs_but_clears_deposit_notes(): void
+    {
+        $org = Organization::factory()->create();
+
+        DB::table('orders')->insert([
+            'organization_id' => $org->id,
+            'user_id' => $org->owner_id,
+            'order_number' => 'BIZ-001',
+            'status' => 'completed',
+            'currency' => 'PLN',
+            'subtotal' => '1000.00',
+            'discount_amount' => '0.00',
+            'tax_amount' => '0.00',
+            'total_amount' => '1000.00',
+            'customer_type' => 'business',
+            'customer_first_name' => 'Piotr',
+            'customer_last_name' => 'Nowak',
+            'customer_email' => 'piotr@firma.pl',
+            'company_regon' => '987654321',
+            'company_krs' => '0000654321',
+            'deposit_notes' => 'Kaucja do odbioru przez Piotra N.',
+            'expires_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->service->anonymize($org);
+
+        $row = DB::table('orders')->where('organization_id', $org->id)->first();
+
+        // Business REGON/KRS retained — appear on B2B invoices (Art. 106e VAT)
+        $this->assertSame('987654321', $row->company_regon);
+        $this->assertSame('0000654321', $row->company_krs);
+
+        // deposit_notes still cleared regardless of customer_type
+        $this->assertNull($row->deposit_notes);
+
+        // Core PII cleared
+        $this->assertSame('Anonimizowane', $row->customer_first_name);
+        $this->assertStringContainsString('@anonymized.local', $row->customer_email);
     }
 
     public function test_anonymize_email_placeholder_is_unique_per_order(): void
@@ -212,6 +262,15 @@ class OrganizationPurgeTest extends TestCase
             'last_name' => 'Nowak',
             'email' => 'anna@example.com',
             'phone' => '987654321',
+            'location_address' => 'ul. Kwiatowa 12, Warszawa',
+            'location_latitude' => 52.2297,
+            'location_longitude' => 21.0122,
+            'location_components' => json_encode(['city' => 'Warszawa']),
+            'location_place_id' => 'ChIJ0RhONcBEFkcRv4pHdrW2X7o',
+            'service_location_type' => 'parking_uliczny',
+            'registration_number' => 'WA12345',
+            'notes' => 'Klient mieszka na 3 piętrze',
+            'cancellation_reason' => 'Klient Jan Kowalski odwołał',
             'invoice_requested' => 1,
             'invoice_company_name' => 'BetaCorp Sp. z o.o.',
             'invoice_nip' => '5260208967',
@@ -223,11 +282,26 @@ class OrganizationPurgeTest extends TestCase
 
         $row = DB::table('appointments')->where('organization_id', $org->id)->first();
 
-        // PII cleared
+        // Core PII cleared
         $this->assertSame('Anonimizowane', $row->first_name);
         $this->assertNull($row->last_name);
         $this->assertStringContainsString('@anonymized.local', $row->email);
         $this->assertNull($row->phone);
+
+        // Location PII cleared (mobile service = CRITICAL — identifies client's home/work address)
+        $this->assertNull($row->location_address);
+        $this->assertNull($row->location_latitude);
+        $this->assertNull($row->location_longitude);
+        $this->assertNull($row->location_components);
+        $this->assertNull($row->location_place_id);
+        $this->assertNull($row->service_location_type);
+
+        // Vehicle plate cleared (PII per UODO)
+        $this->assertNull($row->registration_number);
+
+        // Free-text fields cleared (may contain customer name/details)
+        $this->assertNull($row->notes);
+        $this->assertNull($row->cancellation_reason);
 
         // Invoice/accounting preserved
         $this->assertSame('BetaCorp Sp. z o.o.', $row->invoice_company_name);
@@ -254,6 +328,8 @@ class OrganizationPurgeTest extends TestCase
             'last_name' => 'Wiśniewski',
             'email' => 'tomasz@example.com',
             'phone' => '111222333',
+            'notes' => 'Klient Tomasz Wiśniewski zgłosił uszkodzenie',
+            'cancellation_reason' => 'Anulowane przez Tomasza W.',
             'invoice_requested' => 1,
             'invoice_company_name' => 'GammaCorp S.A.',
             'invoice_nip' => '1234563218',
@@ -270,12 +346,56 @@ class OrganizationPurgeTest extends TestCase
         $this->assertNull($row->last_name);
         $this->assertStringContainsString('@anonymized.local', $row->email);
         $this->assertNull($row->phone);
+        $this->assertNull($row->notes);
+        $this->assertNull($row->cancellation_reason);
 
         // Accounting preserved
         $this->assertSame('GammaCorp S.A.', $row->invoice_company_name);
         $this->assertSame('1234563218', $row->invoice_nip);
         // SQLite returns decimal columns as numeric — use assertEquals, not assertSame
         $this->assertEquals('300.00', $row->total_price);
+    }
+
+    public function test_anonymize_does_not_touch_other_org_data(): void
+    {
+        $orgA = Organization::factory()->create();
+        $orgB = Organization::factory()->create();
+
+        // Insert orders for both orgs with real PII
+        DB::table('orders')->insert([
+            'organization_id' => $orgA->id, 'user_id' => $orgA->owner_id,
+            'order_number' => 'ISO-A', 'status' => 'completed', 'currency' => 'PLN',
+            'subtotal' => '100.00', 'discount_amount' => '0.00', 'tax_amount' => '0.00',
+            'total_amount' => '100.00',
+            'customer_first_name' => 'Alice', 'customer_last_name' => 'Smith',
+            'customer_email' => 'alice@example.com', 'notes' => 'Alice note',
+            'expires_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('orders')->insert([
+            'organization_id' => $orgB->id, 'user_id' => $orgB->owner_id,
+            'order_number' => 'ISO-B', 'status' => 'completed', 'currency' => 'PLN',
+            'subtotal' => '200.00', 'discount_amount' => '0.00', 'tax_amount' => '0.00',
+            'total_amount' => '200.00',
+            'customer_first_name' => 'Bob', 'customer_last_name' => 'Jones',
+            'customer_email' => 'bob@example.com', 'notes' => 'Bob note',
+            'expires_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Anonymize ONLY org A
+        $this->service->anonymize($orgA);
+
+        $rowA = DB::table('orders')->where('organization_id', $orgA->id)->first();
+        $rowB = DB::table('orders')->where('organization_id', $orgB->id)->first();
+
+        // Org A: anonymized
+        $this->assertSame('Anonimizowane', $rowA->customer_first_name);
+        $this->assertStringContainsString('@anonymized.local', $rowA->customer_email);
+        $this->assertNull($rowA->notes);
+
+        // Org B: untouched — cross-org isolation is critical for multi-tenant destructive ops
+        $this->assertSame('Bob', $rowB->customer_first_name);
+        $this->assertSame('bob@example.com', $rowB->customer_email);
+        $this->assertSame('Bob note', $rowB->notes);
     }
 
     public function test_anonymize_is_idempotent(): void

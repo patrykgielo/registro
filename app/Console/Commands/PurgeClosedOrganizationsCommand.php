@@ -77,7 +77,7 @@ class PurgeClosedOrganizationsCommand extends Command
                 $orders = DB::table('orders')->where('organization_id', $org->id)->count();
                 $appointments = DB::table('appointments')->where('organization_id', $org->id)->count();
                 $rentals = DB::table('rentals')->where('organization_id', $org->id)->count();
-                $payments = DB::table('payments')->where('organization_id', $org->id)->count();
+                $payments = DB::table('payments')->where('organization_id', $org->id)->whereNotNull('webhook_payload')->count();
                 $carts = DB::table('carts')->where('organization_id', $org->id)->count();
                 $events = DB::table('analytics_events')->where('organization_id', $org->id)->count();
                 $snapshots = DB::table('statistics_daily_snapshots')->where('organization_id', $org->id)->count();
@@ -117,6 +117,7 @@ class PurgeClosedOrganizationsCommand extends Command
         }
 
         $processed = 0;
+        $failed = 0;
         $totalAnonymized = ['orders' => 0, 'appointments' => 0, 'rentals' => 0, 'payments' => 0];
         $totalEphemeralDeleted = ['carts' => 0, 'analytics_events' => 0, 'statistics_snapshots' => 0];
 
@@ -126,6 +127,8 @@ class PurgeClosedOrganizationsCommand extends Command
             try {
                 $ephemeralDeleted = [];
 
+                // anonymize() has its own DB::transaction; MySQL nests via SAVEPOINT — safe,
+                // rollback from outer transaction unwinds the inner SAVEPOINT automatically.
                 DB::transaction(function () use ($org, &$totalAnonymized, &$ephemeralDeleted) {
                     // Step 1: Anonymize PII (orders, appointments, rentals, payment payloads).
                     $counts = $this->anonymizer->anonymize($org);
@@ -168,22 +171,23 @@ class PurgeClosedOrganizationsCommand extends Command
                     'exception' => $e->getMessage(),
                 ]);
                 $this->error("Purge failed for org #{$org->id}: {$e->getMessage()} (transaction rolled back)");
-
-                return self::FAILURE;
+                $failed++;
+                // Continue processing remaining orgs — one failure must not block the full cohort.
             }
         }
 
         $this->newLine();
-        $this->info("Purge completed: {$processed} organization(s) processed.");
+        $this->info("Purge completed: {$processed} organization(s) processed, {$failed} failed.");
         $this->line("Anonymized: {$totalAnonymized['orders']} orders, {$totalAnonymized['appointments']} appointments, {$totalAnonymized['rentals']} rentals, {$totalAnonymized['payments']} payments.");
         $this->line("Deleted (ephemeral): {$totalEphemeralDeleted['carts']} carts, {$totalEphemeralDeleted['analytics_events']} analytics events, {$totalEphemeralDeleted['statistics_snapshots']} statistics snapshots.");
 
         Log::info('organizations:purge completed', [
             'processed' => $processed,
+            'failed' => $failed,
             'anonymized' => $totalAnonymized,
             'ephemeral_deleted' => $totalEphemeralDeleted,
         ]);
 
-        return self::SUCCESS;
+        return $failed > 0 ? self::FAILURE : self::SUCCESS;
     }
 }
