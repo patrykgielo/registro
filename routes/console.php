@@ -186,6 +186,14 @@ Schedule::command('organizations:purge --force')
     ->name('organizations:purge')
     ->onOneServer();
 
+// Delete tenant data-export ZIPs past their retention window (GDPR art. 5(1)(e)).
+// Signed URLs expire in 7 days; files are removed after retention.export_files_days.
+Schedule::command('organizations:cleanup-exports')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->name('organizations:cleanup-exports')
+    ->onOneServer();
+
 /*
 |--------------------------------------------------------------------------
 | Statistics System

@@ -324,6 +324,18 @@ if (! app()->isProduction()) {
 }
 
 // =============================================================================
+// Platform — Organization Data Export (signed URL, Art. 28(3)(g) RODO)
+// =============================================================================
+// Accessible by: valid signed URL (7 days) OR authenticated super-admin.
+// Authorization is handled in the controller — no auth middleware here,
+// because the org owner may not have a Registro account / be logged in.
+// Throttled: the signed URL streams a ZIP with full org PII.
+// =============================================================================
+Route::get('/platform/organizations/{organization}/data-export', [\App\Http\Controllers\Platform\OrganizationDataExportController::class, 'download'])
+    ->name('platform.organization.data-export')
+    ->middleware('throttle:10,1440');
+
+// =============================================================================
 // CMS Pages - Catch-all Route (MUST BE LAST!)
 // =============================================================================
 // Pages are served at root level: /{slug} (WordPress-style SEO-friendly URLs)

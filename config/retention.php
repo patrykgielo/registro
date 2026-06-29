@@ -37,4 +37,9 @@ return [
     'analytics_months' => 13,
     'carts_days' => 7,
     'statistics_days' => 365,
+
+    // --- Organization data exports ---
+    // Signed download URLs are valid for 7 days; keep ZIPs for 8 days (TTL + 1 day margin).
+    // GDPR art. 5(1)(e): data must not be retained longer than necessary.
+    'export_files_days' => 8,
 ];
