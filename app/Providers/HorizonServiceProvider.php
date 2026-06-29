@@ -23,25 +23,12 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     /**
      * Register the Horizon gate.
      *
-     * This gate determines who can access Horizon in non-local environments.
+     * This gate determines who can access Horizon (super-admin only, all environments).
      */
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
-            if ($user === null) {
-                return false;
-            }
-
-            // Non-production: any authenticated user
-            if (! app()->environment('production')) {
-                return true;
-            }
-
-            // Production: whitelisted emails only
-            return in_array($user->email, [
-                'admin@registro.local',
-                'patryk.gieloo@gmail.com',
-            ]);
+            return $user?->hasRole('super-admin') ?? false;
         });
     }
 }

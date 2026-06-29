@@ -496,7 +496,7 @@ $middleware->prepend(\App\Http\Middleware\CheckMaintenanceMode::class);
 
 3. **Clear OPcache**:
 ```bash
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 ```
 
 ### Secret token not working
@@ -529,7 +529,7 @@ These aggressive settings improve production performance but require container r
 **Solution - Restart containers to clear PHP-FPM OPcache**:
 ```bash
 # Restart all PHP containers
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 
 # Then clear Laravel caches
 docker compose exec app php artisan optimize:clear
@@ -571,7 +571,7 @@ docker compose exec app php artisan maintenance:enable \
 git pull origin main
 docker compose exec app composer install --no-dev
 docker compose exec app php artisan migrate --force
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 
 # 3. Test application
 # Visit https://yourdomain.com?maintenance_token=registro-abc123...

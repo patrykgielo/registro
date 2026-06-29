@@ -384,7 +384,7 @@ PHP has TWO OPcache instances:
 **Restart containers:**
 
 ```bash
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 ```
 
 #### Prevention

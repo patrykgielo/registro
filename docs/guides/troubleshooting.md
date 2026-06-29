@@ -205,8 +205,8 @@ sudo chown -R $USER:$USER app/
 **Solutions:**
 1. **Check queue worker:**
    ```bash
-   docker compose ps queue horizon
-   docker compose logs -f queue
+   docker compose ps horizon
+   docker compose logs -f horizon
    ```
 
 2. **Check failed jobs:**
@@ -232,7 +232,7 @@ sudo chown -R $USER:$USER app/
 **Solutions:**
 1. **Restart queue worker:**
    ```bash
-   docker compose restart queue horizon
+   docker compose restart horizon
    ```
 
 2. **Check Redis connection:**
@@ -379,7 +379,7 @@ docker compose exec app php -i | grep -A 5 opcache.validate_timestamps
 **If dev config is NOT active (production-like environment):**
 ```bash
 # Restart containers to clear OPcache memory
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 
 # Then clear Laravel caches
 docker compose exec app php artisan optimize:clear
@@ -401,7 +401,7 @@ docker compose exec app php artisan filament:optimize-clear
 ```bash
 docker compose exec app php artisan optimize:clear
 docker compose exec app php artisan filament:optimize-clear
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 ```
 
 ### Local vs Production OPcache Configuration
@@ -547,12 +547,12 @@ FileUpload::make('background_image')
 
 2. **Restart containers:**
    ```bash
-   docker compose restart app queue
+   docker compose restart app horizon
    ```
 
 3. **Check for memory leaks in queue jobs:**
    ```bash
-   docker compose logs -f queue | grep "memory"
+   docker compose logs -f horizon | grep "memory"
    ```
 
 ## Getting Help

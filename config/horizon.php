@@ -98,6 +98,9 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:analytics' => 120,
+        'redis:emails' => 120,
+        'redis:reminders' => 180,
     ],
 
     /*
@@ -183,7 +186,7 @@ return [
     |
     */
 
-    'memory_limit' => 64,
+    'memory_limit' => 128,
 
     /*
     |--------------------------------------------------------------------------
