@@ -68,12 +68,13 @@ class CancelInFlightObligationsJob implements ShouldQueue
             ->whereIn('status', ['pending_payment', 'paid', 'confirmed', 'in_progress'])
             ->chunkById(100, function ($orders) use ($orderService, &$cancelled): void {
                 foreach ($orders as $order) {
-                    if ($order->status === 'paid') {
-                        Log::info('offboarding: refund required for paid order', [
+                    if (in_array($order->status, ['paid', 'in_progress'])) {
+                        Log::info('offboarding: refund required for order', [
                             'organization_id' => $this->organizationId,
                             'order_id' => $order->id,
                             'order_number' => $order->order_number,
                             'total_amount' => $order->total_amount,
+                            'status' => $order->status,
                             'reason' => 'Zamknięcie działalności — wymaga ręcznego zwrotu przez Przelewy24',
                         ]);
                     }
@@ -107,13 +108,21 @@ class CancelInFlightObligationsJob implements ShouldQueue
             ])
             ->chunkById(100, function ($appointments) use (&$cancelled): void {
                 foreach ($appointments as $appointment) {
-                    // Set reason BEFORE status change — AppointmentCancelled event dispatches
-                    // from booted() updating() hook without carrying the reason; it must be
-                    // stored on the model so the notification can read it.
-                    $appointment->cancellation_reason = $this->reason;
-                    $appointment->status = AppointmentStatus::Cancelled;
-                    $appointment->save();
-                    $cancelled++;
+                    try {
+                        // Set reason BEFORE status change — AppointmentCancelled event dispatches
+                        // from booted() updating() hook without carrying the reason; it must be
+                        // stored on the model so the notification can read it.
+                        $appointment->cancellation_reason = $this->reason;
+                        $appointment->status = AppointmentStatus::Cancelled;
+                        $appointment->save();
+                        $cancelled++;
+                    } catch (\Throwable $e) {
+                        Log::error('offboarding: could not cancel appointment', [
+                            'organization_id' => $this->organizationId,
+                            'appointment_id' => $appointment->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             });
 
@@ -143,10 +152,18 @@ class CancelInFlightObligationsJob implements ShouldQueue
                         ]);
                     }
 
-                    $rental->cancellation_reason = $this->reason;
-                    $rental->status = RentalStatus::Cancelled;
-                    $rental->save();
-                    $cancelled++;
+                    try {
+                        $rental->cancellation_reason = $this->reason;
+                        $rental->status = RentalStatus::Cancelled;
+                        $rental->save();
+                        $cancelled++;
+                    } catch (\Throwable $e) {
+                        Log::error('offboarding: could not cancel rental', [
+                            'organization_id' => $this->organizationId,
+                            'rental_id' => $rental->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             });
 

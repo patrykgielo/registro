@@ -24,6 +24,9 @@ class StartOrganizationOffboardingTest extends TestCase
     {
         parent::setUp();
         Role::firstOrCreate(['name' => 'super-admin', 'guard_name' => 'web']);
+        $superAdmin = User::factory()->create();
+        $superAdmin->assignRole('super-admin');
+        $this->actingAs($superAdmin);
     }
 
     public function test_org_transitions_to_closing(): void
@@ -135,5 +138,25 @@ class StartOrganizationOffboardingTest extends TestCase
         $this->assertTrue($fresh->is_active);
         $this->assertNull($fresh->closing_initiated_at);
         $this->assertNull($fresh->purge_after);
+    }
+
+    public function test_non_super_admin_cannot_initiate_offboarding(): void
+    {
+        $this->actingAs(User::factory()->create()); // regular user, no role
+
+        $org = Organization::factory()->create(['owner_id' => User::factory()->create()->id]);
+
+        $this->expectException(\Illuminate\Auth\Access\AuthorizationException::class);
+        app(StartOrganizationOffboarding::class)->execute($org);
+    }
+
+    public function test_unauthenticated_cannot_initiate_offboarding(): void
+    {
+        \Illuminate\Support\Facades\Auth::logout();
+
+        $org = Organization::factory()->create(['owner_id' => User::factory()->create()->id]);
+
+        $this->expectException(\Illuminate\Auth\Access\AuthorizationException::class);
+        app(StartOrganizationOffboarding::class)->execute($org);
     }
 }

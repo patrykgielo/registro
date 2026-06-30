@@ -72,10 +72,12 @@ class Rental extends Model
                     RentalStatus::Cancelled => $rental->cancelled_at = now(),
                     default => null,
                 };
+            }
+        });
 
-                if ($rental->status === RentalStatus::Cancelled) {
-                    event(new RentalCancelled($rental));
-                }
+        static::updated(function (Rental $rental) {
+            if ($rental->wasChanged('status') && $rental->status === RentalStatus::Cancelled) {
+                event(new RentalCancelled($rental, $rental->cancellation_reason ?? ''));
             }
         });
     }

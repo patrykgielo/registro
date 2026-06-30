@@ -18,6 +18,7 @@ use App\Events\RentalCancelled;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
 use App\Listeners\RecordAnalyticsOnOrderPaid;
+use App\Listeners\SendRentalCancelledNotification;
 use App\Models\Appointment;
 use App\Models\Organization;
 use App\Models\Page as PageModel;
@@ -30,7 +31,6 @@ use App\Notifications\OrderCancelledNotification;
 use App\Notifications\OrderConfirmedNotification;
 use App\Notifications\OrderPaidNotification;
 use App\Notifications\PasswordResetNotification;
-use App\Notifications\RentalCancelledNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
 use App\Observers\OrganizationObserver;
@@ -311,17 +311,7 @@ class AppServiceProvider extends ServiceProvider
         // ========== RENTAL NOTIFICATIONS ==========
 
         // Rental Cancelled: notify customer
-        Event::listen(RentalCancelled::class, function (RentalCancelled $event) {
-            $rental = $event->rental->loadMissing('customer');
-
-            if ($rental->customer) {
-                $rental->customer->notify(new RentalCancelledNotification($rental, $event->reason));
-            } else {
-                \Log::warning('RentalCancelled: no customer attached, skipping notification', [
-                    'rental_id' => $rental->id,
-                ]);
-            }
-        });
+        Event::listen(RentalCancelled::class, SendRentalCancelledNotification::class);
 
         // ========== SECURITY: SESSION REGENERATION ==========
 

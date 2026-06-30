@@ -7,34 +7,51 @@ namespace App\Actions\Offboarding;
 use App\Enums\OrganizationLifecycleState;
 use App\Jobs\CancelInFlightObligationsJob;
 use App\Models\Organization;
+use App\Models\User;
 use App\Notifications\OrganizationOffboardingStartedNotification;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Initiates graceful offboarding for a closing organization.
  *
  * Flow:
- * 1. Dispatch CancelInFlightObligationsJob (async) — cancels all in-flight obligations
- *    and sends cancellation notifications to affected customers.
- * 2. Transition org → Closing (forceLifecycleTransition bypasses obligation guard
- *    because the job handles them asynchronously).
- * 3. Notify org owner about the offboarding process and the restore grace window.
- * 4. Audit log.
+ * 1. Authorize: actor must be super-admin (defense-in-depth on top of Filament authorize).
+ * 2. Transition org → Closing inside a DB transaction (forceLifecycleTransition bypasses
+ *    obligation guard because the job handles them asynchronously). Org is Closing in DB
+ *    before the job is dispatched — prevents new bookings in the race window.
+ * 3. Dispatch CancelInFlightObligationsJob (async) — cancels all in-flight obligations
+ *    and sends cancellation notifications to affected customers. Dispatched AFTER the
+ *    transaction commits so workers see org as Closing.
+ * 4. Notify org owner about the offboarding process and the restore grace window.
+ * 5. Audit log.
  *
  * Security: only callable from super-admin Filament actions or CLI (no HTTP route).
  * The org observer sets closing_initiated_at as a side-effect of the Closing transition.
  */
 class StartOrganizationOffboarding
 {
-    public function execute(Organization $org): void
+    public function execute(Organization $org, ?User $actor = null): void
     {
-        // Step 1: async cancellation of in-flight obligations (fires customer notifications)
-        CancelInFlightObligationsJob::dispatch($org->id, 'Zamknięcie działalności');
+        $actor ??= Auth::user();
+        if (! $actor?->hasRole('super-admin')) {
+            throw new AuthorizationException(
+                'Only super-admins can initiate organization offboarding.'
+            );
+        }
 
-        // Step 2: transition to Closing — bypass obligation guard (job handles them)
-        $org->forceLifecycleTransition = true;
-        $org->lifecycle_state = OrganizationLifecycleState::Closing;
-        $org->save();
+        // Step 1: transition to Closing inside a transaction — org is Closing before job runs
+        DB::transaction(function () use ($org): void {
+            $org->forceLifecycleTransition = true;
+            $org->lifecycle_state = OrganizationLifecycleState::Closing;
+            $org->save();
+        });
+
+        // Step 2: async cancellation of in-flight obligations (fires customer notifications).
+        // Dispatched outside the transaction — workers are guaranteed to see org as Closing.
+        CancelInFlightObligationsJob::dispatch($org->id, 'Zamknięcie działalności');
 
         // Step 3: notify org owner
         if ($org->owner) {
@@ -49,6 +66,7 @@ class StartOrganizationOffboarding
         Log::info('StartOrganizationOffboarding: offboarding initiated', [
             'organization_id' => $org->id,
             'organization_name' => $org->name,
+            'initiated_by' => $actor->id,
             'closing_initiated_at' => $org->fresh()->closing_initiated_at?->toIso8601String(),
         ]);
     }

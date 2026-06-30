@@ -23,6 +23,8 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class OrganizationResource extends Resource
 {
@@ -269,7 +271,7 @@ class OrganizationResource extends Resource
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading('Graceful Offboarding — Zamknij organizację')
-                    ->modalDescription(function (Organization $record): string {
+                    ->modalDescription(function (Organization $record): HtmlString {
                         $counts = app(TenantObligationService::class)->activeObligations($record);
                         $graceDays = (int) config('retention.closing_grace_days', 14);
 
@@ -287,7 +289,7 @@ class OrganizationResource extends Resource
                         $parts[] = "Okno przywrócenia: **{$graceDays} dni** od teraz (akcja Reaktywuj). Po tym czasie organizacja przejdzie automatycznie w stan Zamknięta.";
                         $parts[] = 'Refundy za opłacone zamówienia i kaucje za wypożyczenia wymagają ręcznego przetworzenia (brak automatycznej integracji z Przelewy24).';
 
-                        return implode("\n\n", $parts);
+                        return new HtmlString(Str::markdown(implode("\n\n", $parts)));
                     })
                     ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
