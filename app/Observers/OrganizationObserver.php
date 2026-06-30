@@ -121,10 +121,16 @@ class OrganizationObserver
     {
         $org->forceLifecycleTransition = false;
 
-        if ($org->wasChanged('lifecycle_state')
-            && $org->lifecycle_state !== OrganizationLifecycleState::Active
-        ) {
-            Cache::forget("tenant:slug:{$org->slug}");
+        if ($org->wasChanged('lifecycle_state')) {
+            // Active resolution cache: drop it whenever leaving Active so a
+            // suspended/closing/closed org is never served from a stale Active entry.
+            if ($org->lifecycle_state !== OrganizationLifecycleState::Active) {
+                Cache::forget("tenant:slug:{$org->slug}");
+            }
+            // Business-closed page cache: drop on EVERY lifecycle change so a
+            // Closing→Active restore stops showing the 410 page, and entering
+            // Closing/Closed refreshes it.
+            Cache::forget("tenant:closed:{$org->slug}");
         }
     }
 
