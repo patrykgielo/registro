@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Middleware;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Http\Middleware\ResolveTenant;
 use App\Models\Organization;
 use App\Models\User;
@@ -123,7 +124,7 @@ class ResolveTenantTest extends TestCase
         $this->assertStringContains('registro.local', $response->headers->get('Location'));
     }
 
-    public function test_closing_lifecycle_tenant_redirects_to_root(): void
+    public function test_closing_lifecycle_tenant_shows_business_closed_page(): void
     {
         config(['app.domain' => 'registro.local']);
 
@@ -138,12 +139,85 @@ class ResolveTenantTest extends TestCase
         $request = Request::create('https://closingorg.registro.local/');
         $request->headers->set('HOST', 'closingorg.registro.local');
 
-        $response = $this->middleware->handle($request, function ($req) {
-            return response('ok');
-        });
+        $response = $this->middleware->handle($request, fn () => response('ok'));
 
-        // Closing state does not allow public site access
-        $this->assertTrue($response->isRedirection());
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+        $this->assertStringContainsString('Closing Salon', $response->getContent());
+
+        // The closed-page result is cached, but the Active resolution cache must stay empty
+        // (a closing org must never be served as an active tenant).
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has('tenant:slug:closingorg'));
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('tenant:closed:closingorg'));
+    }
+
+    public function test_restore_clears_business_closed_cache(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        $org = Organization::factory()->closing()->create([
+            'name' => 'Restorable', 'slug' => 'restorable',
+            'booking_type' => 'time_slot', 'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://restorable.registro.local/');
+        $request->headers->set('HOST', 'restorable.registro.local');
+        $this->middleware->handle($request, fn () => response('ok')); // primes tenant:closed cache
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('tenant:closed:restorable'));
+
+        // Restore Closing -> Active should invalidate the closed-page cache.
+        $org->lifecycle_state = OrganizationLifecycleState::Active;
+        $org->save();
+
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has('tenant:closed:restorable'));
+    }
+
+    public function test_closed_lifecycle_tenant_shows_business_closed_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->closed()->create([
+            'name' => 'Closed Salon',
+            'slug' => 'closedorg',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://closedorg.registro.local/');
+        $request->headers->set('HOST', 'closedorg.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+        $this->assertStringContainsString('Closed Salon', $response->getContent());
+    }
+
+    public function test_soft_deleted_closed_tenant_shows_business_closed_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        $org = Organization::factory()->closed()->create([
+            'name' => 'Purged Salon',
+            'slug' => 'purgedorg',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+        // Soft-delete the org (simulates purge command path)
+        $org->bypassDeleteGuard = true;
+        $org->delete();
+
+        $request = Request::create('https://purgedorg.registro.local/');
+        $request->headers->set('HOST', 'purgedorg.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+        $this->assertStringContainsString('Purged Salon', $response->getContent());
     }
 
     public function test_active_lifecycle_tenant_resolves_successfully(): void

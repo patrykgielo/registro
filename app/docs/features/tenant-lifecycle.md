@@ -37,10 +37,11 @@ The migration is additive and non-breaking. `is_active` is now a **fully derived
 | 5.3a | `SoftDeletes` on Organization + PII anonymization service + `organizations:purge` + `config/retention.php` | Done |
 | 5.3b | Tenant data export (full org copy for owner, RODO art. 28(3)(g)) + cleanup command | Done |
 | 5.4a | Graceful offboarding backend — `RentalCancelled` event, `CancelInFlightObligationsJob`, `StartOrganizationOffboarding`, `organizations:finalize-closing`, Filament initiateClosing rewired | Done |
+| 5.4b | Business-closed page — Closing/Closed tenant subdomains return HTTP 410 with `errors.business-closed` view instead of silent root redirect | Done |
 
 **Planned / not implemented:**
 
-- **5.4b** — hard-delete of legal records (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Requires dropping the RESTRICT FK before `forceDelete()`. See [§10](#10-follow-ups--technical-debt).
+- **5.4 (legal purge)** — hard-delete of legal records (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Requires dropping the RESTRICT FK before `forceDelete()`. See [§10](#10-follow-ups--technical-debt).
 - **5.5 / 5.7** — staff `null`-on-delete double-booking follow-up and DPO open questions (JDG REGON, `order_status_history.properties`, `customer_id` nulling). See [§10](#10-follow-ups--technical-debt).
 
 ---
@@ -437,10 +438,34 @@ $tenant = Cache::remember("tenant:slug:{$slug}", 300, fn () =>
         ->first());
 ```
 
-- Only `Active` tenants serve the public site; suspended/closing/closed (and soft-deleted) orgs resolve to `null` → redirect to root.
+- Only `Active` tenants serve the public site; suspended/closing/closed (and soft-deleted) orgs resolve to `null` from the primary cache query.
 - `null` results are **not** cached (`Cache::forget`) — a freshly created/activated tenant resolves immediately.
 - Cache TTL = 300 s. On any transition to a non-`Active` state, `OrganizationObserver::saved()` calls `Cache::forget("tenant:slug:{$org->slug}")` (`:124-128`), so a suspend/close takes effect without waiting out the TTL. This covers CLI/programmatic transitions, not just Filament actions.
 - `is_active` remains a derived column used by the platform panel's `IconColumn` + `TernaryFilter`, and is kept in sync by the observer.
+
+### Business-closed page (Faza 5.4b)
+
+When the primary cache query returns `null`, the middleware performs a **secondary lookup** (not cached) before redirecting to root:
+
+```php
+$closedOrg = Organization::withTrashed()
+    ->where('slug', $slug)
+    ->whereIn('lifecycle_state', ['closing', 'closed'])
+    ->first();
+```
+
+| Tenant state | Response |
+|---|---|
+| `Closing` | HTTP 410 — `errors.business-closed` view with org name |
+| `Closed` (including soft-deleted) | HTTP 410 — `errors.business-closed` view with org name |
+| `Suspended` | Redirect → root (temporary state, not "business closed") |
+| Unknown slug | Redirect → root (fail closed) |
+
+**Status 410 Gone** is used for both Closing and Closed: from the visitor's perspective the public site is permanently unavailable, regardless of whether the grace period could theoretically be reversed by a super-admin. A 503 would imply "try again later", which is misleading.
+
+`withTrashed()` is required to catch soft-deleted orgs — the `organizations:purge` command soft-deletes Closed orgs after PII anonymization.
+
+The view `resources/views/errors/business-closed.blade.php` is self-contained (inline CSS, no @vite dependency). It displays the org name and a link back to the platform root.
 
 Resolved tenant is stored in `$request->attributes` and `session('tenant_id')` (so Livewire update requests, which skip this middleware, can still resolve via `TenantFeature::currentTenant()`). Authenticated admin/staff are redirected to root if they don't belong to the resolved tenant.
 
@@ -458,7 +483,7 @@ Resolved tenant is stored in `$request->attributes` and `session('tenant_id')` (
 | `tests/Feature/Organizations/OrganizationPurgeTest.php` | 16 | PII cleared / accounting preserved per model, business vs natural_person REGON/KRS, payment `webhook_payload`, idempotence, cross-org isolation, `purge_after` set/not-overwritten, soft-delete exclusion + `withTrashed`, command eligibility/skip/dry-run. |
 | `tests/Feature/Organizations/OrganizationDataExportTest.php` | 20 | Service ZIP structure/manifest/isolation/path-scoping; route 200/403 (expired, tampered, no-sig, regular user) / 200 (super-admin) / 404 (missing) / 403 (traversal, cross-org); command file+notification, slug, unknown-org. |
 | `tests/Feature/Employee/StaffDeleteGuardTest.php` | 8 | Staff delete guard: past/future, status filters, null-tenant isolation. |
-| `tests/Feature/Middleware/ResolveTenantTest.php` | 10 | Active/inactive/unknown tenants, lifecycle_state gating, cache behaviour. |
+| `tests/Feature/Middleware/ResolveTenantTest.php` | 13 | Active/inactive/unknown tenants, lifecycle_state gating, cache behaviour, Closing/Closed/soft-deleted → 410 business-closed page, Suspended → root redirect. |
 
 **Patterns:** factory states over `create(['lifecycle_state' => …])`; set `lifecycle_state` directly on the model to trigger `updating()`; `Role::firstOrCreate` in `setUp`; SQLite decimal columns return numeric (`500`, not `'500.00'`) so anonymization assertions use `assertEquals()` not `assertSame()`; set `request->attributes['tenant']` before testing tenant-scoped guards.
 
@@ -483,6 +508,6 @@ Resolved tenant is stored in `$request->attributes` and `session('tenant_id')` (
 Differences found between the **previous** version of this doc and the code on `develop` (2026-06-30):
 
 - **Export signed-URL TTL.** Previous doc stated the `organizations:export-data` command and controller issue a **30-day** signed URL. The command actually uses `now()->addDays(7)` (`ExportOrganizationDataCommand.php:71`). The controller docblock still says "valid 30 days" (`OrganizationDataExportController.php:21`) — a **stale code comment**; the real TTL is **7 days**, consistent with `export_files_days = 8` and the notification copy. *(Code comment is wrong; this doc now states 7 days.)*
-- **Test counts updated** to current reality: `OrganizationObserverTest` 17 → **22**; `ResolveTenantTest` 7 → **10**; `OrganizationDataExportTest` 12 → **20**; `StaffDeleteGuardTest` 7 → **8**. A previously undocumented unit test `tests/Unit/Enums/OrganizationLifecycleStateTest.php` (**6**) was added to the table. `StateMachine` (13) and `TenantObligationService` (12) matched.
+- **Test counts updated** to current reality: `OrganizationObserverTest` 17 → **22**; `ResolveTenantTest` 7 → **10** (pre-5.4b) → **13** (post-5.4b, adds Closing/Closed/soft-deleted business-closed page tests); `OrganizationDataExportTest` 12 → **20**; `StaffDeleteGuardTest` 7 → **8**. A previously undocumented unit test `tests/Unit/Enums/OrganizationLifecycleStateTest.php` (**6**) was added to the table. `StateMachine` (13) and `TenantObligationService` (12) matched.
 - **Test paths.** Several suites live under `tests/Unit/...` (StateMachine, ObligationService, Enum), not `tests/Feature/...` as some prior prose implied. Paths in [§9](#9-test-coverage) are now exact.
 - **`saved()` does double duty.** The cache-invalidation responsibility (`Cache::forget` on non-Active transition) lives in `OrganizationObserver::saved()` alongside the `forceLifecycleTransition` reset — previously documented only as a flag-reset hook.
