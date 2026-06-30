@@ -6,6 +6,7 @@ namespace App\Filament\Pages;
 
 use App\Enums\OrganizationLifecycleState;
 use App\Filament\Traits\HasGroupedSettings;
+use App\Models\Organization;
 use App\Models\OrganizationLifecycleLog;
 use App\Models\Page as PageModel;
 use App\Models\User;
@@ -33,6 +34,7 @@ use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use UnitEnum;
 
@@ -46,6 +48,16 @@ class SystemSettings extends Page implements HasForms
 {
     use HasGroupedSettings;
     use InteractsWithForms;
+
+    /**
+     * Per-request memo for the current tenant's Organization, used by the
+     * account-closure tab closures (status/info/button each re-evaluate on every
+     * Livewire render). Private → Livewire never persists it, so it resets each
+     * request and always reflects fresh DB state. See closureOrg().
+     */
+    private ?Organization $closureOrgCache = null;
+
+    private bool $closureOrgResolved = false;
 
     /**
      * Page view.
@@ -1530,6 +1542,21 @@ class SystemSettings extends Page implements HasForms
      * Closure does NOT happen automatically: the action only flags the org and
      * notifies super-admins. Super-admin then runs the guarded offboarding.
      */
+    /**
+     * Resolve the current tenant's Organization once per request (memoised).
+     * Avoids the N+1 of re-querying in each closure-tab closure on every render.
+     */
+    private function closureOrg(): ?Organization
+    {
+        if (! $this->closureOrgResolved) {
+            $tenant = TenantFeature::currentTenant();
+            $this->closureOrgCache = $tenant ? Organization::find($tenant->id) : null;
+            $this->closureOrgResolved = true;
+        }
+
+        return $this->closureOrgCache;
+    }
+
     private function accountClosureTab(): Tabs\Tab
     {
         $closureEmail = app(SettingsManager::class)->closureRequestEmail();
@@ -1542,6 +1569,50 @@ class SystemSettings extends Page implements HasForms
                 Section::make('Zamknięcie konta')
                     ->description('Procedura zamknięcia organizacji na platformie Registro')
                     ->schema([
+                        // Status placeholder — visible only when there is something to report.
+                        Placeholder::make('closure_status')
+                            ->label('Status')
+                            ->content(function (): HtmlString|string {
+                                $org = $this->closureOrg();
+                                if ($org === null) {
+                                    return '';
+                                }
+
+                                if ($org->lifecycle_state === OrganizationLifecycleState::Closed) {
+                                    return new HtmlString(
+                                        '<span class="font-semibold text-red-600">Konto zamknięte.</span>'
+                                    );
+                                }
+
+                                if ($org->lifecycle_state === OrganizationLifecycleState::Closing) {
+                                    return new HtmlString(
+                                        '<span class="font-semibold text-orange-600">W trakcie zamknięcia — konto jest w procesie zamknięcia.</span>'
+                                    );
+                                }
+
+                                if ($org->closure_requested_at !== null) {
+                                    $date = $org->closure_requested_at->format('d.m.Y');
+
+                                    return new HtmlString(
+                                        "<span class=\"font-semibold text-yellow-600\">Wniosek o zamknięcie konta złożony dnia {$date} — oczekuje na rozpatrzenie.</span>"
+                                    );
+                                }
+
+                                return '';
+                            })
+                            ->visible(function (): bool {
+                                $org = $this->closureOrg();
+                                if ($org === null) {
+                                    return false;
+                                }
+
+                                return in_array($org->lifecycle_state, [
+                                    OrganizationLifecycleState::Closing,
+                                    OrganizationLifecycleState::Closed,
+                                ], true) || $org->closure_requested_at !== null;
+                            }),
+
+                        // Info placeholder — visible only when no request is pending and state allows.
                         Placeholder::make('closure_info')
                             ->label('Jak złożyć wniosek?')
                             ->content(
@@ -1550,8 +1621,20 @@ class SystemSettings extends Page implements HasForms
                                 .'Przed złożeniem wniosku upewnij się, że wszystkie aktywne zamówienia, wizyty '
                                 .'i wypożyczenia zostały zakończone lub anulowane. '
                                 .'Przed zamknięciem konta otrzymasz eksport swoich danych.'
-                            ),
+                            )
+                            ->visible(function (): bool {
+                                $org = $this->closureOrg();
+                                if ($org === null) {
+                                    return true;
+                                }
 
+                                return ! in_array($org->lifecycle_state, [
+                                    OrganizationLifecycleState::Closing,
+                                    OrganizationLifecycleState::Closed,
+                                ], true) && $org->closure_requested_at === null;
+                            }),
+
+                        // Request button — hidden once a request is pending or the org is closing/closed.
                         \Filament\Schemas\Components\Actions::make([
                             \Filament\Actions\Action::make('requestClosure')
                                 ->label('Złóż wniosek o zamknięcie')
@@ -1567,7 +1650,19 @@ class SystemSettings extends Page implements HasForms
                                 )
                                 ->modalSubmitActionLabel('Tak, złóż wniosek')
                                 ->action('requestClosure'),
-                        ])->columnSpanFull(),
+                        ])
+                            ->columnSpanFull()
+                            ->hidden(function (): bool {
+                                $org = $this->closureOrg();
+                                if ($org === null) {
+                                    return false;
+                                }
+
+                                return in_array($org->lifecycle_state, [
+                                    OrganizationLifecycleState::Closing,
+                                    OrganizationLifecycleState::Closed,
+                                ], true) || $org->closure_requested_at !== null;
+                            }),
                     ]),
             ]);
     }

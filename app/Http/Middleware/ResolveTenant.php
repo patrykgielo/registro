@@ -84,6 +84,20 @@ class ResolveTenant
                 ], 410);
             }
 
+            // Suspended tenant: show a temporary suspension page (503).
+            // Suspended orgs are NOT soft-deleted — use a plain query without withTrashed().
+            // Short cache (60 s) so reactivation is reflected quickly.
+            $suspendedOrg = Cache::remember("tenant:suspended:{$slug}", 60, fn () => Organization::select(['name'])
+                ->where('slug', $slug)
+                ->where('lifecycle_state', OrganizationLifecycleState::Suspended->value)
+                ->first());
+
+            if ($suspendedOrg) {
+                return response()->view('errors.business-suspended', [
+                    'organizationName' => $suspendedOrg->name,
+                ], 503)->withHeaders(['Retry-After' => '3600']);
+            }
+
             return redirect()->to($this->rootUrl($request));
         }
 

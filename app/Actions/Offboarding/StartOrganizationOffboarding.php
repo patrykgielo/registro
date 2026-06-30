@@ -6,6 +6,7 @@ namespace App\Actions\Offboarding;
 
 use App\Enums\OrganizationLifecycleState;
 use App\Jobs\CancelInFlightObligationsJob;
+use App\Jobs\ExportOrganizationDataJob;
 use App\Models\Organization;
 use App\Models\OrganizationLifecycleLog;
 use App\Models\User;
@@ -54,7 +55,12 @@ class StartOrganizationOffboarding
         // Dispatched outside the transaction — workers are guaranteed to see org as Closing.
         CancelInFlightObligationsJob::dispatch($org->id, 'Zamknięcie działalności');
 
-        // Step 3: notify org owner
+        // Step 3: queue data export (Art. 28(3)(g) RODO — processor returns data to controller).
+        // Dispatched async; gracefully skips notification when owner is null (see job guard).
+        ExportOrganizationDataJob::dispatch($org);
+        OrganizationLifecycleLog::record($org, 'data_export_queued', $actor);
+
+        // Step 4: notify org owner
         if ($org->owner) {
             $org->owner->notify(new OrganizationOffboardingStartedNotification($org));
         } else {
@@ -63,7 +69,7 @@ class StartOrganizationOffboarding
             ]);
         }
 
-        // Step 4: durable audit log + application log
+        // Step 5: durable audit log + application log
         $fresh = $org->fresh();
         OrganizationLifecycleLog::record($org, 'offboarding_started', $actor, [
             'closing_initiated_at' => $fresh->closing_initiated_at?->toIso8601String(),

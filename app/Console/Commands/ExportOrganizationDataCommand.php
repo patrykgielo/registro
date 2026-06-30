@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Jobs\ExportOrganizationDataJob;
 use App\Models\Organization;
-use App\Notifications\OrganizationDataExportReadyNotification;
-use App\Services\Lifecycle\OrganizationDataExportService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 class ExportOrganizationDataCommand extends Command
 {
@@ -18,12 +15,6 @@ class ExportOrganizationDataCommand extends Command
         {organization : ID lub slug organizacji}';
 
     protected $description = 'Generuje eksport danych organizacji (ZIP) i wysyła link do właściciela. Art. 28(3)(g) RODO.';
-
-    public function __construct(
-        private readonly OrganizationDataExportService $exportService,
-    ) {
-        parent::__construct();
-    }
 
     public function handle(): int
     {
@@ -44,18 +35,17 @@ class ExportOrganizationDataCommand extends Command
         }
 
         $this->info("Organizacja: {$org->name} (ID: {$org->id})");
-        $this->info("Właściciel: {$owner->name} <{$owner->email}>");
-        $this->line('Generowanie eksportu danych...');
+        $this->info("Właściciel: {$owner->first_name} {$owner->last_name} <{$owner->email}>");
+        $this->line('Generowanie eksportu danych (synchronicznie)...');
 
         Log::info('organizations:export-data start', [
             'org_id' => $org->id,
             'org_name' => $org->name,
             'owner_id' => $owner->id,
-            'owner_email' => $owner->email,
         ]);
 
         try {
-            $relativePath = $this->exportService->generate($org);
+            ExportOrganizationDataJob::dispatchSync($org);
         } catch (\Throwable $e) {
             Log::error('organizations:export-data failed', [
                 'org_id' => $org->id,
@@ -66,30 +56,14 @@ class ExportOrganizationDataCommand extends Command
             return self::FAILURE;
         }
 
-        $signedUrl = URL::temporarySignedRoute(
-            'platform.organization.data-export',
-            now()->addDays(7),
-            [
-                'organization' => $org->id,
-                'file' => $relativePath,
-            ]
-        );
-
-        $owner->notify(new OrganizationDataExportReadyNotification($signedUrl, $org->name, $org->id));
-
         Log::info('organizations:export-data completed', [
             'org_id' => $org->id,
-            'path' => $relativePath,
-            'owner_notified' => $owner->email,
+            'owner_notified_id' => $owner->id,
             'link_expires_days' => 7,
         ]);
 
-        $this->info('Eksport zapisany: '.Storage::disk('local')->path($relativePath));
-        $this->info("Link wysłany do: {$owner->email} (ważny 7 dni)");
-        $this->line('');
-        $this->warn('Ten URL daje dostęp do PEŁNYCH danych firmy — NIE udostępniaj w logach/ticketach.');
-        $this->line('Bezpośredni URL (dla admina):');
-        $this->line($signedUrl);
+        $this->info("Eksport wygenerowany i notyfikacja z linkiem (ważnym 7 dni) wysłana do: {$owner->email}");
+        $this->warn('Link zawiera PEŁNE dane firmy — dostęp wyłącznie dla właściciela konta.');
 
         return self::SUCCESS;
     }

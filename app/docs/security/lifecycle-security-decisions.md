@@ -265,4 +265,28 @@ Przelewy24 nie ma publicznie dostępnego API do automatycznych zwrotów (wymaga�
 
 ---
 
+## LC-9 — Last-mile closure (Faza 5.6b)
+
+- **Severity wejściowe:** 🟡 2 MEDIUM + 🟢 1 LOW (wszystkie naprawione przed mergem). Brak CRITICAL/HIGH.
+- **OWASP/RODO:** A04 Insecure Design (tenant-scoping bleed) · A09 Logging Failures (export download) · A02/RODO minimalizacja (PII w logach)
+- **Gdzie:** `app/Support/Settings/SettingsManager.php`, `app/Filament/Platform/Pages/PlatformSettings.php`, `app/Http/Controllers/Platform/OrganizationDataExportController.php`, `app/Jobs/ExportOrganizationDataJob.php`
+
+### Znalezione i naprawione (oba audyty wskazały #1 niezależnie)
+
+| # | Severity | Problem | Naprawa |
+|---|----------|---------|---------|
+| 1 | 🟡 | **Tenant-scoping bleed** — `PlatformSettings` pisał `account.closure_request_email` przez `SettingsManager::set()`. Stale session `tenant_id` (po wcześniejszej wizycie na subdomenie tenanta) → `BelongsToOrganization` `creating` hook auto-wypełnia `organization_id` → "globalny" zapis ląduje jako tenant-scoped. Email wygląda na ustawiony, ale globalnie pozostaje stary → łańcuch komunikacji offboardingu zepsuty dla wszystkich tenantów. | Nowe `SettingsManager::getGlobal()`/`setGlobal()` — `withoutEvents` (wycisza `creating` hook) + `withoutGlobalScope` + hard `organization_id => null`. PlatformSettings używa wyłącznie ich. Test regresji `test_set_global_ignores_stale_session_tenant_id`. |
+| 2 | 🟡 | **Export download bez śladu** — super-admin pobiera ZIP z pełnym PII (PESEL/NIP) bez wpisu w logu (A09). | `OrganizationDataExportController` loguje każde pobranie (`Log::info` + `OrganizationLifecycleLog` `data_export_downloaded`, `via` = signed-url/super-admin-direct, actor, IP). Testy na obu ścieżkach. |
+| 3 | 🟢 | **PII w logach aplikacji** — `owner->email` w `Log::info` (job + command) trafia do agregatorów z dłuższą retencją niż 7-dniowy link. | Zamieniono na `owner_id` + boolean `notified yes/no`. |
+
+### Zweryfikowane jako bezpieczne (oba audyty)
+
+- **Path traversal niemożliwy** — `OrganizationDataExportController` ma 3 bariery: prefix `exports/org-{id}/`, odrzucenie `..`, root-jail Flysystem. Signed URL HMAC-uje wszystkie parametry (zmiana `organization` lub `file` łamie podpis). Super-admin re-derives prefix z route-bound `$organization->id` → brak cross-org IDOR.
+- **Eksport na dysku prywatnym** — `Storage::disk('local')` (`storage/app/private/`), zero symlinka do `public/`. Stream przez PHP.
+- **Audit log resource read-only** — `canCreate/canEdit/canDelete/canDeleteAny = false`, `bulkActions([])`, tylko `ViewAction`; super-admin gated; `context` JSON HTML-escaped przez Filament (brak stored XSS).
+- **Suspended 503 = parytet z Closed 410** — ten sam regex slug-guard przed DB, ta sama klasa ujawnienia nazwy org, brak nowej enumeracji subdomen. `{{ }}` auto-escape w widoku.
+- **Offboarding** — `hasRole('super-admin')` guard przed jakąkolwiek zmianą stanu; transakcja commituje przed dispatchem jobów.
+
+---
+
 *Rejestr utworzony 2026-06-30. Powiązane: `app/docs/features/tenant-lifecycle.md`, `app/docs/features/orders-security-hardening.md`, `app/docs/features/analytics-event-tracking.md`, `.claude/rules/ci-cd-troubleshooting.md`, `.claude/rules/models.md`, `.claude/rules/notifications.md`.*

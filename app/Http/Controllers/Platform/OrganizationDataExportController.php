@@ -6,7 +6,9 @@ namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
+use App\Models\OrganizationLifecycleLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -48,6 +50,22 @@ class OrganizationDataExportController extends Controller
         }
 
         $filename = "eksport-org-{$organization->id}-{$organization->slug}.zip";
+
+        // Audit trail: the export contains full customer PII (PESEL/NIP). Record every
+        // download — including unconditional super-admin direct access (A09 OWASP).
+        $via = $isSuperAdmin && ! $request->hasValidSignature() ? 'super-admin-direct' : 'signed-url';
+        Log::info('OrganizationDataExportController: export downloaded', [
+            'org_id' => $organization->id,
+            'org_slug' => $organization->slug,
+            'file' => $filePath,
+            'via' => $via,
+            'actor_id' => $user?->id,
+            'ip' => $request->ip(),
+        ]);
+        OrganizationLifecycleLog::record($organization, 'data_export_downloaded', $user, [
+            'via' => $via,
+            'file' => $filePath,
+        ]);
 
         return Storage::disk('local')->download($filePath, $filename, [
             'Content-Type' => 'application/zip',
