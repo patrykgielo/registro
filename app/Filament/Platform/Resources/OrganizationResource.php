@@ -8,6 +8,7 @@ use App\Enums\OrganizationLifecycleState;
 use App\Filament\Platform\Resources\OrganizationResource\Pages;
 use App\Filament\Platform\Resources\OrganizationResource\RelationManagers;
 use App\Models\Organization;
+use App\Models\OrganizationLifecycleLog;
 use App\Models\Payment;
 use App\Models\TenantPayment;
 use App\Rules\ValidOrganizationSlug;
@@ -93,6 +94,11 @@ class OrganizationResource extends Resource
                             ->label('Lifecycle State')
                             ->content(fn (?Organization $record) => $record?->lifecycle_state?->label() ?? 'Active')
                             ->helperText('Use the row actions (Suspend / Reactivate / Initiate Closing) to change state.'),
+
+                        Forms\Components\Placeholder::make('closure_requested_at')
+                            ->label('Closure Request')
+                            ->content(fn (?Organization $record) => $record?->closure_requested_at?->format('d.m.Y H:i') ?? '—')
+                            ->helperText('Tenant-submitted closure request. Use "Odrzuć wniosek" row action to dismiss.'),
 
                         Forms\Components\DateTimePicker::make('trial_ends_at')
                             ->label('Trial Ends At')
@@ -200,6 +206,15 @@ class OrganizationResource extends Resource
                     ->dateTime()
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('closure_requested_at')
+                    ->label('Closure Request')
+                    ->dateTime()
+                    ->sortable()
+                    ->badge()
+                    ->color('danger')
+                    ->placeholder('—')
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -218,6 +233,11 @@ class OrganizationResource extends Resource
                     ->options(OrganizationLifecycleState::class)
                     ->label('Lifecycle State'),
                 Tables\Filters\TernaryFilter::make('is_active'),
+                Tables\Filters\TernaryFilter::make('closure_requested_at')
+                    ->label('Pending Closure Request')
+                    ->nullable()
+                    ->trueLabel('With closure request')
+                    ->falseLabel('Without closure request'),
             ])
             ->actions([
                 Actions\EditAction::make(),
@@ -305,6 +325,24 @@ class OrganizationResource extends Resource
                             ->body('Klienci zostaną powiadomieni o anulowaniu. Okno przywrócenia: '.config('retention.closing_grace_days', 14).' dni.')
                             ->danger()
                             ->send();
+                    }),
+
+                Actions\Action::make('clearClosureRequest')
+                    ->label('Odrzuć wniosek')
+                    ->icon('heroicon-o-x-mark')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalHeading('Odrzuć wniosek o zamknięcie')
+                    ->modalDescription(fn (Organization $record) => $record->lifecycle_state === OrganizationLifecycleState::Active
+                        ? 'Wniosek zostanie odrzucony — konto pozostanie aktywne. Tenant zostanie poinformowany osobnym kanałem.'
+                        : 'UWAGA: organizacja jest już w stanie „'.$record->lifecycle_state->value.'". Odrzucenie wniosku usunie tylko znacznik wniosku — NIE cofa rozpoczętego procesu zamykania (użyj Reaktywuj).')
+                    ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
+                    ->visible(fn (Organization $record) => $record->closure_requested_at !== null)
+                    ->action(function (Organization $record): void {
+                        $record->closure_requested_at = null;
+                        $record->save();
+                        OrganizationLifecycleLog::record($record, 'closure_request_dismissed', auth()->user());
+                        Notification::make()->title('Wniosek odrzucony')->success()->send();
                     }),
             ])
             ->bulkActions([

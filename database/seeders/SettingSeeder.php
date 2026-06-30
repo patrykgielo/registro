@@ -37,6 +37,7 @@ class SettingSeeder extends Seeder
         $this->seedSmsSettings();
         $this->seedPrelaunchSettings();
         $this->seedCheckoutSettings();
+        $this->seedAccountSettings();
     }
 
     /**
@@ -276,6 +277,18 @@ class SettingSeeder extends Seeder
         ];
 
         $this->seedGroup('checkout', $settings);
+    }
+
+    /**
+     * Seed account-level settings (closure request destination).
+     */
+    private function seedAccountSettings(): void
+    {
+        $settings = [
+            'closure_request_email' => ['kontakt@registro.app'],
+        ];
+
+        $this->seedGroup('account', $settings);
     }
 
     /**

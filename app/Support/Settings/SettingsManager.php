@@ -426,6 +426,22 @@ class SettingsManager
     }
 
     /**
+     * Get the email address for closure requests.
+     *
+     * Falls back to the contact email, then to the platform default.
+     */
+    public function closureRequestEmail(): string
+    {
+        $val = $this->get('account.closure_request_email');
+
+        if (! empty($val) && is_string($val)) {
+            return $val;
+        }
+
+        return $this->contactInformation()['email'] ?? 'kontakt@registro.app';
+    }
+
+    /**
      * Get all marketing content settings.
      *
      * @return array<string, mixed>

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Filament\Traits\HasGroupedSettings;
+use App\Models\OrganizationLifecycleLog;
 use App\Models\Page as PageModel;
+use App\Models\User;
+use App\Notifications\OrganizationClosureRequestedNotification;
 use App\Services\Sms\SmsService;
 use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
@@ -27,6 +31,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use UnitEnum;
@@ -307,6 +312,7 @@ class SystemSettings extends Page implements HasForms
                         $this->cmsTab(),
                         $this->integrationsTab(),
                         $this->checkoutTab(),
+                        $this->accountClosureTab(),
                     ])
                     ->persistTabInQueryString('tab')
                     ->columnSpanFull(),
@@ -1515,6 +1521,123 @@ class SystemSettings extends Page implements HasForms
     protected function getFormActions(): array
     {
         return [];
+    }
+
+    /**
+     * Account closure tab — informational + closure request action.
+     *
+     * Core tab (not in TAB_MODULE_MAP) — always visible to all admins.
+     * Closure does NOT happen automatically: the action only flags the org and
+     * notifies super-admins. Super-admin then runs the guarded offboarding.
+     */
+    private function accountClosureTab(): Tabs\Tab
+    {
+        $closureEmail = app(SettingsManager::class)->closureRequestEmail();
+
+        return Tabs\Tab::make('Konto')
+            ->id('konto')
+            ->key('konto')
+            ->icon('heroicon-o-shield-exclamation')
+            ->schema([
+                Section::make('Zamknięcie konta')
+                    ->description('Procedura zamknięcia organizacji na platformie Registro')
+                    ->schema([
+                        Placeholder::make('closure_info')
+                            ->label('Jak złożyć wniosek?')
+                            ->content(
+                                'Zamknięcie konta odbywa się na wniosek — po jego złożeniu administrator platformy '
+                                ."skontaktuje się z Tobą pod adresem {$closureEmail}. "
+                                .'Przed złożeniem wniosku upewnij się, że wszystkie aktywne zamówienia, wizyty '
+                                .'i wypożyczenia zostały zakończone lub anulowane. '
+                                .'Przed zamknięciem konta otrzymasz eksport swoich danych.'
+                            ),
+
+                        \Filament\Schemas\Components\Actions::make([
+                            \Filament\Actions\Action::make('requestClosure')
+                                ->label('Złóż wniosek o zamknięcie')
+                                ->color('danger')
+                                ->icon('heroicon-o-x-circle')
+                                ->authorize(fn () => auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false)
+                                ->requiresConfirmation()
+                                ->modalHeading('Potwierdź wniosek o zamknięcie konta')
+                                ->modalDescription(
+                                    'Złożenie wniosku powiadomi administrację platformy Registro. '
+                                    .'Twoje konto NIE zostanie zamknięte automatycznie — '
+                                    .'administrator skontaktuje się z Tobą. Czy chcesz kontynuować?'
+                                )
+                                ->modalSubmitActionLabel('Tak, złóż wniosek')
+                                ->action('requestClosure'),
+                        ])->columnSpanFull(),
+                    ]),
+            ]);
+    }
+
+    /**
+     * Process a tenant's closure request.
+     *
+     * Flags the org with closure_requested_at, writes a durable audit log entry,
+     * and notifies super-admins. Does NOT change lifecycle_state — the super-admin
+     * runs the guarded offboarding separately.
+     */
+    public function requestClosure(): void
+    {
+        $org = TenantFeature::currentTenant();
+
+        if ($org === null) {
+            Notification::make()
+                ->title('Brak kontekstu organizacji')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        if (in_array($org->lifecycle_state, [
+            OrganizationLifecycleState::Closing,
+            OrganizationLifecycleState::Closed,
+        ], true)) {
+            Notification::make()
+                ->title('Konto jest już w trakcie zamykania')
+                ->body('Twoje konto jest już w trakcie procesu zamknięcia. Skontaktuj się z administratorem.')
+                ->info()
+                ->send();
+
+            return;
+        }
+
+        // Atomic conditional write — guards against a TOCTOU race where two
+        // concurrent Livewire requests both pass the null-check and double-fire
+        // the log + notification. Only one UPDATE flips a null timestamp.
+        $affected = \Illuminate\Support\Facades\DB::table('organizations')
+            ->where('id', $org->id)
+            ->whereNull('closure_requested_at')
+            ->update(['closure_requested_at' => now()]);
+
+        if ($affected === 0) {
+            $org->refresh();
+            Notification::make()
+                ->title('Wniosek już złożony')
+                ->body('Wniosek o zamknięcie konta został już złożony dnia '.$org->closure_requested_at?->format('d.m.Y').'.')
+                ->info()
+                ->send();
+
+            return;
+        }
+
+        $org->refresh();
+
+        OrganizationLifecycleLog::record($org, 'closure_requested', auth()->user());
+
+        NotificationFacade::send(
+            User::role('super-admin')->get(),
+            new OrganizationClosureRequestedNotification($org, auth()->user())
+        );
+
+        Notification::make()
+            ->title('Wniosek wysłany')
+            ->body('Wniosek o zamknięcie konta został złożony. Skontaktujemy się z Tobą wkrótce.')
+            ->success()
+            ->send();
     }
 
     /**
