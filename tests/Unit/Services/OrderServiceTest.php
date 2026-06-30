@@ -73,16 +73,17 @@ class OrderServiceTest extends TestCase
         $this->assertNotNull($result->cancelled_at);
     }
 
-    public function test_cancel_throws_for_in_progress_order(): void
+    public function test_cancel_in_progress_order_succeeds_with_warning(): void
     {
+        \Illuminate\Support\Facades\Notification::fake();
+
         $order = Order::factory()->inProgress()->create();
 
         $svc = $this->makeService();
+        $result = $svc->cancel($order, 'Offboarding: tenant closing');
 
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage("Zamówienie o statusie 'in_progress' nie może zostać anulowane");
-
-        $svc->cancel($order, 'Cannot cancel in-progress');
+        $this->assertEquals('cancelled', $result->status);
+        $this->assertNotNull($result->cancelled_at);
     }
 
     public function test_cancel_throws_for_completed_order(): void

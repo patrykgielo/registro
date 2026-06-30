@@ -2,6 +2,7 @@
 
 namespace App\Filament\Platform\Resources;
 
+use App\Actions\Offboarding\StartOrganizationOffboarding;
 use App\Enums\Industry;
 use App\Enums\OrganizationLifecycleState;
 use App\Filament\Platform\Resources\OrganizationResource\Pages;
@@ -22,6 +23,8 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class OrganizationResource extends Resource
 {
@@ -263,10 +266,31 @@ class OrganizationResource extends Resource
                     }),
 
                 Actions\Action::make('initiateClosing')
-                    ->label('Zamknij')
+                    ->label('Zamknij (Graceful)')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
+                    ->modalHeading('Graceful Offboarding — Zamknij organizację')
+                    ->modalDescription(function (Organization $record): HtmlString {
+                        $counts = app(TenantObligationService::class)->activeObligations($record);
+                        $graceDays = (int) config('retention.closing_grace_days', 14);
+
+                        $parts = ["Proces zamknięcia organizacji **{$record->name}** zostanie zainicjowany."];
+
+                        if ($counts['total'] > 0) {
+                            $parts[] = sprintf(
+                                'Aktywne zobowiązania (%d wizyt, %d zamówień, %d wypożyczeń) zostaną **automatycznie anulowane**, a klienci powiadomieni emailem.',
+                                $counts['appointments'],
+                                $counts['orders'],
+                                $counts['rentals'],
+                            );
+                        }
+
+                        $parts[] = "Okno przywrócenia: **{$graceDays} dni** od teraz (akcja Reaktywuj). Po tym czasie organizacja przejdzie automatycznie w stan Zamknięta.";
+                        $parts[] = 'Refundy za opłacone zamówienia i kaucje za wypożyczenia wymagają ręcznego przetworzenia (brak automatycznej integracji z Przelewy24).';
+
+                        return new HtmlString(Str::markdown(implode("\n\n", $parts)));
+                    })
                     ->authorize(fn () => auth()->user()?->hasRole('super-admin') ?? false)
                     ->visible(fn (Organization $record) => auth()->user()?->hasRole('super-admin')
                         && in_array(
@@ -274,31 +298,13 @@ class OrganizationResource extends Resource
                             [OrganizationLifecycleState::Active, OrganizationLifecycleState::Suspended],
                             true
                         ))
-                    ->before(function (Organization $record, Actions\Action $action): void {
-                        $service = app(TenantObligationService::class);
-                        $counts = $service->activeObligations($record);
-
-                        if ($counts['total'] > 0) {
-                            Notification::make()
-                                ->title('Nie można zainicjować zamknięcia')
-                                ->body(sprintf(
-                                    'Aktywne zobowiązania uniemożliwiają zamknięcie: %d wizyt, %d zamówień, %d wypożyczeń. Rozwiąż je najpierw.',
-                                    $counts['appointments'],
-                                    $counts['orders'],
-                                    $counts['rentals'],
-                                ))
-                                ->danger()
-                                ->persistent()
-                                ->send();
-                            $action->halt();
-                        }
-                    })
                     ->action(function (Organization $record): void {
-                        // Obligations already verified in before(); bypass the observer's double-check
-                        $record->forceLifecycleTransition = true;
-                        $record->lifecycle_state = OrganizationLifecycleState::Closing;
-                        $record->save();
-                        Notification::make()->title('Proces zamknięcia zainicjowany')->danger()->send();
+                        app(StartOrganizationOffboarding::class)->execute($record);
+                        Notification::make()
+                            ->title('Offboarding zainicjowany')
+                            ->body('Klienci zostaną powiadomieni o anulowaniu. Okno przywrócenia: '.config('retention.closing_grace_days', 14).' dni.')
+                            ->danger()
+                            ->send();
                     }),
             ])
             ->bulkActions([

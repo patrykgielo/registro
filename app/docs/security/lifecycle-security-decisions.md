@@ -36,6 +36,7 @@
 | DPO-4 | Backup policy — anonimizacja nie sięga backupów | follow-up | 🟡 open |
 | DPO-5 | Hard-delete legal records po 6 latach (Faza 5.4) | follow-up | 🟡 open |
 | DPO-6 | Przelewy24 webhook — org_id pochodzi z order (pre-existing) | follow-up | 🟡 open |
+| LC-7 | `forceLifecycleTransition` + masowe anulowanie — super-admin only, brak automatycznego zwrotu | 🟠 High | ✅ documented (5.4a) |
 
 ---
 
@@ -201,6 +202,39 @@ Pozycje zidentyfikowane, ale świadomie odroczone — każda wymaga albo opinii 
 | **DPO-4** | Backup policy | Anonimizacja/purge dotyka tylko live DB — **backupy** nadal zawierają PII do czasu rotacji. Brak udokumentowanej polityki retencji/rotacji backupów względem Art. 17. | Zdefiniować backup retention + procedurę usunięcia z backupów |
 | **DPO-5** | Hard-delete legal po 6 latach | Faza 5.4 (nie zaimplementowana): hard-delete orders/payments po `closed_at + legal_records_years (6)`. Wymaga check `closed_at + 6yr <= now()` i zdjęcia FK `RESTRICT` przed delete. Obecnie `forceDelete()` zarezerwowany. | Implementacja Faza 5.4 |
 | **DPO-6** | Przelewy24 webhook org_id (pre-existing) | `Przelewy24Service::handleWebhook()` wyprowadza `organization_id` z dopasowanego `order` (`Przelewy24Service.php:106,122`), nie z samego payloadu webhooka. Sygnatura webhooka jest weryfikowana (`:76`), ale przypisanie tenanta zależy od poprawności lookupu order. Pre-existing — poza zakresem tej sesji. | Audyt: potwierdzić że order-lookup jest jednoznaczny per-tenant i odporny na collision `p24_session_id` |
+
+---
+
+## LC-7 — `forceLifecycleTransition` + masowe anulowanie (Faza 5.4a)
+
+- **Severity:** 🟠 High
+- **OWASP/RODO:** A01 Broken Access Control · RODO art. 5(1)(a) (purpose limitation) · art. 6 (lawfulness)
+- **Gdzie:** `app/Actions/Offboarding/StartOrganizationOffboarding.php`, `app/Jobs/CancelInFlightObligationsJob.php`, `app/Filament/Platform/Resources/OrganizationResource.php`
+
+### Ryzyko
+
+1. **`forceLifecycleTransition = true` bypasses obligation guard.** Bez tego mechanizmu operator nie mógłby zainicjować zamknięcia tenanta z aktywnymi zobowiązaniami. Mechanizm jest celowy, ale musi być chroniony przed nadużyciem.
+
+2. **Masowe anulowanie zobowiązań klientów.** `CancelInFlightObligationsJob` anuluje **wszystkie** aktywne zamówienia, wizyty i wypożyczenia danego tenanta — w tym opłacone (`paid`) i `in_progress`. Błędne wywołanie (np. przez bug w autoryzacji) skutkuje masową anulacją i emailami do klientów.
+
+3. **Brak automatycznych zwrotów.** Paid orders i rental deposits są tylko flagowane w `Log::info`. Zwrot MUSI być wykonany manualnie przez operatora przez panel Przelewy24.
+
+4. **`in_progress → cancelled` w state machine.** Rozszerzenie `OrderStatusStateMachine` i `OrderService::cancel()` o exceptional path. Loguje `Log::warning` przy każdym takim anulowaniu.
+
+### Zabezpieczenia
+
+| Warstwa | Mechanizm |
+|---------|-----------|
+| Autoryzacja akcji Filament | `->authorize(fn ($record) => auth()->user()->can('force-lifecycle', $record))` — wymaga polisy `super-admin` |
+| Potwierdzenie | `->requiresConfirmation()` z modalem pokazującym liczby zobowiązań i ostrzeżenie o refundach |
+| Audit log | `Log::info('StartOrganizationOffboarding: offboarding initiated', [...])` z org_id, org_name, timestamp |
+| Idempotentność | `CancelInFlightObligationsJob` używa `whereIn` (terminal statuses wykluczone) — wielokrotne uruchomienie nie zmienia wyniku |
+| Flagowanie refundów | Paid orders i deposits → `Log::info` z order_id / rental_id / kwotami — NIE znikają cicho |
+| `in_progress` warning | `Log::warning` przy każdym wyjątkowym anulowaniu in_progress order |
+
+### Decyzja projektowa — brak automatycznych zwrotów
+
+Przelewy24 nie ma publicznie dostępnego API do automatycznych zwrotów (wymagałoby integracji z panelem merchantów lub osobnym endpointem refund który nie jest obecnie skonfigurowany). Decyzja świadoma: **flaga + log** zamiast brak informacji. Operator ma `Log::info` z pełnym kontekstem i wykonuje zwrot manualnie.
 
 ---
 

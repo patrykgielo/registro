@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RentalStatus;
+use App\Events\RentalCancelled;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -71,6 +72,12 @@ class Rental extends Model
                     RentalStatus::Cancelled => $rental->cancelled_at = now(),
                     default => null,
                 };
+            }
+        });
+
+        static::updated(function (Rental $rental) {
+            if ($rental->wasChanged('status') && $rental->status === RentalStatus::Cancelled) {
+                event(new RentalCancelled($rental, $rental->cancellation_reason ?? ''));
             }
         });
     }

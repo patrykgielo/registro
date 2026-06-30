@@ -14,9 +14,11 @@ use App\Events\OrderCancelled;
 use App\Events\OrderConfirmed;
 use App\Events\OrderPaid;
 use App\Events\PasswordResetRequested;
+use App\Events\RentalCancelled;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
 use App\Listeners\RecordAnalyticsOnOrderPaid;
+use App\Listeners\SendRentalCancelledNotification;
 use App\Models\Appointment;
 use App\Models\Organization;
 use App\Models\Page as PageModel;
@@ -305,6 +307,11 @@ class AppServiceProvider extends ServiceProvider
 
         // Order Paid: record analytics
         Event::listen(OrderPaid::class, RecordAnalyticsOnOrderPaid::class);
+
+        // ========== RENTAL NOTIFICATIONS ==========
+
+        // Rental Cancelled: notify customer
+        Event::listen(RentalCancelled::class, SendRentalCancelledNotification::class);
 
         // ========== SECURITY: SESSION REGENERATION ==========
 

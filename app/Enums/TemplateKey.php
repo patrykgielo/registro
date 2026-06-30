@@ -50,6 +50,9 @@ enum TemplateKey: string
     case ORDER_CANCELLED = 'order-cancelled';
     case ADMIN_NEW_ORDER = 'admin-new-order';
 
+    // ── Rental lifecycle (Email only) ────────────────────────────
+    case RENTAL_CANCELLED = 'rental-cancelled';
+
     // ── Admin (Email only) ───────────────────────────────────────
     case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
     case ADMIN_USER_CREATED = 'admin-user-created';
@@ -79,6 +82,7 @@ enum TemplateKey: string
             self::ORDER_CONFIRMED => 'Zamówienie potwierdzone',
             self::ORDER_CANCELLED => 'Zamówienie anulowane',
             self::ADMIN_NEW_ORDER => 'Nowe zamówienie (admin)',
+            self::RENTAL_CANCELLED => 'Wypożyczenie anulowane',
             self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
             self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
         };
