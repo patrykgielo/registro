@@ -178,6 +178,15 @@ Schedule::command('horizon:snapshot')
 |
 */
 
+// Finalize Closing organizations past their grace window (closing_grace_days = 14)
+// Transitions eligible orgs from Closing → Closed; observer sets closed_at + purge_after.
+// Runs: Daily at 02:30 AM (before purge at 03:00)
+Schedule::command('organizations:finalize-closing --force')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->name('organizations:finalize-closing')
+    ->onOneServer();
+
 // Purge closed organizations (PII anonymization + soft-delete)
 // Runs: Daily at 03:00 AM (low-traffic window)
 Schedule::command('organizations:purge --force')

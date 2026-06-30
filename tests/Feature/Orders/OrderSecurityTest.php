@@ -220,12 +220,14 @@ class OrderSecurityTest extends TestCase
         $this->assertNotNull($result->cancelled_at);
     }
 
-    public function test_cancel_service_rejects_in_progress_order(): void
+    public function test_cancel_service_allows_in_progress_order(): void
     {
+        \Illuminate\Support\Facades\Notification::fake();
+
         $order = Order::factory()->inProgress()->create();
 
-        $this->expectException(\LogicException::class);
+        $result = app(OrderService::class)->cancel($order, 'Offboarding: tenant closing');
 
-        app(OrderService::class)->cancel($order, 'Should fail');
+        $this->assertEquals('cancelled', $result->status);
     }
 }

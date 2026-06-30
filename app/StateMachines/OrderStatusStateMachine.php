@@ -36,7 +36,8 @@ class OrderStatusStateMachine extends StateMachine
             'confirmed' => ['in_progress', 'cancelled'],
 
             // in_progress → completed (admin action after return)
-            'in_progress' => ['completed'],
+            // in_progress → cancelled (exceptional: forced offboarding of closing tenant)
+            'in_progress' => ['completed', 'cancelled'],
 
             // completed → refunded (refund request)
             'completed' => ['refunded'],

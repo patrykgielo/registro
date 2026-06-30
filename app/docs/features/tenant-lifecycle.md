@@ -36,11 +36,86 @@ The migration is additive and non-breaking. `is_active` is now a **fully derived
 | 5.2 | FK `onDelete` policy (DB backstop) + legal-records guard + `ResolveTenant` switched to `lifecycle_state` | Done |
 | 5.3a | `SoftDeletes` on Organization + PII anonymization service + `organizations:purge` + `config/retention.php` | Done |
 | 5.3b | Tenant data export (full org copy for owner, RODO art. 28(3)(g)) + cleanup command | Done |
+| 5.4a | Graceful offboarding backend — `RentalCancelled` event, `CancelInFlightObligationsJob`, `StartOrganizationOffboarding`, `organizations:finalize-closing`, Filament initiateClosing rewired | Done |
 
 **Planned / not implemented:**
 
-- **5.4** — hard-delete of legal records (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Requires dropping the RESTRICT FK before `forceDelete()`. See [§10](#10-follow-ups--technical-debt).
+- **5.4b** — hard-delete of legal records (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Requires dropping the RESTRICT FK before `forceDelete()`. See [§10](#10-follow-ups--technical-debt).
 - **5.5 / 5.7** — staff `null`-on-delete double-booking follow-up and DPO open questions (JDG REGON, `order_status_history.properties`, `customer_id` nulling). See [§10](#10-follow-ups--technical-debt).
+
+---
+
+## Faza 5.4a — Graceful Offboarding (Backend)
+
+### Overview
+
+When a super-admin triggers `initiateClosing` in `/platform`, the system:
+1. Cancels all in-flight customer obligations (orders, appointments, rentals) and notifies affected customers.
+2. Transitions the org to `Closing` with a 14-day restore window (`closing_grace_days`).
+3. Notifies the tenant owner that offboarding has started.
+4. After the grace period, automatically finalizes: transitions to `Closed` + sets `purge_after`.
+
+### New domain event — `RentalCancelled`
+
+`app/Events/RentalCancelled.php` — dispatched from `Rental.booted()` updating hook when `status → Cancelled`. Closes the gap where rentals had no cancellation event (orders and appointments already had `OrderCancelled` / `AppointmentCancelled`).
+
+- Listener in `AppServiceProvider::registerEventListeners()` → `RentalCancelledNotification` (ShouldQueue, emails queue)
+- `TemplateKey::RENTAL_CANCELLED` — email-only, key `rental-cancelled`
+- Template vars: `customer_name`, `service_name`, `start_date`, `end_date`, `reason`, `app_name`
+
+### `CancelInFlightObligationsJob`
+
+`app/Jobs/CancelInFlightObligationsJob.php` — queued on `default` queue. Idempotent (terminal statuses filtered by `whereIn`).
+
+| Entity | Statuses processed | Mechanism |
+|--------|--------------------|-----------|
+| Orders | `pending_payment`, `paid`, `confirmed`, `in_progress` | `OrderService::cancel()` (fires `OrderCancelled` → notification). Paid orders additionally logged for manual refund. |
+| Appointments | `Pending`, `Confirmed` | Direct `$appointment->cancellation_reason = $reason; $appointment->status = Cancelled; $appointment->save()` — fires `AppointmentCancelled` event from observer. |
+| Rentals | `Held`, `Pending`, `Confirmed`, `Active` | Direct `$rental->cancellation_reason = $reason; $rental->status = Cancelled; $rental->save()` — fires `RentalCancelled` event from booted() hook. Deposit > 0 additionally logged for manual refund. |
+
+**Note on in_progress orders:** `OrderStatusStateMachine` and `OrderService::cancel()` were extended to allow `in_progress → cancelled` (exceptional path for offboarding only). A `Log::warning` is emitted on every such cancellation.
+
+**Refunds are NOT automated.** Paid orders and rental deposits are flagged via `Log::info` with `order_id` / `rental_id` / `total_amount` / `deposit_amount` for manual processing.
+
+### `StartOrganizationOffboarding`
+
+`app/Actions/Offboarding/StartOrganizationOffboarding.php`
+
+```
+execute(Organization):
+  1. CancelInFlightObligationsJob::dispatch($org->id, 'Zamknięcie działalności')
+  2. $org->forceLifecycleTransition = true; $org->lifecycle_state = Closing; $org->save()
+  3. $org->owner->notify(OrganizationOffboardingStartedNotification)  [if owner exists]
+  4. Log::info audit
+```
+
+`forceLifecycleTransition = true` bypasses the obligation guard in `OrganizationObserver` (auto-reset in `saved()`). The job is dispatched BEFORE the state transition so the obligation counts in the confirmation modal are still accurate.
+
+### `config/retention.php` — `closing_grace_days`
+
+```php
+'closing_grace_days' => 14,  // Closing → Closed auto-transition window
+```
+
+The tenant owner is informed of this window in `OrganizationOffboardingStartedNotification` (ShouldQueue, emails queue, `uniqueFor` = 3600).
+
+### `organizations:finalize-closing` command
+
+`app/Console/Commands/FinalizeClosingOrganizationsCommand.php`
+
+Signature: `organizations:finalize-closing {--dry-run} {--force}`
+
+Finds: `lifecycle_state = 'closing' AND closing_initiated_at <= now()->subDays($graceDays)`
+
+Per org: dispatches `CancelInFlightObligationsJob` defensively (catches anything the initial job may have missed), then `forceLifecycleTransition=true; lifecycle_state=Closed; save()`. Sets `closed_at` and `purge_after` via observer.
+
+Scheduled: `dailyAt('02:30')` in `routes/console.php`.
+
+### Filament `initiateClosing` action rewired
+
+`app/Filament/Platform/Resources/OrganizationResource.php`
+
+Replaced the blocking `->before()` obligation guard with `->requiresConfirmation()` showing a `->modalDescription()` with live obligation counts (via `TenantObligationService`) and the 14-day grace window. Action now delegates to `StartOrganizationOffboarding::execute($record)` instead of setting `lifecycle_state` directly.
 
 **Schema columns added to `organizations`** (cast in `app/Models/Organization.php:86`):
 

@@ -114,6 +114,8 @@ class RentalTest extends TestCase
 
     public function test_status_transition_sets_cancelled_at(): void
     {
+        \Illuminate\Support\Facades\Notification::fake();
+
         $rental = Rental::factory()->create(['status' => RentalStatus::Pending]);
 
         $rental->update(['status' => RentalStatus::Cancelled]);

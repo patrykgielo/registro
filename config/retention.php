@@ -31,6 +31,13 @@ return [
     'claims_b2b_years' => 3,
 
     // --- Offboarding ---
+    // closing_grace_days: window after entering Closing state before auto-finalization to Closed.
+    // Allows the operator to restore (Closing → Active) before obligations are finalized.
+    // FinalizeClosingOrganizationsCommand runs daily and transitions eligible orgs to Closed.
+    'closing_grace_days' => 14,
+
+    // purge_grace_days: window after entering Closed state before PII anonymization (purge).
+    // Allows the tenant operator to appeal/re-activate before PII is destroyed.
     'purge_grace_days' => 30,
 
     // --- Ephemeral / analytics ---

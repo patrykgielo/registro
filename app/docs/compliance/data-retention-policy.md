@@ -186,14 +186,22 @@ Komenda **`organizations:export-data {organization}`**
 
 ```
 [Active]
-   │  przejście na Closing/Closed
-   │  GUARD: OrganizationObserver::updating()
-   │   → blokada gdy istnieją aktywne zobowiązania
-   │     (OrganizationHasActiveObligationsException),
-   │     chyba że $forceLifecycleTransition = true
+   │  super-admin wywołuje initiateClosing → StartOrganizationOffboarding::execute()
+   │  1. CancelInFlightObligationsJob (async, default queue):
+   │     - zamówienia pending/paid/confirmed/in_progress → OrderService::cancel() → OrderCancelled → notyfikacja klienta
+   │       (paid + in_progress: Log::info "zwrot wymagany" — MANUALNY zwrot przez P24)
+   │     - wizyty Pending/Confirmed → status=Cancelled, cancellation_reason → AppointmentCancelled → notyfikacja
+   │     - wypożyczenia Held/Pending/Confirmed/Active → status=Cancelled → RentalCancelled → notyfikacja
+   │       (deposit_amount > 0: Log::info "zwrot kaucji wymagany" — MANUALNY)
+   │  2. $org->lifecycle_state = Closing ($forceLifecycleTransition bypasses obligation guard)
+   │  3. OrganizationOffboardingStartedNotification → właściciel tenanta (okno 14 dni)
    ▼
-[Closing]  closing_initiated_at = now()
+[Closing]  closing_initiated_at = now()  (is_active = false, public site hidden)
    │
+   │  organizations:finalize-closing (codziennie 02:30, --force):
+   │   eligibility: lifecycle_state = closing AND closing_initiated_at <= now() - 14 dni
+   │   → CancelInFlightObligationsJob (defensywnie — łapie pominięte)
+   │   → lifecycle_state = Closed ($forceLifecycleTransition)
    ▼
 [Closed]   closed_at = now()
    │        purge_after = now() + retention.purge_grace_days (30 dni)
