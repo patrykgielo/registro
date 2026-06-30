@@ -471,6 +471,33 @@ Resolved tenant is stored in `$request->attributes` and `session('tenant_id')` (
 
 ---
 
+## 8.6 Closure request flow & lifecycle audit log (Faza 5.5 + 5.6)
+
+A tenant **cannot** self-close instantly (in-flight obligations would strand their customers). Instead the settings panel exposes an emailed-request flow; a super-admin then runs the guarded offboarding (§4).
+
+### Tenant side — `app/Filament/Pages/SystemSettings.php`
+
+- New **"Konto"** tab (`accountClosureTab()`, core — not module-gated). Shows how to request closure and the contact address from `SettingsManager::closureRequestEmail()` (setting `account.closure_request_email`, default `kontakt@registro.app`, seeded by `SettingSeeder::seedAccountSettings()`).
+- Optional **"Złóż wniosek o zamknięcie"** action → `requestClosure()`. It **only**: flags `organizations.closure_requested_at`, writes a lifecycle-log entry, and notifies super-admins. It **never** changes `lifecycle_state`.
+- Guards: returns early (info notification) when state is `Closing`/`Closed`. The duplicate guard is an **atomic conditional write** — `DB::table('organizations')->where('id',…)->whereNull('closure_requested_at')->update([... => now()])` — so two concurrent Livewire requests can't double-fire the log/notification (TOCTOU). Only the request that flips the null timestamp proceeds.
+- Action carries `->authorize(hasAnyRole(['admin','super-admin']))` as defense-in-depth on top of the page-level `canAccess()` gate.
+- Tenant target is resolved **only** via `TenantFeature::currentTenant()` (Filament tenant → request attribute → session). No org id is ever accepted from request input → no IDOR.
+
+### Super-admin side — `app/Filament/Platform/Resources/OrganizationResource.php`
+
+- `closure_requested_at` surfaced as a sortable badge column + `TernaryFilter` ("Pending Closure Request") + a read-only form placeholder.
+- **"Odrzuć wniosek"** (`clearClosureRequest`) action — super-admin only — nulls the flag and logs `closure_request_dismissed`. Its modal warns when the org is already past `Active` (clearing the flag does **not** reverse an in-progress closing; use Reaktywuj for that).
+
+### Durable audit log — `app/Models/OrganizationLifecycleLog.php` + `2026_06_30_200001_create_organization_lifecycle_log_table.php`
+
+Append-only (`const UPDATED_AT = null`, `created_at` only), **unscoped** (no `BelongsToOrganization`), and **intentionally has no FK** on `organization_id` so rows survive org hard-delete/purge — `organization_name` and `actor_label` are **snapshotted** at write time. Explicit `$fillable` (never empty `$guarded`). Single write path: static `OrganizationLifecycleLog::record($org, $event, $actor, $context)`. Events today: `closure_requested`, `closure_request_dismissed`, `offboarding_started`. No tenant-facing read path. `organization_id` and `actor_id` are indexed.
+
+### Notification — `app/Notifications/OrganizationClosureRequestedNotification.php`
+
+`ShouldQueue` on the `emails` queue, sent to `User::role('super-admin')->get()`. **Deliberately NOT `ShouldBeUnique`**: Laravel dispatches one job per notifiable, all sharing a single org-keyed lock, so only the first super-admin would receive the mail (silent fan-out loss). The atomic `closure_requested_at` guard already prevents duplicate requests, so per-job dedup is both unnecessary and harmful here. Mail body carries only requester name/email + org name/slug (proportionate, internal, Art. 6(1)(b)).
+
+---
+
 ## 9. Test coverage
 
 | Test class | Tests | Covers |
@@ -484,6 +511,7 @@ Resolved tenant is stored in `$request->attributes` and `session('tenant_id')` (
 | `tests/Feature/Organizations/OrganizationDataExportTest.php` | 20 | Service ZIP structure/manifest/isolation/path-scoping; route 200/403 (expired, tampered, no-sig, regular user) / 200 (super-admin) / 404 (missing) / 403 (traversal, cross-org); command file+notification, slug, unknown-org. |
 | `tests/Feature/Employee/StaffDeleteGuardTest.php` | 8 | Staff delete guard: past/future, status filters, null-tenant isolation. |
 | `tests/Feature/Middleware/ResolveTenantTest.php` | 13 | Active/inactive/unknown tenants, lifecycle_state gating, cache behaviour, Closing/Closed/soft-deleted → 410 business-closed page, Suspended → root redirect. |
+| `tests/Feature/AccountClosure/ClosureRequestTest.php` | 16 | `requestClosure()` flags/logs/notifies; lifecycle_state unchanged; Closing/duplicate guards via the real method; atomic double-call → exactly one log+notification; staff denied page access; audit log survives `forceDelete`; `closureRequestEmail()` seeded/fallback; append-only (no `updated_at`); offboarding writes log. |
 
 **Patterns:** factory states over `create(['lifecycle_state' => …])`; set `lifecycle_state` directly on the model to trigger `updating()`; `Role::firstOrCreate` in `setUp`; SQLite decimal columns return numeric (`500`, not `'500.00'`) so anonymization assertions use `assertEquals()` not `assertSame()`; set `request->attributes['tenant']` before testing tenant-scoped guards.
 

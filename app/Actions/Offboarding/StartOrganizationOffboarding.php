@@ -7,6 +7,7 @@ namespace App\Actions\Offboarding;
 use App\Enums\OrganizationLifecycleState;
 use App\Jobs\CancelInFlightObligationsJob;
 use App\Models\Organization;
+use App\Models\OrganizationLifecycleLog;
 use App\Models\User;
 use App\Notifications\OrganizationOffboardingStartedNotification;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -62,12 +63,17 @@ class StartOrganizationOffboarding
             ]);
         }
 
-        // Step 4: audit
+        // Step 4: durable audit log + application log
+        $fresh = $org->fresh();
+        OrganizationLifecycleLog::record($org, 'offboarding_started', $actor, [
+            'closing_initiated_at' => $fresh->closing_initiated_at?->toIso8601String(),
+        ]);
+
         Log::info('StartOrganizationOffboarding: offboarding initiated', [
             'organization_id' => $org->id,
             'organization_name' => $org->name,
             'initiated_by' => $actor->id,
-            'closing_initiated_at' => $org->fresh()->closing_initiated_at?->toIso8601String(),
+            'closing_initiated_at' => $fresh->closing_initiated_at?->toIso8601String(),
         ]);
     }
 }

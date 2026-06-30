@@ -46,10 +46,20 @@
 - save_to_profile in checkout payload → CartService::saveProfileData() persists back to User
 - CheckoutController::show() now passes $profileData to view for Alpine pre-fill
 
+## Tenant Lifecycle Audit Log (Faza 5.5+5.6)
+- OrganizationLifecycleLog: DURABLE, no FK, no BelongsToOrganization — survives org hard-delete
+- OrganizationLifecycleLog::record($org, $event, $actor, $context) static helper — use everywhere
+- closure_requested_at direct assignment: $org->closure_requested_at = now(); $org->save() (NOT fillable)
+- OrganizationObserver::updating() only fires on lifecycle_state change — closure_requested_at saves safely
+- SettingsManager::closureRequestEmail() — falls back to contactInformation()['email']
+- Notifications to super-admins: NotificationFacade (aliased) + User::role('super-admin')->get()
+- SystemSettings has Filament Notification alias conflict: `use Illuminate\Support\Facades\Notification as NotificationFacade`
+- Worktree test isolation: copy new files to main app + run migrate to execute tests from worktree
+
 ## Testing
 - Tests run in Docker only (PHP 8.3, local=8.2)
 - .env.testing MUST exist → DB_CONNECTION=sqlite, DB_DATABASE=:memory:
-- 5 pre-existing failures: BookingServiceArea(4) + TenantFeature(1)
+- 7 pre-existing failures: BookingServiceArea(4) + TenantFeature(1) + CustomerOrdersTest(2)
 - CheckoutFlowTest::validCheckoutPayload() updated to include customer_type, legal acceptances, PESEL, address
 
 ## Hooks

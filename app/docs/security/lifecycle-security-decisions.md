@@ -238,4 +238,31 @@ Przelewy24 nie ma publicznie dostępnego API do automatycznych zwrotów (wymaga�
 
 ---
 
-*Rejestr utworzony 2026-06-30. Powiązane: `app/docs/features/tenant-lifecycle.md`, `app/docs/features/orders-security-hardening.md`, `app/docs/features/analytics-event-tracking.md`, `.claude/rules/ci-cd-troubleshooting.md`, `.claude/rules/models.md`.*
+## LC-8 — Closure request flow & audit log (Faza 5.5 + 5.6)
+
+- **Severity wejściowe:** 🔴 1 blocker + 🟠 1 + 🟡 kilka (wszystkie naprawione przed mergem)
+- **OWASP/RODO:** A01 Broken Access Control (IDOR) · A04 Insecure Design (TOCTOU) · A08 Data Integrity (audit log) · RODO art. 5(1)(c) minimalizacja
+- **Gdzie:** `app/Filament/Pages/SystemSettings.php` (`requestClosure()`), `app/Filament/Platform/Resources/OrganizationResource.php` (`clearClosureRequest`), `app/Models/OrganizationLifecycleLog.php`, `app/Notifications/OrganizationClosureRequestedNotification.php`
+
+### Znalezione i naprawione (code-review + security audit gate)
+
+| # | Severity | Problem | Naprawa |
+|---|----------|---------|---------|
+| 1 | 🔴 | **Notification fan-out** — `ShouldBeUnique` na notyfikacji wielo-odbiorczej: Laravel dispatchuje 1 job per notifiable, wszystkie dzielą jeden org-keyed lock → tylko **1 z N** super-adminów dostaje mail (cicha utrata). | Usunięto `ShouldBeUnique`. Dedup zapewnia atomowy guard `closure_requested_at`. → reguła `.claude/rules/notifications.md` |
+| 2 | 🟠 | **Mass-assignment** — `$guarded = []` na audit logu (łamie `models.md`). | Explicit `$fillable` (whitelist 7 kolumn). |
+| 3 | 🟠 | **TOCTOU race** — dwa równoległe requesty przechodzą null-check i podwójnie logują/notyfikują. | Atomowy `whereNull('closure_requested_at')->update(...)`; tylko zwycięski UPDATE kontynuuje. Test `test_request_closure_is_atomic_on_double_call`. |
+| 4 | 🟡 | `clearClosureRequest` na org już w `Closing` zostawia mylący stan (kolumna `—` mimo trwającego zamykania). | Dynamiczny `modalDescription` ostrzega operatora; czyszczenie flagi NIE cofa procesu (→ Reaktywuj). |
+| 5 | 🟡 | Brak `->authorize()` na akcji tenanta (tylko page `canAccess()`). | Dodano `->authorize(hasAnyRole(['admin','super-admin']))` jako defense-in-depth. |
+
+### Zweryfikowane jako bezpieczne (oba audyty)
+
+- **IDOR niemożliwy** — org wyłącznie z `TenantFeature::currentTenant()` (Filament tenant → request attr → session), nigdy z inputu requestu.
+- **Izolacja audit logu** — `OrganizationLifecycleLog` celowo unscoped (musi przeżyć purge), ale ma **wyłącznie write-path** (`record()`); zero tenant-facing read. Brak FK na `organization_id` = przeżywa `forceDelete` (snapshot `organization_name`/`actor_label`). Append-only (`UPDATED_AT = null`).
+- **Brak eskalacji** — flaga `closure_requested_at` nie zmienia `lifecycle_state` ani nie nadaje uprawnień; realny offboarding pozostaje za akcją super-admina (`EnsureSuperAdmin` middleware + `->authorize()`).
+- **Mail header injection N/D** — Symfony Mailer sanityzuje nagłówki; URL z integer PK, nie ze sluga.
+- **DoS/spam** — atomowy guard `closure_requested_at !== null` ogranicza do jednego wniosku do czasu `clearClosureRequest`.
+- **PII w mailu** — tylko imię/email wnioskującego + nazwa/slug org (proporcjonalne, wewnętrzne, Art. 6(1)(b)).
+
+---
+
+*Rejestr utworzony 2026-06-30. Powiązane: `app/docs/features/tenant-lifecycle.md`, `app/docs/features/orders-security-hardening.md`, `app/docs/features/analytics-event-tracking.md`, `.claude/rules/ci-cd-troubleshooting.md`, `.claude/rules/models.md`, `.claude/rules/notifications.md`.*
