@@ -61,6 +61,25 @@ class ResolveTenant
             // Do NOT cache null results (tenant might be created/activated soon)
             Cache::forget("tenant:slug:{$slug}");
 
+            // Before redirecting: check if this is a Closing/Closed tenant.
+            // These states warrant a dedicated "business closed" page rather than a silent
+            // root redirect — the business existed and deliberately shut down.
+            // Suspended and truly unknown slugs still redirect to root (temporary / error state).
+            // withTrashed() catches soft-deleted orgs (purge command soft-deletes Closed orgs).
+            $closedOrg = Organization::withTrashed()
+                ->where('slug', $slug)
+                ->whereIn('lifecycle_state', [
+                    OrganizationLifecycleState::Closing->value,
+                    OrganizationLifecycleState::Closed->value,
+                ])
+                ->first();
+
+            if ($closedOrg) {
+                return response()->view('errors.business-closed', [
+                    'organizationName' => $closedOrg->name,
+                ], 410);
+            }
+
             return redirect()->to($this->rootUrl($request));
         }
 
