@@ -10,6 +10,7 @@ use BackedEnum;
 use Filament\Actions;
 use Filament\Infolists;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Filters\Filter;
@@ -159,7 +160,7 @@ class OrganizationLifecycleLogResource extends Resource
     {
         return $schema
             ->components([
-                Infolists\Components\Section::make('Szczegóły zdarzenia')
+                Section::make('Szczegóły zdarzenia')
                     ->schema([
                         Infolists\Components\TextEntry::make('created_at')
                             ->label('Data')
@@ -187,7 +188,7 @@ class OrganizationLifecycleLogResource extends Resource
                     ])
                     ->columns(2),
 
-                Infolists\Components\Section::make('Kontekst')
+                Section::make('Kontekst')
                     ->schema([
                         Infolists\Components\TextEntry::make('context')
                             ->label('Dane kontekstu')

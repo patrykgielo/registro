@@ -119,4 +119,24 @@ class OrganizationLifecycleLogResourceTest extends TestCase
         $this->assertNull(OrganizationLifecycleLog::UPDATED_AT);
         $this->assertNotNull($log->created_at);
     }
+
+    public function test_view_page_renders_infolist(): void
+    {
+        $this->actingAs($this->superAdmin);
+
+        $log = OrganizationLifecycleLog::record($this->org, 'offboarding_started', $this->superAdmin, ['note' => 'verify']);
+
+        $this->get(OrganizationLifecycleLogResource::getUrl('view', ['record' => $log], panel: 'platform'))
+            ->assertOk();
+    }
+
+    public function test_view_page_renders_infolist_without_context(): void
+    {
+        $this->actingAs($this->superAdmin);
+
+        $log = OrganizationLifecycleLog::record($this->org, 'suspended', $this->superAdmin);
+
+        $this->get(OrganizationLifecycleLogResource::getUrl('view', ['record' => $log], panel: 'platform'))
+            ->assertOk();
+    }
 }
