@@ -1,0 +1,41 @@
+/* Platform panel (super-admin /platform) custom chrome.
+ * Loaded ALONGSIDE admin.css via renderHook, AFTER it — additive only.
+ *
+ * admin.css is SHARED with the tenant /admin panel — never edit it from here.
+ * Every selector below targets Filament's own sidebar classes; nothing here
+ * is scanned for Tailwind utilities, so no @source / @theme is required.
+ */
+
+/* Reclaim horizontal space: tighter nav padding + group rhythm for the
+ * narrower (14rem) platform sidebar. Conservative — density only, no color
+ * or layout structure changes. */
+.fi-sidebar-nav {
+    padding-block: 1.25rem;
+    padding-inline: 1rem;
+}
+
+.fi-sidebar-nav-groups {
+    row-gap: 1.25rem;
+}
+
+.fi-sidebar-group-items {
+    row-gap: 0.125rem;
+}
+
+.fi-sidebar-group-label {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.fi-sidebar-item-btn {
+    padding-block: 0.375rem;
+    padding-inline: 0.5rem;
+}
+
+.fi-sidebar-item-label {
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+}

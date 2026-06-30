@@ -157,6 +157,23 @@ php artisan livewire:publish --assets && php artisan filament:assets && php arti
 
 `protected static ?string $module = 'services';` na Resource → auto-gating przez `BaseResource::shouldRegisterNavigation()`.
 
+## maxContentWidth() — Enum to `Width`, NIE `MaxWidth` (Platform Redesign)
+
+```php
+// ❌ Nie istnieje
+use Filament\Support\Enums\MaxWidth;
+
+// ✅ v4.5
+use Filament\Support\Enums\Width;
+$panel->maxContentWidth(Width::ScreenTwoExtraLarge); // 'screen-2xl'
+```
+
+## Section/Tabs/Grid/Fieldset → `->headerActions()` działa też w Form Schema
+
+`HasHeaderActions` jest w bazowym `Schemas\Components\Component` — nie tylko w Infolist Section.
+`$record` jest auto-resolvowany z bound modelu schematu (jak w table actions). Guard `->visible()`
+na `?Model $record` (Create page nie ma jeszcze rekordu). Pełny przykład: `app/docs/guides/filament-v4-component-architecture.md`.
+
 ## Version Check
 
 Projekt: **v4.5.2**. Przed nowymi metodami: https://filamentphp.com/docs/4.x/
