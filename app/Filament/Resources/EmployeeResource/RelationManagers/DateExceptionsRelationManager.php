@@ -112,6 +112,8 @@ class DateExceptionsRelationManager extends RelationManager
                     Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->defaultSort('exception_date', 'desc');
+            ->defaultSort('exception_date', 'desc')
+            ->emptyStateHeading('Brak wyjątków')
+            ->emptyStateDescription('Pracownik nie ma jeszcze zarejestrowanych wyjątków od harmonogramu.');
     }
 }

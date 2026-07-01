@@ -61,3 +61,40 @@
     --color-amber-900: oklch(41.4% 0.112  45.904);
     --spacing: 0.25rem;
 }
+
+/* Content density pass (2026-07-01, user-approved): same treatment as
+ * platform.css, ported to the tenant /admin panel (~50 resources — more
+ * content per screen pays off even more here). Scoped under .fi-panel-admin
+ * (the body class Filament stamps per panel id) so it never bleeds into
+ * /platform, even though both panels share this file. */
+
+/* Filament components render body text via Tailwind's text-sm utility
+ * (font-size: var(--text-sm)), so overriding the custom property cascades
+ * through table cells, section/field labels and KPI stat labels/descriptions
+ * in one place. text-xs (12px) is untouched, so nothing on the page drops
+ * below the 12-13px readability floor. */
+.fi-panel-admin {
+    --text-sm: 0.8125rem; /* 13px, was 0.875rem (14px) */
+}
+
+/* Table rows: -2px per edge. Every stock column type (text/icon/image/
+ * select/checkbox/toggle/text-input) ships the same px-3 py-4 default. */
+.fi-panel-admin
+    :is(
+        .fi-ta-text,
+        .fi-ta-icon,
+        .fi-ta-image,
+        .fi-ta-select,
+        .fi-ta-checkbox,
+        .fi-ta-toggle,
+        .fi-ta-text-input
+    ):not(.fi-inline) {
+    padding-block: 0.875rem; /* 14px, was 1rem (py-4) */
+}
+
+/* Forms: rhythm between stacked top-level components (Sections, bare
+ * fields) tightened by 0.25rem. Section internal padding (p-6) untouched —
+ * only the gap between sections shrinks. */
+.fi-panel-admin .fi-sc-form {
+    gap: 1.25rem; /* was 1.5rem (gap-6) */
+}

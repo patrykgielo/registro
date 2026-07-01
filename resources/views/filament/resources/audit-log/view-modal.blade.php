@@ -15,19 +15,19 @@
     <div>
         <span class="text-sm font-medium text-gray-500">Zdarzenie</span>
         <p class="mt-1">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                @switch($record->event)
-                    @case('created') bg-green-100 text-green-800 @break
-                    @case('updated') bg-blue-100 text-blue-800 @break
-                    @case('deleted') bg-red-100 text-red-800 @break
-                    @case('login') bg-green-100 text-green-800 @break
-                    @case('logout') bg-gray-100 text-gray-800 @break
-                    @case('login_failed') bg-yellow-100 text-yellow-800 @break
-                    @default bg-gray-100 text-gray-800
-                @endswitch
-            ">
+            @php
+                $eventColor = match ($record->event) {
+                    'created', 'login', 'consent_granted' => 'success',
+                    'updated', 'password_changed' => 'info',
+                    'deleted', 'account_anonymized' => 'danger',
+                    'login_failed', 'password_reset', 'consent_withdrawn' => 'warning',
+                    'logout' => 'gray',
+                    default => 'gray',
+                };
+            @endphp
+            <x-filament::badge :color="$eventColor">
                 {{ $record->event_label }}
-            </span>
+            </x-filament::badge>
         </p>
     </div>
 

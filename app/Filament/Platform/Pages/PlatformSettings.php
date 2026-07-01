@@ -36,6 +36,8 @@ class PlatformSettings extends Page implements HasForms
 
     protected static ?string $navigationLabel = 'Ustawienia platformy';
 
+    protected static ?string $title = 'Ustawienia platformy';
+
     protected static ?string $slug = 'ustawienia';
 
     protected string $view = 'filament.platform.pages.platform-settings';

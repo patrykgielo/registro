@@ -77,7 +77,12 @@ class SystemSettings extends Page implements HasForms
     /**
      * Navigation label.
      */
-    protected static ?string $navigationLabel = 'System Settings';
+    protected static ?string $navigationLabel = 'Ustawienia systemowe';
+
+    /**
+     * Page title.
+     */
+    protected static ?string $title = 'Ustawienia systemowe';
 
     /**
      * Page view.

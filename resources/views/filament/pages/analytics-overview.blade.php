@@ -12,24 +12,43 @@
         $sessionsChange  = $calcChange($kpi['unique_sessions'], $kpi['unique_sessions_prev'] ?? 0);
         $usersChange     = $calcChange($kpi['unique_users'], $kpi['unique_users_prev'] ?? 0);
 
+        $renderChange = function (?int $pct) use ($periodDays): string {
+            if ($pct === null) {
+                return '—';
+            }
+            if ($pct > 0) {
+                return "↑ +{$pct}% vs poprzednie {$periodDays} dni";
+            }
+            if ($pct < 0) {
+                return "↓ {$pct}% vs poprzednie {$periodDays} dni";
+            }
+            return "= 0% vs poprzednie {$periodDays} dni";
+        };
+        $changeColorClass = function (?int $pct): string {
+            if ($pct === null) return 'text-gray-400 dark:text-gray-500';
+            if ($pct > 0) return 'text-success-600 dark:text-success-400';
+            if ($pct < 0) return 'text-danger-500 dark:text-danger-400';
+            return 'text-gray-400 dark:text-gray-500';
+        };
+
         $formatTime = fn(?int $sec) => $sec === null ? '—'
             : ($sec >= 60 ? floor($sec / 60) . ':' . str_pad($sec % 60, 2, '0', STR_PAD_LEFT) : $sec . 's');
 
-        $scrollBadgeClass = function(?int $pct): string {
-            if ($pct === null) return '';
+        $scrollBadgeColor = function(?int $pct): string {
+            if ($pct === null) return 'gray';
             return match(true) {
-                $pct >= 70 => 'analytics-badge-green',
-                $pct >= 40 => 'analytics-badge-yellow',
-                default    => 'analytics-badge-red',
+                $pct >= 70 => 'success',
+                $pct >= 40 => 'warning',
+                default    => 'danger',
             };
         };
 
-        $bounceClass = function(?float $pct): string {
+        $bounceColorClass = function(?float $pct): string {
             if ($pct === null) return 'text-gray-400 dark:text-gray-500';
             return match(true) {
-                $pct < 40  => 'analytics-text-green',
-                $pct <= 60 => 'analytics-text-yellow',
-                default    => 'analytics-text-red',
+                $pct < 40  => 'text-success-600 dark:text-success-400',
+                $pct <= 60 => 'text-warning-600 dark:text-warning-400',
+                default    => 'text-danger-500 dark:text-danger-400',
             };
         };
 
@@ -56,54 +75,54 @@
             'pickup_person'  => 'Osoba odbioru',
             'signatory_name' => 'Osoba podpisująca',
         ];
+
+        $deviceLabels = ['desktop' => 'Komputer', 'mobile' => 'Telefon', 'tablet' => 'Tablet'];
     @endphp
 
     {{-- Filter Bar --}}
     <div class="mb-6 space-y-3">
 
-        {{-- Row 1: Period buttons + Reset --}}
-        <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Wybierz okres">
-            @foreach($this->periodOptions() as $option)
-                <button
-                    type="button"
-                    wire:click="$set('period', '{{ $option['value'] }}')"
-                    @class([
-                        'inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 cursor-pointer',
-                        'bg-primary-600 text-white shadow-sm' => $this->period === $option['value'],
-                        'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-primary-300 hover:text-primary-700' => $this->period !== $option['value'],
-                    ])
-                    aria-pressed="{{ $this->period === $option['value'] ? 'true' : 'false' }}"
-                >
-                    {{ $option['label'] }}
-                </button>
-            @endforeach
+        {{-- Row 1: Period tabs + Reset --}}
+        <div class="flex flex-wrap items-center gap-2">
+            <x-filament::tabs contained label="Wybierz okres">
+                @foreach($this->periodOptions() as $option)
+                    <x-filament::tabs.item
+                        wire:click="$set('period', '{{ $option['value'] }}')"
+                        :active="$this->period === $option['value']"
+                    >
+                        {{ $option['label'] }}
+                    </x-filament::tabs.item>
+                @endforeach
+            </x-filament::tabs>
 
             @if($this->hasActiveFilters())
-            <button
+            <x-filament::button
                 type="button"
                 wire:click="resetFilters"
-                class="ml-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-150 cursor-pointer"
+                color="gray"
+                size="sm"
+                icon="heroicon-o-x-circle"
+                class="ms-auto"
             >
-                <x-heroicon-o-x-circle class="w-4 h-4 flex-shrink-0" width="16" height="16" />
                 Resetuj filtry
-            </button>
+            </x-filament::button>
             @endif
         </div>
 
         {{-- Custom date range (shows only when 'custom' period selected) --}}
         @if($this->period === 'custom')
         <div class="flex flex-wrap items-center gap-3">
-            <label class="text-sm text-gray-500 dark:text-gray-400 font-medium">Od:</label>
+            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Od:</label>
             <input
                 type="date"
                 wire:model.live="dateFrom"
-                class="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-950 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             />
-            <label class="text-sm text-gray-500 dark:text-gray-400 font-medium">Do:</label>
+            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Do:</label>
             <input
                 type="date"
                 wire:model.live="dateTo"
-                class="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-950 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             />
         </div>
         @endif
@@ -112,10 +131,10 @@
         @php $activeDevices = $this->getDeviceTypes(); @endphp
         <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Filtruj po urządzeniu">
             <div class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
-                <x-heroicon-o-device-phone-mobile class="w-4 h-4 flex-shrink-0" width="16" height="16" />
+                <x-filament::icon icon="heroicon-o-device-phone-mobile" class="h-4 w-4" />
                 <span class="font-medium">Urządzenie:</span>
             </div>
-            @foreach(['desktop' => 'Komputer', 'mobile' => 'Telefon', 'tablet' => 'Tablet'] as $deviceKey => $deviceLabel)
+            @foreach($deviceLabels as $deviceKey => $deviceLabel)
                 @php
                     $isDeviceActive = in_array($deviceKey, $activeDevices, true);
                     $newDeviceValue = $isDeviceActive
@@ -125,14 +144,12 @@
                 <button
                     type="button"
                     wire:click="$set('deviceParam', @js($newDeviceValue))"
-                    @class([
-                        'inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border cursor-pointer',
-                        'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' => $isDeviceActive,
-                        'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-primary-300' => !$isDeviceActive,
-                    ])
                     aria-pressed="{{ $isDeviceActive ? 'true' : 'false' }}"
+                    class="cursor-pointer"
                 >
-                    {{ $deviceLabel }}
+                    <x-filament::badge :color="$isDeviceActive ? 'primary' : 'gray'">
+                        {{ $deviceLabel }}
+                    </x-filament::badge>
                 </button>
             @endforeach
         </div>
@@ -141,49 +158,36 @@
         @if($this->hasActiveFilters())
         <div class="flex flex-wrap gap-2" aria-label="Aktywne filtry">
             @if($this->dateFrom || $this->dateTo)
-            <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-xs rounded-full border border-amber-200 dark:border-amber-800">
-                <x-heroicon-o-calendar class="w-3 h-3 flex-shrink-0" width="12" height="12" />
+            <x-filament::badge color="warning" icon="heroicon-o-calendar">
                 {{ $this->dateFrom ?: '...' }} – {{ $this->dateTo ?: '...' }}
-                <button
-                    type="button"
-                    @click="$wire.set('dateFrom', ''); $wire.set('dateTo', '')"
-                    class="ml-0.5 hover:text-amber-900 dark:hover:text-amber-200 cursor-pointer"
-                    aria-label="Usuń filtr dat"
-                >
-                    <x-heroicon-o-x-mark class="w-3 h-3 flex-shrink-0" width="12" height="12" />
-                </button>
-            </span>
+                <x-slot:deleteButton
+                    label="Usuń filtr dat"
+                    x-on:click="$wire.set('dateFrom', ''); $wire.set('dateTo', '')"
+                ></x-slot:deleteButton>
+            </x-filament::badge>
             @endif
             @foreach($activeDevices as $activeDevice)
                 @php
                     $remainingDevices = implode(',', array_values(array_filter($activeDevices, fn($d) => $d !== $activeDevice)));
-                    $deviceChipLabel = ['desktop' => 'Komputer', 'mobile' => 'Telefon', 'tablet' => 'Tablet'][$activeDevice] ?? $activeDevice;
+                    $deviceChipLabel = $deviceLabels[$activeDevice] ?? $activeDevice;
                 @endphp
-                <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 text-xs rounded-full border border-primary-200 dark:border-primary-800">
+                <x-filament::badge color="primary">
                     {{ $deviceChipLabel }}
-                    <button
-                        type="button"
+                    <x-slot:deleteButton
+                        :label="'Usuń filtr '.$deviceChipLabel"
                         wire:click="$set('deviceParam', @js($remainingDevices))"
-                        class="ml-0.5 hover:text-primary-900 dark:hover:text-primary-200 cursor-pointer"
-                        aria-label="Usuń filtr {{ $deviceChipLabel }}"
-                    >
-                        <x-heroicon-o-x-mark class="w-3 h-3 flex-shrink-0" width="12" height="12" />
-                    </button>
-                </span>
+                    ></x-slot:deleteButton>
+                </x-filament::badge>
             @endforeach
             @foreach($this->getUtmSources() as $activeUtm)
                 @php $remainingUtm = implode(',', array_values(array_filter($this->getUtmSources(), fn($u) => $u !== $activeUtm))); @endphp
-                <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs rounded-full border border-green-200 dark:border-green-800">
+                <x-filament::badge color="success">
                     UTM: {{ $activeUtm }}
-                    <button
-                        type="button"
+                    <x-slot:deleteButton
+                        :label="'Usuń filtr UTM '.$activeUtm"
                         wire:click="$set('utmSourceParam', @js($remainingUtm))"
-                        class="ml-0.5 hover:text-green-900 dark:hover:text-green-200 cursor-pointer"
-                        aria-label="Usuń filtr UTM {{ $activeUtm }}"
-                    >
-                        <x-heroicon-o-x-mark class="w-3 h-3 flex-shrink-0" width="12" height="12" />
-                    </button>
-                </span>
+                    ></x-slot:deleteButton>
+                </x-filament::badge>
             @endforeach
         </div>
         @endif
@@ -194,184 +198,142 @@
     <div class="grid grid-cols-2 gap-4 xl:grid-cols-4 mb-6">
 
         {{-- Page Views --}}
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 border-t-4 border-t-primary-500 dark:border-t-primary-400">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="p-2 rounded-xl bg-primary-50 dark:bg-primary-900/30">
-                    <x-heroicon-o-eye class="w-5 h-5 flex-shrink-0 text-primary-600 dark:text-primary-400" width="20" height="20" />
+        <div class="fi-wi-stats-overview-stat">
+            <div class="fi-wi-stats-overview-stat-content">
+                <div class="fi-wi-stats-overview-stat-label-ctn">
+                    <x-filament::icon icon="heroicon-o-eye" class="fi-icon h-5 w-5" />
+                    <span class="fi-wi-stats-overview-stat-label">Odsłony</span>
                 </div>
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Odsłony</span>
+                <div class="fi-wi-stats-overview-stat-value tabular-nums">
+                    {{ number_format($kpi['page_views']) }}
+                </div>
+                <p class="fi-wi-stats-overview-stat-description {{ $changeColorClass($pageViewsChange) }}">
+                    {{ $renderChange($pageViewsChange) }}
+                </p>
             </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
-                {{ number_format($kpi['page_views']) }}
-            </div>
-            @if($pageViewsChange !== null)
-                @if($pageViewsChange > 0)
-                    <div class="flex items-center gap-1 mt-1.5 text-green-600 dark:text-green-400">
-                        <span class="text-xs font-semibold">↑ +{{ $pageViewsChange }}%</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
-                    </div>
-                @elseif($pageViewsChange < 0)
-                    <div class="flex items-center gap-1 mt-1.5 text-red-500 dark:text-red-400">
-                        <span class="text-xs font-semibold">↓ {{ $pageViewsChange }}%</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
-                    </div>
-                @else
-                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">= 0% vs poprzednie {{ $periodDays }} dni</p>
-                @endif
-            @else
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">—</p>
-            @endif
         </div>
 
         {{-- Unique Sessions --}}
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 border-t-4 border-t-cyan-500 dark:border-t-cyan-400">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-900/30">
-                    <x-heroicon-o-user-group class="w-5 h-5 flex-shrink-0 text-cyan-600 dark:text-cyan-400" width="20" height="20" />
+        <div class="fi-wi-stats-overview-stat">
+            <div class="fi-wi-stats-overview-stat-content">
+                <div class="fi-wi-stats-overview-stat-label-ctn">
+                    <x-filament::icon icon="heroicon-o-user-group" class="fi-icon h-5 w-5" />
+                    <span class="fi-wi-stats-overview-stat-label">Sesje</span>
                 </div>
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Sesje</span>
+                <div class="fi-wi-stats-overview-stat-value tabular-nums">
+                    {{ number_format($kpi['unique_sessions']) }}
+                </div>
+                <p class="fi-wi-stats-overview-stat-description {{ $changeColorClass($sessionsChange) }}">
+                    {{ $renderChange($sessionsChange) }}
+                </p>
             </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
-                {{ number_format($kpi['unique_sessions']) }}
-            </div>
-            @if($sessionsChange !== null)
-                @if($sessionsChange > 0)
-                    <div class="flex items-center gap-1 mt-1.5 text-green-600 dark:text-green-400">
-                        <span class="text-xs font-semibold">↑ +{{ $sessionsChange }}%</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
-                    </div>
-                @elseif($sessionsChange < 0)
-                    <div class="flex items-center gap-1 mt-1.5 text-red-500 dark:text-red-400">
-                        <span class="text-xs font-semibold">↓ {{ $sessionsChange }}%</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
-                    </div>
-                @else
-                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">= 0% vs poprzednie {{ $periodDays }} dni</p>
-                @endif
-            @else
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">—</p>
-            @endif
         </div>
 
         {{-- Logged-in Users --}}
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 border-t-4 border-t-green-500 dark:border-t-green-400">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="p-2 rounded-xl bg-green-50 dark:bg-green-900/30">
-                    <x-heroicon-o-identification class="w-5 h-5 flex-shrink-0 text-green-600 dark:text-green-400" width="20" height="20" />
+        <div class="fi-wi-stats-overview-stat">
+            <div class="fi-wi-stats-overview-stat-content">
+                <div class="fi-wi-stats-overview-stat-label-ctn">
+                    <x-filament::icon icon="heroicon-o-identification" class="fi-icon h-5 w-5" />
+                    <span class="fi-wi-stats-overview-stat-label">Zalogowani</span>
                 </div>
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Zalogowani</span>
+                <div class="fi-wi-stats-overview-stat-value tabular-nums">
+                    {{ number_format($kpi['unique_users']) }}
+                </div>
+                <p class="fi-wi-stats-overview-stat-description {{ $changeColorClass($usersChange) }}">
+                    {{ $renderChange($usersChange) }}
+                </p>
             </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
-                {{ number_format($kpi['unique_users']) }}
-            </div>
-            @if($usersChange !== null)
-                @if($usersChange > 0)
-                    <div class="flex items-center gap-1 mt-1.5 text-green-600 dark:text-green-400">
-                        <span class="text-xs font-semibold">↑ +{{ $usersChange }}%</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
-                    </div>
-                @elseif($usersChange < 0)
-                    <div class="flex items-center gap-1 mt-1.5 text-red-500 dark:text-red-400">
-                        <span class="text-xs font-semibold">↓ {{ $usersChange }}%</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">vs poprzednie {{ $periodDays }} dni</span>
-                    </div>
-                @else
-                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">= 0% vs poprzednie {{ $periodDays }} dni</p>
-                @endif
-            @else
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">—</p>
-            @endif
         </div>
 
         {{-- Avg events per session --}}
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 border-t-4 border-t-amber-500 dark:border-t-amber-400">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="p-2 rounded-xl bg-amber-50 dark:bg-amber-900/30">
-                    <x-heroicon-o-cursor-arrow-rays class="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" width="20" height="20" />
+        <div class="fi-wi-stats-overview-stat">
+            <div class="fi-wi-stats-overview-stat-content">
+                <div class="fi-wi-stats-overview-stat-label-ctn">
+                    <x-filament::icon icon="heroicon-o-cursor-arrow-rays" class="fi-icon h-5 w-5" />
+                    <span class="fi-wi-stats-overview-stat-label">Aktywność</span>
                 </div>
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Aktywność</span>
+                <div class="fi-wi-stats-overview-stat-value tabular-nums">
+                    {{ number_format($kpi['avg_session_events'], 1, ',', ' ') }}
+                </div>
+                <p class="fi-wi-stats-overview-stat-description">
+                    zdarzeń na sesję (im więcej, tym lepiej)
+                </p>
             </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
-                {{ number_format($kpi['avg_session_events'], 1, ',', ' ') }}
-            </div>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">zdarzeń na sesję (im więcej, tym lepiej)</p>
         </div>
 
     </div>
 
     {{-- Page Views Chart --}}
-    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Odsłony w czasie</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Liczba odwiedzin strony dzień po dniu</p>
-            </div>
-        </div>
+    <x-filament::section
+        heading="Odsłony w czasie"
+        description="Liczba odwiedzin strony dzień po dniu"
+        class="mb-6"
+    >
         <div
             wire:ignore
             class="h-80"
             x-data="analyticsPageviewChart(@js($chartData['series']), @js($chartData['categories']))"
             x-on:analytics-chart-refresh.window="refreshPageviewChart($event.detail)"
         ></div>
-    </div>
+    </x-filament::section>
 
-    {{-- Top Pages — 5 columns --}}
-    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
-        <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Najpopularniejsze strony (top 10)</h3>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Czas, zaangażowanie i współczynnik odrzuceń</p>
-        </div>
+    {{-- Top Pages --}}
+    <x-filament::section
+        heading="Najpopularniejsze strony (top 10)"
+        description="Czas, zaangażowanie i współczynnik odrzuceń"
+        class="mb-6"
+    >
         @if(count($topPages) > 0)
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="bg-gray-50 dark:bg-gray-700/40">
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-10">#</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Strona</th>
-                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Wizyty</th>
-                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Śr. czas</th>
-                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Scroll</th>
-                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Bounce</th>
+        <div class="-m-6 overflow-x-auto">
+            <table class="fi-ta-table w-full text-start">
+                <thead class="divide-y divide-gray-200 dark:divide-white/10">
+                    <tr class="bg-gray-50 dark:bg-white/5">
+                        <th class="px-3 py-3.5 text-start w-10"><span class="text-sm font-semibold text-gray-950 dark:text-white">#</span></th>
+                        <th class="px-3 py-3.5 text-start"><span class="text-sm font-semibold text-gray-950 dark:text-white">Strona</span></th>
+                        <th class="px-3 py-3.5 text-end w-20"><span class="text-sm font-semibold text-gray-950 dark:text-white">Wizyty</span></th>
+                        <th class="px-3 py-3.5 text-end w-24"><span class="text-sm font-semibold text-gray-950 dark:text-white">Śr. czas</span></th>
+                        <th class="px-3 py-3.5 text-center w-20"><span class="text-sm font-semibold text-gray-950 dark:text-white">Scroll</span></th>
+                        <th class="px-3 py-3.5 text-end w-20"><span class="text-sm font-semibold text-gray-950 dark:text-white">Bounce</span></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
+                <tbody class="divide-y divide-gray-200 dark:divide-white/5">
                     @foreach($topPages as $index => $page)
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors duration-100">
-                        <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 font-mono text-xs">{{ $index + 1 }}</td>
-                        <td class="px-4 py-3.5 max-w-xs">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors duration-100">
+                        <td class="px-3 py-3.5 text-gray-400 dark:text-gray-500 font-mono text-xs">{{ $index + 1 }}</td>
+                        <td class="px-3 py-3.5 max-w-xs">
                             @if(str_starts_with($page['url'] ?? '', 'http'))
                                 <a
                                     href="{{ $page['url'] }}"
                                     target="_blank"
                                     rel="noopener"
-                                    class="inline-flex items-center gap-1 text-gray-900 dark:text-white font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-100"
+                                    class="inline-flex items-center gap-1 text-sm font-medium text-gray-950 hover:text-primary-600 dark:text-white dark:hover:text-primary-400 transition-colors duration-100"
                                     title="{{ $page['url'] }}"
                                 >
                                     <span class="truncate max-w-[220px]">{{ $page['path'] }}</span>
-                                    <x-heroicon-o-arrow-top-right-on-square class="w-3 h-3 flex-shrink-0 text-gray-400" width="12" height="12" />
+                                    <x-heroicon-o-arrow-top-right-on-square class="h-3 w-3 flex-shrink-0 text-gray-400" width="12" height="12" />
                                 </a>
                             @else
-                                <span class="inline-flex items-center text-gray-900 dark:text-white font-medium truncate max-w-[220px]">{{ $page['path'] }}</span>
+                                <span class="inline-flex items-center truncate max-w-[220px] text-sm font-medium text-gray-950 dark:text-white">{{ $page['path'] }}</span>
                             @endif
                         </td>
-                        <td class="px-4 py-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums font-semibold">
+                        <td class="px-3 py-3.5 text-end text-sm font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
                             {{ number_format($page['views']) }}
                         </td>
-                        <td class="px-4 py-3.5 text-right text-gray-500 dark:text-gray-400 tabular-nums">
+                        <td class="px-3 py-3.5 text-end text-sm text-gray-500 dark:text-gray-400 tabular-nums">
                             {{ $formatTime($page['avg_time_seconds']) }}
                         </td>
-                        <td class="px-4 py-3.5 text-center">
+                        <td class="px-3 py-3.5 text-center">
                             @if($page['avg_scroll_pct'] !== null)
-                                <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {{ $scrollBadgeClass($page['avg_scroll_pct']) }}">
+                                <x-filament::badge :color="$scrollBadgeColor($page['avg_scroll_pct'])" size="sm">
                                     {{ $page['avg_scroll_pct'] }}%
-                                </span>
+                                </x-filament::badge>
                             @else
                                 <span class="text-gray-400 dark:text-gray-500">—</span>
                             @endif
                         </td>
-                        <td class="px-4 py-3.5 text-right tabular-nums">
+                        <td class="px-3 py-3.5 text-end tabular-nums">
                             @if($page['bounce_rate'] !== null)
-                                <span class="font-semibold {{ $bounceClass($page['bounce_rate']) }}">{{ $page['bounce_rate'] }}%</span>
+                                <span class="text-sm font-semibold {{ $bounceColorClass($page['bounce_rate']) }}">{{ $page['bounce_rate'] }}%</span>
                             @else
                                 <span class="text-gray-400 dark:text-gray-500">—</span>
                             @endif
@@ -382,37 +344,36 @@
             </table>
         </div>
         @else
-        <div class="py-12 text-center">
-            <x-heroicon-o-globe-alt class="w-10 h-10 flex-shrink-0 text-gray-300 dark:text-gray-600 mx-auto mb-3" width="40" height="40" />
-            <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych o stronach w wybranym okresie.</p>
-        </div>
+        <x-filament::empty-state
+            icon="heroicon-o-globe-alt"
+            heading="Brak danych o stronach"
+            description="W wybranym okresie nie odnotowano żadnych odwiedzin."
+        />
         @endif
-    </div>
+    </x-filament::section>
 
     {{-- Conversion Funnel --}}
     @php $funnel = $this->getFunnelData(); @endphp
-    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
-        <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-            <div>
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Lejek konwersji</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Procent sesji przechodzących każdy etap</p>
-            </div>
-            <x-heroicon-o-funnel class="w-5 h-5 flex-shrink-0 text-gray-300 dark:text-gray-600" width="20" height="20" />
-        </div>
+    <x-filament::section
+        icon="heroicon-o-funnel"
+        heading="Lejek konwersji"
+        description="Procent sesji przechodzących każdy etap"
+        class="mb-6"
+    >
         @if(count($funnel['steps']) > 0 && ($funnel['steps'][0]['count'] ?? 0) > 0)
-        <div class="p-5 space-y-3">
+        <div class="space-y-3">
             @foreach($funnel['steps'] as $step)
             <div>
                 <div class="flex items-center justify-between mb-1.5">
-                    <span class="text-sm text-gray-700 dark:text-gray-300 font-medium">{{ $step['label'] }}</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ $step['label'] }}</span>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{{ number_format($step['count']) }} sesji</span>
-                        <span class="text-xs font-bold text-primary-600 dark:text-primary-400 tabular-nums w-12 text-right">{{ $step['pct'] }}%</span>
+                        <span class="text-xs font-bold text-primary-600 dark:text-primary-400 tabular-nums w-12 text-end">{{ $step['pct'] }}%</span>
                     </div>
                 </div>
-                <div class="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5">
+                <div class="w-full rounded-full bg-gray-100 h-2.5 dark:bg-gray-700">
                     <div
-                        class="h-2.5 rounded-full bg-gradient-to-r from-primary-500 to-violet-500 transition-opacity duration-500"
+                        class="h-2.5 rounded-full bg-primary-500"
                         style="width: {{ max($step['pct'], 0.5) }}%"
                     ></div>
                 </div>
@@ -420,41 +381,38 @@
             @endforeach
         </div>
         @else
-        <div class="py-10 text-center">
-            <x-heroicon-o-funnel class="w-10 h-10 flex-shrink-0 text-gray-300 dark:text-gray-600 mx-auto mb-3" width="40" height="40" />
-            <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych o lejku w wybranym okresie.</p>
-        </div>
+        <x-filament::empty-state
+            icon="heroicon-o-funnel"
+            heading="Brak danych o lejku"
+            description="W wybranym okresie nie odnotowano danych lejka konwersji."
+        />
         @endif
-    </div>
+    </x-filament::section>
 
     {{-- Bottom row: Cart Abandonment + Traffic Sources --}}
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 
         {{-- Cart Abandonment --}}
         @php $abandon = $this->getCartAbandonmentData(); @endphp
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Porzucenia</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Checkout abandonment</p>
-            </div>
-            <div class="p-5 space-y-4">
+        <x-filament::section heading="Porzucenia" description="Checkout abandonment">
+            <div class="space-y-4">
                 <div class="grid grid-cols-3 gap-3 text-center">
-                    <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                        <div class="text-lg font-bold text-gray-900 dark:text-white tabular-nums">{{ number_format($abandon['add_to_cart']) }}</div>
+                    <div class="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
+                        <div class="text-lg font-bold text-gray-950 dark:text-white tabular-nums">{{ number_format($abandon['add_to_cart']) }}</div>
                         <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Do koszyka</div>
                     </div>
-                    <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                        <div class="text-lg font-bold text-gray-900 dark:text-white tabular-nums">{{ number_format($abandon['cart_viewed']) }}</div>
+                    <div class="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
+                        <div class="text-lg font-bold text-gray-950 dark:text-white tabular-nums">{{ number_format($abandon['cart_viewed']) }}</div>
                         <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Koszyk</div>
                     </div>
-                    <div class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20">
-                        <div class="text-lg font-bold text-red-600 dark:text-red-400 tabular-nums">{{ number_format($abandon['total_abandoned']) }}</div>
+                    <div class="rounded-xl bg-danger-50 p-3 dark:bg-danger-500/10">
+                        <div class="text-lg font-bold text-danger-600 dark:text-danger-400 tabular-nums">{{ number_format($abandon['total_abandoned']) }}</div>
                         <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Porzucone</div>
                     </div>
                 </div>
                 @if(count($abandon['top_fields']) > 0)
                 <div>
-                    <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Porzucone pola</p>
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Porzucone pola</p>
                     <div class="space-y-1.5">
                         @foreach($abandon['top_fields'] as $field)
                         @php $fieldName = $fieldLabels[$field['field']] ?? ucfirst(str_replace('_', ' ', $field['field'])); @endphp
@@ -467,44 +425,41 @@
                 </div>
                 @endif
             </div>
-        </div>
+        </x-filament::section>
 
         {{-- Traffic Sources --}}
         @php $sources = $this->getTrafficSources(); @endphp
-        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Źródła ruchu</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Skąd przychodzą odwiedzający</p>
-            </div>
+        <x-filament::section heading="Źródła ruchu" description="Skąd przychodzą odwiedzający">
             @if(count($sources) > 0)
-            <div class="p-5 space-y-3">
+            <div class="space-y-3">
                 @foreach($sources as $src)
                 @php $srcLabel = $sourceLabels[$src['source']] ?? ucfirst($src['source']); @endphp
                 <div>
                     <div class="flex items-start justify-between mb-1">
                         <div>
-                            <span class="text-sm text-gray-700 dark:text-gray-300 font-medium">{{ $srcLabel }}</span>
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ $srcLabel }}</span>
                             @if($src['source'] === 'direct')
                             <p class="text-xs text-gray-400 dark:text-gray-500">wejścia bezpośrednie: zakładki, wpisany adres</p>
                             @endif
                         </div>
-                        <div class="flex items-center gap-2 shrink-0 ml-2 mt-0.5">
+                        <div class="flex items-center gap-2 shrink-0 ms-2 mt-0.5">
                             <span class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{{ number_format($src['sessions']) }}</span>
-                            <span class="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums w-10 text-right">{{ $src['pct'] }}%</span>
+                            <span class="text-xs font-bold text-success-600 dark:text-success-400 tabular-nums w-10 text-end">{{ $src['pct'] }}%</span>
                         </div>
                     </div>
-                    <div class="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5">
-                        <div class="h-1.5 rounded-full bg-green-500 dark:bg-green-400" style="width: {{ $src['pct'] }}%"></div>
+                    <div class="w-full rounded-full bg-gray-100 h-1.5 dark:bg-gray-700">
+                        <div class="h-1.5 rounded-full bg-success-500 dark:bg-success-400" style="width: {{ $src['pct'] }}%"></div>
                     </div>
                 </div>
                 @endforeach
             </div>
             @else
-            <div class="py-8 text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Brak danych UTM.</p>
-            </div>
+            <x-filament::empty-state
+                icon="heroicon-o-globe-alt"
+                heading="Brak danych UTM"
+            />
             @endif
-        </div>
+        </x-filament::section>
 
     </div>
 

@@ -38,7 +38,11 @@ class OrganizationResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-building-office-2';
 
-    protected static ?string $navigationLabel = 'Organizations';
+    protected static ?string $navigationLabel = 'Organizacje';
+
+    protected static ?string $modelLabel = 'Organizacja';
+
+    protected static ?string $pluralModelLabel = 'Organizacje';
 
     protected static ?int $navigationSort = 1;
 
@@ -388,16 +392,17 @@ class OrganizationResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')
+                    ->label('Nazwa')
                     ->searchable()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('owner.email')
-                    ->label('Owner')
+                    ->label('Właściciel')
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('members_count')
                     ->counts('members')
-                    ->label('Members'),
+                    ->label('Członkowie'),
 
                 Tables\Columns\TextColumn::make('lifecycle_state')
                     ->badge()
@@ -411,11 +416,13 @@ class OrganizationResource extends Resource
                     }),
 
                 Tables\Columns\TextColumn::make('slug')
+                    ->label('Slug')
                     ->searchable()
                     ->copyable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('booking_type')
+                    ->label('Typ rezerwacji')
                     ->badge()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'time_slot' => 'Rezerwacje',
@@ -432,6 +439,7 @@ class OrganizationResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('industry')
+                    ->label('Branża')
                     ->badge()
                     ->formatStateUsing(fn ($state) => $state?->label())
                     ->color(fn ($state) => match ($state) {
@@ -443,16 +451,18 @@ class OrganizationResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\IconColumn::make('is_active')
+                    ->label('Aktywna')
                     ->boolean()
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('trial_ends_at')
+                    ->label('Koniec triala')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('closure_requested_at')
-                    ->label('Closure Request')
+                    ->label('Wniosek o zamknięcie')
                     ->dateTime()
                     ->sortable()
                     ->badge()
@@ -461,28 +471,32 @@ class OrganizationResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('created_at')
+                    ->label('Data utworzenia')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('booking_type')
+                    ->label('Typ rezerwacji')
                     ->options([
-                        'time_slot' => 'Time-Slot',
-                        'item_rental' => 'Item Rental',
-                        'both' => 'Both',
+                        'time_slot' => 'Rezerwacje',
+                        'item_rental' => 'Wypożyczenia',
+                        'both' => 'Oba',
                     ]),
                 Tables\Filters\SelectFilter::make('industry')
+                    ->label('Branża')
                     ->options(Industry::class),
                 Tables\Filters\SelectFilter::make('lifecycle_state')
                     ->options(OrganizationLifecycleState::class)
-                    ->label('Lifecycle State'),
-                Tables\Filters\TernaryFilter::make('is_active'),
+                    ->label('Stan cyklu życia'),
+                Tables\Filters\TernaryFilter::make('is_active')
+                    ->label('Aktywna'),
                 Tables\Filters\TernaryFilter::make('closure_requested_at')
-                    ->label('Pending Closure Request')
+                    ->label('Wniosek o zamknięcie')
                     ->nullable()
-                    ->trueLabel('With closure request')
-                    ->falseLabel('Without closure request'),
+                    ->trueLabel('Z wnioskiem')
+                    ->falseLabel('Bez wniosku'),
             ])
             ->actions([
                 Actions\ActionGroup::make([

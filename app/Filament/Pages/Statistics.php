@@ -33,6 +33,8 @@ class Statistics extends Page
 
     protected static ?string $navigationLabel = 'Statystyki';
 
+    protected static ?string $title = 'Statystyki';
+
     protected static ?string $slug = 'statystyki';
 
     protected string $view = 'filament.pages.statistics';

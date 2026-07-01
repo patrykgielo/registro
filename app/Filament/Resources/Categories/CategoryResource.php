@@ -31,7 +31,7 @@ class CategoryResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 6;
 
     protected static ?string $modelLabel = 'Kategoria';
 
@@ -95,7 +95,8 @@ class CategoryResource extends BaseResource
                     ->label('Slug')
                     ->searchable()
                     ->badge()
-                    ->color('gray'),
+                    ->color('gray')
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('type')
                     ->label('Typ')

@@ -267,7 +267,10 @@ class StaffVacationPeriodResource extends BaseResource
                         ->deselectRecordsAfterCompletion()
                         ->requiresConfirmation(),
                 ]),
-            ]);
+            ])
+            ->emptyStateHeading('Brak urlopów')
+            ->emptyStateDescription('Dodaj pierwszy urlop klikając przycisk poniżej.')
+            ->emptyStateIcon('heroicon-o-sun');
     }
 
     public static function getRelations(): array

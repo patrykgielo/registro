@@ -33,7 +33,7 @@ class PageResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $modelLabel = 'Strona';
 
@@ -206,7 +206,7 @@ class PageResource extends BaseResource
                     ->weight('bold'),
 
                 Tables\Columns\IconColumn::make('is_homepage')
-                    ->label('Homepage')
+                    ->label('Strona główna')
                     ->boolean()
                     ->getStateUsing(function (Page $record): bool {
                         $settingsManager = app(\App\Support\Settings\SettingsManager::class);
@@ -217,24 +217,21 @@ class PageResource extends BaseResource
                     ->trueIcon('heroicon-o-home')
                     ->falseIcon('')
                     ->alignCenter()
-                    ->tooltip(fn (bool $state): string => $state ? 'This is the homepage' : ''),
+                    ->tooltip(fn (bool $state): string => $state ? 'To jest strona główna witryny' : ''),
 
                 Tables\Columns\TextColumn::make('slug')
                     ->label('Slug')
                     ->searchable()
                     ->badge()
-                    ->color('gray'),
+                    ->color('gray')
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('layout')
                     ->label('Layout')
                     ->badge()
-                    ->color(fn (PageLayout $state): string => match ($state) {
-                        PageLayout::DEFAULT => 'info',
-                        PageLayout::FULL_WIDTH => 'success',
-                        PageLayout::MINIMAL => 'warning',
-                        PageLayout::HOME => 'danger',
-                    })
-                    ->formatStateUsing(fn (PageLayout $state): string => $state->label()),
+                    ->color(fn (PageLayout $state): string => $state->badgeColor())
+                    ->formatStateUsing(fn (PageLayout $state): string => $state->label())
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\IconColumn::make('show_in_menu')
                     ->label('Menu')
@@ -262,6 +259,12 @@ class PageResource extends BaseResource
                             : 'Wersja robocza'
                     )
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Utworzono')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Ostatnia aktualizacja')

@@ -100,6 +100,13 @@ class RentalCategoryResource extends BaseResource
                     ->sortable(),
             ])
             ->defaultSort('sort_order')
+            ->filters([
+                Tables\Filters\TernaryFilter::make('is_active')
+                    ->label('Aktywna')
+                    ->placeholder('Wszystkie')
+                    ->trueLabel('Tylko aktywne')
+                    ->falseLabel('Tylko nieaktywne'),
+            ])
             ->recordActions([
                 Actions\EditAction::make(),
                 Actions\DeleteAction::make(),

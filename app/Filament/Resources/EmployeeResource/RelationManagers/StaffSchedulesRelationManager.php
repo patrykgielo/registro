@@ -111,6 +111,8 @@ class StaffSchedulesRelationManager extends RelationManager
                     Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->defaultSort('day_of_week');
+            ->defaultSort('day_of_week')
+            ->emptyStateHeading('Brak harmonogramów')
+            ->emptyStateDescription('Pracownik nie ma jeszcze zdefiniowanego harmonogramu pracy.');
     }
 }

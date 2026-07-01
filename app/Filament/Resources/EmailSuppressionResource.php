@@ -24,48 +24,52 @@ class EmailSuppressionResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 5;
 
-    protected static ?string $navigationLabel = 'Email Suppressions';
+    protected static ?string $navigationLabel = 'Wykluczenia Email';
+
+    protected static ?string $modelLabel = 'Wykluczenie Email';
+
+    protected static ?string $pluralModelLabel = 'Wykluczenia Email';
 
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make('Suppression Details')
+            Section::make('Szczegóły wykluczenia')
                 ->schema([
                     Forms\Components\TextInput::make('email')
-                        ->label('Email Address')
+                        ->label('Adres e-mail')
                         ->email()
                         ->required()
                         ->unique(ignoreRecord: true)
                         ->maxLength(255)
                         ->placeholder('user@example.com')
-                        ->helperText('Email address to suppress from sending')
+                        ->helperText('Adres e-mail do wykluczenia z wysyłki')
                         ->columnSpanFull(),
 
                     Forms\Components\Select::make('reason')
-                        ->label('Suppression Reason')
+                        ->label('Powód wykluczenia')
                         ->required()
                         ->options([
-                            'bounced' => 'Bounced (email address invalid)',
-                            'complained' => 'Complained (marked as spam)',
-                            'unsubscribed' => 'Unsubscribed (user opt-out)',
-                            'manual' => 'Manual (administrative decision)',
+                            'bounced' => 'Odrzucony (nieprawidłowy adres e-mail)',
+                            'complained' => 'Zgłoszony jako spam',
+                            'unsubscribed' => 'Wypisany (rezygnacja użytkownika)',
+                            'manual' => 'Ręczne wykluczenie (decyzja administracyjna)',
                         ])
-                        ->helperText('Reason for suppressing this email'),
+                        ->helperText('Powód wykluczenia tego adresu e-mail'),
 
                     Forms\Components\DateTimePicker::make('suppressed_at')
-                        ->label('Suppressed At')
+                        ->label('Data wykluczenia')
                         ->default(now())
                         ->required()
-                        ->helperText('When this email was suppressed'),
+                        ->helperText('Kiedy ten adres e-mail został wykluczony'),
                 ])
                 ->columns(2),
 
-            Section::make('Warning')
+            Section::make('Ostrzeżenie')
                 ->schema([
                     Forms\Components\Placeholder::make('warning')
-                        ->content('Suppressed emails will NOT receive any automated emails from the system. Remove from this list to re-enable sending.')
+                        ->content('Wykluczone adresy NIE otrzymają żadnych automatycznych e-maili z systemu. Usuń z tej listy, aby ponownie włączyć wysyłkę.')
                         ->extraAttributes([
                             'class' => 'text-sm text-yellow-600 dark:text-yellow-400',
                         ]),
@@ -79,14 +83,14 @@ class EmailSuppressionResource extends BaseResource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('email')
-                    ->label('Email Address')
+                    ->label('Adres e-mail')
                     ->searchable()
                     ->sortable()
                     ->copyable()
                     ->icon('heroicon-o-envelope'),
 
                 Tables\Columns\TextColumn::make('reason')
-                    ->label('Reason')
+                    ->label('Powód')
                     ->sortable()
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -97,41 +101,41 @@ class EmailSuppressionResource extends BaseResource
                         default => 'gray',
                     })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'bounced' => 'Bounced',
-                        'complained' => 'Complained',
-                        'unsubscribed' => 'Unsubscribed',
-                        'manual' => 'Manual',
+                        'bounced' => 'Odrzucony',
+                        'complained' => 'Zgłoszony jako spam',
+                        'unsubscribed' => 'Wypisany',
+                        'manual' => 'Ręczne',
                         default => ucfirst($state),
                     }),
 
                 Tables\Columns\TextColumn::make('suppressed_at')
-                    ->label('Suppressed At')
+                    ->label('Data wykluczenia')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('Created At')
+                    ->label('Utworzono')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('reason')
-                    ->label('Reason')
+                    ->label('Powód')
                     ->options([
-                        'bounced' => 'Bounced',
-                        'complained' => 'Complained',
-                        'unsubscribed' => 'Unsubscribed',
-                        'manual' => 'Manual',
+                        'bounced' => 'Odrzucony',
+                        'complained' => 'Zgłoszony jako spam',
+                        'unsubscribed' => 'Wypisany',
+                        'manual' => 'Ręczne',
                     ])
                     ->multiple(),
 
                 Tables\Filters\Filter::make('suppressed_at')
                     ->form([
                         Forms\Components\DatePicker::make('suppressed_from')
-                            ->label('Suppressed From'),
+                            ->label('Wykluczono od'),
                         Forms\Components\DatePicker::make('suppressed_until')
-                            ->label('Suppressed Until'),
+                            ->label('Wykluczono do'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -149,12 +153,12 @@ class EmailSuppressionResource extends BaseResource
                 Actions\EditAction::make(),
 
                 Actions\DeleteAction::make()
-                    ->label('Remove')
+                    ->label('Usuń')
                     ->requiresConfirmation()
-                    ->modalHeading('Remove Email from Suppression List')
-                    ->modalDescription('This will allow emails to be sent to this address again. Are you sure you want to proceed?')
-                    ->modalSubmitActionLabel('Yes, Remove from Suppression List')
-                    ->successNotificationTitle('Email unsuppressed')
+                    ->modalHeading('Usuń e-mail z listy wykluczeń')
+                    ->modalDescription('Ten adres będzie mógł ponownie otrzymywać e-maile. Czy na pewno chcesz kontynuować?')
+                    ->modalSubmitActionLabel('Tak, usuń z listy wykluczeń')
+                    ->successNotificationTitle('Wykluczenie e-maila zostało usunięte')
                     ->action(function (EmailSuppression $record): void {
                         $record->delete();
                     }),
@@ -162,18 +166,18 @@ class EmailSuppressionResource extends BaseResource
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make()
-                        ->label('Bulk Unsuppress')
+                        ->label('Usuń zaznaczone wykluczenia')
                         ->requiresConfirmation()
-                        ->modalHeading('Bulk Remove from Suppression List')
-                        ->modalDescription('This will allow emails to be sent to the selected addresses again. Are you sure?')
-                        ->modalSubmitActionLabel('Yes, Remove All Selected')
-                        ->successNotificationTitle('Selected emails unsuppressed'),
+                        ->modalHeading('Usuń zaznaczone z listy wykluczeń')
+                        ->modalDescription('Zaznaczone adresy będą mogły ponownie otrzymywać e-maile. Czy na pewno?')
+                        ->modalSubmitActionLabel('Tak, usuń wszystkie zaznaczone')
+                        ->successNotificationTitle('Zaznaczone wykluczenia zostały usunięte'),
 
                     Actions\BulkAction::make('export')
-                        ->label('Export Selected')
+                        ->label('Eksportuj zaznaczone')
                         ->icon('heroicon-o-arrow-down-tray')
                         ->action(function ($records) {
-                            $filename = 'email-suppressions-'.now()->format('Y-m-d-His').'.csv';
+                            $filename = 'wykluczenia-email-'.now()->format('Y-m-d-His').'.csv';
                             $headers = [
                                 'Content-Type' => 'text/csv',
                                 'Content-Disposition' => "attachment; filename=\"$filename\"",
@@ -181,7 +185,7 @@ class EmailSuppressionResource extends BaseResource
 
                             $callback = function () use ($records) {
                                 $file = fopen('php://output', 'w');
-                                fputcsv($file, ['ID', 'Email', 'Reason', 'Suppressed At', 'Created At']);
+                                fputcsv($file, ['ID', 'Email', 'Powód', 'Data wykluczenia', 'Utworzono']);
 
                                 foreach ($records as $record) {
                                     fputcsv($file, [

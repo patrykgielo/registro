@@ -61,6 +61,11 @@ class DesignHub extends Page implements HasForms
     protected static ?string $navigationLabel = 'Wygląd marki';
 
     /**
+     * Page title.
+     */
+    protected static ?string $title = 'Wygląd marki';
+
+    /**
      * Blade view to render.
      */
     protected string $view = 'filament.pages.design-hub';

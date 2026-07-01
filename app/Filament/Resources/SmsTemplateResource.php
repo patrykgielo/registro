@@ -31,13 +31,17 @@ class SmsTemplateResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 6;
 
-    protected static ?string $navigationLabel = 'SMS Templates';
+    protected static ?string $navigationLabel = 'Szablony SMS';
+
+    protected static ?string $modelLabel = 'Szablon SMS';
+
+    protected static ?string $pluralModelLabel = 'Szablony SMS';
 
     public static function getNavigationBadge(): ?string
     {
-        return static::getModel()::count() === 0 ? 'Empty' : null;
+        return static::getModel()::count() === 0 ? 'Brak' : null;
     }
 
     public static function getNavigationBadgeColor(): ?string
@@ -48,49 +52,49 @@ class SmsTemplateResource extends BaseResource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make('Template Details')
+            Section::make('Szczegóły szablonu')
                 ->schema([
                     Forms\Components\Select::make('key')
-                        ->label('Template Key')
+                        ->label('Klucz szablonu')
                         ->required()
                         ->options(TemplateKey::optionsForChannel('sms'))
                         ->searchable()
-                        ->helperText('Unique identifier for this template'),
+                        ->helperText('Unikalny identyfikator tego szablonu'),
 
                     Forms\Components\Select::make('language')
-                        ->label('Language')
+                        ->label('Język')
                         ->required()
                         ->options([
                             'pl' => 'Polski (PL)',
                             'en' => 'English (EN)',
                         ])
                         ->default('pl')
-                        ->helperText('Template language'),
+                        ->helperText('Język szablonu'),
 
                     Forms\Components\TextInput::make('max_length')
-                        ->label('Max Length')
+                        ->label('Maksymalna długość')
                         ->numeric()
                         ->default(160)
                         ->required()
                         ->minValue(70)
                         ->maxValue(500)
-                        ->helperText('160 for GSM, 70 for Unicode'),
+                        ->helperText('160 dla GSM, 70 dla Unicode'),
 
                     Forms\Components\Toggle::make('active')
-                        ->label('Active')
+                        ->label('Aktywny')
                         ->default(true)
-                        ->helperText('Enable/disable this template'),
+                        ->helperText('Włącz/wyłącz ten szablon'),
                 ]),
 
-            Section::make('SMS Content')
+            Section::make('Treść SMS')
                 ->schema([
                     Forms\Components\Textarea::make('message_body')
-                        ->label('Message Body')
+                        ->label('Treść wiadomości')
                         ->required()
                         ->rows(6)
                         ->maxLength(500)
                         ->placeholder('Witaj {{customer_name}}! Przypominamy o wizycie {{appointment_date}} o {{appointment_time}}.')
-                        ->helperText('Use {{variable}} syntax for placeholders. Keep it short!')
+                        ->helperText('Użyj składni {{zmienna}} dla placeholderów. Zachowaj zwięzłość!')
                         ->live()
                         ->afterStateUpdated(function ($state, Set $set) {
                             $length = mb_strlen($state ?? '');
@@ -98,26 +102,26 @@ class SmsTemplateResource extends BaseResource
                         }),
 
                     Forms\Components\Placeholder::make('character_count')
-                        ->label('Character Count')
-                        ->content(fn (Get $get): string => mb_strlen($get('message_body') ?? '').' characters'),
+                        ->label('Liczba znaków')
+                        ->content(fn (Get $get): string => mb_strlen($get('message_body') ?? '').' znaków'),
                 ]),
 
-            Section::make('Available Variables')
+            Section::make('Dostępne zmienne')
                 ->schema([
                     Forms\Components\Placeholder::make('variable_legend')
                         ->label('')
                         ->content(fn (Get $get): HtmlString => self::getVariableLegendForKey($get('key')))
-                        ->helperText('Copy these variable names into your message using {{variable_name}} syntax'),
+                        ->helperText('Skopiuj nazwy zmiennych do wiadomości używając składni {{nazwa_zmiennej}}'),
                 ])
-                ->description('Variables you can use in the message body')
+                ->description('Zmienne dostępne w treści wiadomości')
                 ->collapsible(),
 
-            Section::make('Advanced Settings')
+            Section::make('Ustawienia zaawansowane')
                 ->schema([
                     Forms\Components\TagsInput::make('variables')
-                        ->label('Available Variables')
-                        ->placeholder('customer_name, appointment_date, etc.')
-                        ->helperText('List of variables available for this template (for reference only)'),
+                        ->label('Dostępne zmienne')
+                        ->placeholder('customer_name, appointment_date, itp.')
+                        ->helperText('Lista zmiennych dostępnych dla tego szablonu (tylko informacyjnie)'),
                 ])
                 ->collapsed(),
         ]);
@@ -128,7 +132,7 @@ class SmsTemplateResource extends BaseResource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('key')
-                    ->label('Key')
+                    ->label('Klucz')
                     ->searchable()
                     ->sortable()
                     ->badge()
@@ -136,7 +140,7 @@ class SmsTemplateResource extends BaseResource
                     ->formatStateUsing(fn (string $state): string => TemplateKey::tryFrom($state)?->label() ?? $state),
 
                 Tables\Columns\TextColumn::make('language')
-                    ->label('Language')
+                    ->label('Język')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'pl' => 'success',
@@ -145,7 +149,7 @@ class SmsTemplateResource extends BaseResource
                     }),
 
                 Tables\Columns\TextColumn::make('message_body')
-                    ->label('Message Preview')
+                    ->label('Podgląd wiadomości')
                     ->searchable()
                     ->limit(60)
                     ->tooltip(function (SmsTemplate $record): string {
@@ -153,50 +157,50 @@ class SmsTemplateResource extends BaseResource
                     }),
 
                 Tables\Columns\TextColumn::make('max_length')
-                    ->label('Max Length')
+                    ->label('Maks. długość')
                     ->badge()
                     ->color('warning'),
 
                 Tables\Columns\IconColumn::make('active')
-                    ->label('Active')
+                    ->label('Aktywny')
                     ->boolean()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('updated_at')
-                    ->label('Last Updated')
+                    ->label('Aktualizacja')
                     ->dateTime('Y-m-d H:i')
                     ->sortable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('language')
-                    ->label('Language')
+                    ->label('Język')
                     ->options([
                         'pl' => 'Polski',
                         'en' => 'English',
                     ]),
 
                 Tables\Filters\SelectFilter::make('key')
-                    ->label('Template Key')
+                    ->label('Klucz szablonu')
                     ->options(TemplateKey::optionsForChannel('sms')),
 
                 Tables\Filters\TernaryFilter::make('active')
-                    ->label('Active Status')
-                    ->placeholder('All templates')
-                    ->trueLabel('Active only')
-                    ->falseLabel('Inactive only'),
+                    ->label('Status')
+                    ->placeholder('Wszystkie szablony')
+                    ->trueLabel('Tylko aktywne')
+                    ->falseLabel('Tylko nieaktywne'),
             ])
             ->recordActions([
                 Actions\Action::make('testSend')
-                    ->label('Test Send')
+                    ->label('Wyślij testowo')
                     ->icon('heroicon-o-paper-airplane')
                     ->color('success')
                     ->form([
                         Forms\Components\TextInput::make('phone')
-                            ->label('Recipient Phone')
+                            ->label('Numer telefonu odbiorcy')
                             ->tel()
                             ->required()
                             ->placeholder('+48501234567')
-                            ->helperText('SMS will be sent to this number with example data'),
+                            ->helperText('SMS zostanie wysłany na ten numer z przykładowymi danymi'),
                     ])
                     ->action(function (SmsTemplate $record, array $data): void {
                         try {
@@ -214,27 +218,27 @@ class SmsTemplateResource extends BaseResource
                             if ($result) {
                                 Notification::make()
                                     ->success()
-                                    ->title('Test SMS sent!')
-                                    ->body("SMS sent to {$data['phone']}")
+                                    ->title('Wysłano testowy SMS!')
+                                    ->body("Wysłano SMS na numer {$data['phone']}")
                                     ->send();
                             } else {
                                 Notification::make()
                                     ->danger()
-                                    ->title('Failed to send test SMS')
-                                    ->body('Check the SMS logs for details')
+                                    ->title('Nie udało się wysłać testowego SMS')
+                                    ->body('Sprawdź logi SMS, aby uzyskać szczegóły')
                                     ->send();
                             }
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->danger()
-                                ->title('Error sending test SMS')
+                                ->title('Błąd podczas wysyłania testowego SMS')
                                 ->body($e->getMessage())
                                 ->send();
                         }
                     })
                     ->requiresConfirmation()
-                    ->modalHeading('Send Test SMS')
-                    ->modalDescription('This will send a test SMS with example data to verify the template rendering.'),
+                    ->modalHeading('Wyślij testowy SMS')
+                    ->modalDescription('Wyśle testowy SMS z przykładowymi danymi, aby zweryfikować renderowanie szablonu.'),
 
                 Actions\EditAction::make(),
 
@@ -284,7 +288,7 @@ class SmsTemplateResource extends BaseResource
             case TemplateKey::APPOINTMENT_CONFIRMED->value:
             case TemplateKey::APPOINTMENT_REMINDER_24H->value:
             case TemplateKey::APPOINTMENT_REMINDER_2H->value:
-                $data['appointment_date'] = '2025-12-15';
+                $data['appointment_date'] = '2026-12-15';
                 $data['appointment_time'] = '14:00';
                 $data['service_name'] = 'Detailing Premium';
                 $data['location_address'] = 'ul. Przykładowa 123, Warszawa';
@@ -304,30 +308,30 @@ class SmsTemplateResource extends BaseResource
     protected static function getVariableLegendForKey(?string $key): HtmlString
     {
         if (! $key) {
-            return new HtmlString('<p class="text-sm text-gray-500">Select a template key to see available variables</p>');
+            return new HtmlString('<p class="text-sm text-gray-500">Wybierz klucz szablonu, aby zobaczyć dostępne zmienne</p>');
         }
 
         $variables = match ($key) {
             TemplateKey::APPOINTMENT_CREATED->value, TemplateKey::APPOINTMENT_CONFIRMED->value, TemplateKey::APPOINTMENT_RESCHEDULED->value, TemplateKey::APPOINTMENT_CANCELLED->value, TemplateKey::APPOINTMENT_REMINDER_24H->value, TemplateKey::APPOINTMENT_REMINDER_2H->value => [
-                'customer_name' => 'Customer full name',
-                'appointment_date' => 'Appointment date (YYYY-MM-DD)',
-                'appointment_time' => 'Appointment time (HH:MM)',
-                'service_name' => 'Service name',
-                'location_address' => 'Service location address',
-                'app_name' => 'Application name',
-                'contact_phone' => 'Contact phone number',
+                'customer_name' => 'Imię i nazwisko klienta',
+                'appointment_date' => 'Data wizyty (RRRR-MM-DD)',
+                'appointment_time' => 'Godzina wizyty (GG:MM)',
+                'service_name' => 'Nazwa usługi',
+                'location_address' => 'Adres miejsca świadczenia usługi',
+                'app_name' => 'Nazwa aplikacji',
+                'contact_phone' => 'Numer telefonu kontaktowego',
             ],
             TemplateKey::APPOINTMENT_FOLLOWUP->value => [
-                'customer_name' => 'Customer full name',
-                'service_name' => 'Service name',
-                'app_name' => 'Application name',
-                'contact_phone' => 'Contact phone number',
+                'customer_name' => 'Imię i nazwisko klienta',
+                'service_name' => 'Nazwa usługi',
+                'app_name' => 'Nazwa aplikacji',
+                'contact_phone' => 'Numer telefonu kontaktowego',
             ],
             default => [],
         };
 
         if (empty($variables)) {
-            return new HtmlString('<p class="text-sm text-gray-500">No variables defined for this template</p>');
+            return new HtmlString('<p class="text-sm text-gray-500">Brak zdefiniowanych zmiennych dla tego szablonu</p>');
         }
 
         $html = '<div class="space-y-2">';
@@ -343,10 +347,25 @@ class SmsTemplateResource extends BaseResource
     }
 
     /**
-     * Restrict access to admins and super-admins only.
+     * Check if user can access this resource
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+        return auth()->user()?->can('communication.manage_templates') ?? false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->can('communication.manage_templates') ?? false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->can('communication.manage_templates') ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->can('communication.manage_templates') ?? false;
     }
 }

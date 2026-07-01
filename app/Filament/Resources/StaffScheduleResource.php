@@ -201,7 +201,10 @@ class StaffScheduleResource extends BaseResource
                         })
                         ->deselectRecordsAfterCompletion(),
                 ]),
-            ]);
+            ])
+            ->emptyStateHeading('Brak harmonogramów')
+            ->emptyStateDescription('Dodaj pierwszy harmonogram klikając przycisk poniżej.')
+            ->emptyStateIcon('heroicon-o-calendar-days');
     }
 
     public static function getRelations(): array

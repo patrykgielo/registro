@@ -10,6 +10,7 @@ use Filament\Forms;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class CarBrandResource extends BaseResource
@@ -75,13 +76,15 @@ class CarBrandResource extends BaseResource
                     ->label('Liczba modeli')
                     ->counts('models')
                     ->sortable(),
-                Tables\Columns\BadgeColumn::make('status')
+                Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->colors([
-                        'warning' => 'pending',
-                        'success' => 'active',
-                        'danger' => 'inactive',
-                    ])
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'pending' => 'warning',
+                        'active' => 'success',
+                        'inactive' => 'danger',
+                        default => 'gray',
+                    })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'pending' => 'Oczekująca',
                         'active' => 'Aktywna',
@@ -142,12 +145,12 @@ class CarBrandResource extends BaseResource
         return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
-    public static function canEdit($record): bool
+    public static function canEdit(Model $record): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
-    public static function canDelete($record): bool
+    public static function canDelete(Model $record): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
     }

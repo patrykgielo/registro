@@ -15,7 +15,8 @@ class ListStaffSchedules extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->label('Dodaj harmonogram'),
             Actions\Action::make('manage_exceptions')
                 ->label('Zarządzaj wyjątkami')
                 ->icon('heroicon-o-calendar')

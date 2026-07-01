@@ -16,16 +16,11 @@ class EditEmailSuppression extends EditRecord
     {
         return [
             Actions\DeleteAction::make()
-                ->label('Remove from Suppression List')
+                ->label('Usuń z listy wykluczeń')
                 ->requiresConfirmation()
-                ->modalHeading('Remove Email from Suppression List')
-                ->modalDescription('This will allow emails to be sent to this address again.')
-                ->modalSubmitActionLabel('Yes, Remove'),
+                ->modalHeading('Usuń e-mail z listy wykluczeń')
+                ->modalDescription('Ten adres będzie mógł ponownie otrzymywać e-maile.')
+                ->modalSubmitActionLabel('Tak, usuń'),
         ];
-    }
-
-    protected function getRedirectUrl(): string
-    {
-        return $this->getResource()::getUrl('index');
     }
 }

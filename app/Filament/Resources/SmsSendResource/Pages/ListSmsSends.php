@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\SmsSendResource\Pages;
 
 use App\Filament\Resources\SmsSendResource;
-use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
 class ListSmsSends extends ListRecords
@@ -13,7 +14,7 @@ class ListSmsSends extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            // Brak akcji tworzenia — zasób tylko do odczytu (historia wysyłek SMS)
         ];
     }
 }

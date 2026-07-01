@@ -164,10 +164,25 @@ class AppointmentResource extends BaseResource
 
                                 $links = [];
 
+                                // Scoped styles: this Placeholder is rendered from a PHP string, so
+                                // Tailwind JIT (content: resources/**/*.blade.php only) cannot see these
+                                // classes. Use plain CSS bound to Filament's --primary-* vars instead
+                                // (same technique as AdminPanelProvider renderHook / admin.css dark selectors).
+                                $styles = '<style>
+                                    .appt-map-link { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 500; border-width: 1px; border-style: solid; transition: background-color 150ms ease-out, border-color 150ms ease-out; }
+                                    .appt-map-link:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+                                    .appt-map-link--secondary { background-color: #ffffff; border-color: #d1d5db; color: #374151; }
+                                    .appt-map-link--secondary:hover { background-color: #f9fafb; }
+                                    :where(.dark, .dark *) .appt-map-link--secondary { background-color: #1f2937; border-color: #4b5563; color: #e5e7eb; }
+                                    :where(.dark, .dark *) .appt-map-link--secondary:hover { background-color: #374151; }
+                                    .appt-map-link--primary { background-color: var(--primary-600); border-color: var(--primary-600); color: #ffffff; }
+                                    .appt-map-link--primary:hover { background-color: var(--primary-700); border-color: var(--primary-700); }
+                                </style>';
+
                                 // View on Map button
                                 if ($record->google_maps_link) {
                                     $links[] = sprintf(
-                                        '<a href="%s" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+                                        '<a href="%s" target="_blank" rel="noopener noreferrer" class="appt-map-link appt-map-link--secondary">
                                             <svg class="w-4 h-4 flex-shrink-0" width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
                                             </svg>
@@ -177,10 +192,10 @@ class AppointmentResource extends BaseResource
                                     );
                                 }
 
-                                // Navigation button
+                                // Navigation button — uses panel's actual primary brand color (was hardcoded blue)
                                 if ($record->google_maps_directions_link) {
                                     $links[] = sprintf(
-                                        '<a href="%s" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 border border-blue-600 rounded-lg text-sm font-medium text-white hover:bg-blue-700 transition">
+                                        '<a href="%s" target="_blank" rel="noopener noreferrer" class="appt-map-link appt-map-link--primary">
                                             <svg class="w-4 h-4 flex-shrink-0" width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
                                                 <path d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L9 4.323V3a1 1 0 011-1z"/>
                                             </svg>
@@ -190,7 +205,11 @@ class AppointmentResource extends BaseResource
                                     );
                                 }
 
-                                return new \Illuminate\Support\HtmlString('<div class="flex gap-2">'.implode('', $links).'</div>');
+                                if (empty($links)) {
+                                    return '—';
+                                }
+
+                                return new \Illuminate\Support\HtmlString($styles.'<div class="flex gap-2">'.implode('', $links).'</div>');
                             })
                             ->columnSpanFull()
                             ->visible(fn ($record) => $record && $record->hasLocationData()),
