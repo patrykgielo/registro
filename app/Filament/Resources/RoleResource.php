@@ -70,6 +70,13 @@ class RoleResource extends BaseResource
                     ->searchable()
                     ->sortable()
                     ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'super-admin' => 'Super Admin',
+                        'admin' => 'Administrator',
+                        'staff' => 'Pracownik',
+                        'customer' => 'Klient',
+                        default => $state,
+                    })
                     ->colors([
                         'danger' => 'super-admin',
                         'warning' => 'admin',

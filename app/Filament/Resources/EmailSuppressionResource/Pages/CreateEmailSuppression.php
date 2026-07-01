@@ -10,9 +10,4 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateEmailSuppression extends CreateRecord
 {
     protected static string $resource = EmailSuppressionResource::class;
-
-    protected function getRedirectUrl(): string
-    {
-        return $this->getResource()::getUrl('index');
-    }
 }

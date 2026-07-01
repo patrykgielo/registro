@@ -185,6 +185,23 @@ class Service extends Model
 Service::withoutGlobalScope('organization')->create([...]);
 ```
 
+### GOTCHA: zapis wiersza GLOBALNEGO (`organization_id = null`) — Incident 2026-06-30 (LC-9)
+
+`withoutGlobalScope` wyłącza tylko scope **odczytu**. Hook `creating` nadal auto-wypełnia `organization_id` z `TenantFeature::currentTenant()` gdy pole jest puste (null jest falsy!). W panelu `/platform` **stale `session('tenant_id')`** (po wcześniejszej wizycie na subdomenie tenanta) sprawia, że "globalny" `updateOrCreate(['organization_id' => null, ...])` ląduje jako **tenant-scoped** — cicha korupcja danych.
+
+```php
+// ❌ ŹLE — creating hook nadpisze null tenant-id ze stale session
+Setting::withoutGlobalScope('organization')->updateOrCreate(
+    ['organization_id' => null, 'group' => $g, 'key' => $k], ['value' => $v]
+);
+
+// ✅ DOBRZE — withoutEvents wycisza creating hook → null zostaje null
+Setting::withoutEvents(fn () => Setting::withoutGlobalScope('organization')
+    ->updateOrCreate(['organization_id' => null, 'group' => $g, 'key' => $k], ['value' => $v]));
+```
+
+Dla settingsów: `SettingsManager::getGlobal()`/`setGlobal()` robią to poprawnie — w panelu platformy NIGDY nie używaj `get()`/`set()` (są tenant-aware przez session fallback).
+
 ## Organization Model — kluczowe pola i metody
 
 ```php

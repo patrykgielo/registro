@@ -25,9 +25,13 @@ class EmailEventResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 4;
 
-    protected static ?string $navigationLabel = 'Email Events';
+    protected static ?string $navigationLabel = 'Zdarzenia Email';
+
+    protected static ?string $modelLabel = 'Zdarzenie Email';
+
+    protected static ?string $pluralModelLabel = 'Zdarzenia Email';
 
     public static function form(Schema $schema): Schema
     {
@@ -42,14 +46,14 @@ class EmailEventResource extends BaseResource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('emailSend.recipient_email')
-                    ->label('Recipient')
+                    ->label('Odbiorca')
                     ->searchable()
                     ->sortable()
                     ->copyable()
                     ->icon('heroicon-o-envelope'),
 
                 Tables\Columns\TextColumn::make('event_type')
-                    ->label('Event Type')
+                    ->label('Typ zdarzenia')
                     ->sortable()
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -60,6 +64,15 @@ class EmailEventResource extends BaseResource
                         'opened' => 'info',
                         'clicked' => 'primary',
                         default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'sent' => 'Wysłano',
+                        'delivered' => 'Dostarczono',
+                        'bounced' => 'Odrzucono',
+                        'complained' => 'Zgłoszono jako spam',
+                        'opened' => 'Otwarto',
+                        'clicked' => 'Kliknięto',
+                        default => $state,
                     })
                     ->icon(fn (string $state): string => match ($state) {
                         'sent' => 'heroicon-o-paper-airplane',
@@ -72,12 +85,12 @@ class EmailEventResource extends BaseResource
                     }),
 
                 Tables\Columns\TextColumn::make('occurred_at')
-                    ->label('Occurred At')
+                    ->label('Data zdarzenia')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('event_data')
-                    ->label('Event Data')
+                    ->label('Dane zdarzenia')
                     ->limit(50)
                     ->tooltip(function (EmailEvent $record): ?string {
                         if (empty($record->event_data)) {
@@ -97,30 +110,30 @@ class EmailEventResource extends BaseResource
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('Recorded At')
+                    ->label('Zarejestrowano')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('event_type')
-                    ->label('Event Type')
+                    ->label('Typ zdarzenia')
                     ->options([
-                        'sent' => 'Sent',
-                        'delivered' => 'Delivered',
-                        'bounced' => 'Bounced',
-                        'complained' => 'Complained',
-                        'opened' => 'Opened',
-                        'clicked' => 'Clicked',
+                        'sent' => 'Wysłano',
+                        'delivered' => 'Dostarczono',
+                        'bounced' => 'Odrzucono',
+                        'complained' => 'Zgłoszono jako spam',
+                        'opened' => 'Otwarto',
+                        'clicked' => 'Kliknięto',
                     ])
                     ->multiple(),
 
                 Tables\Filters\Filter::make('occurred_at')
                     ->form([
                         Forms\Components\DatePicker::make('occurred_from')
-                            ->label('Occurred From'),
+                            ->label('Od'),
                         Forms\Components\DatePicker::make('occurred_until')
-                            ->label('Occurred Until'),
+                            ->label('Do'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -136,7 +149,7 @@ class EmailEventResource extends BaseResource
             ])
             ->recordActions([
                 Actions\Action::make('viewEmail')
-                    ->label('View Email')
+                    ->label('Zobacz e-mail')
                     ->icon('heroicon-o-envelope-open')
                     ->color('info')
                     ->url(fn (EmailEvent $record): string => route('filament.admin.resources.email-sends.view', ['record' => $record->email_send_id])
@@ -144,17 +157,17 @@ class EmailEventResource extends BaseResource
                     ->openUrlInNewTab(false),
 
                 Actions\Action::make('addToSuppression')
-                    ->label('Suppress')
+                    ->label('Wyklucz')
                     ->icon('heroicon-o-no-symbol')
                     ->color('danger')
                     ->visible(fn (EmailEvent $record): bool => in_array($record->event_type, ['bounced', 'complained'])
                     )
                     ->requiresConfirmation()
-                    ->modalHeading('Add Email to Suppression List')
-                    ->modalDescription(fn (EmailEvent $record): string => "This will prevent future emails from being sent to {$record->emailSend->recipient_email}. ".
-                        'This action can be reversed from the Email Suppressions page.'
+                    ->modalHeading('Dodaj e-mail do listy wykluczeń')
+                    ->modalDescription(fn (EmailEvent $record): string => "Zablokuje to wysyłkę przyszłych e-maili na adres {$record->emailSend->recipient_email}. ".
+                        'Tę akcję można cofnąć na stronie Wykluczenia Email.'
                     )
-                    ->modalSubmitActionLabel('Add to Suppression List')
+                    ->modalSubmitActionLabel('Dodaj do listy wykluczeń')
                     ->action(function (EmailEvent $record): void {
                         try {
                             $email = $record->emailSend->recipient_email;
@@ -164,8 +177,8 @@ class EmailEventResource extends BaseResource
                             if (EmailSuppression::isSuppressed($email)) {
                                 Notification::make()
                                     ->warning()
-                                    ->title('Email already suppressed')
-                                    ->body("The email {$email} is already in the suppression list.")
+                                    ->title('E-mail już jest wykluczony')
+                                    ->body("Adres {$email} znajduje się już na liście wykluczeń.")
                                     ->send();
 
                                 return;
@@ -176,13 +189,13 @@ class EmailEventResource extends BaseResource
 
                             Notification::make()
                                 ->success()
-                                ->title('Email suppressed')
-                                ->body("The email {$email} has been added to the suppression list.")
+                                ->title('E-mail wykluczony')
+                                ->body("Adres {$email} został dodany do listy wykluczeń.")
                                 ->send();
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->danger()
-                                ->title('Error suppressing email')
+                                ->title('Błąd podczas wykluczania e-maila')
                                 ->body($e->getMessage())
                                 ->send();
                         }
@@ -191,10 +204,10 @@ class EmailEventResource extends BaseResource
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
                     Actions\BulkAction::make('export')
-                        ->label('Export Selected')
+                        ->label('Eksportuj zaznaczone')
                         ->icon('heroicon-o-arrow-down-tray')
                         ->action(function ($records) {
-                            $filename = 'email-events-'.now()->format('Y-m-d-His').'.csv';
+                            $filename = 'zdarzenia-email-'.now()->format('Y-m-d-His').'.csv';
                             $headers = [
                                 'Content-Type' => 'text/csv',
                                 'Content-Disposition' => "attachment; filename=\"$filename\"",
@@ -202,13 +215,13 @@ class EmailEventResource extends BaseResource
 
                             $callback = function () use ($records) {
                                 $file = fopen('php://output', 'w');
-                                fputcsv($file, ['ID', 'Email Send ID', 'Recipient', 'Event Type', 'Occurred At', 'Created At']);
+                                fputcsv($file, ['ID', 'ID wysyłki', 'Odbiorca', 'Typ zdarzenia', 'Data zdarzenia', 'Utworzono']);
 
                                 foreach ($records as $record) {
                                     fputcsv($file, [
                                         $record->id,
                                         $record->email_send_id,
-                                        $record->emailSend->recipient_email ?? 'N/A',
+                                        $record->emailSend->recipient_email ?? 'brak danych',
                                         $record->event_type,
                                         $record->occurred_at->format('Y-m-d H:i:s'),
                                         $record->created_at->format('Y-m-d H:i:s'),

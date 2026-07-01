@@ -12,6 +12,7 @@ use Filament\Forms;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
@@ -24,7 +25,7 @@ class ServiceResource extends BaseResource
 
     protected static ?string $module = 'services';
 
-    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-wrench-screwdriver';
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedWrenchScrewdriver;
 
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
@@ -531,6 +532,12 @@ class ServiceResource extends BaseResource
                     ->label('Kolejność')
                     ->numeric()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Utworzono')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Ostatnia aktualizacja')

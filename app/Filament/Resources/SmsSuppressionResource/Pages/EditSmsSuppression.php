@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\SmsSuppressionResource\Pages;
 
 use App\Filament\Resources\SmsSuppressionResource;
@@ -13,7 +15,12 @@ class EditSmsSuppression extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->label('Usuń z listy wykluczeń')
+                ->requiresConfirmation()
+                ->modalHeading('Usuń numer z listy wykluczeń')
+                ->modalDescription('Ten numer będzie mógł ponownie otrzymywać SMS.')
+                ->modalSubmitActionLabel('Tak, usuń'),
         ];
     }
 }

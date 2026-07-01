@@ -262,6 +262,50 @@ class OrganizationDataExportTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_super_admin_direct_download_writes_audit_log(): void
+    {
+        $org = Organization::factory()->create();
+        $path = $this->service->generate($org);
+        $this->exportedFiles[] = $path;
+
+        $superAdmin = User::factory()->create();
+        $superAdmin->assignRole('super-admin');
+
+        $this->actingAs($superAdmin)
+            ->get(route('platform.organization.data-export', [
+                'organization' => $org->id,
+                'file' => $path,
+            ]))
+            ->assertOk();
+
+        $this->assertDatabaseHas('organization_lifecycle_log', [
+            'organization_id' => $org->id,
+            'event' => 'data_export_downloaded',
+            'actor_id' => $superAdmin->id,
+        ]);
+    }
+
+    public function test_signed_url_download_writes_audit_log_without_actor(): void
+    {
+        $org = Organization::factory()->create();
+        $path = $this->service->generate($org);
+        $this->exportedFiles[] = $path;
+
+        $url = URL::temporarySignedRoute(
+            'platform.organization.data-export',
+            now()->addDays(30),
+            ['organization' => $org->id, 'file' => $path],
+        );
+
+        $this->get($url)->assertOk();
+
+        $this->assertDatabaseHas('organization_lifecycle_log', [
+            'organization_id' => $org->id,
+            'event' => 'data_export_downloaded',
+            'actor_id' => null,
+        ]);
+    }
+
     public function test_super_admin_path_traversal_returns_403(): void
     {
         $org = Organization::factory()->create();

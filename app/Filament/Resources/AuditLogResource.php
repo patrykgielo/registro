@@ -37,11 +37,11 @@ class AuditLogResource extends BaseResource
 
     protected static ?int $navigationSort = 99;
 
-    protected static ?string $navigationLabel = 'Audit Logs';
+    protected static ?string $navigationLabel = 'Logi audytu';
 
-    protected static ?string $modelLabel = 'Audit Log';
+    protected static ?string $modelLabel = 'Log audytu';
 
-    protected static ?string $pluralModelLabel = 'Audit Logs';
+    protected static ?string $pluralModelLabel = 'Logi audytu';
 
     public static function form(Schema $schema): Schema
     {

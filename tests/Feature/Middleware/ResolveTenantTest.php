@@ -78,7 +78,7 @@ class ResolveTenantTest extends TestCase
         $this->assertStringContains('registro.local', $response->headers->get('Location'));
     }
 
-    public function test_inactive_tenant_redirects_to_root(): void
+    public function test_inactive_suspended_tenant_shows_suspended_page(): void
     {
         config(['app.domain' => 'registro.local']);
 
@@ -97,10 +97,14 @@ class ResolveTenantTest extends TestCase
             return response('ok');
         });
 
-        $this->assertTrue($response->isRedirection());
+        // inactive() factory sets lifecycle_state = Suspended.
+        // Suspended orgs now return 503 (not a redirect) since GAP #3.
+        $this->assertFalse($response->isRedirection());
+        $this->assertSame(503, $response->getStatusCode());
+        $this->assertStringContainsString('Inactive Salon', $response->getContent());
     }
 
-    public function test_suspended_lifecycle_tenant_redirects_to_root(): void
+    public function test_suspended_lifecycle_tenant_shows_business_suspended_page(): void
     {
         config(['app.domain' => 'registro.local']);
 
@@ -119,9 +123,11 @@ class ResolveTenantTest extends TestCase
             return response('ok');
         });
 
-        // Suspended lifecycle_state is not Active — public site must be blocked
-        $this->assertTrue($response->isRedirection());
-        $this->assertStringContains('registro.local', $response->headers->get('Location'));
+        // Suspended → 503, NOT a redirect; org name appears in body
+        $this->assertFalse($response->isRedirection());
+        $this->assertEquals(503, $response->getStatusCode());
+        $this->assertStringContainsString('Suspended Salon', $response->getContent());
+        $this->assertEquals('3600', $response->headers->get('Retry-After'));
     }
 
     public function test_closing_lifecycle_tenant_shows_business_closed_page(): void
@@ -291,6 +297,59 @@ class ResolveTenantTest extends TestCase
         $this->middleware->handle($request, fn () => response('ok'));
 
         $this->assertTrue(Cache::has('tenant:slug:cached'));
+    }
+
+    public function test_suspended_is_not_redirect(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->inactive()->create([
+            'slug' => 'susp2',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://susp2.registro.local/');
+        $request->headers->set('HOST', 'susp2.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertFalse($response->isRedirection(), 'Suspended org must not redirect; must show 503.');
+        $this->assertEquals(503, $response->getStatusCode());
+    }
+
+    public function test_closed_still_returns_410(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->closed()->create([
+            'name' => 'Closed Firm',
+            'slug' => 'closedfirm',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://closedfirm.registro.local/');
+        $request->headers->set('HOST', 'closedfirm.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+    }
+
+    public function test_unknown_slug_still_redirects(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $request = Request::create('https://neverexisted.registro.local/');
+        $request->headers->set('HOST', 'neverexisted.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertTrue($response->isRedirection());
     }
 
     private function assertStringContains(string $needle, ?string $haystack): void

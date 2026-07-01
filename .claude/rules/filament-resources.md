@@ -123,6 +123,16 @@ public static function shouldRegisterNavigation(): bool
 protected static ?string $module = 'vehicles';
 ```
 
+### Incident 2026-07-01: `$shouldRegisterNavigation = false` ignorowane przez BaseResource
+
+**Problem:** `BaseResource::shouldRegisterNavigation()` całkowicie nadpisywał metodę z Filament core (`HasNavigation` trait, która zwraca `static::$shouldRegisterNavigation`) bez w ogóle sprawdzania tej właściwości. Skutek: `StaffDateExceptionResource` (`$shouldRegisterNavigation = false` — celowo dostępny WYŁĄCZNIE przez header actions w `StaffScheduleResource`, nie przez sidebar) i tak pojawiał się w nawigacji grupy "Personel".
+
+**Przyczyna:** Moduł-gating override (Phase 6) zastąpił metodę bazową zamiast ją rozszerzyć — zgubił krótkie spięcie na `static::$shouldRegisterNavigation`.
+
+**Rozwiązanie:** `shouldRegisterNavigation()` w `BaseResource` najpierw sprawdza `! static::$shouldRegisterNavigation → return false`, dopiero potem stosuje `$module` gating. `shouldRegisterNavigation()` wpływa TYLKO na widoczność w sidebarze — trasy (`route:list`) rejestrują się niezależnie.
+
+**Zapobieganie:** Gdy nadpisujesz metodę z Filament core (`shouldRegisterNavigation`, `shouldRegisterNavigationItem` itp.) w bazowej klasie — ZAWSZE zachowaj oryginalny short-circuit z core PRZED dodaniem własnej logiki, nie zastępuj go całkowicie.
+
 ### Moduły vs Features (WAŻNE ROZRÓŻNIENIE)
 
 | System | Gating | Użycie |

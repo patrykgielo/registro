@@ -58,6 +58,12 @@ class MembersRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('pivot.role')
                     ->label('Rola w organizacji')
                     ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'owner' => 'Właściciel',
+                        'admin' => 'Administrator',
+                        'staff' => 'Personel',
+                        default => $state,
+                    })
                     ->color(fn (string $state): string => match ($state) {
                         'owner' => 'danger',
                         'admin' => 'warning',
@@ -75,9 +81,9 @@ class MembersRelationManager extends RelationManager
                         Forms\Components\Select::make('role')
                             ->label('Rola')
                             ->options([
-                                'owner' => 'Owner',
-                                'admin' => 'Admin',
-                                'staff' => 'Staff',
+                                'owner' => 'Właściciel',
+                                'admin' => 'Administrator',
+                                'staff' => 'Personel',
                             ])
                             ->required()
                             ->default('staff'),

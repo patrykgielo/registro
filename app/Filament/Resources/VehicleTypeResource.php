@@ -10,6 +10,7 @@ use Filament\Forms;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class VehicleTypeResource extends BaseResource
@@ -20,11 +21,11 @@ class VehicleTypeResource extends BaseResource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cube';
 
-    protected static ?string $navigationLabel = 'Typy Pojazdów';
+    protected static ?string $navigationLabel = 'Typy pojazdów';
 
-    protected static ?string $modelLabel = 'Typ Pojazdu';
+    protected static ?string $modelLabel = 'Typ pojazdu';
 
-    protected static ?string $pluralModelLabel = 'Typy Pojazdów';
+    protected static ?string $pluralModelLabel = 'Typy pojazdów';
 
     protected static string|UnitEnum|null $navigationGroup = 'vehicles';
 
@@ -125,6 +126,7 @@ class VehicleTypeResource extends BaseResource
     {
         return [
             'index' => Pages\ListVehicleTypes::route('/'),
+            'create' => Pages\CreateVehicleType::route('/create'),
             'edit' => Pages\EditVehicleType::route('/{record}/edit'),
         ];
     }
@@ -134,12 +136,12 @@ class VehicleTypeResource extends BaseResource
         return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
-    public static function canEdit($record): bool
+    public static function canEdit(Model $record): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
-    public static function canDelete($record): bool
+    public static function canDelete(Model $record): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
     }

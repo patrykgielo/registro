@@ -190,7 +190,10 @@ class StaffDateExceptionResource extends BaseResource
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->emptyStateHeading('Brak wyjątków')
+            ->emptyStateDescription('Dodaj pierwszy wyjątek klikając przycisk poniżej.')
+            ->emptyStateIcon('heroicon-o-clock');
     }
 
     public static function getRelations(): array
@@ -207,5 +210,31 @@ class StaffDateExceptionResource extends BaseResource
             'create' => Pages\CreateStaffDateException::route('/create'),
             'edit' => Pages\EditStaffDateException::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Restrict access to admins and super-admins only.
+     *
+     * Consistent with StaffScheduleResource, which this resource is a sub-workflow of
+     * (accessed via its "Zarządzaj wyjątkami" header action).
+     */
+    public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 }

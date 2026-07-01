@@ -107,6 +107,56 @@ class SettingsManager
     }
 
     /**
+     * Read a platform-GLOBAL setting (organization_id IS NULL), bypassing tenant
+     * resolution entirely. Use from the platform panel where a stale session
+     * `tenant_id` (left by a prior subdomain visit) must NOT scope the lookup.
+     */
+    public function getGlobal(string $path, mixed $default = null): mixed
+    {
+        [$group, $key] = $this->parsePath($path);
+
+        return Cache::remember($this->globalCacheKey($group, $key), self::CACHE_TTL, function () use ($group, $key, $default) {
+            $setting = Setting::withoutGlobalScope('organization')
+                ->whereNull('organization_id')
+                ->group($group)
+                ->key($key)
+                ->first();
+
+            return $setting ? $this->unwrapValue($setting->value) : $default;
+        });
+    }
+
+    /**
+     * Write a platform-GLOBAL setting (organization_id IS NULL), bypassing tenant
+     * resolution. Counterpart to getGlobal() — see its docblock for why.
+     */
+    public function setGlobal(string $path, mixed $value): bool
+    {
+        [$group, $key] = $this->parsePath($path);
+
+        // withoutEvents mutes the Setting model's BelongsToOrganization `creating` hook,
+        // which would otherwise auto-fill organization_id from a stale session tenant_id
+        // (left by a prior subdomain visit) and scope this "global" write to that tenant.
+        // withoutGlobalScope skips the read-side tenant filter when matching the existing row.
+        Setting::withoutEvents(function () use ($group, $key, $value) {
+            Setting::withoutGlobalScope('organization')->updateOrCreate(
+                ['organization_id' => null, 'group' => $group, 'key' => $key],
+                ['value' => is_array($value) ? $value : [$value]]
+            );
+        });
+
+        Cache::forget($this->globalCacheKey($group, $key));
+        Cache::forget(self::CACHE_PREFIX.':tenant:global:'.$group);
+
+        return true;
+    }
+
+    private function globalCacheKey(string $group, string $key): string
+    {
+        return self::CACHE_PREFIX.":tenant:global:{$group}:{$key}";
+    }
+
+    /**
      * Bulk update multiple groups of settings.
      *
      * Example: updateGroups(['booking' => ['business_hours_start' => '10:00'], 'email' => [...]])

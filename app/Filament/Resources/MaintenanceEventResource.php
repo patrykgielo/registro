@@ -26,19 +26,19 @@ class MaintenanceEventResource extends BaseResource
 
     protected static ?int $navigationSort = 2;
 
-    protected static ?string $navigationLabel = 'Maintenance Log';
+    protected static ?string $navigationLabel = 'Log konserwacji';
 
-    protected static ?string $modelLabel = 'Maintenance Event';
+    protected static ?string $modelLabel = 'Zdarzenie konserwacji';
 
-    protected static ?string $pluralModelLabel = 'Maintenance Events';
+    protected static ?string $pluralModelLabel = 'Zdarzenia konserwacji';
 
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make('Event Details')
+            Section::make('Szczegóły zdarzenia')
                 ->schema([
                     \Filament\Forms\Components\Select::make('type')
-                        ->label('Type')
+                        ->label('Typ')
                         ->options([
                             MaintenanceType::DEPLOYMENT->value => MaintenanceType::DEPLOYMENT->label(),
                             MaintenanceType::PRELAUNCH->value => MaintenanceType::PRELAUNCH->label(),
@@ -49,44 +49,44 @@ class MaintenanceEventResource extends BaseResource
                         ->disabled(),
 
                     \Filament\Forms\Components\Select::make('action')
-                        ->label('Action')
+                        ->label('Akcja')
                         ->options([
-                            'enabled' => 'Enabled',
-                            'disabled' => 'Disabled',
+                            'enabled' => 'Włączono',
+                            'disabled' => 'Wyłączono',
                         ])
                         ->required()
                         ->disabled(),
 
                     \Filament\Forms\Components\Select::make('user_id')
-                        ->label('User')
+                        ->label('Użytkownik')
                         ->relationship('user', 'email')
                         ->disabled(),
 
                     \Filament\Forms\Components\TextInput::make('ip_address')
-                        ->label('IP Address')
+                        ->label('Adres IP')
                         ->disabled(),
 
                     \Filament\Forms\Components\Textarea::make('message')
-                        ->label('Message')
+                        ->label('Wiadomość')
                         ->rows(2)
                         ->disabled()
                         ->columnSpanFull(),
 
                     \Filament\Forms\Components\KeyValue::make('metadata')
-                        ->label('Metadata')
+                        ->label('Metadane')
                         ->disabled()
                         ->columnSpanFull(),
                 ])
                 ->columns(2),
 
-            Section::make('Timestamps')
+            Section::make('Znaczniki czasu')
                 ->schema([
                     \Filament\Forms\Components\Placeholder::make('created_at')
-                        ->label('Created At')
+                        ->label('Utworzono')
                         ->content(fn ($record) => $record?->created_at?->format('Y-m-d H:i:s')),
 
                     \Filament\Forms\Components\Placeholder::make('updated_at')
-                        ->label('Updated At')
+                        ->label('Zaktualizowano')
                         ->content(fn ($record) => $record?->updated_at?->format('Y-m-d H:i:s')),
                 ])
                 ->columns(2)
@@ -103,7 +103,7 @@ class MaintenanceEventResource extends BaseResource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('type')
-                    ->label('Type')
+                    ->label('Typ')
                     ->badge()
                     ->color(fn (MaintenanceType $state): string => match ($state) {
                         MaintenanceType::DEPLOYMENT => 'info',
@@ -116,37 +116,41 @@ class MaintenanceEventResource extends BaseResource
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('action')
-                    ->label('Action')
+                    ->label('Akcja')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'enabled' => 'danger',
                         'disabled' => 'success',
                         default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => ucfirst($state))
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'enabled' => 'Włączono',
+                        'disabled' => 'Wyłączono',
+                        default => ucfirst($state),
+                    })
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('user.email')
-                    ->label('User')
+                    ->label('Użytkownik')
                     ->searchable()
                     ->sortable()
                     ->default('System')
                     ->icon('heroicon-o-user'),
 
                 Tables\Columns\TextColumn::make('ip_address')
-                    ->label('IP Address')
+                    ->label('Adres IP')
                     ->searchable()
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('message')
-                    ->label('Message')
+                    ->label('Wiadomość')
                     ->searchable()
                     ->limit(50)
                     ->toggleable()
                     ->wrap(),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('Date/Time')
+                    ->label('Data/godzina')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->searchable(),
@@ -154,7 +158,7 @@ class MaintenanceEventResource extends BaseResource
             ->defaultSort('created_at', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('type')
-                    ->label('Type')
+                    ->label('Typ')
                     ->options([
                         MaintenanceType::DEPLOYMENT->value => MaintenanceType::DEPLOYMENT->label(),
                         MaintenanceType::PRELAUNCH->value => MaintenanceType::PRELAUNCH->label(),
@@ -164,19 +168,19 @@ class MaintenanceEventResource extends BaseResource
                     ->multiple(),
 
                 Tables\Filters\SelectFilter::make('action')
-                    ->label('Action')
+                    ->label('Akcja')
                     ->options([
-                        'enabled' => 'Enabled',
-                        'disabled' => 'Disabled',
+                        'enabled' => 'Włączono',
+                        'disabled' => 'Wyłączono',
                     ])
                     ->multiple(),
 
                 Tables\Filters\Filter::make('created_at')
                     ->form([
                         \Filament\Forms\Components\DatePicker::make('created_from')
-                            ->label('From Date'),
+                            ->label('Od daty'),
                         \Filament\Forms\Components\DatePicker::make('created_until')
-                            ->label('Until Date'),
+                            ->label('Do daty'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -199,8 +203,8 @@ class MaintenanceEventResource extends BaseResource
                         ->requiresConfirmation(),
                 ]),
             ])
-            ->emptyStateHeading('No maintenance events yet')
-            ->emptyStateDescription('Maintenance events will appear here when maintenance mode is enabled or disabled.')
+            ->emptyStateHeading('Brak zdarzeń konserwacji')
+            ->emptyStateDescription('Zdarzenia pojawią się tutaj po włączeniu lub wyłączeniu trybu konserwacji.')
             ->emptyStateIcon('heroicon-o-clipboard-document-list');
     }
 

@@ -39,11 +39,11 @@ class MaintenanceSettings extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'system';
 
-    protected static ?string $navigationLabel = 'Maintenance Mode';
+    protected static ?string $navigationLabel = 'Tryb konserwacji';
 
     protected static ?int $navigationSort = 1;
 
-    protected static ?string $title = 'Maintenance Mode';
+    protected static ?string $title = 'Tryb konserwacji';
 
     /**
      * Permission required to access this page.
@@ -142,39 +142,39 @@ class MaintenanceSettings extends Page implements HasForms
     {
         return $schema
             ->components([
-                Section::make('Maintenance Configuration')
-                    ->description('Configure maintenance mode settings')
+                Section::make('Konfiguracja konserwacji')
+                    ->description('Skonfiguruj ustawienia trybu konserwacji')
                     ->schema([
                         Select::make('type')
-                            ->label('Maintenance Type')
+                            ->label('Typ konserwacji')
                             ->options([
-                                MaintenanceType::DEPLOYMENT->value => MaintenanceType::DEPLOYMENT->label().' - Admins can bypass',
-                                MaintenanceType::SCHEDULED->value => MaintenanceType::SCHEDULED->label().' - Admins can bypass',
-                                MaintenanceType::EMERGENCY->value => MaintenanceType::EMERGENCY->label().' - Admins can bypass',
-                                MaintenanceType::PRELAUNCH->value => MaintenanceType::PRELAUNCH->label().' - NO bypass allowed',
+                                MaintenanceType::DEPLOYMENT->value => MaintenanceType::DEPLOYMENT->label().' - admini mogą ominąć',
+                                MaintenanceType::SCHEDULED->value => MaintenanceType::SCHEDULED->label().' - admini mogą ominąć',
+                                MaintenanceType::EMERGENCY->value => MaintenanceType::EMERGENCY->label().' - admini mogą ominąć',
+                                MaintenanceType::PRELAUNCH->value => MaintenanceType::PRELAUNCH->label().' - BEZ możliwości ominięcia',
                             ])
                             ->required()
                             ->reactive()
-                            ->helperText('PRELAUNCH: Complete lockdown, no one can bypass (not even admins)')
+                            ->helperText('PRELAUNCH: całkowita blokada, nikt nie może jej ominąć (nawet admini)')
                             ->columnSpanFull(),
 
                         Textarea::make('message')
-                            ->label('Custom Message')
+                            ->label('Własna wiadomość')
                             ->rows(3)
-                            ->placeholder('Optional message to display to users')
-                            ->helperText('Leave empty for default message')
+                            ->placeholder('Opcjonalna wiadomość wyświetlana użytkownikom')
+                            ->helperText('Pozostaw puste, aby użyć domyślnej wiadomości')
                             ->columnSpanFull(),
 
                         TextInput::make('estimated_duration')
-                            ->label('Estimated Duration')
-                            ->placeholder('e.g., 15 minutes, 1 hour')
-                            ->helperText('Display estimated downtime (DEPLOYMENT/SCHEDULED/EMERGENCY only)')
+                            ->label('Szacowany czas trwania')
+                            ->placeholder('np. 15 minut, 1 godzina')
+                            ->helperText('Wyświetlany szacowany czas przestoju (tylko DEPLOYMENT/SCHEDULED/EMERGENCY)')
                             ->visible(fn ($get) => $get('type') !== MaintenanceType::PRELAUNCH->value)
                             ->columnSpanFull(),
                     ]),
 
-                Section::make('Pre-Launch Page Content')
-                    ->description('Customize all text content for pre-launch page. Leave empty to use default values from Settings.')
+                Section::make('Treść strony pre-launch')
+                    ->description('Dostosuj całą treść tekstową strony pre-launch. Pozostaw puste, aby użyć wartości domyślnych z Ustawień.')
                     ->visible(fn ($get) => $get('type') === MaintenanceType::PRELAUNCH->value)
                     ->collapsible()
                     ->schema([
@@ -265,42 +265,42 @@ class MaintenanceSettings extends Page implements HasForms
     {
         return [
             Action::make('enable')
-                ->label($this->isActive ? 'Update Configuration' : 'Enable Maintenance')
+                ->label($this->isActive ? 'Zaktualizuj konfigurację' : 'Włącz konserwację')
                 ->color($this->isActive ? 'warning' : 'danger')
                 ->icon($this->isActive ? 'heroicon-o-wrench-screwdriver' : 'heroicon-o-lock-closed')
                 ->requiresConfirmation()
-                ->modalHeading($this->isActive ? 'Update Maintenance Configuration?' : 'Enable Maintenance Mode?')
+                ->modalHeading($this->isActive ? 'Zaktualizować konfigurację konserwacji?' : 'Włączyć tryb konserwacji?')
                 ->modalDescription(fn () => $this->isActive
-                    ? 'This will update the current maintenance configuration. Users will see the new settings immediately.'
-                    : 'This will put the application into maintenance mode. Only authorized users will be able to access the site.'
+                    ? 'To zaktualizuje bieżącą konfigurację konserwacji. Użytkownicy zobaczą nowe ustawienia natychmiast.'
+                    : 'To przełączy aplikację w tryb konserwacji. Tylko autoryzowani użytkownicy będą mieli dostęp do strony.'
                 )
-                ->modalSubmitActionLabel($this->isActive ? 'Update' : 'Enable')
+                ->modalSubmitActionLabel($this->isActive ? 'Zaktualizuj' : 'Włącz')
                 ->action('enableMaintenance'),
 
             Action::make('disable')
-                ->label('Disable Maintenance')
+                ->label('Wyłącz konserwację')
                 ->color('success')
                 ->icon('heroicon-o-lock-open')
                 ->requiresConfirmation()
-                ->modalHeading('Disable Maintenance Mode?')
-                ->modalDescription('This will restore normal site access for all users.')
-                ->modalSubmitActionLabel('Disable')
+                ->modalHeading('Wyłączyć tryb konserwacji?')
+                ->modalDescription('To przywróci normalny dostęp do strony dla wszystkich użytkowników.')
+                ->modalSubmitActionLabel('Wyłącz')
                 ->visible($this->isActive)
                 ->action('disableMaintenance'),
 
             Action::make('regenerate_token')
-                ->label('Regenerate Secret Token')
+                ->label('Wygeneruj nowy token')
                 ->color('warning')
                 ->icon('heroicon-o-arrow-path')
                 ->requiresConfirmation()
-                ->modalHeading('Regenerate Secret Token?')
-                ->modalDescription('This will invalidate the old token. Users with the old token will lose bypass access.')
-                ->modalSubmitActionLabel('Regenerate')
+                ->modalHeading('Wygenerować nowy token bypass?')
+                ->modalDescription('To unieważni stary token. Użytkownicy ze starym tokenem stracą dostęp bypass.')
+                ->modalSubmitActionLabel('Wygeneruj')
                 ->visible($this->isActive && $this->currentType !== MaintenanceType::PRELAUNCH)
                 ->action('regenerateToken'),
 
             Action::make('view_logs')
-                ->label('View Event Log')
+                ->label('Zobacz log zdarzeń')
                 ->color('gray')
                 ->icon('heroicon-o-document-text')
                 ->url(route('filament.admin.resources.maintenance-events.index'))
@@ -359,15 +359,15 @@ class MaintenanceSettings extends Page implements HasForms
             $this->refreshStatus();
 
             Notification::make()
-                ->title($this->isActive ? 'Maintenance mode updated' : 'Maintenance mode enabled')
-                ->body("Type: {$type->label()}")
+                ->title($this->isActive ? 'Konfiguracja konserwacji zaktualizowana' : 'Tryb konserwacji włączony')
+                ->body("Typ: {$type->label()}")
                 ->success()
                 ->send();
 
             // Show secret token notification (except for PRELAUNCH)
             if ($type !== MaintenanceType::PRELAUNCH && $this->secretToken) {
                 Notification::make()
-                    ->title('Secret Bypass Token Generated')
+                    ->title('Wygenerowano token bypass')
                     ->body("Token: {$this->secretToken}")
                     ->success()
                     ->persistent()
@@ -375,7 +375,7 @@ class MaintenanceSettings extends Page implements HasForms
             }
         } catch (\Exception $e) {
             Notification::make()
-                ->title('Failed to enable maintenance mode')
+                ->title('Nie udało się włączyć trybu konserwacji')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
@@ -395,13 +395,13 @@ class MaintenanceSettings extends Page implements HasForms
             $this->refreshStatus();
 
             Notification::make()
-                ->title('Maintenance mode disabled')
-                ->body('Site is now accessible to all users')
+                ->title('Tryb konserwacji wyłączony')
+                ->body('Strona jest teraz dostępna dla wszystkich użytkowników')
                 ->success()
                 ->send();
         } catch (\Exception $e) {
             Notification::make()
-                ->title('Failed to disable maintenance mode')
+                ->title('Nie udało się wyłączyć trybu konserwacji')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
@@ -421,14 +421,14 @@ class MaintenanceSettings extends Page implements HasForms
             $this->refreshStatus();
 
             Notification::make()
-                ->title('Secret token regenerated')
-                ->body("New token: {$newToken}")
+                ->title('Token bypass wygenerowany ponownie')
+                ->body("Nowy token: {$newToken}")
                 ->success()
                 ->persistent()
                 ->send();
         } catch (\Exception $e) {
             Notification::make()
-                ->title('Failed to regenerate token')
+                ->title('Nie udało się wygenerować nowego tokenu')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();

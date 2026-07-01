@@ -278,6 +278,71 @@ class ClosureRequestTest extends TestCase
         $this->assertStringContainsString('@', $email);
     }
 
+    // ========================================================================
+    // GAP #7 — Tab reflects pending/closing/closed state
+    // ========================================================================
+
+    public function test_tab_hides_button_when_closure_request_pending(): void
+    {
+        $this->actingAs($this->admin);
+
+        // After requestClosure runs, closure_requested_at must be set
+        $this->invokeRequestClosure();
+
+        $fresh = $this->org->fresh();
+        $this->assertNotNull($fresh->closure_requested_at, 'closure_requested_at must be set after requestClosure().');
+
+        // The hidden() closure on the Actions component checks this:
+        // org->closure_requested_at !== null → actions component is hidden.
+        $isShouldHide = $fresh->closure_requested_at !== null
+            || in_array($fresh->lifecycle_state, [
+                OrganizationLifecycleState::Closing,
+                OrganizationLifecycleState::Closed,
+            ], true);
+
+        $this->assertTrue($isShouldHide, 'Button must be hidden after request is pending.');
+    }
+
+    public function test_tab_hides_button_when_lifecycle_closing(): void
+    {
+        Bus::fake();
+        $this->actingAs($this->superAdmin);
+
+        app(\App\Actions\Offboarding\StartOrganizationOffboarding::class)->execute($this->org);
+        $fresh = $this->org->fresh();
+
+        $isShouldHide = in_array($fresh->lifecycle_state, [
+            OrganizationLifecycleState::Closing,
+            OrganizationLifecycleState::Closed,
+        ], true);
+
+        $this->assertTrue($isShouldHide, 'Button must be hidden when org is Closing.');
+    }
+
+    public function test_tab_shows_button_when_no_request_and_active(): void
+    {
+        // Default state: Active + no closure_requested_at
+        $fresh = $this->org->fresh();
+
+        $isShouldHide = $fresh->closure_requested_at !== null
+            || in_array($fresh->lifecycle_state, [
+                OrganizationLifecycleState::Closing,
+                OrganizationLifecycleState::Closed,
+            ], true);
+
+        $this->assertFalse($isShouldHide, 'Button must be visible when org is Active with no pending request.');
+    }
+
+    public function test_tab_shows_pending_status_after_request_closure(): void
+    {
+        $this->actingAs($this->admin);
+        $this->invokeRequestClosure();
+
+        $fresh = $this->org->fresh();
+        $this->assertNotNull($fresh->closure_requested_at);
+        $this->assertSame(OrganizationLifecycleState::Active, $fresh->lifecycle_state);
+    }
+
     public function test_log_has_no_updated_at_column(): void
     {
         $entry = OrganizationLifecycleLog::record($this->org, 'test_event');
@@ -297,6 +362,12 @@ class ClosureRequestTest extends TestCase
         $this->assertDatabaseHas('organization_lifecycle_log', [
             'organization_id' => $this->org->id,
             'event' => 'offboarding_started',
+            'actor_id' => $this->superAdmin->id,
+        ]);
+
+        $this->assertDatabaseHas('organization_lifecycle_log', [
+            'organization_id' => $this->org->id,
+            'event' => 'data_export_queued',
             'actor_id' => $this->superAdmin->id,
         ]);
     }

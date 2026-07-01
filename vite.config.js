@@ -15,6 +15,7 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/css/filament/admin.css',
+                'resources/css/filament/platform.css',
                 'resources/js/app.js',
                 'resources/js/filament-admin.js',
             ],

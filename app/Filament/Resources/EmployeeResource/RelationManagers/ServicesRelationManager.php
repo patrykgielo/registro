@@ -69,6 +69,8 @@ class ServicesRelationManager extends RelationManager
                     Actions\DetachBulkAction::make()
                         ->label('Odepnij zaznaczone'),
                 ]),
-            ]);
+            ])
+            ->emptyStateHeading('Brak przypisanych usług')
+            ->emptyStateDescription('Przypisz pierwszą usługę klikając przycisk poniżej.');
     }
 }

@@ -120,6 +120,22 @@ enum PageLayout: string
     }
 
     /**
+     * Get Filament badge color for admin table columns.
+     *
+     * Shared across Pages/Posts/Promotions resources so a new layout
+     * case only needs to be added here once (avoids drift between tables).
+     */
+    public function badgeColor(): string
+    {
+        return match ($this) {
+            self::DEFAULT => 'info',
+            self::FULL_WIDTH => 'success',
+            self::MINIMAL => 'warning',
+            self::HOME => 'danger',
+        };
+    }
+
+    /**
      * Get options array for Filament select fields.
      *
      * @return array<string, string>

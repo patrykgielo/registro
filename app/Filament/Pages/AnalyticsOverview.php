@@ -24,6 +24,8 @@ class AnalyticsOverview extends Page
 
     protected static ?string $navigationLabel = 'Analityka';
 
+    protected static ?string $title = 'Analityka';
+
     protected static ?string $slug = 'analityka';
 
     protected string $view = 'filament.pages.analytics-overview';
