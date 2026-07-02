@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Seo;
 
+use App\Models\Category;
 use App\Models\Page;
 use App\Models\PortfolioItem;
 use App\Models\Post;
@@ -13,7 +14,7 @@ use Illuminate\Support\Str;
 /**
  * Builds `<title>` / meta-description values for content-detail pages,
  * unifying the meta_title/meta_description fallback chain used by
- * Post, PortfolioItem, Page and Service so controllers don't re-implement it.
+ * Post, PortfolioItem, Page, Service and Category so controllers don't re-implement it.
  */
 class MetaTagBuilder
 {
@@ -21,7 +22,7 @@ class MetaTagBuilder
      * @param  array<string, string|null>  $overrides  Explicit values that win over both meta_* fields and fallbacks.
      * @return array{metaTitle: ?string, metaDescription: ?string}
      */
-    public static function forModel(Post|PortfolioItem|Page|Service $model, array $overrides = []): array
+    public static function forModel(Post|PortfolioItem|Page|Service|Category $model, array $overrides = []): array
     {
         $explicitTitle = $model->meta_title;
         $fallbackTitle = self::fallbackTitle($model);
@@ -40,19 +41,20 @@ class MetaTagBuilder
         ], $overrides);
     }
 
-    private static function fallbackTitle(Post|PortfolioItem|Page|Service $model): ?string
+    private static function fallbackTitle(Post|PortfolioItem|Page|Service|Category $model): ?string
     {
         return match (true) {
-            $model instanceof Service => $model->name,
+            $model instanceof Service, $model instanceof Category => $model->name,
             default => $model->title,
         };
     }
 
-    private static function fallbackDescription(Post|PortfolioItem|Page|Service $model): ?string
+    private static function fallbackDescription(Post|PortfolioItem|Page|Service|Category $model): ?string
     {
         return match (true) {
             $model instanceof PortfolioItem => Str::limit(strip_tags((string) ($model->body ?? '')), 160) ?: null,
             $model instanceof Page => null,
+            $model instanceof Category => $model->description,
             default => $model->excerpt,
         };
     }
