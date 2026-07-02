@@ -141,6 +141,10 @@ Image fallback inside the component: `$item->featured_image ?? $item->before_ima
 - Archive shows only exact `category_id` matches — no descendant-category inclusion (`Category.parent_id` hierarchy is not walked).
 - No sitemap changes (Phase D) and no clickable category badge on detail pages yet (Phase C) — those are separate phases per the plan.
 
-## Out of scope (Phase C/D — see plan)
+## Phase C — Clickable category badges
 
-Clickable category badges and `sitemap.xml` are separate phases and not covered here.
+The category badge on `posts/show.blade.php` (via `components/cms/partials/content-header.blade.php`) and on `portfolio/show.blade.php` (header badge + footer "Kategoria: X") is now an `<a href="{{ route('post.category', ...) }}">` / `route('portfolio.category', ...)` link to the Phase B archive, instead of a non-interactive `<span>`. No controller changes — `category` was already eager-loaded. Focus-visible state uses the working v5.0 token pattern (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`), not the legacy `ring-primary-*`/`ring-purple-*` convention seen elsewhere in these CMS partials — `primary-*` is not a defined Tailwind color in this app (no `tailwind.config.js` extension, no `--color-primary-*` token in `design-tokens.css`; it only exists in `resources/css/filament/admin.css` for the admin panel), so `bg-primary-50`/`ring-primary-400` on the post badge are pre-existing no-op classes on the frontend bundle.
+
+## Out of scope (Phase D — see plan)
+
+`sitemap.xml` is a separate phase and not covered here.
