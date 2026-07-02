@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ServiceType;
 use App\Models\Service;
+use App\Support\Seo\MetaTagBuilder;
 
 class ServiceController extends Controller
 {
@@ -62,6 +63,7 @@ class ServiceController extends Controller
             'schemaService' => $schemaService,
             'schemaBreadcrumbs' => $schemaBreadcrumbs,
             'pageType' => 'service',
+            ...MetaTagBuilder::forModel($service),
         ]);
     }
 

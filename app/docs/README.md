@@ -66,6 +66,7 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 | Onboarding & Registration | `features/onboarding-and-registration.md` | Phase 5 complete |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
 | SMS System | `features/sms-system/` | Stable |
+| SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
 
 ### Guides
 

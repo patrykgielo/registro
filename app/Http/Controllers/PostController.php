@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Post;
+use App\Support\Seo\MetaTagBuilder;
 
 class PostController extends Controller
 {
@@ -34,6 +35,7 @@ class PostController extends Controller
             'post' => $post,
             'layout' => $post->layout,
             'relatedPosts' => $relatedPosts,
+            ...MetaTagBuilder::forModel($post),
         ]);
     }
 }

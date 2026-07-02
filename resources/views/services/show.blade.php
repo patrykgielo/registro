@@ -8,8 +8,6 @@
     @if($service->featured_image)
         <meta property="og:image" content="{{ Storage::url($service->featured_image) }}">
     @endif
-    <meta name="description" content="{{ $service->meta_description ?? $service->excerpt }}">
-    <title>{{ $service->meta_title ?? $service->name . ' - ' . config('app.name') }}</title>
     <script type="application/ld+json">{!! $schemaService !!}</script>
     <script type="application/ld+json">{!! $schemaBreadcrumbs !!}</script>
     <style>[x-cloak] { display: none !important; }</style>
