@@ -2,7 +2,6 @@
 
 @php
     use App\Support\ContentGridResolver;
-    use Illuminate\Support\Facades\Storage;
 
     $contentType = $data['content_type'] ?? 'services';
     $contentItemIds = $data['content_items'] ?? [];
@@ -114,37 +113,7 @@
                                 default => 'home'
                             }, $item->slug) : '#';
                         @endphp
-                        <article class="cms-content-card {{ $isDark
-                            ? 'service-card-dark shadow-dark-glow hover:shadow-dark-glow-hover'
-                            : 'bg-white shadow-md hover:shadow-xl' }}">
-
-                            @if($item->featured_image ?? false)
-                                <div class="overflow-hidden">
-                                    <img src="{{ Storage::url($item->featured_image) }}"
-                                         alt="{{ $item->title ?? $item->name }}"
-                                         class="cms-card-image"
-                                         loading="lazy">
-                                </div>
-                            @endif
-
-                            <div class="p-6 flex flex-col flex-1">
-                                <h3 class="text-xl font-bold mb-2 {{ $isDark ? 'text-white' : 'text-gray-900' }}">
-                                    {{ $item->title ?? $item->name }}
-                                </h3>
-
-                                <p class="text-sm mb-4 flex-1 {{ $isDark ? 'text-white/70' : 'text-gray-600' }}">
-                                    {{ Str::limit($item->excerpt ?? $item->body ?? '', 120) }}
-                                </p>
-
-                                @if($item->slug ?? false)
-                                    <a href="{{ $itemUrl }}"
-                                       class="inline-flex items-center gap-2 font-semibold text-sm {{ $isDark ? 'text-[#0AB1EA] hover:text-[#0AB1EA]/80' : 'text-primary-600 hover:text-primary-700' }} transition-colors">
-                                        Zobacz szczegóły
-                                        <x-heroicon-m-arrow-right class="w-4 h-4" />
-                                    </a>
-                                @endif
-                            </div>
-                        </article>
+                        <x-cms.card :item="$item" :url="$itemUrl" :dark="$isDark" />
                     @endif
                 @endforeach
             </div>

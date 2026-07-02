@@ -79,6 +79,19 @@ class CategoryResource extends BaseResource
                     ->rows(3)
                     ->maxLength(500)
                     ->columnSpanFull(),
+
+                Forms\Components\TextInput::make('meta_title')
+                    ->label('Meta tytuł')
+                    ->maxLength(60)
+                    ->helperText('Zalecane: do 60 znaków')
+                    ->columnSpanFull(),
+
+                Forms\Components\Textarea::make('meta_description')
+                    ->label('Meta opis')
+                    ->rows(3)
+                    ->maxLength(160)
+                    ->helperText('Zalecane: do 160 znaków')
+                    ->columnSpanFull(),
             ]);
     }
 

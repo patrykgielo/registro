@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\Post;
 use App\Support\Seo\MetaTagBuilder;
 
@@ -36,6 +37,28 @@ class PostController extends Controller
             'layout' => $post->layout,
             'relatedPosts' => $relatedPosts,
             ...MetaTagBuilder::forModel($post),
+        ]);
+    }
+
+    /**
+     * Display the paginated archive of published posts in the given category.
+     */
+    public function category(Category $category): \Illuminate\View\View
+    {
+        abort_unless($category->type === 'post', 404);
+
+        $items = Post::published()
+            ->inCategory($category->id)
+            ->latest('published_at')
+            ->paginate(9);
+
+        $allCategories = Category::postCategories()->get();
+
+        return view('posts.category', [
+            'category' => $category,
+            'items' => $items,
+            'allCategories' => $allCategories,
+            ...MetaTagBuilder::forModel($category),
         ]);
     }
 }

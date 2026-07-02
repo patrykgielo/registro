@@ -53,6 +53,12 @@ return view('posts.show', [
 
 Wired in: `ServiceController::show()`, `PostController::show()`, `PortfolioController::show()`, `PageController::show()`.
 
+### Non-controller code path: the homepage closure (fixed in Phase B)
+
+`routes/web.php`'s `Route::...->get('/', function () {...})->name('home')` also renders `pages.show` directly (when a tenant has `cms.homepage_page_id` configured) — bypassing `PageController::show()` entirely. Phase A's controller sweep missed this closure since it isn't a controller method, which left `pages/show.blade.php`'s `@push('head')` block (`{{ $metaTitle }}`, no `??` fallback) referencing an undefined variable — a hard `ErrorException`, not a silent fallback, crashing `GET /` for any tenant with a CMS homepage configured. Fixed by spreading `MetaTagBuilder::forModel($page)` into the closure's `view()` data array, same as the controller. The other branch of the closure (`view('home-fallback')`, used when no CMS homepage is set or the page isn't published) does **not** reference `$metaTitle`/`$metaDescription` at all, so it was never affected.
+
+**Lesson:** when sweeping controllers for a cross-cutting concern, also grep `routes/*.php` for inline closures that render the same views — they don't show up in a `Controller` file search.
+
 ## View wiring — pattern for new content-detail pages
 
 Detail views only need `@push('head')` for OG tags + structured data — **never** re-add a `<title>` or `<meta name="description">` tag there, the layout already owns those via `$metaTitle`/`$metaDescription`:
@@ -77,11 +83,64 @@ OG image source per model: `Post`/`Page` use `featured_image`; `PortfolioItem` h
 
 ## Files
 
-- `app/Support/Seo/MetaTagBuilder.php` (new)
+- `app/Support/Seo/MetaTagBuilder.php` (Phase A + B: Category support)
 - `resources/views/layouts/app.blade.php` (owns `<title>`/description)
 - `app/Http/Controllers/{Service,Post,Portfolio,Page}Controller.php`
 - `resources/views/{services,posts,portfolio,pages}/show.blade.php`
+- `database/migrations/2026_07_02_000001_add_meta_fields_to_categories_table.php` (Phase B, new)
+- `app/Models/Category.php`, `app/Filament/Resources/Categories/CategoryResource.php` (Phase B)
+- `resources/views/{posts,portfolio}/category.blade.php` (Phase B, new)
+- `resources/views/components/cms/card.blade.php` (Phase B, new — extracted from `content-grid.blade.php`)
 
-## Out of scope (Phase B/C/D — see plan)
+## Phase B — Category archive pages
 
-Category archive pages, clickable category badges, and `sitemap.xml` are separate phases and not covered here.
+`GET /aktualnosci/kategoria/{category:slug}` and `GET /portfolio/kategoria/{category:slug}` render a paginated (9/page) archive of published `Post`/`PortfolioItem` records for that category, using the previously-unused `scopeInCategory()` on both models.
+
+### Category meta fields (migration)
+
+`categories` gained `meta_title` (nullable string, after `description`) and `meta_description` (nullable text) — same shape as Post/Portfolio/Page/Service. Added to `Category::$fillable` and to `CategoryResource`'s form (`Meta tytuł` / `Meta opis`, same labels/limits as `PostResource`/`PortfolioItemResource`).
+
+### `MetaTagBuilder` extended for `Category`
+
+`Category` has `name` (not `title`) and `description` (not `excerpt`) — `MetaTagBuilder::forModel()`'s union type and both fallback-chain `match()` blocks were extended with explicit `Category` arms rather than relying on the `default` arm (which assumes `->title`/`->excerpt`):
+
+| Model | Title fallback | Description fallback |
+|-------|-----------------|------------------------|
+| `Category` | `name` | `description` |
+
+### Routing and type scoping
+
+Routes are registered in the same `Route::middleware([ResolveTenant::class])` group as `post.show`/`portfolio.show` in `routes/web.php`. The 3-segment `/kategoria/{slug}` paths never collide with the 2-segment `/{slug}` detail routes regardless of registration order (Laravel matches by segment count).
+
+Each controller method uses implicit route-model binding (`{category:slug}`) then guards the category's `type` so a post-type category slug 404s under the portfolio route and vice versa:
+
+```php
+public function category(Category $category): View
+{
+    abort_unless($category->type === 'post', 404); // 'portfolio' in PortfolioController
+
+    $items = Post::published()->inCategory($category->id)->latest('published_at')->paginate(9);
+    $allCategories = Category::postCategories()->get(); // portfolioCategories() in PortfolioController
+
+    return view('posts.category', ['category' => $category, 'items' => $items, 'allCategories' => $allCategories, ...MetaTagBuilder::forModel($category)]);
+}
+```
+
+### Views
+
+`resources/views/posts/category.blade.php` and `resources/views/portfolio/category.blade.php` follow the structural pattern of `resources/views/rentals/category.blade.php`: breadcrumb, sticky sidebar (desktop) / horizontal pill nav (mobile) of sibling categories with active-state highlighting, 3-column card grid, empty state, and `{{ $items->links() }}` (Laravel's default Tailwind paginator — first public use of pagination in this app, no custom paginator view exists).
+
+### `<x-cms.card>` component (dedup)
+
+The CMS card markup previously duplicated inline in `content-grid.blade.php` (posts/promotions/portfolio grid items) was extracted to `resources/views/components/cms/card.blade.php`, props `:item`, `:url`, `:dark`. `content-grid.blade.php` now calls `<x-cms.card :item="$item" :url="$itemUrl" :dark="$isDark" />` instead of an inline `<article>` block. The two new category archive views use the same component, built with `route('post.show', $item->slug)` / `route('portfolio.show', $item->slug)`.
+
+Image fallback inside the component: `$item->featured_image ?? $item->before_image ?? null` — `Post` has `featured_image`, `PortfolioItem` doesn't (uses `before_image` instead, same fallback OG tags already use in `portfolio/show.blade.php`).
+
+### Deliberate MVP scope limits
+
+- Archive shows only exact `category_id` matches — no descendant-category inclusion (`Category.parent_id` hierarchy is not walked).
+- No sitemap changes (Phase D) and no clickable category badge on detail pages yet (Phase C) — those are separate phases per the plan.
+
+## Out of scope (Phase C/D — see plan)
+
+Clickable category badges and `sitemap.xml` are separate phases and not covered here.

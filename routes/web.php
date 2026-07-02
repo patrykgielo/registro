@@ -48,6 +48,7 @@ Route::middleware([ResolveTenant::class])->get('/', function () {
     return view('pages.show', [
         'page' => $page,
         'layout' => $page->layout,
+        ...\App\Support\Seo\MetaTagBuilder::forModel($page),
     ]);
 })->name('home');
 
@@ -86,8 +87,10 @@ Route::get('/health', function () {
 // CMS Content routes - Posts, Promotions, Portfolio (with prefixes)
 // ResolveTenant needed for BelongsToOrganization scope on content models
 Route::middleware([ResolveTenant::class])->group(function () {
+    Route::get('/aktualnosci/kategoria/{category:slug}', [PostController::class, 'category'])->name('post.category');
     Route::get('/aktualnosci/{slug}', [PostController::class, 'show'])->name('post.show');
     Route::get('/promocje/{slug}', [PromotionController::class, 'show'])->name('promotion.show');
+    Route::get('/portfolio/kategoria/{category:slug}', [PortfolioController::class, 'category'])->name('portfolio.category');
     Route::get('/portfolio/{slug}', [PortfolioController::class, 'show'])->name('portfolio.show');
 });
 
