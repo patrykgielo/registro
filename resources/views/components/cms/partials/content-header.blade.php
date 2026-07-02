@@ -14,9 +14,10 @@
 <header class="mb-8">
     {{-- Category Badge (Posts only) --}}
     @if($type === 'post' && $model->category)
-        <span class="inline-block px-3 py-1 bg-primary-50 text-primary-600 text-sm font-semibold rounded-full mb-4">
+        <a href="{{ route('post.category', $model->category) }}"
+           class="inline-block px-3 py-1 bg-primary-50 text-primary-600 text-sm font-semibold rounded-full mb-4 hover:opacity-80 transition-opacity duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
             {{ $model->category->name }}
-        </span>
+        </a>
     @endif
 
     {{-- Promotion Badge --}}
