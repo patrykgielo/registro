@@ -14,6 +14,7 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
@@ -46,7 +47,7 @@ class CategoryResource extends BaseResource
                     ->required()
                     ->maxLength(255)
                     ->live(onBlur: true)
-                    ->afterStateUpdated(fn (string $state, Forms\Set $set) => $set('slug', Str::slug($state))
+                    ->afterStateUpdated(fn (string $state, Set $set) => $set('slug', Str::slug($state))
                     ),
 
                 Forms\Components\TextInput::make('slug')

@@ -54,6 +54,25 @@ Filament\Schemas\Components\Section::make()
 Filament\Schemas\Components\Grid::make(2)
 ```
 
+## Critical: Set/Get Type-Hints (Bug 2026-07-02)
+
+`Set`/`Get` moved namespaces in v4 too. `Forms\Set`/`Forms\Get` shorthand compiles fine but resolves
+to the removed v3 class — TypeError only when the closure fires (`afterStateUpdated`, `->visible()`).
+
+```php
+// ❌ WRONG — v3, TypeError only when closure actually runs
+use Filament\Forms;
+fn (Forms\Set $set) => ...
+use Filament\Forms\Get;
+fn (Get $get) => ...
+
+// ✅ CORRECT
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Components\Utilities\Get;
+fn (Set $set) => ...
+fn (Get $get) => ...
+```
+
 ## Critical: Widget Properties — Static vs Instance (Bug 2026-05-10)
 
 ```php
