@@ -152,6 +152,7 @@ public function terminate(Request $request, Response $response): void
 - `VerifyCsrfToken` - Laravel default
 - `CheckBookingEnabled` (`check-booking-enabled`) - przekierowuje na home gdy `isBookingEnabled() === false` dla tenanta
 - `CheckRentalEnabled` (`check-rental-enabled`) - przekierowuje na home gdy `isRentalEnabled() === false` dla tenanta
+- `RequireTenant` (`require.tenant`) - `abort(404)` gdy `TenantFeature::currentTenant() === null`. **KRYTYCZNE (VULN-003)**: `ResolveTenant` na root domain celowo NIE ustawia `tenant` (marketplace) — ale `BelongsToOrganization` scope wtedy silently no-opuje (zero filtrowania). KAŻDA nowa publiczna trasa query-ująca model `BelongsToOrganization` MUSI mieć `RequireTenant::class` zaraz PO `ResolveTenant::class`. Patrz `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
 
 ### Rejestracja w `bootstrap/app.php`
 
@@ -159,6 +160,7 @@ public function terminate(Request $request, Response $response): void
 $middleware->alias([
     'check-booking-enabled' => \App\Http\Middleware\CheckBookingEnabled::class,
     'check-rental-enabled'  => \App\Http\Middleware\CheckRentalEnabled::class,
+    'require.tenant'        => \App\Http\Middleware\RequireTenant::class,
 ]);
 ```
 
@@ -177,4 +179,9 @@ Route::middleware(['auth', 'tenant', 'check-booking-enabled'])
     ->group(function () {
         Route::get('/rezerwacja', ...)->name('booking.step');
     });
+
+// Publiczna trasa query-ująca model BelongsToOrganization — MUSI mieć RequireTenant
+// zaraz po ResolveTenant, inaczej root domain widzi dane WSZYSTKICH tenantów (VULN-003)
+Route::middleware([ResolveTenant::class, RequireTenant::class])
+    ->get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
 ```

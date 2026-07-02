@@ -44,18 +44,23 @@ class AnalyticsOverviewPageTest extends TestCase
 
     public function test_analytics_page_requires_auth(): void
     {
-        $response = $this->get('/admin/analityka');
+        // Admin panel requires a resolved tenant (RequireTenant middleware) before
+        // auth is even checked, so this must hit a real tenant subdomain — not root.
+        $org = Organization::factory()->create();
+
+        $response = $this->get("http://{$org->slug}.registro.local/admin/analityka");
 
         $response->assertRedirectToRoute('filament.admin.auth.login');
     }
 
     public function test_analytics_page_requires_admin_role(): void
     {
+        $org = Organization::factory()->create();
         $user = User::factory()->create();
         $customerRole = Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
         $user->assignRole($customerRole);
 
-        $response = $this->actingAs($user)->get('/admin/analityka');
+        $response = $this->actingAs($user)->get("http://{$org->slug}.registro.local/admin/analityka");
 
         $response->assertForbidden();
     }
