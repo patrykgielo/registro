@@ -1,5 +1,17 @@
 @extends('layouts.app')
 
+@push('head')
+    <meta property="og:title" content="{{ $metaTitle }}">
+    @if($metaDescription)
+        <meta property="og:description" content="{{ $metaDescription }}">
+    @endif
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ route('portfolio.show', $portfolioItem->slug) }}">
+    @if($portfolioItem->before_image)
+        <meta property="og:image" content="{{ Storage::url($portfolioItem->before_image) }}">
+    @endif
+@endpush
+
 @section('content')
 <div class="max-w-6xl mx-auto">
     <article class="bg-white rounded-lg shadow-lg p-8">

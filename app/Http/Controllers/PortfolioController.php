@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PortfolioItem;
+use App\Support\Seo\MetaTagBuilder;
 
 class PortfolioController extends Controller
 {
@@ -13,6 +14,9 @@ class PortfolioController extends Controller
             ->with('category')
             ->firstOrFail();
 
-        return view('portfolio.show', compact('portfolioItem'));
+        return view('portfolio.show', [
+            'portfolioItem' => $portfolioItem,
+            ...MetaTagBuilder::forModel($portfolioItem),
+        ]);
     }
 }

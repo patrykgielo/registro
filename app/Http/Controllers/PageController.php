@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Page;
 use App\Models\Post;
+use App\Support\Seo\MetaTagBuilder;
 
 class PageController extends Controller
 {
@@ -31,6 +32,7 @@ class PageController extends Controller
             'page' => $page,
             'layout' => $page->layout,
             'recentPosts' => $recentPosts,
+            ...MetaTagBuilder::forModel($page),
         ]);
     }
 }
