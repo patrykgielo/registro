@@ -53,6 +53,12 @@ return view('posts.show', [
 
 Wired in: `ServiceController::show()`, `PostController::show()`, `PortfolioController::show()`, `PageController::show()`.
 
+### Non-controller code path: the homepage closure (fixed in Phase B)
+
+`routes/web.php`'s `Route::...->get('/', function () {...})->name('home')` also renders `pages.show` directly (when a tenant has `cms.homepage_page_id` configured) — bypassing `PageController::show()` entirely. Phase A's controller sweep missed this closure since it isn't a controller method, which left `pages/show.blade.php`'s `@push('head')` block (`{{ $metaTitle }}`, no `??` fallback) referencing an undefined variable — a hard `ErrorException`, not a silent fallback, crashing `GET /` for any tenant with a CMS homepage configured. Fixed by spreading `MetaTagBuilder::forModel($page)` into the closure's `view()` data array, same as the controller. The other branch of the closure (`view('home-fallback')`, used when no CMS homepage is set or the page isn't published) does **not** reference `$metaTitle`/`$metaDescription` at all, so it was never affected.
+
+**Lesson:** when sweeping controllers for a cross-cutting concern, also grep `routes/*.php` for inline closures that render the same views — they don't show up in a `Controller` file search.
+
 ## View wiring — pattern for new content-detail pages
 
 Detail views only need `@push('head')` for OG tags + structured data — **never** re-add a `<title>` or `<meta name="description">` tag there, the layout already owns those via `$metaTitle`/`$metaDescription`:

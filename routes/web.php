@@ -48,6 +48,7 @@ Route::middleware([ResolveTenant::class])->get('/', function () {
     return view('pages.show', [
         'page' => $page,
         'layout' => $page->layout,
+        ...\App\Support\Seo\MetaTagBuilder::forModel($page),
     ]);
 })->name('home');
 
