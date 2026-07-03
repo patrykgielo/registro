@@ -1,14 +1,14 @@
 # VULN-003: Root-Domain Tenant Isolation Bypass (Cross-Tenant Data Exposure)
 
-**Status**: FIXED for the originally-scoped root-domain-with-no-session attack surface (Layer 1 +
-Layer 2, both complete). **A related, separately-scoped cross-tenant read+write risk in
-`BookingController`/`AppointmentController` via the session-fallback mechanism remains OPEN** —
-see the escalated Follow-up below; recommended as the next priority.
+**Status**: FIXED. Layer 1 (route-level `RequireTenant`), Layer 2 (trait-level fail-closed
+backstop), and Layer 3 (session-fallback gap in `BookingController`/`AppointmentController`) are
+all complete.
 **Severity**: CRITICAL
 **Priority**: P0
 **Detected**: 2026-07-02 (code-reviewer + agent-security-audit-specialist)
-**Fixed**: 2026-07-03 (Layer 1 initial), 2026-07-03 (Layer 1 gap fixes, same day), 2026-07-03 (Layer 2)
-**Branch**: `hotfix/require-tenant-middleware` (Layer 1), `hardening/belongs-to-organization-fail-closed` (Layer 2)
+**Fixed**: 2026-07-03 (Layer 1 initial), 2026-07-03 (Layer 1 gap fixes, same day), 2026-07-03
+(Layer 2), 2026-07-03 (Layer 3)
+**Branch**: `hotfix/require-tenant-middleware` (Layer 1), `hardening/belongs-to-organization-fail-closed` (Layer 2), `fix/booking-cross-tenant-session-fallback` (Layer 3)
 
 ---
 
@@ -416,44 +416,125 @@ documented below.
   configured root domain) MUST either simulate a tenant (`actingAsTenant()` pattern) or expect
   empty/404 results — it can no longer rely on the previous unscoped-by-default behavior.
 
+## Layer 3 (2026-07-03, `fix/booking-cross-tenant-session-fallback`): booking/appointments session-fallback gap
+
+### Problem
+
+`routes/web.php:232` — `Route::middleware(['auth', ResolveTenant::class])->group(...)` covered all
+14 `booking.*`/`appointments.*` routes (plus `profile.*`), none carrying `RequireTenant::class`.
+Both `BookingController` and `AppointmentController` create `Appointment` rows with zero explicit
+`organization_id` — 100% implicit via `BelongsToOrganization`'s `creating` hook, which calls
+`TenantFeature::currentTenant()`.
+
+**Confirmed attack chain** — lower exploit bar than the original VULN-003 (any authenticated
+customer, one unauthenticated `GET`, no admin/staff credential needed), narrower blast radius
+(scoped to one specific wrong tenant rather than all tenants at once):
+
+1. Any authenticated customer of Org A visits `orgB.<domain>/` (any public page,
+   **unauthenticated is fine** — no login on Org B needed). `ResolveTenant.php` unconditionally
+   writes `session()->put('tenant_id', $tenant->id)` on every successful subdomain resolution,
+   for anonymous visitors too — so the customer's session now carries `tenant_id = orgB.id`.
+2. They then hit the root-domain booking flow (`booking.step`, `booking.confirm`, etc.) while
+   authenticated. `TenantFeature::currentTenant()` resolves Org B via its 3rd fallback branch
+   (`session('tenant_id')`) — **truthy, not null** — so `BelongsToOrganization`'s Layer 2
+   fail-closed check is **never even reached**; the `if ($tenant)` branch returns first, scoped
+   to Org B.
+3. The query — and worse, `Appointment::create()` in `BookingController::confirm()` (which has no
+   explicit `organization_id`, relying on the `creating` hook's auto-assign via the same
+   `currentTenant()` call) and `AppointmentController::store()` — proceeds scoped to Org B. This
+   is a genuine **cross-tenant write**: a customer can plant a bogus appointment into a
+   completely different tenant's calendar, consuming a real slot — not merely viewing Org B's
+   data.
+
+### Przyczyna
+
+Same root cause class as Layer 1/2, but via a different bypass: `RequireTenant` gates on the
+`tenant` request attribute, which only `ResolveTenant`'s subdomain-success branch sets — so any
+route carrying `RequireTenant` was already immune to this. `booking.*`/`appointments.*` simply
+never had `RequireTenant` added (a deliberate, documented gap — see the Layer 1 "Explicitly NOT
+touched" note), leaving `TenantFeature::currentTenant()`'s session-fallback branch as the only
+signal, which an unauthenticated visit to any tenant's subdomain can poison.
+
+### Rozwiązanie
+
+One-line middleware change — `RequireTenant::class` added to the same outer group, right after
+`ResolveTenant::class`, at `routes/web.php:232`:
+
+```php
+Route::middleware(['auth', ResolveTenant::class, RequireTenant::class])->group(function () {
+    // ... all 14 booking.*/appointments.* routes, plus profile.*, unchanged
+});
+```
+
+Sufficient because every one of these routes is a genuine full-page HTTP request (not Livewire
+AJAX — zero `wire:`/`@livewire` usage in `resources/views/booking-wizard/**` or
+`resources/views/appointments/**`), so `RequireTenant` (gated on the request attribute, never the
+session) correctly 404s the request on the root domain regardless of stale session content —
+closing both the read and write vectors, since the controller code (including
+`Appointment::create()`) never executes if `RequireTenant` aborts first. `booking.confirmation`
+and `booking.ical` (deliberately outside the `CheckBookingEnabled` sub-group, so a customer
+mid-flow isn't bounced if booking gets toggled off) are still inside the outer group and get the
+same protection — `showConfirmation()`'s `Appointment::findOrFail()` is the read-half of this
+same bug.
+
+### Test-suite impact
+
+New regression file: `tests/Feature/Security/BookingCrossTenantSessionFallbackTest.php` — 2 real
+`Organization`s, an authenticated customer of Org A, `withSession(['tenant_id' => $orgB->id])` to
+simulate the poisoned session, then asserts 404 on `booking.step`, `booking.confirm` (POST, with
+`assertDatabaseMissing` confirming no `Appointment` row was created), and `appointments.index` on
+the root domain — plus 2 positive-path tests (`actingAsTenant()` pattern, real tenant subdomain)
+confirming `RequireTenant` doesn't break legitimate booking.
+
+One existing test needed updating as a direct, mechanical consequence of this route change:
+`BelongsToOrganizationFailClosedTest::test_booking_wizard_service_step_shows_no_cross_tenant_services_on_root_domain`
+asserted `200 OK` with an empty `services` view variable — the exact Layer-2-without-Layer-3
+backstop behavior for this specific route. Since `booking.step` now carries `RequireTenant`, the
+route 404s before the `Service` query runs; renamed to
+`test_booking_wizard_service_step_returns_404_on_root_domain` and updated to assert `404`. The
+sibling `test_available_slots_endpoint_fails_closed_on_root_domain_without_require_tenant` needed
+no code change (still asserts 404, same outcome via a different mechanism now) — only its
+docblock was updated for accuracy.
+
+**Also fixed in this pass**: `tests/Feature/AppointmentStaffValidationTest.php` used the old
+`/** @test */` doc-comment annotation (dropped by PHPUnit 12 — silently `0` tests executed).
+Renamed all 4 methods to the `test_` prefix (same fix as `ServiceAreaValidationTest.php` in the
+Layer 1 gap-fix pass); all 4 pass once discovered, no logic changes needed. 3 files with this same
+latent bug remain open follow-ups: `tests/Unit/ServiceAreaHaversineTest.php`,
+`tests/Feature/ServiceAreaWaitlistTest.php`, `tests/Feature/ProfileSynchronizationTest.php`.
+
+**Full suite**: baseline (`develop`, pre-Layer-3) 731 passed / 3 failed / 4 skipped →
+740 passed / 3 failed / 4 skipped. +9 passed (5 new regression tests +
+4 previously-dead `AppointmentStaffValidationTest` tests now executing), 0 new failures — the
+same 3 pre-existing failures (`Orders\CustomerOrdersTest` ×2, `TenantFeatureTest` ×1), confirmed
+identical failure line/message against unmodified `develop`.
+
+### Zapobieganie
+
+- Any new authenticated route that creates or reads a `BelongsToOrganization` model MUST carry
+  `RequireTenant::class` right after `ResolveTenant::class` — `['auth', ResolveTenant::class]`
+  alone is **not** sufficient, `auth` says nothing about which tenant, and
+  `TenantFeature::currentTenant()`'s session fallback can resolve a *wrong* tenant just as easily
+  as a right one for an authenticated user.
+- Do not treat "the user is logged in" as a substitute for "the tenant was resolved for this
+  specific request" — they are orthogonal checks, and Laravel session `tenant_id` predates any
+  per-request authorization decision.
+
 ## Follow-ups (out of scope for this fix)
 
-- **`BookingController`/`AppointmentController` — CONFIRMED cross-tenant READ+WRITE via the
-  session-fallback mechanism. Recommended as the NEXT priority follow-up, not a someday-maybe
-  item.** `booking.*`/`appointments.*` routes sit behind `['auth', ResolveTenant::class]` only
-  (`routes/web.php`) — still no `RequireTenant`. Confirmed attack chain, lower exploit bar than
-  the original VULN-003 (any authenticated customer, one unauthenticated `GET`, no admin/staff
-  credential needed — narrower blast radius than the original though, scoped to one specific
-  wrong tenant rather than all tenants at once):
-  1. Any authenticated customer of Org A visits `orgB.<domain>/` (any public page,
-     **unauthenticated is fine** — no login on Org B needed). `ResolveTenant.php` unconditionally
-     writes `session()->put('tenant_id', $tenant->id)` on every successful subdomain resolution,
-     for anonymous visitors too — so the customer's session now carries `tenant_id = orgB.id`.
-  2. They then hit the root-domain booking flow (`booking.step`, `booking.confirm`, etc.) while
-     authenticated. `TenantFeature::currentTenant()` resolves Org B via its 3rd fallback branch
-     (`session('tenant_id')`) — **truthy, not null** — so `BelongsToOrganization`'s Layer 2
-     fail-closed check is **never even reached**; the `if ($tenant)` branch returns first,
-     scoped to Org B.
-  3. The query — and worse, `Appointment::create()` in `BookingController::confirm()` (which has
-     no explicit `organization_id`, relying on the `creating` hook's auto-assign via the same
-     `currentTenant()` call) — proceeds scoped to Org B. This is a genuine **cross-tenant
-     write**: a customer can plant a bogus appointment into a completely different tenant's
-     calendar, consuming a real slot — not merely viewing Org B's data.
-  Layer 2 mitigates the pure-root-domain-no-session case (proven by the new regression suite)
-  but does **not** close this session-fallback path — the fix needs either `RequireTenant` on
-  these routes (rejecting the session-fallback resolution outright, same fix pattern as
-  `RequireTenant`'s own Gap #1 above) or an explicit `organization_id` check in
-  `BookingController`/`AppointmentController` independent of `TenantFeature::currentTenant()`.
 - `AppointmentController::store` — `exists:services,id` validation rule allows cross-tenant
   service IDs (IDOR follow-up ticket).
 - `ServiceAreaWaitlist` model has no `organization_id` — design question for a future ticket
   (see Gap #2 above).
-- 4 test files still have dead `/** @test */`-annotated tests post PHPUnit 12 upgrade (see
-  "Discovered while fixing" above) — needs a dedicated cleanup PR, ideally with a CI check that
-  fails if `grep -rl '@test' tests/` finds anything, to prevent recurrence.
+- 3 test files still have dead `/** @test */`-annotated tests post PHPUnit 12 upgrade (see
+  "Discovered while fixing" above and Layer 3's "Also fixed in this pass") — needs a dedicated
+  cleanup PR, ideally with a CI check that fails if `grep -rl '@test' tests/` finds anything, to
+  prevent recurrence.
 
 ---
 
 **Created**: 2026-07-03
-**Updated**: 2026-07-03 (Layer 1 gap fixes from adversarial re-review), 2026-07-03 (Layer 2 — BelongsToOrganization fail-closed)
+**Updated**: 2026-07-03 (Layer 1 gap fixes from adversarial re-review), 2026-07-03 (Layer 2 —
+BelongsToOrganization fail-closed), 2026-07-03 (Layer 3 — booking/appointments session-fallback
+gap)
 **Related**: [Lifecycle Security Decisions](../lifecycle-security-decisions.md), [Orders Security Hardening](../../features/orders-security-hardening.md)

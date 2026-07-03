@@ -38,8 +38,7 @@ class AppointmentStaffValidationTest extends TestCase
         return $date;
     }
 
-    /** @test */
-    public function it_allows_appointment_with_staff_role()
+    public function test_it_allows_appointment_with_staff_role(): void
     {
         $staff = User::factory()->create();
         $staff->assignRole('staff');
@@ -65,8 +64,7 @@ class AppointmentStaffValidationTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_rejects_appointment_with_admin_role()
+    public function test_it_rejects_appointment_with_admin_role(): void
     {
         $this->expectException(ValidationException::class);
         $this->expectExceptionMessage('Tylko użytkownicy z rolą "staff"');
@@ -90,8 +88,7 @@ class AppointmentStaffValidationTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_rejects_appointment_with_super_admin_role()
+    public function test_it_rejects_appointment_with_super_admin_role(): void
     {
         $this->expectException(ValidationException::class);
 
@@ -114,8 +111,7 @@ class AppointmentStaffValidationTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_rejects_updating_to_non_staff_user()
+    public function test_it_rejects_updating_to_non_staff_user(): void
     {
         $this->expectException(ValidationException::class);
 

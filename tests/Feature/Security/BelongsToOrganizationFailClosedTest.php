@@ -26,11 +26,15 @@ use Tests\TestCase;
  * - app/Traits/BelongsToOrganization.php (consumes it to fail closed)
  * - app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md (Layer 2 section)
  *
- * Unlike tests/Feature/Security/RootDomainTenantIsolationTest.php (which covers
- * routes that already carry the explicit RequireTenant::class middleware), the
- * routes exercised here deliberately carry ONLY ResolveTenant::class (no
- * RequireTenant) — proving the fix works at the query/model layer, independent
- * of any per-route middleware being remembered.
+ * Originally, unlike tests/Feature/Security/RootDomainTenantIsolationTest.php
+ * (routes that already carried RequireTenant::class), the routes exercised
+ * here deliberately carried ONLY ResolveTenant::class — proving the fix works
+ * at the query/model layer, independent of route middleware. VULN-003 "Layer
+ * 3" later added RequireTenant to the booking.* and appointments.* group too (see
+ * BookingCrossTenantSessionFallbackTest); the affected tests below were
+ * updated accordingly, but the trait-level mechanism they exercise is
+ * unchanged and still relevant as a backstop for any route missing
+ * RequireTenant.
  */
 class BelongsToOrganizationFailClosedTest extends TestCase
 {
@@ -46,12 +50,20 @@ class BelongsToOrganizationFailClosedTest extends TestCase
     }
 
     /**
-     * Core Layer 2 mechanism: `/booking/available-slots` sits behind
+     * Core Layer 2 mechanism: `/booking/available-slots` originally sat behind
      * ['auth', ResolveTenant::class] only (routes/web.php) — no RequireTenant.
      * Before Layer 2, a request with no resolved tenant would silently see
      * Service::findOrFail() succeed against ANY organization's service (the
-     * global scope no-op'd). After Layer 2, the same query returns zero rows
-     * and findOrFail() 404s — even though no RequireTenant guards this route.
+     * global scope no-op'd). Layer 2 made the same query return zero rows and
+     * findOrFail() 404 on its own, independent of route middleware.
+     *
+     * VULN-003 "Layer 3" (see BookingCrossTenantSessionFallbackTest) later added
+     * RequireTenant::class to this same route group, so this request now 404s at
+     * the route layer before the Service query even runs — the assertion is
+     * unchanged, but Layer 2's trait-level backstop is no longer the only thing
+     * proven here. Left in place because it still passes and still documents
+     * defense in depth (if RequireTenant were ever removed from this route by
+     * mistake, Layer 2 alone would still catch it).
      */
     public function test_available_slots_endpoint_fails_closed_on_root_domain_without_require_tenant(): void
     {
@@ -73,25 +85,31 @@ class BelongsToOrganizationFailClosedTest extends TestCase
     }
 
     /**
-     * Side-benefit check (per task spec): BookingController's service-selection
-     * step queries Service::active()->get() with no explicit org filter and no
-     * RequireTenant guard. Prior to Layer 2, this leaked every tenant's active
-     * services to anonymous/root-domain visitors. After Layer 2, the query
-     * itself returns nothing for a root-domain request — the wizard step
-     * renders (200, no RequireTenant to block it), but with zero services,
-     * proving no cross-tenant data reaches the response.
+     * Originally a "side-benefit" check: BookingController's service-selection
+     * step queries Service::active()->get() with no explicit org filter, and at
+     * the time this test was written `booking.step` carried no RequireTenant
+     * guard — so this proved the trait-level fail-closed backstop worked even
+     * without route-level protection (200 OK, but zero services, no leak).
+     *
+     * VULN-003 "Layer 3" (see BookingCrossTenantSessionFallbackTest) closed the
+     * separately-tracked session-fallback gap by adding RequireTenant::class to
+     * this exact route group — so `booking.step` now 404s outright on the root
+     * domain, before the Service query this test used to inspect ever runs.
+     * Updated to assert the new (stronger) behavior; BelongsToOrganization's
+     * fail-closed scope remains the backstop for any route that still lacks
+     * RequireTenant (proven by the other tests in this file).
      */
-    public function test_booking_wizard_service_step_shows_no_cross_tenant_services_on_root_domain(): void
+    public function test_booking_wizard_service_step_returns_404_on_root_domain(): void
     {
         $orgA = Organization::factory()->autoDetailing()->create();
         $orgB = Organization::factory()->autoDetailing()->create();
 
-        $serviceA = Service::factory()->create([
+        Service::factory()->create([
             'organization_id' => $orgA->id,
             'name' => 'Usluga Organizacji A',
             'is_active' => true,
         ]);
-        $serviceB = Service::factory()->create([
+        Service::factory()->create([
             'organization_id' => $orgB->id,
             'name' => 'Usluga Organizacji B',
             'is_active' => true,
@@ -102,12 +120,7 @@ class BelongsToOrganizationFailClosedTest extends TestCase
         $response = $this->actingAs($user)
             ->get('http://registro.local/booking/step/1');
 
-        $response->assertOk();
-        $response->assertViewHas('services', function ($services) {
-            return $services->isEmpty();
-        });
-        $response->assertDontSee($serviceA->name);
-        $response->assertDontSee($serviceB->name);
+        $response->assertNotFound();
     }
 
     /**
