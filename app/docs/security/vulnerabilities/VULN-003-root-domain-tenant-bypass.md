@@ -486,6 +486,20 @@ simulate the poisoned session, then asserts 404 on `booking.step`, `booking.conf
 the root domain — plus 2 positive-path tests (`actingAsTenant()` pattern, real tenant subdomain)
 confirming `RequireTenant` doesn't break legitimate booking.
 
+**Adversarial review caught a weak assertion** in the first draft of
+`test_booking_confirm_post_returns_404_on_root_domain_with_poisoned_session`: the crafted session
+payload used `service_id: 1` with no matching `Service` row in the fresh test DB, so
+`Service::findOrFail()` 404'd on its own — the test passed even with `RequireTenant::class`
+removed from the route, proving nothing. Fixed by building a real, fully bookable `Service` +
+staffed schedule under Org B (the tenant the poisoned session resolves to) and referencing its
+real ID. Verified mechanistically: with `RequireTenant::class` temporarily removed from the route
+group, this exact request reaches and executes `Appointment::create()` (confirmed via
+`storage/logs/laravel.log` — `"Booking confirm: appointment created successfully"`, scoped to Org
+B's service/staff) and the test correctly **fails**; with `RequireTenant::class` restored, the
+request 404s before the controller runs and the test passes. This is the standard bar for any
+"assert 404" security regression test in this codebase — a 404 must be shown to come from the
+control being tested, not from an unrelated missing-fixture accident.
+
 One existing test needed updating as a direct, mechanical consequence of this route change:
 `BelongsToOrganizationFailClosedTest::test_booking_wizard_service_step_shows_no_cross_tenant_services_on_root_domain`
 asserted `200 OK` with an empty `services` view variable — the exact Layer-2-without-Layer-3
@@ -522,6 +536,22 @@ identical failure line/message against unmodified `develop`.
 
 ## Follow-ups (out of scope for this fix)
 
+- **HIGH PRIORITY — same vulnerability class, higher stakes (real money): `CartController`/
+  `CheckoutController`/`OrderController`.** Adversarial re-review (2026-07-03, same pass as Layer
+  3) found these controllers gate tenant access via `TenantFeature::currentTenant() !== null` —
+  the exact same permissive, session-fallback-vulnerable check Layer 3 just stopped relying on for
+  booking. The identical attack (poison session via an unauthenticated visit to another tenant's
+  subdomain, then hit `/koszyk`, checkout, or order-cancel on the root domain) still resolves the
+  wrong org via the session fallback and proceeds — cart/checkout/order data, real money, a bigger
+  blast radius than booking. Flagged for a separate, deliberate follow-up task — **not fixed
+  here**, do not touch these three controllers as part of Layer 3.
+- `LoginController::authenticated()`'s customer-role redirect
+  (`return redirect()->route('appointments.index')`) has no tenant/subdomain check, unlike the
+  admin/staff branch above it. Since `appointments.index` now requires `RequireTenant` (Layer 3),
+  a customer authenticating via a root-domain `/login` would hit a 404 instead of the previous
+  empty-list page. Reviewer could not find an actual in-app navigation path to `/login` from the
+  root domain, so real-world exposure looks low — documented as a known, low-exposure limitation,
+  no code change made here.
 - `AppointmentController::store` — `exists:services,id` validation rule allows cross-tenant
   service IDs (IDOR follow-up ticket).
 - `ServiceAreaWaitlist` model has no `organization_id` — design question for a future ticket

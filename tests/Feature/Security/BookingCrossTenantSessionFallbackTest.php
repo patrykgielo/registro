@@ -6,9 +6,14 @@ namespace Tests\Feature\Security;
 
 use App\Http\Middleware\ResolveTenant;
 use App\Models\Organization;
+use App\Models\Service;
+use App\Models\StaffSchedule;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Notification;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
@@ -84,24 +89,72 @@ class BookingCrossTenantSessionFallbackTest extends TestCase
         $response->assertNotFound();
     }
 
+    /**
+     * Get next working day (Monday-Friday), at least 2 days out — same helper
+     * used throughout the project's booking tests (24h+ advance booking rule).
+     */
+    private function getNextWorkingDay(): Carbon
+    {
+        $date = Carbon::now()->addDays(2);
+
+        while ($date->dayOfWeek === Carbon::SATURDAY || $date->dayOfWeek === Carbon::SUNDAY) {
+            $date->addDay();
+        }
+
+        return $date;
+    }
+
     public function test_booking_confirm_post_returns_404_on_root_domain_with_poisoned_session(): void
     {
         $orgA = Organization::factory()->create();
         $orgB = Organization::factory()->create();
 
+        // Build a REAL, fully bookable service under Org B — the tenant the
+        // poisoned session resolves to via TenantFeature::currentTenant()'s
+        // 3rd fallback branch. Without this, Service::findOrFail() in
+        // BookingController::confirm() would 404 on its own (unknown ID),
+        // proving nothing about RequireTenant. Setting the `tenant` request
+        // attribute here (not via the actual HTTP call below) only affects
+        // organization_id auto-assignment for these setup-time factory
+        // creates — same pattern as BookingConfirmationSecurityTest.
+        $this->app['request']->attributes->set('tenant', $orgB);
+
+        $service = Service::factory()->create([
+            'organization_id' => $orgB->id,
+            'is_active' => true,
+        ]);
+
+        $staff = User::factory()->create();
+        $staff->assignRole(Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'web']));
+        for ($day = Carbon::MONDAY; $day <= Carbon::FRIDAY; $day++) {
+            StaffSchedule::create([
+                'user_id' => $staff->id,
+                'day_of_week' => $day,
+                'start_time' => '09:00:00',
+                'end_time' => '18:00:00',
+                'is_active' => true,
+            ]);
+        }
+        $staff->services()->attach($service->id);
+
         $customer = User::factory()->create();
         $customer->assignRole('customer');
         $customer->organizations()->attach($orgA->id);
 
+        Notification::fake();
+
         // Attack scenario from the report: a poisoned session must NOT let
         // Appointment::create() (BookingController::confirm()) execute at all
         // — RequireTenant must reject the request before the controller runs.
+        // (Verified manually: with RequireTenant::class temporarily removed
+        // from this route group, this exact request DOES reach and execute
+        // Appointment::create(), scoped to Org B — this test then fails.)
         $response = $this->actingAs($customer)
             ->withSession([
                 'tenant_id' => $orgB->id,
                 'booking' => [
-                    'service_id' => 1,
-                    'date' => now()->addDays(2)->format('Y-m-d'),
+                    'service_id' => $service->id,
+                    'date' => $this->getNextWorkingDay()->format('Y-m-d'),
                     'time_slot' => '10:00',
                     'first_name' => 'Jan',
                     'last_name' => 'Kowalski',
