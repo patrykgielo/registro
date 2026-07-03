@@ -24,6 +24,15 @@ class ResolveTenant
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Marker meaning "ResolveTenant genuinely ran for this specific request" —
+        // consumed by BelongsToOrganization's global scope (Layer 2 fail-closed
+        // hardening, VULN-003). Set unconditionally, before any branching, so it
+        // reflects real HTTP/feature-test requests through this middleware —
+        // distinct from runningInConsole()/runningUnitTests(), which can't tell
+        // apart a real request from a bare Unit test that never touches this
+        // middleware at all. See app/Traits/BelongsToOrganization.php.
+        $request->attributes->set('tenant_resolution_attempted', true);
+
         $host = $request->getHost();
         $baseDomain = config('app.domain', 'registro.local');
 
