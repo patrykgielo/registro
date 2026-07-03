@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\ResolveTenant;
+use App\Models\Organization;
 use App\Models\Service;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class ProfileSynchronizationTest extends TestCase
@@ -20,9 +23,28 @@ class ProfileSynchronizationTest extends TestCase
 
     protected int $vehicleTypeId;
 
+    protected Organization $org;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        // VULN-003 Layer 3: booking.*/appointments.*/profile.* routes now
+        // carry RequireTenant, so every HTTP request in this file needs a
+        // simulated tenant (actingAsTenant() below) — same pattern used
+        // throughout the project (e.g. BookingCrossTenantSessionFallbackTest).
+        // Set the request attribute BEFORE creating any BelongsToOrganization
+        // model below so organization_id auto-assigns via the `creating` hook.
+        $this->org = Organization::factory()->autoDetailing()->create();
+        $this->app['request']->attributes->set('tenant', $this->org);
+        $this->actingAsTenant($this->org);
+
+        // With a real tenant now resolved, EmailTemplate's BelongsToOrganization
+        // scope filters out the global (NULL organization_id) 'appointment-created'
+        // row — same pre-existing email_templates gotcha documented for
+        // CustomerOrdersTest/OrderSecurityTest/RentalCancelledTest. Fake the
+        // notification instead of fixing the template-scoping design question here.
+        Notification::fake();
 
         // Create test user with empty profile
         $this->user = User::factory()->create([
@@ -40,6 +62,7 @@ class ProfileSynchronizationTest extends TestCase
 
         // Create test service
         $this->service = Service::factory()->create([
+            'organization_id' => $this->org->id,
             'name' => 'Test Service',
             'duration_minutes' => 60,
             'price' => 100,
@@ -68,6 +91,29 @@ class ProfileSynchronizationTest extends TestCase
 
         // Assign service to staff
         $this->staff->services()->attach($this->service->id);
+    }
+
+    /**
+     * Bind a test double for ResolveTenant — same pattern used throughout the
+     * project (e.g. BookingCrossTenantSessionFallbackTest::actingAsTenant()).
+     */
+    private function actingAsTenant(Organization $org): static
+    {
+        $this->app->bind(ResolveTenant::class, function () use ($org) {
+            return new class($org)
+            {
+                public function __construct(private Organization $org) {}
+
+                public function handle($request, $next)
+                {
+                    $request->attributes->set('tenant', $this->org);
+
+                    return $next($request);
+                }
+            };
+        });
+
+        return $this;
     }
 
     /**
@@ -124,8 +170,7 @@ class ProfileSynchronizationTest extends TestCase
         ], $overrides);
     }
 
-    /** @test */
-    public function booking_create_redirects_to_wizard()
+    public function test_booking_create_redirects_to_wizard(): void
     {
         // v0.7.0+: booking.create is deprecated and redirects to new wizard
         $response = $this->actingAs($this->user)
@@ -136,8 +181,7 @@ class ProfileSynchronizationTest extends TestCase
         $this->assertEquals($this->service->id, session('booking.service_id'));
     }
 
-    /** @test */
-    public function first_booking_saves_profile_data()
+    public function test_first_booking_saves_profile_data(): void
     {
         $bookingData = $this->getBookingData();
 
@@ -165,8 +209,7 @@ class ProfileSynchronizationTest extends TestCase
     // Test removed in v0.7.0 - booking.create is deprecated and redirects to wizard
     // New wizard uses multi-step flow with session state, not a single form view
 
-    /** @test */
-    public function second_booking_does_not_overwrite_existing_profile_data()
+    public function test_second_booking_does_not_overwrite_existing_profile_data(): void
     {
         // Set initial profile data
         $this->user->update([
@@ -208,8 +251,7 @@ class ProfileSynchronizationTest extends TestCase
         $this->assertEquals('Kod do bramy: 1234', $this->user->access_notes);
     }
 
-    /** @test */
-    public function partial_profile_only_fills_empty_fields()
+    public function test_partial_profile_only_fills_empty_fields(): void
     {
         // User has partial profile
         $this->user->update([
@@ -245,8 +287,7 @@ class ProfileSynchronizationTest extends TestCase
         $this->assertEquals('Kod: 1234', $this->user->access_notes); // Filled
     }
 
-    /** @test */
-    public function optional_address_fields_only_save_when_provided()
+    public function test_optional_address_fields_only_save_when_provided(): void
     {
         $bookingData = $this->getBookingData([
             'first_name' => 'Jan',

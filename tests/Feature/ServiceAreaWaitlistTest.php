@@ -19,8 +19,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
     }
 
-    /** @test */
-    public function it_creates_waitlist_entry_for_outside_location(): void
+    public function test_it_creates_waitlist_entry_for_outside_location(): void
     {
         // Arrange: Create Warsaw service area only
         ServiceArea::factory()->create([
@@ -65,8 +64,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $this->assertLessThan(300, $waitlistEntry->distance_to_nearest_area_km);
     }
 
-    /** @test */
-    public function it_prevents_duplicate_waitlist_entries(): void
+    public function test_it_prevents_duplicate_waitlist_entries(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
@@ -107,8 +105,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $this->assertEquals(1, ServiceAreaWaitlist::count());
     }
 
-    /** @test */
-    public function it_rejects_waitlist_for_location_already_in_service_area(): void
+    public function test_it_rejects_waitlist_for_location_already_in_service_area(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
@@ -138,8 +135,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $this->assertEquals(0, ServiceAreaWaitlist::count());
     }
 
-    /** @test */
-    public function it_validates_required_fields(): void
+    public function test_it_validates_required_fields(): void
     {
         // Act: Submit without required fields
         $response = $this->postJson('/api/service-area/waitlist', [
@@ -156,8 +152,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_validates_email_format(): void
+    public function test_it_validates_email_format(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
@@ -181,8 +176,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $response->assertJsonValidationErrors(['email']);
     }
 
-    /** @test */
-    public function it_validates_coordinate_ranges(): void
+    public function test_it_validates_coordinate_ranges(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
@@ -219,11 +213,9 @@ class ServiceAreaWaitlistTest extends TestCase
     }
 
     /**
-     * @test
-     *
      * @group skip
      */
-    public function skip_test_it_enforces_rate_limiting(): void
+    public function test_it_enforces_rate_limiting(): void
     {
         $this->markTestSkipped('Rate limiting not configured in test environment');
 
@@ -261,8 +253,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $response->assertStatus(429);
     }
 
-    /** @test */
-    public function it_captures_session_and_ip_metadata(): void
+    public function test_it_captures_session_and_ip_metadata(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
@@ -289,8 +280,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $this->assertNotNull($waitlistEntry->ip_address);
     }
 
-    /** @test */
-    public function it_allows_optional_name_and_phone(): void
+    public function test_it_allows_optional_name_and_phone(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
@@ -320,8 +310,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_sets_default_status_to_pending(): void
+    public function test_it_sets_default_status_to_pending(): void
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
