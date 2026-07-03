@@ -179,11 +179,55 @@ class Service extends Model
 - Dodaje global scope filtrujący po `organization_id`
 - Auto-assigns `organization_id` z `TenantFeature::currentTenant()` przy tworzeniu
 - Pomija scope w console (bez testów)
+- **FAIL-CLOSED (VULN-003 Layer 2, 2026-07-03):** gdy brak tenanta, scope zwraca ZERO wierszy
+  (`whereRaw('1 = 0')`) zamiast no-opować — ALE tylko gdy `ResolveTenant` faktycznie przetworzył
+  bieżący request i nic nie znalazł (patrz niżej). **NIE cofaj tego do no-op** bez zrozumienia
+  dlaczego tu jest — patrz `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
 
 **Aby ominąć scope (np. w seederach):**
 ```php
 Service::withoutGlobalScope('organization')->create([...]);
 ```
+
+### `tenant_resolution_attempted` — jak działa fail-closed (VULN-003 Layer 2)
+
+`ResolveTenant::handle()` (`app/Http/Middleware/ResolveTenant.php`) ustawia
+`$request->attributes->set('tenant_resolution_attempted', true)` jako PIERWSZĄ linię, przed
+jakimkolwiek branchowaniem — na KAŻDYM requeście który przez nią przechodzi. To marker: "ResolveTenant
+faktycznie zadziałał dla TEGO requestu" — inny niż `runningInConsole()`/`runningUnitTests()`, które
+NIE odróżniają prawdziwego HTTP/feature-testu od gołego Unit testu (bo `runningUnitTests()` jest
+`true` dla całego procesu PHPUnit, niezależnie od tego).
+
+`BelongsToOrganization`'s global scope:
+```php
+$tenant = TenantFeature::currentTenant();
+
+if ($tenant) {
+    $builder->where(...); // normalny branch — istniał od zawsze
+    return;
+}
+
+// Brak tenanta. Fail-closed TYLKO gdy ResolveTenant faktycznie zadziałał dla tego requestu
+// i nadal nic nie znalazł — gołe Unit/Feature testy bez HTTP requestu keep permissive no-op.
+if (app()->bound('request') && app('request')->attributes->get('tenant_resolution_attempted') === true) {
+    $builder->whereRaw('1 = 0');
+}
+```
+
+**Konsekwencja dla testów:** każdy test, który tworzy model `BelongsToOrganization` I wykonuje
+prawdziwy HTTP request (`$this->get()`/`->post()`) przez trasę z `ResolveTenant::class` (nawet
+pośrednio — np. `route()` resolvuje do skonfigurowanej domeny root z `.env.testing`) MUSI albo
+symulować tenanta, albo spodziewać się pustych wyników/404. Wzorzec `actingAsTenant()` (bindowanie
+test double dla `ResolveTenant::class` w kontenerze, patrz `TenantFeatureTest`,
+`CustomerOrdersTest`, `BookingConfirmationSecurityTest`) — **replace'uje CAŁĄ klasę** więc
+`tenant_resolution_attempted` NIGDY się nie ustawia dla takich requestów (prawdziwy `handle()`
+nie jest wywoływany) — normalny "tenant found" branch scope'a i tak działa poprawnie, bo
+`actingAsTenant()` ustawia atrybut `tenant` bezpośrednio.
+
+**Gołe testy bez HTTP requestu** (Unit testy, `Model::factory()->create()` w `setUp()` przed
+jakimkolwiek `$this->get()`) pozostają nienaruszone — `app('request')` to wtedy domyślny,
+nietknięty przez `ResolveTenant` obiekt bootstrapowy, `tenant_resolution_attempted` nigdy nie jest
+`true`, scope zachowuje dotychczasowe permissive no-op.
 
 ### GOTCHA: zapis wiersza GLOBALNEGO (`organization_id = null`) — Incident 2026-06-30 (LC-9)
 

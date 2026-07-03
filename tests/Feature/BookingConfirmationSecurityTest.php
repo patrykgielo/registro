@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\Organization;
 use App\Models\Service;
 use App\Models\StaffSchedule;
 use App\Models\User;
@@ -12,9 +13,18 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
+/**
+ * VULN-003 Layer 2: booking.* routes sit behind ['auth', ResolveTenant::class]
+ * only (no RequireTenant) — on the root domain (no tenant resolved), the real
+ * ResolveTenant now marks tenant_resolution_attempted, so BelongsToOrganization
+ * fails closed on Appointment/Service/StaffSchedule queries unless a tenant is
+ * simulated. See actingAsTenant() below — same pattern used throughout the project.
+ */
 class BookingConfirmationSecurityTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected Organization $org;
 
     protected User $user;
 
@@ -27,6 +37,26 @@ class BookingConfirmationSecurityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->org = Organization::factory()->autoDetailing()->create();
+
+        // Set the tenant on the currently-bound request too, so model creation
+        // below (seeders, StaffSchedule, Appointment factory) auto-assigns
+        // organization_id via BelongsToOrganization's creating hook —
+        // actingAsTenant() below only affects requests dispatched through the
+        // HTTP kernel via $this->get()/post().
+        $this->app['request']->attributes->set('tenant', $this->org);
+
+        // email_templates is intentionally a GLOBAL, NULL-organization_id system
+        // table (see migration 2026_06_29_120000_fix_tenant_scoped_unique_constraints
+        // — composite tenant-scoped uniques were deliberately skipped for it) — but
+        // EmailTemplate still uses BelongsToOrganization, so with a real tenant now
+        // resolved for this request, lookups get tenant-filtered and miss the global
+        // rows (same pre-existing, orthogonal gap behind CustomerOrdersTest's known
+        // 'order-cancelled' template failure — unrelated to VULN-003 Layer 2, just
+        // newly reachable here now that a tenant is properly simulated). Fake
+        // notifications so these tests don't depend on that unrelated gap.
+        \Illuminate\Support\Facades\Notification::fake();
 
         // Seed database with required data
         $this->artisan('db:seed', ['--class' => 'ServiceSeeder']);
@@ -58,6 +88,28 @@ class BookingConfirmationSecurityTest extends TestCase
     }
 
     /**
+     * Bind a test double for ResolveTenant — same pattern used throughout the project.
+     */
+    private function actingAsTenant(Organization $org): static
+    {
+        $this->app->bind(\App\Http\Middleware\ResolveTenant::class, function () use ($org) {
+            return new class($org)
+            {
+                public function __construct(private Organization $org) {}
+
+                public function handle($request, $next)
+                {
+                    $request->attributes->set('tenant', $this->org);
+
+                    return $next($request);
+                }
+            };
+        });
+
+        return $this;
+    }
+
+    /**
      * Get next working day (Monday-Friday) at least 2 days from now.
      */
     protected function getNextWorkingDay(): Carbon
@@ -78,6 +130,7 @@ class BookingConfirmationSecurityTest extends TestCase
     public function test_confirmation_redirects_without_session_token(): void
     {
         $response = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
             ->get(route('booking.confirmation'));
 
         $response->assertRedirect(route('appointments.index'));
@@ -91,6 +144,7 @@ class BookingConfirmationSecurityTest extends TestCase
     {
         // Create appointment
         $appointment = Appointment::factory()->create([
+            'organization_id' => $this->org->id,
             'customer_id' => $this->user->id,
             'service_id' => $this->service->id,
             'staff_id' => $this->staff->id,
@@ -100,6 +154,7 @@ class BookingConfirmationSecurityTest extends TestCase
         session(['booking_confirmed_id' => $appointment->id]);
 
         $response = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
             ->get(route('booking.confirmation'));
 
         $response->assertOk();
@@ -118,6 +173,7 @@ class BookingConfirmationSecurityTest extends TestCase
     {
         // Create appointment
         $appointment = Appointment::factory()->create([
+            'organization_id' => $this->org->id,
             'customer_id' => $this->user->id,
             'service_id' => $this->service->id,
             'staff_id' => $this->staff->id,
@@ -128,6 +184,7 @@ class BookingConfirmationSecurityTest extends TestCase
 
         // First request: Success
         $response1 = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
             ->get(route('booking.confirmation'));
 
         $response1->assertOk();
@@ -137,6 +194,7 @@ class BookingConfirmationSecurityTest extends TestCase
 
         // Second request: Redirect (token already used)
         $response2 = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
             ->get(route('booking.confirmation'));
 
         $response2->assertRedirect(route('appointments.index'));
@@ -151,6 +209,7 @@ class BookingConfirmationSecurityTest extends TestCase
         // Create another user and their appointment
         $otherUser = User::factory()->create();
         $otherAppointment = Appointment::factory()->create([
+            'organization_id' => $this->org->id,
             'customer_id' => $otherUser->id,
             'service_id' => $this->service->id,
             'staff_id' => $this->staff->id,
@@ -160,6 +219,7 @@ class BookingConfirmationSecurityTest extends TestCase
         session(['booking_confirmed_id' => $otherAppointment->id]);
 
         $response = $this->actingAs($this->user)  // Logged in as different user
+            ->actingAsTenant($this->org)
             ->get(route('booking.confirmation'));
 
         $response->assertForbidden();
@@ -172,6 +232,7 @@ class BookingConfirmationSecurityTest extends TestCase
     {
         // Create appointment
         $appointment = Appointment::factory()->create([
+            'organization_id' => $this->org->id,
             'customer_id' => $this->user->id,
             'service_id' => $this->service->id,
             'staff_id' => $this->staff->id,
@@ -179,6 +240,7 @@ class BookingConfirmationSecurityTest extends TestCase
 
         // Try to access confirmation with ID in URL (old vulnerable pattern)
         $response = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
             ->get('/booking/confirmation/'.$appointment->id);
 
         // Should return 404 (route not found)
@@ -248,6 +310,7 @@ class BookingConfirmationSecurityTest extends TestCase
 
         // Submit booking confirmation
         $response = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
             ->post(route('booking.confirm'));
 
         // Should redirect to confirmation page (no ID in URL)
