@@ -3,12 +3,13 @@
 namespace App\Services;
 
 use App\Models\ServiceArea;
+use App\Support\TenantFeature;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 class ServiceAreaValidator
 {
-    private const CACHE_KEY = 'service_areas:active';
+    private const CACHE_KEY_PREFIX = 'service_areas:active:';
 
     private const CACHE_TTL = 3600; // 1 hour
 
@@ -58,11 +59,11 @@ class ServiceAreaValidator
     }
 
     /**
-     * Get all active service areas (cached)
+     * Get all active service areas (cached, tenant-scoped)
      */
     public function getActiveServiceAreas(): Collection
     {
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () {
+        return Cache::remember($this->cacheKey(), self::CACHE_TTL, function () {
             return ServiceArea::active()->ordered()->get();
         });
     }
@@ -139,7 +140,7 @@ class ServiceAreaValidator
      */
     public function clearCache(): void
     {
-        Cache::forget(self::CACHE_KEY);
+        Cache::forget($this->cacheKey());
     }
 
     /**
@@ -149,5 +150,21 @@ class ServiceAreaValidator
     {
         $this->clearCache();
         $this->getActiveServiceAreas();
+    }
+
+    /**
+     * Tenant-scoped cache key (VULN-003 gap #2 fix).
+     *
+     * Previously a single global key ('service_areas:active') meant the first
+     * tenant to hit this cache for up to an hour polluted the result for every
+     * other tenant. Falls back to a shared 'none' bucket when no tenant is
+     * resolved (console context) — HTTP access without a resolved tenant is
+     * already blocked upstream by RequireTenant on these routes.
+     */
+    private function cacheKey(): string
+    {
+        $tenantId = TenantFeature::currentTenant()?->id;
+
+        return self::CACHE_KEY_PREFIX.($tenantId ?? 'none');
     }
 }

@@ -52,6 +52,28 @@ Route::middleware($isProduction ? 'throttle:10,1' : 'throttle:100,1')->group(fun
 - Use Policies for authorization
 - Never trust client input blindly
 
+### Multi-Tenant Scoping — CRITICAL (VULN-003 gap #2, 2026-07-03)
+
+The `api` middleware group (`routes/api.php`) has **NO tenant context by default** — no
+`ResolveTenant`, no session. Any endpoint that queries a `BelongsToOrganization` model MUST
+explicitly add `ResolveTenant::class, RequireTenant::class`:
+
+```php
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->group(function () {
+    Route::get('/service-area/areas', [ServiceAreaController::class, 'getServiceAreas']);
+});
+```
+
+Without this, `TenantFeature::currentTenant()` is `null` on **every** request from **every**
+tenant, and `BelongsToOrganization`'s global scope silently no-ops — the endpoint returns
+unscoped, cross-tenant data. This is safe for same-origin `fetch()` calls using **relative**
+URLs from a page already loaded on the tenant subdomain (Host header resolves correctly).
+
+Also tenant-scope any `Cache::remember()` key for tenant-owned data:
+`"my_cache_key:{$tenantId}"`, not a flat string — otherwise the first tenant to populate the
+cache pollutes it for every other tenant. See
+`app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
+
 ## Response Format
 
 ### Success Response
