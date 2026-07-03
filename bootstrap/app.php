@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'check-rental-enabled' => \App\Http\Middleware\CheckRentalEnabled::class,
+            'require.tenant' => \App\Http\Middleware\RequireTenant::class,
         ]);
 
         // Exclude webhook routes from CSRF protection

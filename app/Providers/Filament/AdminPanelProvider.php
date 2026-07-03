@@ -136,6 +136,7 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 \App\Http\Middleware\ResolveTenant::class, // Redirect unknown subdomains to root
+                \App\Http\Middleware\RequireTenant::class, // 404 when no tenant resolved (root-domain admin access)
             ])
             ->authMiddleware([
                 Authenticate::class,

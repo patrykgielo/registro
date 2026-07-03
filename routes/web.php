@@ -25,13 +25,14 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\CheckBookingEnabled;
 use App\Http\Middleware\CheckRegistrationEnabled;
 use App\Http\Middleware\CheckRentalEnabled;
+use App\Http\Middleware\RequireTenant;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 // Public routes (ResolveTenant needed for tenant-scoped settings and CMS pages)
-Route::middleware([ResolveTenant::class])->get('/', function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class])->get('/', function () {
     $settingsManager = app(\App\Support\Settings\SettingsManager::class);
     $pageId = $settingsManager->get('cms.homepage_page_id');
 
@@ -86,7 +87,7 @@ Route::get('/health', function () {
 
 // CMS Content routes - Posts, Promotions, Portfolio (with prefixes)
 // ResolveTenant needed for BelongsToOrganization scope on content models
-Route::middleware([ResolveTenant::class])->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class])->group(function () {
     Route::get('/aktualnosci/kategoria/{category:slug}', [PostController::class, 'category'])->name('post.category');
     Route::get('/aktualnosci/{slug}', [PostController::class, 'show'])->name('post.show');
     Route::get('/promocje/{slug}', [PromotionController::class, 'show'])->name('promotion.show');
@@ -100,24 +101,24 @@ Route::get('/strona/{slug}', function (string $slug) {
 })->name('page.legacy');
 
 // Service Pages routes (P0: SEO-friendly Polish URLs with rate limiting)
-Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
     Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('service.show');
 });
 
 // Service inquiry (price-on-request contact form)
 Route::post('/uslugi/{service:slug}/zapytaj', [\App\Http\Controllers\ServiceInquiryController::class, 'store'])
-    ->middleware([ResolveTenant::class, 'throttle:5,1'])
+    ->middleware([ResolveTenant::class, RequireTenant::class, 'throttle:5,1'])
     ->name('service.inquiry');
 
 // Rental Catalogue routes (public, tenant-scoped)
-Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/wypozyczalnia', [RentalController::class, 'index'])->name('rental.index');
     Route::get('/wypozyczalnia/{category:slug}', [RentalController::class, 'showCategory'])->name('rental.category');
 });
 
 // Rental availability AJAX endpoints (read-only, higher rate limit)
-Route::middleware([ResolveTenant::class, 'throttle:60,1'])->name('rental.')->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->name('rental.')->group(function () {
     Route::get('/api/rental/{service:slug}/dostepnosc', [RentalBookingController::class, 'checkAvailability'])
         ->name('availability');
     Route::get('/api/rental/{service:slug}/kalendarz', [RentalBookingController::class, 'monthlyAvailability'])
@@ -347,6 +348,6 @@ Route::get('/platform/organizations/{organization}/data-export', [\App\Http\Cont
 // This route MUST be defined LAST to prevent matching other routes.
 // Reserved slugs are blocked in Page model validation.
 // =============================================================================
-Route::middleware([ResolveTenant::class])->get('/{slug}', [PageController::class, 'show'])
+Route::middleware([ResolveTenant::class, RequireTenant::class])->get('/{slug}', [PageController::class, 'show'])
     ->name('page.show')
     ->where('slug', '^(?!admin|platform|api|livewire|filament|horizon|storage|sanctum|health|register|customer|get-started).*$');

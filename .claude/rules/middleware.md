@@ -152,6 +152,9 @@ public function terminate(Request $request, Response $response): void
 - `VerifyCsrfToken` - Laravel default
 - `CheckBookingEnabled` (`check-booking-enabled`) - przekierowuje na home gdy `isBookingEnabled() === false` dla tenanta
 - `CheckRentalEnabled` (`check-rental-enabled`) - przekierowuje na home gdy `isRentalEnabled() === false` dla tenanta
+- `RequireTenant` (`require.tenant`) - `abort(404)` gdy `$request->attributes->get('tenant') === null`. **KRYTYCZNE (VULN-003)**: `ResolveTenant` na root domain celowo NIE ustawia `tenant` — `BelongsToOrganization` scope wtedy no-opuje. KAŻDA trasa query-ująca `BelongsToOrganization` (w tym `routes/api.php` — `api` group NIE ma `ResolveTenant` domyślnie!) MUSI mieć `RequireTenant::class` zaraz PO `ResolveTenant::class`. Szczegóły + 2 gap-fixy: `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
+  - **NIGDY** `TenantFeature::currentTenant()` w `RequireTenant` — ma session fallback zapisywany dla KAŻDEGO gościa PRZED `canAccessTenant()` (privilege-escalation przez stale session). Zawsze `$request->attributes->get('tenant')`.
+  - Laravel `$middlewarePriority` wymusza `Authenticate` przed niesklasyfikowanym middleware bez względu na kolejność deklaracji (`route:list -vvv`). NIE naprawiaj globalnym `prependToPriorityList()` — przesuwa też `ResolveTenant` na `web` routes, cicho zmieniając `OrderController::show` IDOR 403→404.
 
 ### Rejestracja w `bootstrap/app.php`
 
@@ -159,6 +162,7 @@ public function terminate(Request $request, Response $response): void
 $middleware->alias([
     'check-booking-enabled' => \App\Http\Middleware\CheckBookingEnabled::class,
     'check-rental-enabled'  => \App\Http\Middleware\CheckRentalEnabled::class,
+    'require.tenant'        => \App\Http\Middleware\RequireTenant::class,
 ]);
 ```
 
@@ -177,4 +181,9 @@ Route::middleware(['auth', 'tenant', 'check-booking-enabled'])
     ->group(function () {
         Route::get('/rezerwacja', ...)->name('booking.step');
     });
+
+// Publiczna trasa query-ująca model BelongsToOrganization — MUSI mieć RequireTenant
+// zaraz po ResolveTenant, inaczej root domain widzi dane WSZYSTKICH tenantów (VULN-003)
+Route::middleware([ResolveTenant::class, RequireTenant::class])
+    ->get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
 ```
