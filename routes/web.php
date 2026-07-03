@@ -229,7 +229,10 @@ Route::prefix('api/webhooks')->name('webhooks.')->middleware('throttle:120,1')->
 });
 
 // Protected routes (require authentication + tenant resolution)
-Route::middleware(['auth', ResolveTenant::class])->group(function () {
+// RequireTenant closes the VULN-003 session-fallback gap: booking/appointments/profile
+// routes must hard-404 on the root domain even when a stale session tenant_id exists —
+// see app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md (Layer 3).
+Route::middleware(['auth', ResolveTenant::class, RequireTenant::class])->group(function () {
     // Booking routes - protected by CheckBookingEnabled middleware
     // When booking is disabled, these redirect to home page
     Route::middleware([CheckBookingEnabled::class])->group(function () {

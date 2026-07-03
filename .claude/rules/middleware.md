@@ -44,31 +44,6 @@ public function handle(Request $request, Closure $next): Response
 public function handle($request, Closure $next)
 ```
 
-## Bypass Patterns (CheckMaintenanceMode example)
-
-```php
-protected function shouldBypass(Request $request): bool
-{
-    // Admin bypass
-    if ($request->user()?->hasRole('admin')) {
-        return true;
-    }
-
-    // IP whitelist
-    if (in_array($request->ip(), config('maintenance.allowed_ips', []))) {
-        return true;
-    }
-
-    // Route bypass
-    $bypassRoutes = ['login', 'admin.*'];
-    if ($request->routeIs(...$bypassRoutes)) {
-        return true;
-    }
-
-    return false;
-}
-```
-
 ## Service Injection
 
 ```php
@@ -107,21 +82,6 @@ Route::middleware(['auth', 'verified', 'check-maintenance'])
     });
 ```
 
-## Response Modification
-
-```php
-public function handle(Request $request, Closure $next): Response
-{
-    $response = $next($request);
-
-    // Add headers
-    $response->headers->set('X-Frame-Options', 'DENY');
-    $response->headers->set('X-Content-Type-Options', 'nosniff');
-
-    return $response;
-}
-```
-
 ## Rate Limiting (via middleware)
 
 ```php
@@ -131,17 +91,12 @@ Route::middleware(['throttle:10,1'])->group(function () {
 });
 ```
 
-## Terminate Method (cleanup po response)
+## Terminate Method (cleanup po response, wykonywane PO wysłaniu do klienta)
 
 ```php
 public function terminate(Request $request, Response $response): void
 {
-    // Cleanup, logging, etc.
-    // Wykonywane PO wysłaniu response do klienta
-    Log::info('Request completed', [
-        'path' => $request->path(),
-        'status' => $response->getStatusCode(),
-    ]);
+    Log::info('Request completed', ['path' => $request->path()]);
 }
 ```
 
@@ -156,6 +111,7 @@ public function terminate(Request $request, Response $response): void
   - **NIGDY** `TenantFeature::currentTenant()` w `RequireTenant` — ma session fallback zapisywany dla KAŻDEGO gościa PRZED `canAccessTenant()` (privilege-escalation przez stale session). Zawsze `$request->attributes->get('tenant')`.
   - **Layer 2 (2026-07-03, defense-in-depth):** `RequireTenant` to teraz TYLKO pierwsza linia obrony — `BelongsToOrganization` sam fail-closuje (zwraca 0 wierszy) gdy `ResolveTenant` faktycznie zadziałał i nic nie znalazł (`tenant_resolution_attempted` request attribute, ustawiany jako pierwsza linia `ResolveTenant::handle()`). Trasa BEZ `RequireTenant` już nie leakuje cross-tenant danych — serwuje puste wyniki zamiast 404. Szczegóły: `.claude/rules/models.md` (`tenant_resolution_attempted`), `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md` (sekcja Layer 2).
   - Laravel `$middlewarePriority` wymusza `Authenticate` przed niesklasyfikowanym middleware bez względu na kolejność deklaracji (`route:list -vvv`). NIE naprawiaj globalnym `prependToPriorityList()` — przesuwa też `ResolveTenant` na `web` routes, cicho zmieniając `OrderController::show` IDOR 403→404.
+  - **Layer 3 (2026-07-03):** `booking.*`/`appointments.*`/`profile.*` (`routes/web.php:232`) — jedyny celowy wyjątek bez `RequireTenant` — teraz go mają. Zamykało to session-fallback cross-tenant write (`Appointment::create()`). Szczegóły: VULN-003 doc, sekcja Layer 3.
 
 ### Rejestracja w `bootstrap/app.php`
 
