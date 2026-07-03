@@ -633,7 +633,86 @@ to baseline. `AddToCartTest.php`, `CheckoutFlowTest.php`, `OrderSecurityTest.php
   same day — a strong signal to eventually audit every remaining `ResolveTenant`-without-
   `RequireTenant` group in one pass rather than fixing them reactively per-controller-family.
 
+## Layer 5 (2026-07-03/04, `hotfix/home-route-root-domain-404`): Layer 1 regression on the home route + a second session-fallback gap caught in review
+
+### Problem
+
+Layer 1's blanket `RequireTenant::class` rollout included the home route (`GET /`, `routes/web.php`).
+But the root domain (`registro.local`, no subdomain — the project's own documented primary local URL,
+`https://registro.local:8444` per `CLAUDE.md`) deliberately never resolves a tenant
+(`ResolveTenant.php`'s own comment: "marketplace, no tenant context"). Result: the home route started
+hard-404ing on the root domain *permanently* — a real, user-reported regression ("aplikacja przestała
+działać"), not a security finding this time.
+
+### Przyczyna
+
+Layer 1 treated "every route touching a `BelongsToOrganization` model needs `RequireTenant`" as a
+uniform rule without checking whether a given route has a legitimate *no-tenant* code path. The home
+route is the one deliberate exception: it already had graceful `if (!$page) return home-fallback`
+handling built in for exactly this case, but `RequireTenant` short-circuited before that code could
+ever run.
+
+### Rozwiązanie
+
+First attempt: simply drop `RequireTenant::class` from the home route, reasoning that Layer 2's
+fail-closed `BelongsToOrganization` scope makes `Page::find()` safe even with no tenant. **This
+reasoning was incomplete and caught by adversarial code review before merge**: both
+`SettingsManager::get()` and `BelongsToOrganization`'s scope resolve "current tenant" via
+`TenantFeature::currentTenant()`, which has a 3rd branch reading `session('tenant_id')` — the same
+session-fallback mechanism Layers 3/4 closed for booking/cart. A visitor who browsed `orgB.<domain>`
+first (poisoning `session('tenant_id')`) and then hit the root domain would have `currentTenant()`
+resolve to Org B (non-null), so Layer 2's fail-closed branch (`whereRaw('1=0')`, only reached when
+`currentTenant()` is null) would never trigger — `Page::find($pageId)` would render **Org B's own
+configured homepage on the platform's root domain**.
+
+Final fix: the home closure now takes `Illuminate\Http\Request $request` and checks
+`$request->attributes->get('tenant')` directly (the *request-attribute*, not the session-fallback-
+capable helper) — if null, it returns `home-fallback` immediately without calling
+`SettingsManager::get()`/`Page::find()` at all; only a genuinely-resolved-this-request tenant
+(subdomain) proceeds to the existing tenant-aware lookup. Same pattern already used correctly
+elsewhere in this codebase (`RegisterController`, `LoginController::redirectPath`).
+
+### Test-suite impact
+
+`tests/Feature/HomeRouteRootDomainTest.php` (new): root-domain fallback (200 + `home-fallback`),
+tenant-subdomain unaffected (200 + tenant's own CMS logic), and a poisoned-session case — Org B with
+a real `cms.homepage_page_id` Setting pointing at Org B's own published Page, `session(['tenant_id' =>
+$orgB->id])`, hit root domain, assert `assertDontSee('Org B exclusive content')` +
+`assertSee('Homepage Not Configured')`. `RootDomainTenantIsolationTest`'s home-route test (which had
+codified the bug as intended 404 behavior) updated to expect 200 + fallback; its other 7 tests
+(posts, services, rentals, CMS catch-all, admin, stale-session admin cases) unchanged and still pass.
+
+Empirically verified (not just asserted): reviewer checked out the pre-fix commit via `git reflog`,
+confirmed the poisoned-session test genuinely **fails** there (full Org B page HTML rendered), then
+confirmed it **passes** against the fixed version. Full suite: 780 passed, 3 pre-existing failures
+(`CustomerOrdersTest` ×2, `TenantFeatureTest` ×1), 0 new regressions. Live-verified post-merge:
+`curl https://registro.local:8444/` → 200 (was 404), `curl https://qatest.registro.local:8444/` → 200.
+
+### Zapobieganie
+
+- **`RequireTenant`/`ResolveTenant` blanket rollouts must check for legitimate no-tenant code paths
+  first** — a route having pre-existing graceful null-handling is a signal it may be an intentional
+  exception, not an oversight to patch over.
+- **`TenantFeature::currentTenant()` must never be used to gate access or select tenant-scoped data
+  in a route that is also reachable from the root domain** — always prefer
+  `$request->attributes->get('tenant')` directly, which reflects only the current request's
+  Host-based resolution and cannot be poisoned by a prior visit to a different tenant's subdomain.
+  This is now the 3rd time this exact session-fallback class of bug has been found in this file
+  (Layers 3, 4, and this one) — a strong signal that `TenantFeature::currentTenant()`'s session
+  fallback is an attractive nuisance whose remaining call sites should eventually be audited in one
+  pass (see `CheckRegistrationEnabled` follow-up below, found during this layer's review).
+  Layer 2's fail-closed scope is real defense-in-depth but is **not sufficient on its own** for any
+  route reachable from the root domain — it only fires when `currentTenant()` returns null, and the
+  session fallback means it often won't.
+
 ## Follow-ups (out of scope for this fix)
+
+- `CheckRegistrationEnabled` middleware (`/customer/register`) resolves `isRegistrationEnabled()` via
+  `SettingsManager` → `TenantFeature::currentTenant()`, the same session-fallback-vulnerable pattern
+  as Layer 5 above. Lower severity — no PII/data leak, since `RegisterController::register` already
+  gates the actual org-attach on `$request->attributes->get('tenant')` directly — but a poisoned
+  session could evaluate the wrong tenant's registration-enabled config at the root domain. Found
+  during Layer 5's code review; not fixed here (out of scope for the home-route hotfix).
 
 - `LoginController::authenticated()`'s customer-role redirect
   (`return redirect()->route('appointments.index')`) has no tenant/subdomain check, unlike the
