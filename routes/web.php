@@ -31,8 +31,28 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
-// Public routes (ResolveTenant needed for tenant-scoped settings and CMS pages)
-Route::middleware([ResolveTenant::class, RequireTenant::class])->get('/', function () {
+// Public home route — deliberate exception to the RequireTenant pattern below.
+// On the root domain (no subdomain) ResolveTenant sets no `tenant` attribute by
+// design ("marketplace, no tenant context"). RequireTenant would hard-404 that,
+// but this route already has graceful no-page fallbacks (home-fallback view) for
+// exactly this case. Do NOT add RequireTenant::class back here.
+//
+// IMPORTANT: gate on the `tenant` REQUEST ATTRIBUTE directly, not on
+// SettingsManager::get()/Page::find() (which resolve "current tenant" via
+// TenantFeature::currentTenant()). currentTenant() has a 3rd fallback branch
+// reading session('tenant_id'), which ResolveTenant writes on EVERY subdomain
+// visit — including anonymous ones. A visitor who merely browsed orgB's
+// subdomain earlier in the same browser session and then hits the root
+// domain would otherwise have orgB's own homepage setting/page resolved and
+// rendered on the root domain (VULN-003 Layer 1/2 gap). There is no
+// legitimate "global marketplace homepage" built yet, so on a true root-
+// domain request (no tenant attribute) we skip the tenant-aware lookup
+// entirely and always render home-fallback.
+Route::middleware([ResolveTenant::class])->get('/', function (\Illuminate\Http\Request $request) {
+    if (! $request->attributes->get('tenant')) {
+        return view('home-fallback');
+    }
+
     $settingsManager = app(\App\Support\Settings\SettingsManager::class);
     $pageId = $settingsManager->get('cms.homepage_page_id');
 

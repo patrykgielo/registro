@@ -33,10 +33,18 @@ class RootDomainTenantIsolationTest extends TestCase
         $this->withoutMiddleware([ThrottleRequests::class]);
     }
 
-    public function test_home_returns_404_on_root_domain(): void
+    /**
+     * The home route is a deliberate exception (hotfix 2026-07-03): it does NOT
+     * carry RequireTenant, because it already has graceful no-tenant fallback
+     * behavior (home-fallback view) and Layer 2 (BelongsToOrganization fail-closed
+     * scope) makes Page::find() safe without it. See
+     * tests/Feature/HomeRouteRootDomainTest.php for full coverage.
+     */
+    public function test_home_returns_ok_with_fallback_view_on_root_domain(): void
     {
         $this->get('http://registro.local/')
-            ->assertNotFound();
+            ->assertOk()
+            ->assertSee('Homepage Not Configured');
     }
 
     public function test_post_show_returns_404_on_root_domain(): void
