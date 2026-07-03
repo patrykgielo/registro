@@ -132,7 +132,10 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])
 });
 
 // Cart & Checkout routes (Sprint 2+ — new e-commerce flow, requires auth + tenant)
-Route::middleware([ResolveTenant::class, 'auth', CheckRentalEnabled::class])->group(function () {
+// RequireTenant right after ResolveTenant (VULN-003 Layer 4) — abort_unless($org !== null)
+// alone in Cart/Checkout/OrderController is not enough: TenantFeature::currentTenant()'s
+// session fallback resolves a stale tenant on the root domain even without RequireTenant.
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRentalEnabled::class])->group(function () {
     Route::get('/koszyk', [CartController::class, 'show'])->name('cart.show');
     Route::post('/koszyk/dodaj', [CartController::class, 'add'])->name('cart.add');
     Route::delete('/koszyk/usun/{item}', [CartController::class, 'remove'])->name('cart.remove');
@@ -332,7 +335,7 @@ Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->
 // =============================================================================
 if (! app()->isProduction()) {
     Route::post('/dev/fake-pay', [FakePaymentController::class, 'pay'])
-        ->middleware(['auth', ResolveTenant::class])
+        ->middleware(['auth', ResolveTenant::class, RequireTenant::class])
         ->name('dev.fake-pay');
 }
 

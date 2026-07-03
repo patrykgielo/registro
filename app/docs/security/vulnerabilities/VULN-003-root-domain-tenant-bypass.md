@@ -1,14 +1,15 @@
 # VULN-003: Root-Domain Tenant Isolation Bypass (Cross-Tenant Data Exposure)
 
 **Status**: FIXED. Layer 1 (route-level `RequireTenant`), Layer 2 (trait-level fail-closed
-backstop), and Layer 3 (session-fallback gap in `BookingController`/`AppointmentController`) are
-all complete.
+backstop), Layer 3 (session-fallback gap in `BookingController`/`AppointmentController`), and
+Layer 4 (session-fallback gap in `CartController`/`CheckoutController`/`OrderController`) are all
+complete.
 **Severity**: CRITICAL
 **Priority**: P0
 **Detected**: 2026-07-02 (code-reviewer + agent-security-audit-specialist)
 **Fixed**: 2026-07-03 (Layer 1 initial), 2026-07-03 (Layer 1 gap fixes, same day), 2026-07-03
-(Layer 2), 2026-07-03 (Layer 3)
-**Branch**: `hotfix/require-tenant-middleware` (Layer 1), `hardening/belongs-to-organization-fail-closed` (Layer 2), `fix/booking-cross-tenant-session-fallback` (Layer 3)
+(Layer 2), 2026-07-03 (Layer 3), 2026-07-03 (Layer 4)
+**Branch**: `hotfix/require-tenant-middleware` (Layer 1), `hardening/belongs-to-organization-fail-closed` (Layer 2), `fix/booking-cross-tenant-session-fallback` (Layer 3), `fix/cart-checkout-order-cross-tenant-session-fallback` (Layer 4)
 
 ---
 
@@ -534,17 +535,106 @@ identical failure line/message against unmodified `develop`.
   specific request" — they are orthogonal checks, and Laravel session `tenant_id` predates any
   per-request authorization decision.
 
+## Layer 4 (2026-07-03, `fix/cart-checkout-order-cross-tenant-session-fallback`): cart/checkout/orders session-fallback gap
+
+### Problem
+
+`routes/web.php:135` — `Route::middleware([ResolveTenant::class, 'auth', CheckRentalEnabled::class])->group(...)`
+covered all 9 `cart.*`/`checkout.*`/`orders.*` routes, none carrying `RequireTenant::class` — the
+exact follow-up flagged (but deliberately not fixed) at the end of the Layer 3 pass. Identical
+attack chain to Layer 3, higher stakes: `CartController`, `CheckoutController`, and
+`OrderController` all gate tenant access via `abort_unless(TenantFeature::currentTenant() !== null, 404)`,
+the same permissive check whose session-fallback branch (`session('tenant_id')`, written
+unconditionally by `ResolveTenant` on any successful subdomain visit, no auth required) resolves
+non-null even when the current request never legitimately resolved a tenant.
+
+**Confirmed attack chain**: an authenticated customer of Org A visits `orgB.<domain>/` (any public
+page, unauthenticated is fine) → session gets `tenant_id = orgB.id`. They then hit `/koszyk`
+(cart), checkout, or `/moje-zamowienia/{order}/anuluj` on the root domain while authenticated as
+their Org A account → `TenantFeature::currentTenant()` resolves Org B via the session fallback →
+`Cart`/`CartItem`/`Order` rows get created or modified under Org B (`CartService::getOrCreateCart()`
+and `convertToOrder()` both explicitly thread the resolved `$org` into `organization_id`) — real
+order/payment-adjacent data, a bigger blast radius than the booking calendar Layer 3 protected.
+
+### Przyczyna
+
+Same root cause and bypass mechanism as Layer 3 — `booking.*`/`appointments.*` and
+`cart.*`/`checkout.*`/`orders.*` were two independent route groups that both predated
+`RequireTenant`'s introduction and were never retrofitted with it.
+
+### Rozwiązanie
+
+One-line middleware change — `RequireTenant::class` added to the same group, right after
+`ResolveTenant::class`, at `routes/web.php:135`:
+
+```php
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRentalEnabled::class])->group(function () {
+    // ... all 9 existing cart.*/checkout.*/orders.* routes, unchanged
+});
+```
+
+Sufficient for the same reason as Layer 3: all 9 routes are plain Blade/redirect controllers, not
+Livewire (zero `wire:`/`@livewire` in `resources/views/{cart,checkout,orders}/**`), so
+`RequireTenant` correctly 404s the request before any controller code runs, regardless of stale
+session content. No anonymous/guest cart flow exists to special-case — `'auth'` is already
+required on this whole group, and `CartService::getOrCreateCart()` takes a non-nullable `User`.
+
+**Also fixed in this pass**: `POST /dev/fake-pay` (`Dev\FakePaymentController::pay`,
+`routes/web.php:337`) had the identical `ResolveTenant`-without-`RequireTenant` gap and the same
+`abort_unless($org !== null, 404)` pattern in the controller. Non-production-only route
+(`if (! app()->isProduction())` wraps it, plus a defense-in-depth `abort_if(app()->isProduction(), 404)`
+inside the controller), so exposure is limited to local/dev environments — fixed anyway since it
+was a trivial one-line addition consistent with the rest of this pass.
+
+**Explicitly left untouched**: `POST /webhooks/przelewy24` — a server-to-server payment callback
+with no browser session (session-fallback poisoning doesn't apply), looks up its target `Order` by
+a globally-unique `p24_session_id` (not a tenant-scoped lookup), and is deliberately CSRF-exempt.
+Adding `RequireTenant` here would risk breaking legitimate P24 callbacks for no security benefit —
+confirmed safe-by-construction in the original VULN-003 audit and re-confirmed here.
+
+### Test-suite impact
+
+New regression file: `tests/Feature/Security/CartCheckoutOrderCrossTenantSessionFallbackTest.php`
+— 2 real `Organization`s, an authenticated customer of Org A, `withSession(['tenant_id' => $orgB->id])`
+to simulate the poisoned session, then asserts 404 on `cart.show`, `checkout.show`, `orders.index`,
+and both write paths `cart.add` (with `assertDatabaseMissing` confirming no `CartItem` was created)
+and `orders.cancel` (with the order's `status`/`cancelled_at` confirmed unchanged) on the root
+domain — plus 3 positive-path tests (`actingAsTenant()` pattern, real tenant subdomain) confirming
+`RequireTenant` doesn't break legitimate cart/checkout/order usage.
+
+Applied the Layer 3 lesson about weak assertions directly: every negative test builds a real
+`Service`/`Order` row under Org B (the tenant the poisoned session resolves to) before the attack
+request, so `service_id`/`{order}` route-model-binding can't 404 on its own for an unrelated
+reason. Verified mechanistically — with `RequireTenant::class` temporarily removed from the route
+group, all 5 negative tests failed for the expected reason (`cart.show`/`orders.index` returned
+200, `checkout.show`/`cart.add`/`orders.cancel` returned 302 redirects indicating the controller
+ran to completion), confirmed via a throwaway diagnostic test that `cart.add` demonstrably wrote a
+`CartItem` row (count 1) with a `"Dodano do koszyka."` success flash; with `RequireTenant::class`
+restored, all 8 tests passed. The `orders.cancel` negative test needed `Notification::fake()` —
+without it, the pre-fix run threw a 500 (`Email template 'order-cancelled' not found for language
+'pl'`) instead of the clean 302 the other write path produces, because a real order-state
+transition fires `OrderCancelled` → a queued notification (same `email_templates`
+global/NULL-organization gotcha documented in the project's testing conventions).
+
+**Full suite**: baseline (`develop`, pre-Layer-4) 740 passed / 3 failed / 4 skipped → 748 passed /
+3 failed / 4 skipped. +8 passed (all 8 new regression tests), 0 new failures — the same 3
+pre-existing failures (`Orders\CustomerOrdersTest` ×2, `TenantFeatureTest` ×1), confirmed identical
+to baseline. `AddToCartTest.php`, `CheckoutFlowTest.php`, `OrderSecurityTest.php`,
+`CustomerOrdersTest.php` (the pre-existing suites covering this route group) all use
+`actingAsTenant()`, which sets the `tenant` request attribute directly and bypasses
+`ResolveTenant::handle()` entirely — unaffected by adding `RequireTenant`, confirmed empirically
+(`CustomerOrdersTest` shows the same 2 pre-existing failures, 0 new).
+
+### Zapobieganie
+
+- Same rule as Layer 3: any new authenticated route that creates or reads a `BelongsToOrganization`
+  model MUST carry `RequireTenant::class` right after `ResolveTenant::class`. Two independent route
+  groups (booking/appointments, cart/checkout/orders) needed the identical one-line fix within the
+  same day — a strong signal to eventually audit every remaining `ResolveTenant`-without-
+  `RequireTenant` group in one pass rather than fixing them reactively per-controller-family.
+
 ## Follow-ups (out of scope for this fix)
 
-- **HIGH PRIORITY — same vulnerability class, higher stakes (real money): `CartController`/
-  `CheckoutController`/`OrderController`.** Adversarial re-review (2026-07-03, same pass as Layer
-  3) found these controllers gate tenant access via `TenantFeature::currentTenant() !== null` —
-  the exact same permissive, session-fallback-vulnerable check Layer 3 just stopped relying on for
-  booking. The identical attack (poison session via an unauthenticated visit to another tenant's
-  subdomain, then hit `/koszyk`, checkout, or order-cancel on the root domain) still resolves the
-  wrong org via the session fallback and proceeds — cart/checkout/order data, real money, a bigger
-  blast radius than booking. Flagged for a separate, deliberate follow-up task — **not fixed
-  here**, do not touch these three controllers as part of Layer 3.
 - `LoginController::authenticated()`'s customer-role redirect
   (`return redirect()->route('appointments.index')`) has no tenant/subdomain check, unlike the
   admin/staff branch above it. Since `appointments.index` now requires `RequireTenant` (Layer 3),
@@ -566,5 +656,5 @@ identical failure line/message against unmodified `develop`.
 **Created**: 2026-07-03
 **Updated**: 2026-07-03 (Layer 1 gap fixes from adversarial re-review), 2026-07-03 (Layer 2 —
 BelongsToOrganization fail-closed), 2026-07-03 (Layer 3 — booking/appointments session-fallback
-gap)
+gap), 2026-07-03 (Layer 4 — cart/checkout/orders session-fallback gap)
 **Related**: [Lifecycle Security Decisions](../lifecycle-security-decisions.md), [Orders Security Hardening](../../features/orders-security-hardening.md)

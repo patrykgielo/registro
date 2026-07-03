@@ -59,8 +59,7 @@
 ## Testing
 - Tests run in Docker only (PHP 8.3, local=8.2)
 - .env.testing MUST exist → DB_CONNECTION=sqlite, DB_DATABASE=:memory:
-- develop baseline (pre VULN-003 Layer 2, PR not yet merged): 7 pre-existing failures — BookingServiceArea(4) + TenantFeature(1) + CustomerOrdersTest(2)
-- Once `hardening/belongs-to-organization-fail-closed` merges: baseline drops to 3 (CustomerOrdersTest×2 + TenantFeatureTest×1 only — BookingServiceArea's 4 get fixed as a side effect, see [project_vuln003_layer2.md](project_vuln003_layer2.md))
+- develop baseline (post VULN-003 Layers 1-3, as of 2026-07-03): 740 passed / 3 pre-existing failed (CustomerOrdersTest×2 + TenantFeatureTest×1) / 4 skipped — see [project_vuln003_layer2.md](project_vuln003_layer2.md) for the Layer 2-4 mechanism + test pattern
 - CheckoutFlowTest::validCheckoutPayload() updated to include customer_type, legal acceptances, PESEL, address
 - `email_templates` is intentionally global/NULL-organization_id (migration `2026_06_29_120000_fix_tenant_scoped_unique_constraints` skips it) but `EmailTemplate` still uses `BelongsToOrganization` — any test with a real resolved tenant that triggers a templated notification needs `Notification::fake()` or it 500s with "template not found" (root cause of CustomerOrdersTest's 2 pre-existing failures)
 
