@@ -229,6 +229,12 @@ jakimkolwiek `$this->get()`) pozostają nienaruszone — `app('request')` to wte
 nietknięty przez `ResolveTenant` obiekt bootstrapowy, `tenant_resolution_attempted` nigdy nie jest
 `true`, scope zachowuje dotychczasowe permissive no-op.
 
+**Powiązany gotcha:** stale `session('tenant_id')` powoduje podobny błędny-tenant problem także
+poza Layer 2 — patrz GOTCHA LC-9 niżej (tam: cichy zapis do złego tenanta w panelu `/platform`;
+tutaj: `currentTenant()`'s session-fallback branch omija fail-closed check całkowicie, bo zwraca
+non-null PRZED dotarciem do gałęzi `tenant_resolution_attempted` — patrz "Booking/Appointment"
+follow-up w `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`).
+
 ### GOTCHA: zapis wiersza GLOBALNEGO (`organization_id = null`) — Incident 2026-06-30 (LC-9)
 
 `withoutGlobalScope` wyłącza tylko scope **odczytu**. Hook `creating` nadal auto-wypełnia `organization_id` z `TenantFeature::currentTenant()` gdy pole jest puste (null jest falsy!). W panelu `/platform` **stale `session('tenant_id')`** (po wcześniejszej wizycie na subdomenie tenanta) sprawia, że "globalny" `updateOrCreate(['organization_id' => null, ...])` ląduje jako **tenant-scoped** — cicha korupcja danych.
@@ -245,6 +251,11 @@ Setting::withoutEvents(fn () => Setting::withoutGlobalScope('organization')
 ```
 
 Dla settingsów: `SettingsManager::getGlobal()`/`setGlobal()` robią to poprawnie — w panelu platformy NIGDY nie używaj `get()`/`set()` (są tenant-aware przez session fallback).
+
+**Powiązane:** ten sam `session('tenant_id')` fallback jest źródłem osobnego, potwierdzonego
+cross-tenant read+write ryzyka w `BookingController`/`AppointmentController` — patrz sekcja
+"`tenant_resolution_attempted`" wyżej i "Booking/Appointment" follow-up w
+`app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
 
 ## Organization Model — kluczowe pola i metody
 
