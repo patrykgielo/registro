@@ -22,6 +22,8 @@ use App\Listeners\SendRentalCancelledNotification;
 use App\Models\Appointment;
 use App\Models\Organization;
 use App\Models\Page as PageModel;
+use App\Models\PortfolioItem;
+use App\Models\Post;
 use App\Models\User;
 use App\Notifications\AdminCreatedUserNotification;
 use App\Notifications\AppointmentCancelledNotification;
@@ -35,6 +37,7 @@ use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
 use App\Observers\OrganizationObserver;
 use App\Observers\PageObserver;
+use App\Observers\SitemapCacheObserver;
 use App\Observers\UserObserver;
 use App\Services\Email\EmailGatewayInterface;
 use App\Services\Email\EmailService;
@@ -91,6 +94,9 @@ class AppServiceProvider extends ServiceProvider
         Appointment::observe(AppointmentObserver::class);
         Organization::observe(OrganizationObserver::class);
         PageModel::observe(PageObserver::class);
+        PageModel::observe(SitemapCacheObserver::class);
+        Post::observe(SitemapCacheObserver::class);
+        PortfolioItem::observe(SitemapCacheObserver::class);
         User::observe(UserObserver::class);
 
         // Override mail configuration with database settings

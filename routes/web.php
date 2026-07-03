@@ -100,6 +100,12 @@ Route::get('/strona/{slug}', function (string $slug) {
     return redirect()->route('page.show', $slug, 301);
 })->name('page.legacy');
 
+// Sitemap (per-tenant) — queries tenant-owned content models (Page/Post/PortfolioItem/Service),
+// MUST carry RequireTenant (VULN-003) right after ResolveTenant, same as every other content route.
+Route::middleware([ResolveTenant::class, RequireTenant::class])
+    ->get('/sitemap.xml', \App\Http\Controllers\SitemapController::class)
+    ->name('sitemap');
+
 // Service Pages routes (P0: SEO-friendly Polish URLs with rate limiting)
 Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi', [ServiceController::class, 'index'])->name('services.index');

@@ -145,6 +145,75 @@ Image fallback inside the component: `$item->featured_image ?? $item->before_ima
 
 The category badge on `posts/show.blade.php` (via `components/cms/partials/content-header.blade.php`) and on `portfolio/show.blade.php` (header badge + footer "Kategoria: X") is now an `<a href="{{ route('post.category', ...) }}">` / `route('portfolio.category', ...)` link to the Phase B archive, instead of a non-interactive `<span>`. No controller changes — `category` was already eager-loaded. Focus-visible state uses the working v5.0 token pattern (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`), not the legacy `ring-primary-*`/`ring-purple-*` convention seen elsewhere in these CMS partials — `primary-*` is not a defined Tailwind color in this app (no `tailwind.config.js` extension, no `--color-primary-*` token in `design-tokens.css`; it only exists in `resources/css/filament/admin.css` for the admin panel), so `bg-primary-50`/`ring-primary-400` on the post badge are pre-existing no-op classes on the frontend bundle.
 
-## Out of scope (Phase D — see plan)
+## Phase D — Sitemap per tenant
 
-`sitemap.xml` is a separate phase and not covered here.
+`GET /sitemap.xml` returns a `<urlset>` XML sitemap of the current tenant's published `Page`s, `Post`s (+ one `post.category` URL per distinct category in use), `PortfolioItem`s (+ one `portfolio.category` URL per distinct category in use), and active `Service`s.
+
+### VULN-003 — route registered with `RequireTenant` from the start
+
+This route queries tenant-owned models, so — same as every other content route in `routes/web.php` — it's registered as:
+
+```php
+Route::middleware([ResolveTenant::class, RequireTenant::class])
+    ->get('/sitemap.xml', \App\Http\Controllers\SitemapController::class)
+    ->name('sitemap');
+```
+
+Registered before the catch-all `page.show` route (same requirement every other content route already follows). Without `RequireTenant`, the bare root domain would 200 with an unscoped (or empty, since `TenantFeature::currentTenant()` would be null) sitemap instead of 404ing — exactly the class of bug VULN-003 fixed elsewhere. Regression-tested in `tests/Feature/Seo/SitemapTest.php::test_sitemap_returns_404_on_root_domain`.
+
+### `App\Support\Seo\SitemapBuilder`
+
+`build(Organization $tenant): string` — every query is **explicitly** filtered by `where('organization_id', $tenant->id)`, on top of (not instead of) each model's own `BelongsToOrganization` global scope. Defense in depth: this builder could plausibly run outside a per-request tenant context in the future (e.g. a console command looping over tenants), where the scope's `TenantFeature::currentTenant()` resolution can't be relied upon.
+
+Content gathered, each with `<loc>` (absolute URL via `route()`, resolved against the current tenant subdomain since `ResolveTenant` already called `URL::forceRootUrl()` for this request) and `<lastmod>` (`updated_at->toAtomString()`):
+
+- `Page::published()` (`whereNotNull('published_at')` + `<= now()`)
+- `Post::published()`, plus a `post.category` URL per distinct `category_id` actually in use among those posts
+- `PortfolioItem::published()`, plus a `portfolio.category` URL per distinct category in use
+- Active `Service`s — mirrors `ServiceController::index()`'s condition exactly: `time_slot` must be `published()`, `item_rental` only needs `is_active` (no `published_at` workflow for rentals)
+
+XML is built with `SimpleXMLElement`, not string concatenation — `addChild()` does **not** escape XML special characters (verified: an unescaped `&` in a URL throws `unterminated entity reference`), so every `<loc>` value is passed through `htmlspecialchars($loc, ENT_XML1 | ENT_QUOTES, 'UTF-8')` before `addChild()`.
+
+### `App\Http\Controllers\SitemapController`
+
+```php
+public function __invoke(SitemapBuilder $builder): Response
+{
+    $tenant = TenantFeature::currentTenant();
+    abort_unless($tenant !== null, 404); // defense in depth — RequireTenant already guarantees this
+
+    $xml = Cache::remember("sitemap:{$tenant->id}", now()->addHour(), fn () => $builder->build($tenant));
+
+    return response($xml, 200)->header('Content-Type', 'application/xml');
+}
+```
+
+Cache key mirrors the tenant-resolution cache pattern already used in `ResolveTenant.php` (`Cache::remember` per key, not a global sitemap cache).
+
+### Cache invalidation — `App\Observers\SitemapCacheObserver`
+
+A single observer (`saved`/`deleted` hooks calling `Cache::forget("sitemap:{$model->organization_id}")`) is registered on all three content models in `AppServiceProvider::boot()`:
+
+```php
+PageModel::observe(SitemapCacheObserver::class);
+Post::observe(SitemapCacheObserver::class);
+PortfolioItem::observe(SitemapCacheObserver::class);
+```
+
+One shared observer instead of three near-identical `booted()` hooks (the pattern `Page::booted()` already uses for its own, unrelated navigation-menu cache) — keeps the "sitemap" cache-invalidation concern out of the CMS models entirely and follows the project's existing Observer convention (`AppointmentObserver`, `OrganizationObserver`, `PageObserver`, `UserObserver` are all registered the same way). This means publishing/unpublishing/deleting content invalidates the cached sitemap within the same request, instead of waiting up to an hour for the `Cache::remember` TTL to expire.
+
+### Deliberate scope limits (per plan)
+
+- No RentalCategory/Wypożyczalnia URLs (out of original scope; same mechanism could extend to it later).
+- No `<sitemap>` index file (single flat `<urlset>` is sufficient at current content volume).
+- No `robots.txt` changes.
+- Archive category URLs only include categories actually referenced by at least one published item — an empty category (no published posts/portfolio items) does not get a sitemap entry, since there'd be nothing to link to from it in the current MVP archive view either.
+
+### Files
+
+- `app/Support/Seo/SitemapBuilder.php` (new)
+- `app/Http/Controllers/SitemapController.php` (new)
+- `app/Observers/SitemapCacheObserver.php` (new)
+- `app/Providers/AppServiceProvider.php` (registers the observer on `Page`/`Post`/`PortfolioItem`)
+- `routes/web.php` (`GET /sitemap.xml` → `sitemap`, `ResolveTenant` + `RequireTenant`)
+- `tests/Feature/Seo/SitemapTest.php` (new — valid XML + tenant content, root-domain 404, cross-tenant isolation)
