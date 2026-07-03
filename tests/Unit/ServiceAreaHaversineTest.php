@@ -10,8 +10,7 @@ class ServiceAreaHaversineTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
-    public function haversine_formula_calculates_accurate_distance_warsaw_to_krakow(): void
+    public function test_haversine_formula_calculates_accurate_distance_warsaw_to_krakow(): void
     {
         // Arrange: Create Warsaw service area
         $warsaw = ServiceArea::factory()->create([
@@ -36,8 +35,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThanOrEqual($expectedDistance + $tolerance, $distance);
     }
 
-    /** @test */
-    public function haversine_formula_calculates_accurate_distance_warsaw_to_gdansk(): void
+    public function test_haversine_formula_calculates_accurate_distance_warsaw_to_gdansk(): void
     {
         // Arrange: Create Warsaw service area
         $warsaw = ServiceArea::factory()->create([
@@ -62,8 +60,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThanOrEqual($expectedDistance + $tolerance, $distance);
     }
 
-    /** @test */
-    public function haversine_formula_calculates_accurate_distance_warsaw_to_poznan(): void
+    public function test_haversine_formula_calculates_accurate_distance_warsaw_to_poznan(): void
     {
         // Arrange: Create Warsaw service area
         $warsaw = ServiceArea::factory()->create([
@@ -88,8 +85,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThanOrEqual($expectedDistance + $tolerance, $distance);
     }
 
-    /** @test */
-    public function haversine_formula_returns_zero_for_same_location(): void
+    public function test_haversine_formula_returns_zero_for_same_location(): void
     {
         // Arrange: Create Warsaw service area
         $warsaw = ServiceArea::factory()->create([
@@ -106,8 +102,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThan(0.001, $distance);
     }
 
-    /** @test */
-    public function contains_location_returns_true_within_radius(): void
+    public function test_contains_location_returns_true_within_radius(): void
     {
         // Arrange: Create Warsaw service area with 50km radius
         $warsaw = ServiceArea::factory()->create([
@@ -123,8 +118,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertTrue($warsaw->containsLocation($nearbyLat, 21.0122));
     }
 
-    /** @test */
-    public function contains_location_returns_false_outside_radius(): void
+    public function test_contains_location_returns_false_outside_radius(): void
     {
         // Arrange: Create Warsaw service area with 50km radius
         $warsaw = ServiceArea::factory()->create([
@@ -140,8 +134,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertFalse($warsaw->containsLocation($farLat, 21.0122));
     }
 
-    /** @test */
-    public function contains_location_returns_true_at_edge_of_radius(): void
+    public function test_contains_location_returns_true_at_edge_of_radius(): void
     {
         // Arrange: Create Warsaw service area with 50km radius
         $warsaw = ServiceArea::factory()->create([
@@ -157,8 +150,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertTrue($warsaw->containsLocation($edgeLat, 21.0122));
     }
 
-    /** @test */
-    public function contains_location_handles_small_radius(): void
+    public function test_contains_location_handles_small_radius(): void
     {
         // Arrange: Create service area with 1km radius
         $tinyArea = ServiceArea::factory()->create([
@@ -177,8 +169,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertFalse($tinyArea->containsLocation($farLat, 21.0122));
     }
 
-    /** @test */
-    public function contains_location_handles_large_radius(): void
+    public function test_contains_location_handles_large_radius(): void
     {
         // Arrange: Create service area with 200km radius
         $largeArea = ServiceArea::factory()->create([
@@ -196,8 +187,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertTrue($largeArea->containsLocation($withinLat, 21.0122));
     }
 
-    /** @test */
-    public function haversine_handles_negative_coordinates(): void
+    public function test_haversine_handles_negative_coordinates(): void
     {
         // Arrange: Create service area at negative coordinates (e.g., South America)
         $southAmerica = ServiceArea::factory()->create([
@@ -215,8 +205,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThan(100, $distance);
     }
 
-    /** @test */
-    public function haversine_handles_antimeridian_crossing(): void
+    public function test_haversine_handles_antimeridian_crossing(): void
     {
         // Arrange: Create service area near antimeridian (180°)
         $pacific = ServiceArea::factory()->create([
@@ -233,8 +222,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThan(300, $distance);
     }
 
-    /** @test */
-    public function haversine_handles_equator(): void
+    public function test_haversine_handles_equator(): void
     {
         // Arrange: Create service area at equator
         $equator = ServiceArea::factory()->create([
@@ -252,8 +240,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThan(120, $distance);
     }
 
-    /** @test */
-    public function haversine_handles_poles(): void
+    public function test_haversine_handles_poles(): void
     {
         // Arrange: Create service area near North Pole
         $arctic = ServiceArea::factory()->create([
@@ -271,8 +258,7 @@ class ServiceAreaHaversineTest extends TestCase
         $this->assertLessThan(200, $distance);
     }
 
-    /** @test */
-    public function contains_location_is_symmetric(): void
+    public function test_contains_location_is_symmetric(): void
     {
         // Arrange: Create two service areas at same locations
         $area1 = ServiceArea::factory()->create([

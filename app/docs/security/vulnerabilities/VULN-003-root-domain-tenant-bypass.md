@@ -646,15 +646,25 @@ to baseline. `AddToCartTest.php`, `CheckoutFlowTest.php`, `OrderSecurityTest.php
   service IDs (IDOR follow-up ticket).
 - `ServiceAreaWaitlist` model has no `organization_id` — design question for a future ticket
   (see Gap #2 above).
-- 3 test files still have dead `/** @test */`-annotated tests post PHPUnit 12 upgrade (see
-  "Discovered while fixing" above and Layer 3's "Also fixed in this pass") — needs a dedicated
-  cleanup PR, ideally with a CI check that fails if `grep -rl '@test' tests/` finds anything, to
-  prevent recurrence.
+- ~~3 test files still have dead `/** @test */`-annotated tests post PHPUnit 12 upgrade~~ —
+  **RESOLVED** (`chore/fix-dead-test-annotations`): `tests/Unit/ServiceAreaHaversineTest.php` (14
+  methods), `tests/Feature/ServiceAreaWaitlistTest.php` (9 real + 1 already-`markTestSkipped`
+  method that was doubly dead — both a docblock `@test` annotation and a non-`test_`-prefixed
+  method name), `tests/Feature/ProfileSynchronizationTest.php` (5 methods, all renamed to
+  `test_`-prefixed). All pass once discovered except the one already-intentional skip; no
+  application code changes needed for Haversine/Waitlist. `ProfileSynchronizationTest` needed
+  updating to simulate a tenant (`actingAsTenant()` pattern) — its HTTP requests to
+  `booking.create`/`appointments.store` were silently 404ing under Layer 3's `RequireTenant`
+  the whole time the tests were dead, discovered only once un-hidden — plus `Notification::fake()`
+  for the same `email_templates` global-row gotcha documented in Layer 2/3/4. Regression guard
+  added: `tests/Unit/NoDeadTestAnnotationsTest.php` — fails the suite if any file under `tests/`
+  still uses the doc-comment marker (single-line or multi-line docblock form).
 
 ---
 
 **Created**: 2026-07-03
 **Updated**: 2026-07-03 (Layer 1 gap fixes from adversarial re-review), 2026-07-03 (Layer 2 —
 BelongsToOrganization fail-closed), 2026-07-03 (Layer 3 — booking/appointments session-fallback
-gap), 2026-07-03 (Layer 4 — cart/checkout/orders session-fallback gap)
+gap), 2026-07-03 (Layer 4 — cart/checkout/orders session-fallback gap), 2026-07-03 (dead
+`@test`-annotation cleanup, last remaining test-cleanup follow-up resolved)
 **Related**: [Lifecycle Security Decisions](../lifecycle-security-decisions.md), [Orders Security Hardening](../../features/orders-security-hardening.md)
