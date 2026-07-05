@@ -1,10 +1,11 @@
 # VULN-001: Missing Rate Limiting on Booking Endpoints
 
-**Status**: OPEN
+**Status**: FIXED (2026-07-05)
 **Severity**: MEDIUM (Non-blocking)
 **Priority**: P2 (Post-deployment)
 **Detected**: 2025-12-10
 **Affected Version**: v0.6.2
+**Fixed Version**: fix/auth-and-audit-hardening
 
 ---
 
@@ -14,7 +15,32 @@ Booking wizard endpoints lack rate limiting, allowing authenticated users to mak
 
 ---
 
-## Affected Endpoints
+## Resolution (2026-07-05)
+
+All 5 originally-flagged endpoints, plus 2 more of the same class found during code review, are now
+throttled in `routes/web.php`:
+
+| Endpoint | Method | Limit | Note |
+|---|---|---|---|
+| `/booking/step/{step}` | POST | `throttle:30,1` | Fixed earlier (session write) |
+| `/booking/save-progress` | POST | `throttle:30,1` | Fixed earlier (session write) |
+| `/booking/confirm` | POST | `throttle:10,1` (prod) / `throttle:100,1` (non-prod) | Fixed earlier (critical action) |
+| `/booking/step/{step}` | GET | `throttle:60,1` | **Fixed 2026-07-05** (view route) |
+| `/booking/change-service` | GET | `throttle:60,1` | **Fixed 2026-07-05** (view route, not in original 5 but same class of gap) |
+| `/booking/restore-progress` | GET | `throttle:60,1` | **Fixed 2026-07-05** |
+| `/services/{service}/book` | GET | `throttle:60,1` | **Fixed 2026-07-05** — `booking.create` (old single-page flow's view route), flagged by code review, not in original 5 |
+| `/booking/unavailable-dates` | GET | `throttle:20,1` | **Fixed 2026-07-05** — stricter limit given the 60-day per-service computation cost |
+| `/booking/available-slots` | GET | `throttle:20,1` | **Fixed 2026-07-05** — `booking.slots`, flagged by code review: `AppointmentService::getAvailableSlotsAcrossAllStaff()` has a same-or-worse per-request computational profile as `unavailable-dates`, same tier applied for consistency |
+
+No caching was added for `/booking/unavailable-dates` or `/booking/available-slots` (Solution 2 in this
+doc) — throttling alone was judged sufficient to close the MEDIUM finding; caching remains a
+LOW/performance follow-up (see INFO-001 in `app/docs/security/baseline.md`).
+
+Regression test: `tests/Feature/Security/BookingGetRouteRateLimitTest.php`.
+
+---
+
+## Affected Endpoints (original finding)
 
 - POST `/booking/step/{step}` - Store wizard step data (no throttle)
 - POST `/booking/confirm` - Create appointment (no throttle)
@@ -277,12 +303,13 @@ time curl "https://registro.local:8444/booking/unavailable-dates?service_id=1"
 
 ## Acceptance Criteria
 
-- [ ] Rate limiting middleware added to all booking POST routes
-- [ ] Appropriate limits configured (60/30/10 per minute)
-- [ ] Test: 11th confirm request returns 429
-- [ ] Test: User A hitting limit does not affect User B
-- [ ] Cache implemented for unavailable-dates endpoint (optional)
-- [ ] Documentation updated (CLAUDE.md, security baseline)
+- [x] Rate limiting middleware added to all booking POST routes
+- [x] Appropriate limits configured (60/30/10/20 per minute)
+- [x] Rate limiting middleware added to remaining GET routes (step, change-service, restore-progress, unavailable-dates)
+- [x] Test: exceeding the limit returns 429 (`BookingGetRouteRateLimitTest`)
+- [ ] Test: User A hitting limit does not affect User B (not covered — existing per-route limiter is IP/session keyed by Laravel default, not separately tested)
+- [ ] Cache implemented for unavailable-dates endpoint (optional, not done — tracked as INFO-001 follow-up)
+- [x] Documentation updated (this file)
 
 ---
 

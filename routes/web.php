@@ -259,13 +259,15 @@ Route::middleware(['auth', ResolveTenant::class, RequireTenant::class])->group(f
     // Booking routes - protected by CheckBookingEnabled middleware
     // When booking is disabled, these redirect to home page
     Route::middleware([CheckBookingEnabled::class])->group(function () {
-        // Booking (old single-page flow)
-        Route::get('/services/{service}/book', [BookingController::class, 'create'])->name('booking.create');
-        Route::get('/booking/available-slots', [BookingController::class, 'getAvailableSlots'])->name('booking.slots');
-
-        // Booking Wizard (new multi-step flow)
-        Route::get('/booking/step/{step}', [BookingController::class, 'showStep'])->name('booking.step');
-        Route::get('/booking/change-service', [BookingController::class, 'changeService'])->name('booking.change-service');
+        // Booking Wizard (new multi-step flow) + old single-page flow's view route —
+        // VULN-001: view/AJAX-restore GET endpoints rate limited (60/min per user/IP)
+        // to close the gap left by the original fix (only the POST endpoints were throttled).
+        Route::middleware(['throttle:60,1'])->group(function () {
+            Route::get('/services/{service}/book', [BookingController::class, 'create'])->name('booking.create');
+            Route::get('/booking/step/{step}', [BookingController::class, 'showStep'])->name('booking.step');
+            Route::get('/booking/change-service', [BookingController::class, 'changeService'])->name('booking.change-service');
+            Route::get('/booking/restore-progress', [BookingController::class, 'restoreProgress'])->name('booking.restore-progress');
+        });
 
         // Booking Wizard - Rate Limited POST endpoints
         Route::middleware(['throttle:30,1'])->group(function () {
@@ -273,11 +275,16 @@ Route::middleware(['auth', ResolveTenant::class, RequireTenant::class])->group(f
             Route::post('/booking/save-progress', [BookingController::class, 'saveProgress'])->name('booking.save-progress');
         });
 
-        Route::get('/booking/restore-progress', [BookingController::class, 'restoreProgress'])->name('booking.restore-progress');
-
-        // Calendar availability endpoint (AJAX)
-        Route::get('/booking/unavailable-dates', [BookingController::class, 'getUnavailableDates'])
-            ->name('booking.unavailable-dates');
+        // Heavy-computation availability endpoints (AJAX) — VULN-001: stricter limit (20/min).
+        // unavailable-dates scans 60 days across all staff for a service; available-slots
+        // (old single-page flow) computes per-staff slot availability for a single day and
+        // has the same-or-worse DoS profile (AppointmentService::getAvailableSlotsAcrossAllStaff()),
+        // so it gets the same tier for consistency.
+        Route::middleware(['throttle:20,1'])->group(function () {
+            Route::get('/booking/unavailable-dates', [BookingController::class, 'getUnavailableDates'])
+                ->name('booking.unavailable-dates');
+            Route::get('/booking/available-slots', [BookingController::class, 'getAvailableSlots'])->name('booking.slots');
+        });
 
         // Booking confirmation - Stricter rate limit (production only)
         $confirmThrottle = app()->environment('production') ? 'throttle:10,1' : 'throttle:100,1';

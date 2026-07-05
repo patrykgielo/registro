@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Casts\EncryptedJsonCast;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -53,8 +54,11 @@ class AuditLog extends Model
     protected function casts(): array
     {
         return [
-            'old_values' => 'array',
-            'new_values' => 'array',
+            // Encrypted at rest (PII: PESEL, ID-document numbers duplicated here from
+            // Order/User $auditInclude). Column is `longText`, not native `json` —
+            // ciphertext is not valid JSON. See EncryptedJsonCast for legacy-row fallback.
+            'old_values' => EncryptedJsonCast::class,
+            'new_values' => EncryptedJsonCast::class,
         ];
     }
 

@@ -72,26 +72,40 @@ class StaffVacationPeriod extends Model
 
     /**
      * Scope a query to only include vacation periods that overlap with a given date range.
+     *
+     * Uses whereDate() rather than raw string where()/whereBetween() — start_date/end_date
+     * are `date`-cast columns whose storage format is `Y-m-d H:i:s` (Eloquent's date/datetime
+     * casts share the connection's date format). MySQL's native DATE column silently truncates
+     * that on write, so a plain string comparison happens to work there — but SQLite (used in
+     * tests) stores the full datetime string, so an exact-string/whereBetween match against
+     * '2026-07-06' silently fails on the record's own boundary day. Same class of bug as
+     * StaffDateException::scopeOnDate() (see that model's docblock).
      */
     public function scopeOverlapping(Builder $query, Carbon $startDate, Carbon $endDate): Builder
     {
         return $query->where(function ($q) use ($startDate, $endDate) {
-            $q->whereBetween('start_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-                ->orWhereBetween('end_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-                ->orWhere(function ($q2) use ($startDate, $endDate) {
-                    $q2->where('start_date', '<=', $startDate->format('Y-m-d'))
-                        ->where('end_date', '>=', $endDate->format('Y-m-d'));
-                });
+            $q->where(function ($q2) use ($startDate, $endDate) {
+                $q2->whereDate('start_date', '>=', $startDate->format('Y-m-d'))
+                    ->whereDate('start_date', '<=', $endDate->format('Y-m-d'));
+            })->orWhere(function ($q2) use ($startDate, $endDate) {
+                $q2->whereDate('end_date', '>=', $startDate->format('Y-m-d'))
+                    ->whereDate('end_date', '<=', $endDate->format('Y-m-d'));
+            })->orWhere(function ($q2) use ($startDate, $endDate) {
+                $q2->whereDate('start_date', '<=', $startDate->format('Y-m-d'))
+                    ->whereDate('end_date', '>=', $endDate->format('Y-m-d'));
+            });
         });
     }
 
     /**
      * Scope a query to only include vacation periods that include a specific date.
+     *
+     * See scopeOverlapping() docblock for why whereDate() (not a raw string where()) is required.
      */
     public function scopeIncludesDate(Builder $query, Carbon $date): Builder
     {
-        return $query->where('start_date', '<=', $date->format('Y-m-d'))
-            ->where('end_date', '>=', $date->format('Y-m-d'));
+        return $query->whereDate('start_date', '<=', $date->format('Y-m-d'))
+            ->whereDate('end_date', '>=', $date->format('Y-m-d'));
     }
 
     /**
