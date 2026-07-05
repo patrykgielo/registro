@@ -7,7 +7,6 @@ namespace App\Models;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Blade;
 
 /**
  * SMS Template Model
@@ -115,40 +114,39 @@ class SmsTemplate extends Model
     /**
      * Render the message body with the provided data.
      *
-     * Uses Blade's compileString to render template with variables.
+     * SECURITY: this is plain string substitution only — the template body is NEVER
+     * compiled or executed as PHP/Blade (was a critical SSTI/RCE vector, since
+     * message_body is editable by tenant-level admins, not just super-admins). Only
+     * literal {{key}} tokens are replaced; everything else in the body (including
+     * Blade-looking directives like `@php`) is left as inert literal text. No HTML
+     * escaping is applied — SMS is plain text, not HTML.
      *
      * @param  array  $data  Key-value pairs to replace in template
      * @return string Rendered message content
      */
     public function render(array $data): string
     {
-        // Replace {{variable}} placeholders with Blade syntax
-        $template = $this->message_body;
-
-        // Convert {{variable}} to {{ $variable }}
-        $template = preg_replace('/\{\{(\w+)\}\}/', '{{ $\1 }}', $template);
-
-        // Compile and render the Blade template
-        try {
-            return Blade::render($template, $data);
-        } catch (\Exception $e) {
-            // Fallback to simple string replacement if Blade rendering fails
-            return $this->simpleRender($data);
-        }
+        return $this->substitutePlaceholders($this->message_body, $data);
     }
 
     /**
-     * Simple string replacement for rendering (fallback).
+     * Simple, non-executing string replacement.
+     *
+     * Only exact `{{key}}` tokens (word characters, no spaces/expressions) are replaced.
+     * Unknown tokens are left untouched. This never invokes Blade/eval — it cannot execute
+     * PHP embedded in a template body.
      */
-    protected function simpleRender(array $data): string
+    protected function substitutePlaceholders(string $template, array $data): string
     {
-        $content = $this->message_body;
+        return preg_replace_callback('/\{\{(\w+)\}\}/', function (array $matches) use ($data) {
+            $key = $matches[1];
 
-        foreach ($data as $key => $value) {
-            $content = str_replace('{{'.$key.'}}', (string) $value, $content);
-        }
+            if (! array_key_exists($key, $data)) {
+                return $matches[0];
+            }
 
-        return $content;
+            return (string) $data[$key];
+        }, $template);
     }
 
     /**
