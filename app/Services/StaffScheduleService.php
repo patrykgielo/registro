@@ -47,9 +47,12 @@ class StaffScheduleService
         }
 
         // Step 2: Check for date exceptions on this specific date
+        // Ordered defensively (time-specific first) even though resolveExceptionAvailability()
+        // no longer depends on collection order — see its docblock.
         $dayExceptions = StaffDateException::query()
             ->forUser($staff->id)
             ->onDate($dateTime)
+            ->orderByRaw('start_time is null, start_time asc')
             ->get();
 
         if ($dayExceptions->isNotEmpty()) {
@@ -69,24 +72,50 @@ class StaffScheduleService
      */
     protected function checkExceptions(Collection $exceptions, Carbon $dateTime): bool
     {
-        foreach ($exceptions as $exception) {
-            // Check if exception applies to this time
-            if ($exception->isAllDay()) {
-                // All-day exception
-                return $exception->isAvailable();
-            } else {
-                // Time-specific exception
-                $exceptionStart = Carbon::parse($dateTime->format('Y-m-d').' '.$exception->start_time);
-                $exceptionEnd = Carbon::parse($dateTime->format('Y-m-d').' '.$exception->end_time);
+        $availability = $this->resolveExceptionAvailability($exceptions, $dateTime);
 
-                if ($dateTime->between($exceptionStart, $exceptionEnd)) {
-                    return $exception->isAvailable();
-                }
-            }
+        if ($availability !== null) {
+            return $availability;
         }
 
         // No matching exception found, fall back to base schedule
         return $this->checkBaseSchedule($exceptions->first()->user, $dateTime);
+    }
+
+    /**
+     * Resolve the availability decision from a day's date exceptions for a specific
+     * date+time, applying explicit precedence: a time-specific exception (non-all-day)
+     * whose range contains $checkTime always wins over an all-day exception for the
+     * same date — e.g. an all-day "unavailable" exception can be punched through by a
+     * more specific time-range "available" override (and vice versa).
+     *
+     * Order-independent by construction (two explicit passes: time-specific match
+     * first, all-day fallback second) — callers additionally sort exceptions
+     * deterministically at the query level as defense-in-depth.
+     *
+     * @param  Collection  $exceptions  Collection of StaffDateException for one date
+     * @return bool|null True/false = explicit exception decision, null = no exception applies
+     */
+    protected function resolveExceptionAvailability(Collection $exceptions, Carbon $checkTime): ?bool
+    {
+        $timeSpecific = $exceptions->first(function (StaffDateException $exception) use ($checkTime) {
+            if ($exception->isAllDay()) {
+                return false;
+            }
+
+            $start = Carbon::parse($checkTime->format('Y-m-d').' '.$exception->start_time);
+            $end = Carbon::parse($checkTime->format('Y-m-d').' '.$exception->end_time);
+
+            return $checkTime->between($start, $end);
+        });
+
+        if ($timeSpecific) {
+            return $timeSpecific->isAvailable();
+        }
+
+        $allDay = $exceptions->first(fn (StaffDateException $exception) => $exception->isAllDay());
+
+        return $allDay?->isAvailable();
     }
 
     /**
@@ -178,42 +207,30 @@ class StaffScheduleService
         }
 
         // Step 3: Get date exceptions
+        // Ordered defensively (time-specific first) — see resolveExceptionAvailability().
         $exceptions = StaffDateException::query()
             ->forUser($staff->id)
             ->onDate($date)
+            ->orderByRaw('start_time is null, start_time asc')
             ->get();
 
         // Step 4: Generate slots based on schedule, applying exceptions
+        // Each slot is resolved independently: a time-specific exception covering this
+        // exact slot always takes precedence over an all-day exception for the date
+        // (see resolveExceptionAvailability()) — an all-day "unavailable" day can be
+        // punched through by a more specific "available" override, and vice versa.
         foreach ($schedules as $schedule) {
             $slotTime = Carbon::parse($date->format('Y-m-d').' '.$schedule->start_time);
             $endTime = Carbon::parse($date->format('Y-m-d').' '.$schedule->end_time);
 
             while ($slotTime->copy()->addMinutes($serviceDurationMinutes)->lte($endTime)) {
-                // Check if this slot is affected by an exception
-                $affectedByException = false;
+                if ($this->resolveExceptionAvailability($exceptions, $slotTime) === false) {
+                    $slotTime->addMinutes($slotIntervalMinutes);
 
-                foreach ($exceptions as $exception) {
-                    if ($exception->isAllDay()) {
-                        $affectedByException = true;
-                        if (! $exception->isAvailable()) {
-                            break 2; // Skip all slots for this schedule
-                        }
-                    } else {
-                        $exceptionStart = Carbon::parse($date->format('Y-m-d').' '.$exception->start_time);
-                        $exceptionEnd = Carbon::parse($date->format('Y-m-d').' '.$exception->end_time);
-
-                        if ($slotTime->between($exceptionStart, $exceptionEnd)) {
-                            $affectedByException = true;
-                            if (! $exception->isAvailable()) {
-                                $slotTime->addMinutes($slotIntervalMinutes);
-
-                                continue 2; // Skip this slot
-                            }
-                        }
-                    }
+                    continue;
                 }
 
-                // Slot is available
+                // Slot is available (no exception applies, or exception marks it available)
                 $availableSlots[] = $slotTime->copy();
                 $slotTime->addMinutes($slotIntervalMinutes);
             }

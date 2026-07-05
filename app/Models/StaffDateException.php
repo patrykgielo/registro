@@ -61,10 +61,19 @@ class StaffDateException extends Model
 
     /**
      * Scope a query to only include exceptions on a specific date.
+     *
+     * Uses whereDate() (not a raw string `where()`) because the `date` cast's
+     * storage format is `Y-m-d H:i:s` (Eloquent's date/datetime casts share the
+     * connection's date format). MySQL's native DATE column silently truncates
+     * that to a date-only value on write, so a plain `where('exception_date',
+     * 'Y-m-d')` happens to work there — but SQLite (used in tests) stores the
+     * column as TEXT with no truncation, so an exact-string match against
+     * '2026-07-06 00:00:00' silently fails. whereDate() extracts the date part
+     * on both drivers.
      */
     public function scopeOnDate(Builder $query, Carbon $date): Builder
     {
-        return $query->where('exception_date', $date->format('Y-m-d'));
+        return $query->whereDate('exception_date', $date->format('Y-m-d'));
     }
 
     /**
