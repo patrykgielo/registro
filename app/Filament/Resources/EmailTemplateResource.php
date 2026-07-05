@@ -90,7 +90,7 @@ class EmailTemplateResource extends BaseResource
                         ->required()
                         ->rows(15)
                         ->placeholder('<h1>Witaj {{user_name}}</h1>')
-                        ->helperText('Szablon HTML z placeholderami {{zmienna}}. Obsługuje składnię Blade.'),
+                        ->helperText('Szablon HTML z placeholderami {{zmienna}}. Uwaga: tylko literalne znaczniki {{zmienna}} są podstawiane — dyrektywy i wyrażenia Blade (np. @if, @foreach) NIE są obsługiwane i pozostaną w treści jako zwykły tekst.'),
 
                     Forms\Components\Textarea::make('text_body')
                         ->label('Treść tekstowa (opcjonalnie)')

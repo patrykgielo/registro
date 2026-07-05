@@ -3,12 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AppointmentStatus;
+use App\Exceptions\AppointmentSlotUnavailableException;
 use App\Models\Appointment;
 use App\Rules\StaffRoleRule;
 use App\Services\AppointmentService;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class AppointmentController extends Controller
 {
@@ -34,9 +38,30 @@ class AppointmentController extends Controller
 
     public function store(Request $request)
     {
+        // service_id AND staff_id are both validated tenant-scoped (defense in
+        // depth): a bare exists:services,id / exists:users,id only confirms
+        // the row exists ANYWHERE in the DB — Eloquent's `exists:`/`Rule::exists()`
+        // rules query the raw table directly, bypassing Service's
+        // BelongsToOrganization scope entirely. canPerformService() (called
+        // downstream by validateAppointment()) already makes a cross-tenant
+        // staff_id practically unreachable today (see App\Rules\StaffRoleRule's
+        // docblock) — this adds an explicit, non-implicit check on staff_id
+        // itself rather than relying solely on that invariant, matching the
+        // same Rule::exists()->where(...) pattern used for service_id.
+        // organization_user is the pivot table backing User::organizations().
+        $tenant = $request->attributes->get('tenant');
+
         $validated = $request->validate([
-            'service_id' => 'required|exists:services,id',
-            'staff_id' => ['nullable', 'exists:users,id', new StaffRoleRule], // Made optional for auto-assignment with role validation
+            'service_id' => [
+                'required',
+                Rule::exists('services', 'id')->where('organization_id', $tenant?->id),
+            ],
+            'staff_id' => [
+                'nullable',
+                'exists:users,id',
+                Rule::exists('organization_user', 'user_id')->where('organization_id', $tenant?->id),
+                new StaffRoleRule,
+            ], // Made optional for auto-assignment with role validation
             'appointment_date' => 'required|date|after_or_equal:today',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
@@ -87,53 +112,7 @@ class AppointmentController extends Controller
             $validated['staff_id'] = $staffId;
         }
 
-        // Validate availability for assigned staff
-        $validation = $this->appointmentService->validateAppointment(
-            staffId: $validated['staff_id'],
-            serviceId: $validated['service_id'],
-            appointmentDate: $validated['appointment_date'],
-            startTime: $validated['start_time'],
-            endTime: $validated['end_time']
-        );
-
-        if (! $validation['valid']) {
-            return back()
-                ->withErrors(['appointment' => $validation['errors']])
-                ->withInput();
-        }
-
-        // Update customer profile - only fill empty fields to avoid overwriting existing data
         $user = Auth::user();
-        $profileUpdates = [];
-
-        if (empty($user->first_name)) {
-            $profileUpdates['first_name'] = $validated['first_name'];
-        }
-        if (empty($user->last_name)) {
-            $profileUpdates['last_name'] = $validated['last_name'];
-        }
-        if (empty($user->phone_e164)) {
-            $profileUpdates['phone_e164'] = $validated['phone_e164'];
-        }
-        if (empty($user->street_name) && ! empty($validated['street_name'])) {
-            $profileUpdates['street_name'] = $validated['street_name'];
-        }
-        if (empty($user->street_number) && ! empty($validated['street_number'])) {
-            $profileUpdates['street_number'] = $validated['street_number'];
-        }
-        if (empty($user->city) && ! empty($validated['city'])) {
-            $profileUpdates['city'] = $validated['city'];
-        }
-        if (empty($user->postal_code) && ! empty($validated['postal_code'])) {
-            $profileUpdates['postal_code'] = $validated['postal_code'];
-        }
-        if (empty($user->access_notes) && ! empty($validated['access_notes'])) {
-            $profileUpdates['access_notes'] = $validated['access_notes'];
-        }
-
-        if (! empty($profileUpdates)) {
-            $user->update($profileUpdates);
-        }
 
         // Handle custom brand/model (if provided instead of IDs)
         $vehicleData = [
@@ -153,23 +132,94 @@ class AppointmentController extends Controller
             $vehicleData['vehicle_custom_model'] = $validated['car_model_name'];
         }
 
-        // Create appointment
-        $appointment = Appointment::create([
-            'service_id' => $validated['service_id'],
-            'customer_id' => Auth::id(),
-            'staff_id' => $validated['staff_id'],
-            'appointment_date' => $validated['appointment_date'],
-            'start_time' => $validated['start_time'],
-            'end_time' => $validated['end_time'],
-            'status' => AppointmentStatus::Pending,
-            'notes' => $validated['notes'] ?? null,
-            'location_address' => $validated['location_address'] ?? null,
-            'location_latitude' => $validated['location_latitude'] ?? null,
-            'location_longitude' => $validated['location_longitude'] ?? null,
-            'location_place_id' => $validated['location_place_id'] ?? null,
-            'location_components' => isset($validated['location_components']) ? json_decode($validated['location_components'], true) : null,
-            ...$vehicleData,
-        ]);
+        // CRITICAL: validate + create atomically, with a best-effort row lock,
+        // to close the double-booking race condition. Two concurrent requests
+        // for the same staff/slot could otherwise both pass the SELECT-based
+        // conflict check in validateAppointment() and both successfully
+        // INSERT — the authoritative guard is the appointments_staff_slot_unique
+        // DB constraint, caught below as a QueryException. See
+        // AppointmentService::lockStaffAppointmentsForDate()/isDoubleBookingViolation().
+        try {
+            $appointment = DB::transaction(function () use ($validated, $user, $vehicleData) {
+                $this->appointmentService->lockStaffAppointmentsForDate(
+                    [$validated['staff_id']],
+                    Carbon::parse($validated['appointment_date'])
+                );
+
+                $validation = $this->appointmentService->validateAppointment(
+                    staffId: $validated['staff_id'],
+                    serviceId: $validated['service_id'],
+                    appointmentDate: $validated['appointment_date'],
+                    startTime: $validated['start_time'],
+                    endTime: $validated['end_time']
+                );
+
+                if (! $validation['valid']) {
+                    throw new AppointmentSlotUnavailableException($validation['errors']);
+                }
+
+                // Update customer profile - only fill empty fields to avoid overwriting existing data
+                $profileUpdates = [];
+
+                if (empty($user->first_name)) {
+                    $profileUpdates['first_name'] = $validated['first_name'];
+                }
+                if (empty($user->last_name)) {
+                    $profileUpdates['last_name'] = $validated['last_name'];
+                }
+                if (empty($user->phone_e164)) {
+                    $profileUpdates['phone_e164'] = $validated['phone_e164'];
+                }
+                if (empty($user->street_name) && ! empty($validated['street_name'])) {
+                    $profileUpdates['street_name'] = $validated['street_name'];
+                }
+                if (empty($user->street_number) && ! empty($validated['street_number'])) {
+                    $profileUpdates['street_number'] = $validated['street_number'];
+                }
+                if (empty($user->city) && ! empty($validated['city'])) {
+                    $profileUpdates['city'] = $validated['city'];
+                }
+                if (empty($user->postal_code) && ! empty($validated['postal_code'])) {
+                    $profileUpdates['postal_code'] = $validated['postal_code'];
+                }
+                if (empty($user->access_notes) && ! empty($validated['access_notes'])) {
+                    $profileUpdates['access_notes'] = $validated['access_notes'];
+                }
+
+                if (! empty($profileUpdates)) {
+                    $user->update($profileUpdates);
+                }
+
+                return Appointment::create([
+                    'service_id' => $validated['service_id'],
+                    'customer_id' => $user->id,
+                    'staff_id' => $validated['staff_id'],
+                    'appointment_date' => $validated['appointment_date'],
+                    'start_time' => $validated['start_time'],
+                    'end_time' => $validated['end_time'],
+                    'status' => AppointmentStatus::Pending,
+                    'notes' => $validated['notes'] ?? null,
+                    'location_address' => $validated['location_address'] ?? null,
+                    'location_latitude' => $validated['location_latitude'] ?? null,
+                    'location_longitude' => $validated['location_longitude'] ?? null,
+                    'location_place_id' => $validated['location_place_id'] ?? null,
+                    'location_components' => isset($validated['location_components']) ? json_decode($validated['location_components'], true) : null,
+                    ...$vehicleData,
+                ]);
+            });
+        } catch (AppointmentSlotUnavailableException $e) {
+            return back()
+                ->withErrors(['appointment' => $e->getErrors()])
+                ->withInput();
+        } catch (QueryException $e) {
+            if (! $this->appointmentService->isDoubleBookingViolation($e)) {
+                throw $e;
+            }
+
+            return back()
+                ->withErrors(['appointment' => ['Wybrany termin został właśnie zarezerwowany przez inną osobę. Wybierz inny termin.']])
+                ->withInput();
+        }
 
         return redirect()
             ->route('appointments.index')

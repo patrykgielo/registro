@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AppointmentStatus;
+use App\Exceptions\AppointmentSlotUnavailableException;
 use App\Models\Appointment;
 use App\Models\ReminderConfig;
 use App\Models\Service;
@@ -184,21 +185,12 @@ class BookingController extends Controller
         $service = Service::findOrFail($request->service_id);
         $date = Carbon::parse($request->date);
 
-        // Check if date meets 24-hour advance booking requirement
-        // We check the EARLIEST possible slot (business hours start) to be conservative
-        $businessHours = $this->settings->bookingBusinessHours();
-        $earliestSlotDateTime = Carbon::parse($date->format('Y-m-d').' '.$businessHours['start']);
-
-        if (! $this->appointmentService->meetsAdvanceBookingRequirement($earliestSlotDateTime)) {
-            $minDateTime = now()->addHours($this->settings->advanceBookingHours());
-
-            return response()->json([
-                'slots' => [],
-                'date' => $date->format('Y-m-d'),
-                'message' => 'Rezerwacje możliwe dopiero od '.$minDateTime->format('d.m.Y H:i'),
-                'reason' => 'advance_booking_not_met',
-            ]);
-        }
+        // NOTE: the 24h advance-booking rule is checked per-slot inside
+        // getAvailableSlotsAcrossAllStaff() (against each candidate slot's own
+        // start time), not here against the day's business-hours-open instant.
+        // Gating on the latter used to hide legitimately bookable later-in-the-day
+        // slots (e.g. tomorrow afternoon) whenever the earliest slot of the day
+        // fell inside the advance window.
 
         // Get available slots across ALL staff members
         $slots = $this->appointmentService->getAvailableSlotsAcrossAllStaff(
@@ -837,34 +829,46 @@ class BookingController extends Controller
         $service = Service::findOrFail($booking['service_id']);
         $appointmentDateTime = Carbon::parse($booking['date'].' '.$booking['time_slot']);
 
-        // Check if slot still available
-        $slots = $this->appointmentService->getAvailableSlotsAcrossAllStaff(
-            serviceId: $booking['service_id'],
-            date: Carbon::parse($booking['date']),
-            serviceDurationMinutes: $service->duration_minutes
-        );
-
-        $requestedSlot = collect($slots)->firstWhere('time', $booking['time_slot']);
-
-        if (! $requestedSlot || ! $requestedSlot['available']) {
-            return redirect()->route('booking.step', 2)
-                ->with('error', 'Wybrany termin jest już niedostępny. Wybierz inny.');
-        }
-
-        // Assign best staff member
-        $staff = $this->appointmentService->findBestAvailableStaff(
-            serviceId: $booking['service_id'],
-            dateTime: $appointmentDateTime,
-            durationMinutes: $service->duration_minutes
-        );
-
-        if (! $staff) {
-            return redirect()->route('booking.step', 2)
-                ->with('error', 'Brak dostępnego pracownika. Wybierz inny termin.');
-        }
-
+        // CRITICAL: slot availability check + staff assignment + appointment
+        // creation ALL happen inside this single DB::transaction(), with a
+        // best-effort row lock acquired first. Previously the slot check and
+        // staff selection ran BEFORE DB::transaction() opened at all, so two
+        // concurrent confirm() calls could both see the slot as free and both
+        // proceed to create an Appointment for it. The row lock narrows the
+        // race window; the appointments_staff_slot_unique DB constraint is the
+        // authoritative guard — caught below via isDoubleBookingViolation().
         try {
-            $appointment = DB::transaction(function () use ($booking, $user, $service, $staff, $appointmentDateTime) {
+            $appointment = DB::transaction(function () use ($booking, $user, $service, $appointmentDateTime) {
+                $eligibleStaffIds = $this->appointmentService->getEligibleStaffIds($booking['service_id']);
+                $this->appointmentService->lockStaffAppointmentsForDate(
+                    $eligibleStaffIds,
+                    $appointmentDateTime->copy()->startOfDay()
+                );
+
+                // Check if slot still available (re-checked now that we hold the lock)
+                $slots = $this->appointmentService->getAvailableSlotsAcrossAllStaff(
+                    serviceId: $booking['service_id'],
+                    date: $appointmentDateTime->copy()->startOfDay(),
+                    serviceDurationMinutes: $service->duration_minutes
+                );
+
+                $requestedSlot = collect($slots)->firstWhere('time', $booking['time_slot']);
+
+                if (! $requestedSlot || ! $requestedSlot['available']) {
+                    throw new AppointmentSlotUnavailableException(['Wybrany termin jest już niedostępny. Wybierz inny.']);
+                }
+
+                // Assign best staff member
+                $staff = $this->appointmentService->findBestAvailableStaff(
+                    serviceId: $booking['service_id'],
+                    dateTime: $appointmentDateTime,
+                    durationMinutes: $service->duration_minutes
+                );
+
+                if (! $staff) {
+                    throw new AppointmentSlotUnavailableException(['Brak dostępnego pracownika. Wybierz inny termin.']);
+                }
+
                 // Update customer profile - only fill empty fields to avoid overwriting existing data
                 $profileUpdates = [];
 
@@ -951,7 +955,30 @@ class BookingController extends Controller
 
                 return $appointment;
             });
+        } catch (AppointmentSlotUnavailableException $e) {
+            Log::info('Booking confirm: slot unavailable at confirm time', [
+                'user_id' => $user->id,
+                'service_id' => $booking['service_id'],
+                'date' => $booking['date'] ?? null,
+                'time_slot' => $booking['time_slot'] ?? null,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('booking.step', 2)
+                ->with('error', $e->getErrors()[0] ?? 'Wybrany termin jest już niedostępny. Wybierz inny.');
         } catch (\Throwable $e) {
+            if ($this->appointmentService->isDoubleBookingViolation($e)) {
+                Log::info('Booking confirm: double-booking prevented by unique constraint', [
+                    'user_id' => $user->id,
+                    'service_id' => $booking['service_id'],
+                    'date' => $booking['date'] ?? null,
+                    'time_slot' => $booking['time_slot'] ?? null,
+                ]);
+
+                return redirect()->route('booking.step', 2)
+                    ->with('error', 'Wybrany termin został właśnie zarezerwowany przez inną osobę. Wybierz inny termin.');
+            }
+
             Log::error('Booking confirm: failed to create appointment', [
                 'user_id' => $user->id,
                 'service_id' => $booking['service_id'],
@@ -973,7 +1000,7 @@ class BookingController extends Controller
             'service_id' => $booking['service_id'],
             'date' => $booking['date'],
             'time_slot' => $booking['time_slot'],
-            'staff_id' => $staff->id,
+            'staff_id' => $appointment->staff_id,
         ]);
 
         // SECURITY: Store appointment ID in single-use session token (no ID in URL)
