@@ -77,6 +77,25 @@ class FinalizeClosingOrganizationsTest extends TestCase
         $this->assertNotNull($org->fresh()->purge_after);
     }
 
+    public function test_closed_writes_lifecycle_log(): void
+    {
+        Bus::fake();
+
+        $org = $this->makeClosingOrg(15);
+
+        $this->artisan('organizations:finalize-closing --force')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('organization_lifecycle_log', [
+            'organization_id' => $org->id,
+            'organization_name' => $org->name,
+            'event' => 'closed',
+            'actor_id' => null,
+        ]);
+
+        $this->assertDatabaseCount('organization_lifecycle_log', 1);
+    }
+
     public function test_cancel_in_flight_obligations_job_dispatched_defensively(): void
     {
         Bus::fake();
