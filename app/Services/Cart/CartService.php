@@ -194,6 +194,44 @@ class CartService
     }
 
     /**
+     * Restores a just-converted cart back to a usable 'active' state.
+     *
+     * Used when checkout fails AFTER convertToOrder() already committed
+     * (e.g. Przelewy24Service::registerTransaction() throws) — the cart's
+     * items are untouched by convertToOrder(), so flipping status back to
+     * 'active' (and refreshing the TTL) lets the customer retry checkout
+     * without re-adding every item.
+     *
+     * Guards against a two-tab race: if the user already has ANOTHER active
+     * cart for this user/org (e.g. they opened a second tab and started a
+     * fresh cart while this one was mid-compensation), do NOT create a second
+     * simultaneous active cart — getOrCreateCart() would then resolve between
+     * them non-deterministically. Leave this cart in its current
+     * ('converted') state instead; the customer already has a usable active
+     * cart to continue with. This is a best-effort mitigation (a check +
+     * separate update, not a single atomic operation) since there is no
+     * DB-level uniqueness constraint on "one active cart per user/org".
+     */
+    public function reactivate(Cart $cart): void
+    {
+        $hasOtherActiveCart = Cart::query()
+            ->active()
+            ->where('organization_id', $cart->organization_id)
+            ->where('user_id', $cart->user_id)
+            ->where('id', '!=', $cart->id)
+            ->exists();
+
+        if ($hasOtherActiveCart) {
+            return;
+        }
+
+        $cart->update([
+            'status' => 'active',
+            'expires_at' => now()->addHours(2),
+        ]);
+    }
+
+    /**
      * Persist checkout data back to the user profile when "save_to_profile" is requested.
      * Only updates non-null fields to avoid overwriting existing data with empty values.
      */

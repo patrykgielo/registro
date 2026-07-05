@@ -3,8 +3,10 @@
 namespace Tests\Unit\Models;
 
 use App\Models\Order;
+use App\Models\Payment;
 use Asantibanez\LaravelEloquentStateMachines\Exceptions\TransitionNotAllowedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class OrderTest extends TestCase
@@ -114,13 +116,75 @@ class OrderTest extends TestCase
         $order->status()->transitionTo('in_progress');
     }
 
-    public function test_state_machine_forbids_cancelled_to_paid(): void
+    public function test_state_machine_allows_cancelled_to_paid_when_successful_payment_exists(): void
+    {
+        // Reconciliation-only transition (see Przelewy24Service::handleWebhook()
+        // and OrderStatusStateMachine): a genuine P24 success webhook can arrive
+        // after orders:cleanup-expired already cancelled the order. 'cancelled'
+        // is otherwise terminal — see test_state_machine_forbids_cancelled_to_confirmed().
+        // The transition is guarded by validatorForTransition() requiring a
+        // successful Payment row to already exist — see the negative test below.
+        $order = Order::factory()->cancelled()->create();
+
+        Payment::create([
+            'order_id' => $order->id,
+            'organization_id' => $order->organization_id,
+            'p24_session_id' => 'SESSION-RECONCILE-'.$order->id,
+            'p24_order_id' => (string) $order->id,
+            'amount' => 10000,
+            'currency' => 'PLN',
+            'status' => 'success',
+            'verified_at' => now(),
+        ]);
+
+        $order->status()->transitionTo('paid');
+
+        $this->assertEquals('paid', $order->status);
+    }
+
+    public function test_state_machine_forbids_cancelled_to_paid_without_successful_payment(): void
+    {
+        // This is the test that actually proves the CRITICAL fix: without a
+        // verified Payment row, ANY caller (admin action, support script,
+        // future bug) attempting cancelled -> paid must be blocked — the
+        // transitions() map alone only says the path is legal, not that it's
+        // safe. See OrderStatusStateMachine::validatorForTransition().
+        $order = Order::factory()->cancelled()->create();
+
+        $this->assertSame(0, $order->payments()->where('status', 'success')->count());
+
+        $this->expectException(ValidationException::class);
+
+        $order->status()->transitionTo('paid');
+    }
+
+    public function test_state_machine_forbids_cancelled_to_paid_when_only_failed_payment_exists(): void
+    {
+        $order = Order::factory()->cancelled()->create();
+
+        Payment::create([
+            'order_id' => $order->id,
+            'organization_id' => $order->organization_id,
+            'p24_session_id' => 'SESSION-FAILED-'.$order->id,
+            'p24_order_id' => (string) $order->id,
+            'amount' => 10000,
+            'currency' => 'PLN',
+            'status' => 'failed',
+            'verified_at' => null,
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        $order->status()->transitionTo('paid');
+    }
+
+    public function test_state_machine_forbids_cancelled_to_confirmed(): void
     {
         $order = Order::factory()->cancelled()->create();
 
         $this->expectException(TransitionNotAllowedException::class);
 
-        $order->status()->transitionTo('paid');
+        $order->status()->transitionTo('confirmed');
     }
 
     public function test_state_machine_forbids_completed_to_paid(): void
@@ -198,5 +262,35 @@ class OrderTest extends TestCase
         $this->assertFalse($order->status()->canBe('completed'));
         $this->assertFalse($order->status()->canBe('confirmed'));
         $this->assertFalse($order->status()->canBe('in_progress'));
+    }
+
+    // -------------------------------------------------------------------------
+    // ttlGraceMinutes() — clamping (MEDIUM fix)
+    // -------------------------------------------------------------------------
+
+    public function test_ttl_grace_minutes_returns_configured_value_within_range(): void
+    {
+        config(['przelewy24.transaction_grace_minutes' => 90]);
+
+        $this->assertSame(90, Order::ttlGraceMinutes());
+    }
+
+    public function test_ttl_grace_minutes_clamps_negative_value_to_zero(): void
+    {
+        // A negative value would invert the intent: now()->subMinutes(-30)
+        // becomes now()->addMinutes(30), cancelling P24-registered orders
+        // EARLY, mid-payment. Must clamp to 0, never go negative.
+        config(['przelewy24.transaction_grace_minutes' => -30]);
+
+        $this->assertSame(0, Order::ttlGraceMinutes());
+    }
+
+    public function test_ttl_grace_minutes_clamps_absurdly_large_value_to_upper_bound(): void
+    {
+        // An unbounded value would effectively disable expiry for
+        // P24-registered orders indefinitely. Must clamp to 1440 (24h).
+        config(['przelewy24.transaction_grace_minutes' => 999999]);
+
+        $this->assertSame(1440, Order::ttlGraceMinutes());
     }
 }

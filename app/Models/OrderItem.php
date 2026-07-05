@@ -67,14 +67,33 @@ class OrderItem extends Model
             ->whereDate('end_date', '>=', $start);
     }
 
+    /**
+     * IMPORTANT: the pending_payment branch below MUST mirror
+     * Order::scopeExpired() exactly (same grace-period logic, inverted). An
+     * order the expiry scope still considers "alive" (P24 transaction
+     * registered, within grace) must also still block the inventory it's
+     * holding — otherwise a second customer could book/pay for the same
+     * item/dates while the first customer's slow bank/BLIK confirmation is
+     * still in flight (overbooking).
+     */
     public function scopeBlockingAvailability(Builder $query): Builder
     {
-        return $query->whereHas('order', function (Builder $q) {
-            $q->where(function (Builder $inner) {
+        $graceMinutes = Order::ttlGraceMinutes();
+
+        return $query->whereHas('order', function (Builder $q) use ($graceMinutes) {
+            $q->where(function (Builder $inner) use ($graceMinutes) {
                 $inner->whereIn('status', ['paid', 'confirmed', 'in_progress'])
-                    ->orWhere(function (Builder $pending) {
+                    ->orWhere(function (Builder $pending) use ($graceMinutes) {
                         $pending->where('status', 'pending_payment')
-                            ->where('expires_at', '>', now());
+                            ->where(function (Builder $ttl) use ($graceMinutes) {
+                                $ttl->where(function (Builder $noTransaction) {
+                                    $noTransaction->whereNull('p24_token')
+                                        ->where('expires_at', '>', now());
+                                })->orWhere(function (Builder $withTransaction) use ($graceMinutes) {
+                                    $withTransaction->whereNotNull('p24_token')
+                                        ->where('expires_at', '>', now()->subMinutes($graceMinutes));
+                                });
+                            });
                     });
             });
         });

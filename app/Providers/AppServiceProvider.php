@@ -298,8 +298,18 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        // Order Cancelled: notify customer
+        // Order Cancelled: notify customer (unless this was an internal
+        // compensation cancel, e.g. P24 registration failure right after
+        // checkout — see OrderService::cancel($order, $reason, notify: false))
         Event::listen(OrderCancelled::class, function (OrderCancelled $event) {
+            if (! $event->notify) {
+                \Log::info('OrderCancelled: notify=false, skipping customer notification (internal compensation)', [
+                    'order_id' => $event->order->id,
+                ]);
+
+                return;
+            }
+
             $order = $event->order->load('user');
 
             if ($order->user) {

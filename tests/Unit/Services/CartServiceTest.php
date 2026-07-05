@@ -397,4 +397,81 @@ class CartServiceTest extends TestCase
             throw $e;
         }
     }
+
+    // -------------------------------------------------------------------------
+    // reactivate()
+    // -------------------------------------------------------------------------
+
+    public function test_reactivate_flips_converted_cart_back_to_active(): void
+    {
+        $cart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'converted',
+            'expires_at' => now()->subMinutes(5),
+        ]);
+
+        $service = $this->makeService();
+        $service->reactivate($cart);
+
+        $cart->refresh();
+        $this->assertSame('active', $cart->status);
+        $this->assertTrue($cart->expires_at->isFuture());
+    }
+
+    public function test_reactivate_does_not_create_second_active_cart_when_one_already_exists(): void
+    {
+        // Simulates the two-tab race: while this (converted) cart's checkout
+        // was mid-compensation, the user opened a second tab and started a
+        // fresh active cart for the same user/org.
+        $otherActiveCart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $convertedCart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'converted',
+        ]);
+
+        $service = $this->makeService();
+        $service->reactivate($convertedCart);
+
+        $convertedCart->refresh();
+        $otherActiveCart->refresh();
+
+        // The converted cart is left untouched — NOT flipped back to active.
+        $this->assertSame('converted', $convertedCart->status);
+        // Only one active cart exists for this user/org.
+        $this->assertSame('active', $otherActiveCart->status);
+        $this->assertSame(
+            1,
+            Cart::query()->active()
+                ->where('organization_id', $this->org->id)
+                ->where('user_id', $this->user->id)
+                ->count()
+        );
+    }
+
+    public function test_reactivate_ignores_active_carts_belonging_to_other_users(): void
+    {
+        $otherUser = User::factory()->create();
+        Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $otherUser->id,
+        ]);
+
+        $cart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'converted',
+        ]);
+
+        $service = $this->makeService();
+        $service->reactivate($cart);
+
+        $cart->refresh();
+        $this->assertSame('active', $cart->status);
+    }
 }

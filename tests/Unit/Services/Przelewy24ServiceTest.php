@@ -3,8 +3,11 @@
 namespace Tests\Unit\Services;
 
 use App\Models\Order;
+use App\Models\User;
+use App\Notifications\PaymentReconciliationAlertNotification;
 use App\Services\Payment\Przelewy24Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Przelewy24\Api\Requests\TransactionRequests;
 use Przelewy24\Config;
 use Przelewy24\Exceptions\Przelewy24Exception;
@@ -308,6 +311,159 @@ class Przelewy24ServiceTest extends TestCase
 
         $order->refresh();
         $this->assertEquals('pending_payment', $order->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // Late webhook reconciliation — TTL cleanup already cancelled the order,
+    // but a genuine, verified P24 success webhook arrives afterwards.
+    // -------------------------------------------------------------------------
+
+    public function test_late_webhook_after_cancellation_reconciles_order_to_paid(): void
+    {
+        Notification::fake();
+
+        $sessionId = 'SESSION-LATE-RECONCILE';
+        $payload = $this->buildPayload($sessionId);
+        $payload['sign'] = $this->computeValidSign($payload);
+
+        $order = Order::factory()->cancelled()->create([
+            'p24_session_id' => $sessionId,
+        ]);
+
+        $p24Mock = $this->buildP24Mock($payload, false);
+        $svc = $this->buildServiceWithMockedClient($p24Mock);
+        $svc->handleWebhook($payload);
+
+        $order->refresh();
+
+        $this->assertEquals('paid', $order->status);
+        $this->assertNotNull($order->paid_at);
+    }
+
+    public function test_late_webhook_after_cancellation_still_creates_success_payment_record(): void
+    {
+        Notification::fake();
+
+        $sessionId = 'SESSION-LATE-RECONCILE-PAY';
+        $payload = $this->buildPayload($sessionId);
+        $payload['sign'] = $this->computeValidSign($payload);
+
+        $order = Order::factory()->cancelled()->create([
+            'p24_session_id' => $sessionId,
+        ]);
+
+        $p24Mock = $this->buildP24Mock($payload, false);
+        $svc = $this->buildServiceWithMockedClient($p24Mock);
+        $svc->handleWebhook($payload);
+
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $order->id,
+            'p24_session_id' => $sessionId,
+            'status' => 'success',
+        ]);
+    }
+
+    public function test_late_webhook_after_cancellation_notifies_super_admins(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->create();
+        $admin->assignRole('super-admin');
+
+        $sessionId = 'SESSION-LATE-RECONCILE-NOTIFY';
+        $payload = $this->buildPayload($sessionId);
+        $payload['sign'] = $this->computeValidSign($payload);
+
+        $order = Order::factory()->cancelled()->create([
+            'p24_session_id' => $sessionId,
+        ]);
+
+        $p24Mock = $this->buildP24Mock($payload, false);
+        $svc = $this->buildServiceWithMockedClient($p24Mock);
+        $svc->handleWebhook($payload);
+
+        Notification::assertSentTo(
+            $admin,
+            PaymentReconciliationAlertNotification::class
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Defense-in-depth: a verified payment arrives for an order whose status
+    // is neither 'pending_payment' nor 'cancelled' (e.g. 'completed') — the
+    // state machine still refuses the transition to 'paid'. This must be
+    // caught, logged loudly, and surfaced to super-admins, not silently
+    // swallowed nor allowed to bubble up as an uncaught exception.
+    // -------------------------------------------------------------------------
+
+    public function test_webhook_on_completed_order_does_not_throw_and_leaves_status_unchanged(): void
+    {
+        Notification::fake();
+
+        $sessionId = 'SESSION-BLOCKED-COMPLETED';
+        $payload = $this->buildPayload($sessionId);
+        $payload['sign'] = $this->computeValidSign($payload);
+
+        $order = Order::factory()->completed()->create([
+            'p24_session_id' => $sessionId,
+        ]);
+
+        $p24Mock = $this->buildP24Mock($payload, false);
+        $svc = $this->buildServiceWithMockedClient($p24Mock);
+        $svc->handleWebhook($payload);
+
+        $order->refresh();
+        $this->assertEquals('completed', $order->status);
+    }
+
+    public function test_webhook_on_completed_order_still_records_success_payment(): void
+    {
+        Notification::fake();
+
+        $sessionId = 'SESSION-BLOCKED-COMPLETED-PAY';
+        $payload = $this->buildPayload($sessionId);
+        $payload['sign'] = $this->computeValidSign($payload);
+
+        $order = Order::factory()->completed()->create([
+            'p24_session_id' => $sessionId,
+        ]);
+
+        $p24Mock = $this->buildP24Mock($payload, false);
+        $svc = $this->buildServiceWithMockedClient($p24Mock);
+        $svc->handleWebhook($payload);
+
+        // Money was genuinely captured (verify() succeeded) — this must never
+        // be lost even though the Order itself couldn't be transitioned.
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $order->id,
+            'p24_session_id' => $sessionId,
+            'status' => 'success',
+        ]);
+    }
+
+    public function test_webhook_on_completed_order_notifies_super_admins_of_blocked_reconciliation(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->create();
+        $admin->assignRole('super-admin');
+
+        $sessionId = 'SESSION-BLOCKED-COMPLETED-NOTIFY';
+        $payload = $this->buildPayload($sessionId);
+        $payload['sign'] = $this->computeValidSign($payload);
+
+        $order = Order::factory()->completed()->create([
+            'p24_session_id' => $sessionId,
+        ]);
+
+        $p24Mock = $this->buildP24Mock($payload, false);
+        $svc = $this->buildServiceWithMockedClient($p24Mock);
+        $svc->handleWebhook($payload);
+
+        Notification::assertSentTo(
+            $admin,
+            PaymentReconciliationAlertNotification::class
+        );
     }
 
     // -------------------------------------------------------------------------
