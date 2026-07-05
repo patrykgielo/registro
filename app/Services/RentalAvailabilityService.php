@@ -19,12 +19,46 @@ class RentalAvailabilityService
 
     /**
      * Get available quantity for a service during a date range.
-     * NOT thread-safe on its own — call inside lockForUpdate() transaction for writes.
+     *
+     * NOT thread-safe on its own for the default ($forUpdate = false) mode —
+     * callers on write paths (creating/updating a Rental or OrderItem) MUST
+     * pass $forUpdate = true, AND must already hold a `Service::lockForUpdate()`
+     * lock on this $service row before calling. Why both are required: locking
+     * the Service row only serialises *other writers* against each other (they
+     * all queue on the same row) — it does NOT, by itself, make THIS
+     * transaction's own read of `rentals`/`order_items` see another
+     * transaction's commit that happened while we were queued. Under MySQL's
+     * default REPEATABLE READ, a transaction's plain (non-locking) SELECTs all
+     * share the snapshot established by its first consistent read — a
+     * `SELECT ... FOR UPDATE` on a *different* row (the Service) does not reset
+     * that snapshot for later plain reads. So a transaction that queued on the
+     * Service lock and then resumed after the winner committed could still
+     * compute availability from data as of *before* the winner's insert, via a
+     * plain SELECT — both transactions would then see "1 available" and both
+     * insert: exactly the oversell bug this method exists to prevent.
+     * $forUpdate = true makes the `rentals`/`order_items` count queries
+     * themselves locking reads, which MySQL always resolves against the latest
+     * committed data regardless of snapshot/isolation level — that is the
+     * actual mechanism that closes the race, not the Service lock alone.
+     *
+     * Read-only callers (e.g. "X available" display on the frontend) should
+     * keep the default $forUpdate = false — forcing locking reads on every
+     * page view would serialise unrelated readers for no benefit.
+     *
+     * $excludeRentalId lets a caller editing an existing Rental row exclude
+     * that row's own (already-counted) reservation from the sum — otherwise
+     * an admin increasing the quantity on an existing rental would see its own
+     * prior reservation double-counted against itself.
      *
      * Sprint 2: dual-source — accounts for both legacy Rentals and new OrderItems.
      */
-    public function getAvailableQuantity(Service $service, Carbon $start, Carbon $end): int
-    {
+    public function getAvailableQuantity(
+        Service $service,
+        Carbon $start,
+        Carbon $end,
+        bool $forUpdate = false,
+        ?int $excludeRentalId = null
+    ): int {
         $blockedStatuses = collect(RentalStatus::cases())
             ->filter(fn (RentalStatus $s) => $s->blocksAvailability())
             ->map(fn (RentalStatus $s) => $s->value)
@@ -32,17 +66,32 @@ class RentalAvailabilityService
             ->all();
 
         // Legacy: reservations via old Rental flow
-        $reservedViaRentals = (int) Rental::where('service_id', $service->id)
+        $rentalsQuery = Rental::where('service_id', $service->id)
             ->whereIn('status', $blockedStatuses)
             ->where('start_date', '<=', $end)
-            ->where('end_date', '>=', $start)
-            ->sum('quantity');
+            ->where('end_date', '>=', $start);
+
+        if ($excludeRentalId !== null) {
+            $rentalsQuery->where('id', '!=', $excludeRentalId);
+        }
+
+        if ($forUpdate) {
+            $rentalsQuery->lockForUpdate();
+        }
+
+        $reservedViaRentals = (int) $rentalsQuery->sum('quantity');
 
         // New: reservations via Cart → Order flow (Sprint 2+)
-        $reservedViaOrders = (int) OrderItem::where('service_id', $service->id)
+        $ordersQuery = OrderItem::where('service_id', $service->id)
             ->overlappingDates($start, $end)
-            ->blockingAvailability()
-            ->sum('quantity');
+            ->blockingAvailability();
+
+        if ($forUpdate) {
+            $ordersQuery->lockForUpdate();
+        }
+
+        // Qualified column — scopeBlockingAvailability() joins `orders`.
+        $reservedViaOrders = (int) $ordersQuery->sum('order_items.quantity');
 
         return max(0, ($service->quantity_total ?? 0) - $reservedViaRentals - $reservedViaOrders);
     }
@@ -95,7 +144,7 @@ class RentalAvailabilityService
             // Lock the service row — concurrent requests queue here
             $service = Service::lockForUpdate()->findOrFail($service->id);
 
-            $available = $this->getAvailableQuantity($service, $start, $end);
+            $available = $this->getAvailableQuantity($service, $start, $end, forUpdate: true);
 
             if ($available < $quantity) {
                 throw new RentalUnavailableException(
