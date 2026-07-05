@@ -54,6 +54,37 @@ class Appointment extends Model
      */
     protected static function booted(): void
     {
+        // Normalize start_time/end_time to a canonical H:i:s string before the
+        // active_slot/unique-index logic below. The 'datetime:H:i' cast only
+        // reformats on GET (attribute access) — Eloquent's setAttribute() skips
+        // fromDateTime() normalization entirely for 'custom_datetime' casts
+        // (only plain 'date'/'datetime' casts get that treatment), so the RAW
+        // stored value is whatever string the caller passed in verbatim. Two
+        // logically-identical times — '10:00:00' (raw Eloquent::create(), most
+        // factories) vs '10:00' (validated 'H:i' form input from the booking
+        // controllers) — would otherwise be stored as different strings and
+        // silently defeat appointments_staff_slot_unique's string comparison.
+        // Discovered while writing the double-booking regression test (2026-07).
+        static::saving(function (Appointment $appointment) {
+            if ($appointment->start_time) {
+                $appointment->start_time = $appointment->start_time->format('H:i:s');
+            }
+            if ($appointment->end_time) {
+                $appointment->end_time = $appointment->end_time->format('H:i:s');
+            }
+        });
+
+        // Maintain `active_slot` — backs the appointments_staff_slot_unique DB
+        // constraint (double-booking guard). NULL for cancelled appointments so
+        // they never collide with the unique index (both MySQL and SQLite treat
+        // every NULL as distinct); `true` for every other status so two
+        // non-cancelled appointments for the same staff/date/start_time collide.
+        // Deliberately NOT fillable — always derived from `status`, never
+        // client-supplied. See database/migrations/2026_07_05_000001_*.
+        static::saving(function (Appointment $appointment) {
+            $appointment->active_slot = $appointment->status === AppointmentStatus::Cancelled ? null : true;
+        });
+
         // Detect appointment reschedule (date/time change)
         static::updating(function (Appointment $appointment) {
             if ($appointment->isDirty(['appointment_date', 'start_time', 'end_time'])) {
@@ -135,6 +166,7 @@ class Appointment extends Model
         'end_time' => 'datetime:H:i',
         'location_components' => 'array',
         'invoice_requested' => 'boolean',
+        'active_slot' => 'boolean',
         'service_price_at_booking' => 'decimal:2',
         'service_duration_at_booking' => 'integer',
         'completed_at' => 'datetime',
