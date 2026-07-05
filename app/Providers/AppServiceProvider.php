@@ -130,6 +130,53 @@ class AppServiceProvider extends ServiceProvider
 
         // Inject $pageType into frontend layout for analytics tracking
         view()->composer('layouts.app', \App\View\Composers\PageTypeComposer::class);
+
+        // Livewire admin/platform tenant isolation — see
+        // app/docs/security/patterns/livewire-tenant-isolation.md
+        $this->registerLivewireTenantIsolation();
+    }
+
+    /**
+     * Close the cross-tenant leak on POST /livewire/update (Livewire's own shared
+     * AJAX endpoint, registered with only the base 'web' middleware — it never runs
+     * ResolveTenant/RequireTenant, so almost all real /admin interaction (table
+     * loads, filters, form saves) resolved the tenant from `session('tenant_id')`
+     * alone, which ResolveTenant overwrites on ANY successful subdomain visit by
+     * the same browser (even an unrelated tab, even anonymous) — a poisoned
+     * session let a staff/admin user with an open Org A admin tab silently read
+     * and write Org B's data via ordinary Livewire interactions.
+     *
+     * Fix uses Livewire 3's own `PersistentMiddleware` mechanism (already shipped
+     * for exactly this class of problem — Sanctum/Jetstream auth middleware are
+     * in its default allow-list). Every Livewire component's snapshot carries a
+     * tamper-proof `memo.path`/`memo.method` — the URL that ORIGINALLY mounted it
+     * (set at full-page-load time, verified by Livewire's own checksum before our
+     * code ever sees it). On every subsequent /livewire/update call, Livewire
+     * builds a fake request with that original path/method (but the REAL,
+     * current request's Host header, cookies and session) and replays whichever
+     * of the *matched route's* middleware are in this allow-list.
+     *
+     * Adding ResolveTenant + RequireTenant here means:
+     * - A component mounted under /admin/* replays ResolveTenant against the
+     *   REAL Host header of the tab making the AJAX call (never the stale
+     *   session), re-deriving the correct tenant and re-running the
+     *   canAccessTenant() staff-authorization check — then OVERWRITES
+     *   session('tenant_id') with the correct value before Filament resolves
+     *   any BelongsToOrganization-scoped query for this update.
+     * - A component mounted under /platform/* never matches a route carrying
+     *   these two middleware (PlatformPanelProvider never registers them), so
+     *   the replay is a no-op — platform Livewire traffic is completely
+     *   unaffected, exactly as today.
+     *
+     * See the doc above for the full design/rationale, rejected alternatives,
+     * and residual limitations.
+     */
+    private function registerLivewireTenantIsolation(): void
+    {
+        \Livewire\Livewire::addPersistentMiddleware([
+            \App\Http\Middleware\ResolveTenant::class,
+            \App\Http\Middleware\RequireTenant::class,
+        ]);
     }
 
     /**

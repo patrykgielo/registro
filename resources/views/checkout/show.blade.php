@@ -81,7 +81,7 @@
             {{-- Consent validation --}}
             consentSubmitAttempted: false,
 
-            depositTotal: {{ $cart->items->sum(fn($item) => ($item->service->deposit_amount ?? 0) * $item->quantity) }},
+            depositTotal: {{ $depositTotal }},
 
             get consentErrors() {
                 if (!this.consentSubmitAttempted) return {};
@@ -1338,10 +1338,7 @@
                         <p class="mt-1 text-xs text-text-muted">Ceny brutto, w tym VAT {{ app(\App\Support\Settings\SettingsManager::class)->vatRate() }}%</p>
                     </div>
 
-                    {{-- Kaucja (conditionally shown) --}}
-                    @php
-                        $depositTotal = $cart->items->sum(fn($item) => ($item->service->deposit_amount ?? 0) * $item->quantity);
-                    @endphp
+                    {{-- Kaucja (conditionally shown) — $depositTotal computed once in CheckoutController::show() --}}
                     @if($depositTotal > 0)
                         <div class="mt-4 pt-4 border-t border-border">
                             <div class="flex justify-between items-baseline gap-3">

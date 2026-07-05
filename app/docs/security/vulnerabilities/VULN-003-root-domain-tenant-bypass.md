@@ -705,6 +705,17 @@ confirmed it **passes** against the fixed version. Full suite: 780 passed, 3 pre
   route reachable from the root domain — it only fires when `currentTenant()` returns null, and the
   session fallback means it often won't.
 
+## Layer 6 (2026-07-05, `fix/livewire-admin-tenant-isolation`): same session-fallback class, on Livewire's own AJAX transport
+
+`POST /livewire/update` — Livewire's own shared update route — never carried `ResolveTenant`/
+`RequireTenant` at all (it's registered by the `livewire/livewire` package itself with only the
+base `web` middleware group), so almost all real `/admin` interaction (table filters, sorts, form
+saves — anything after the initial page load, which is nearly everything in a Filament panel)
+resolved the tenant from `session('tenant_id')` alone — the exact same poisoned-session primitive
+as Layers 3-5, just reached through a different transport. Full write-up, research, and fix
+(Livewire 3's own `PersistentMiddleware` extension point — no new routes or middleware classes):
+`app/docs/security/patterns/livewire-tenant-isolation.md`.
+
 ## Follow-ups (out of scope for this fix)
 
 - `CheckRegistrationEnabled` middleware (`/customer/register`) resolves `isRegistrationEnabled()` via
@@ -745,5 +756,6 @@ confirmed it **passes** against the fixed version. Full suite: 780 passed, 3 pre
 **Updated**: 2026-07-03 (Layer 1 gap fixes from adversarial re-review), 2026-07-03 (Layer 2 —
 BelongsToOrganization fail-closed), 2026-07-03 (Layer 3 — booking/appointments session-fallback
 gap), 2026-07-03 (Layer 4 — cart/checkout/orders session-fallback gap), 2026-07-03 (dead
-`@test`-annotation cleanup, last remaining test-cleanup follow-up resolved)
+`@test`-annotation cleanup, last remaining test-cleanup follow-up resolved), 2026-07-05 (Layer 6 —
+Livewire admin/platform tenant isolation, see dedicated pattern doc)
 **Related**: [Lifecycle Security Decisions](../lifecycle-security-decisions.md), [Orders Security Hardening](../../features/orders-security-hardening.md)
