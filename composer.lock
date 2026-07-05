@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f051412af1b9aab7eb8b51bf6240b3d1",
+    "content-hash": "19a77c7658e28002556de71a69f251e8",
     "packages": [
         {
             "name": "asantibanez/laravel-eloquent-state-machines",

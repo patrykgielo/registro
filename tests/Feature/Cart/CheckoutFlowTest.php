@@ -131,23 +131,13 @@ class CheckoutFlowTest extends TestCase
 
     public function test_submit_with_empty_cart_redirects_back_with_general_error(): void
     {
-        // With no cart items, CartService::convertToOrder() creates an order
-        // with subtotal = 0. Przelewy24Service::registerTransaction() is then
-        // called and will throw because there is no real API token in the test
-        // environment. The CheckoutController catch block redirects back with
-        // a 'general' error flash.
-        //
-        // We simulate the P24 failure explicitly so the test does not depend on
-        // real network or env credentials.
-        //
-        // The compensation path (OrderService::cancel()) fires OrderCancelled,
-        // which sends a templated customer notification — irrelevant here.
-        Notification::fake();
-
+        // CartService::convertToOrder() now guards against empty carts and
+        // throws CartNotActiveException before creating any Order — P24 is
+        // never reached, so no Order/OrderCancelled compensation path fires
+        // either. The CheckoutController catch block redirects back with a
+        // 'general' error flash regardless of which exception fired.
         $this->mock(Przelewy24Service::class, function ($mock) {
-            $mock->shouldReceive('registerTransaction')
-                ->once()
-                ->andThrow(new \RuntimeException('No P24 credentials in test env'));
+            $mock->shouldReceive('registerTransaction')->never();
         });
 
         $response = $this->actingAs($this->user)
@@ -156,6 +146,8 @@ class CheckoutFlowTest extends TestCase
 
         $response->assertRedirect();
         $response->assertSessionHasErrors('general');
+
+        $this->assertDatabaseCount('orders', 0);
     }
 
     // -------------------------------------------------------------------------

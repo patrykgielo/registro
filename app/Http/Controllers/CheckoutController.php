@@ -85,7 +85,11 @@ class CheckoutController extends Controller
             'deposit_policy_note' => $this->settings->get('checkout.deposit_policy_note', 'Kaucja pobierana gotówką / kartą przy odbiorze sprzętu. Zwracana po oddaniu sprzętu w stanie nienaruszonym.'),
         ];
 
-        return view('checkout.show', compact('cart', 'profileData', 'checkoutSettings'));
+        // Computed once here (items.service already eager-loaded by getOrCreateCart())
+        // instead of being summed twice in checkout/show.blade.php (JS payload + display block).
+        $depositTotal = $cart->items->sum(fn ($item) => ($item->service->deposit_amount ?? 0) * $item->quantity);
+
+        return view('checkout.show', compact('cart', 'profileData', 'checkoutSettings', 'depositTotal'));
     }
 
     /**
