@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Settings;
 
+use App\Models\Organization;
 use App\Models\Setting;
 use App\Support\TenantFeature;
 use Illuminate\Support\Facades\Cache;
@@ -39,39 +40,7 @@ class SettingsManager
      */
     public function get(string $path, mixed $default = null): mixed
     {
-        [$group, $key] = $this->parsePath($path);
-
-        $cacheKey = $this->getCacheKey($group, $key);
-
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default) {
-            $tenantId = $this->getCurrentTenantId();
-
-            // Try tenant-specific setting first
-            if ($tenantId) {
-                $setting = Setting::withoutGlobalScope('organization')
-                    ->where('organization_id', $tenantId)
-                    ->group($group)
-                    ->key($key)
-                    ->first();
-
-                if ($setting) {
-                    return $this->unwrapValue($setting->value);
-                }
-            }
-
-            // Fall back to global default (organization_id IS NULL)
-            $setting = Setting::withoutGlobalScope('organization')
-                ->whereNull('organization_id')
-                ->group($group)
-                ->key($key)
-                ->first();
-
-            if (! $setting) {
-                return $default;
-            }
-
-            return $this->unwrapValue($setting->value);
-        });
+        return $this->getForOrganization($path, TenantFeature::currentTenant(), $default);
     }
 
     /**
@@ -104,6 +73,94 @@ class SettingsManager
         $this->clearCache($group, $key);
 
         return true;
+    }
+
+    /**
+     * Read a platform-GLOBAL setting (organization_id IS NULL), bypassing tenant
+     * resolution entirely. Use from the platform panel where a stale session
+     * `tenant_id` (left by a prior subdomain visit) must NOT scope the lookup.
+     */
+    public function getGlobal(string $path, mixed $default = null): mixed
+    {
+        [$group, $key] = $this->parsePath($path);
+
+        return Cache::remember($this->globalCacheKey($group, $key), self::CACHE_TTL, function () use ($group, $key, $default) {
+            $setting = Setting::withoutGlobalScope('organization')
+                ->whereNull('organization_id')
+                ->group($group)
+                ->key($key)
+                ->first();
+
+            return $setting ? $this->unwrapValue($setting->value) : $default;
+        });
+    }
+
+    /**
+     * Write a platform-GLOBAL setting (organization_id IS NULL), bypassing tenant
+     * resolution. Counterpart to getGlobal() — see its docblock for why.
+     */
+    public function setGlobal(string $path, mixed $value): bool
+    {
+        [$group, $key] = $this->parsePath($path);
+
+        // withoutEvents mutes the Setting model's BelongsToOrganization `creating` hook,
+        // which would otherwise auto-fill organization_id from a stale session tenant_id
+        // (left by a prior subdomain visit) and scope this "global" write to that tenant.
+        // withoutGlobalScope skips the read-side tenant filter when matching the existing row.
+        Setting::withoutEvents(function () use ($group, $key, $value) {
+            Setting::withoutGlobalScope('organization')->updateOrCreate(
+                ['organization_id' => null, 'group' => $group, 'key' => $key],
+                ['value' => is_array($value) ? $value : [$value]]
+            );
+        });
+
+        Cache::forget($this->globalCacheKey($group, $key));
+        Cache::forget(self::CACHE_PREFIX.':tenant:global:'.$group);
+
+        return true;
+    }
+
+    private function globalCacheKey(string $group, string $key): string
+    {
+        return self::CACHE_PREFIX.":tenant:global:{$group}:{$key}";
+    }
+
+    /**
+     * Read a setting scoped to an EXPLICITLY given organization (or none), bypassing
+     * currentTenant()/session-fallback resolution entirely.
+     *
+     * Use when the calling context has already deterministically resolved the tenant for
+     * THIS request (e.g. the `tenant` request attribute set by ResolveTenant) and the
+     * decision must not be silently overridden by a stale `session('tenant_id')` left by
+     * a prior subdomain visit — see CheckRegistrationEnabled for the motivating case.
+     */
+    public function getForOrganization(string $path, ?Organization $organization, mixed $default = null): mixed
+    {
+        [$group, $key] = $this->parsePath($path);
+        $tenantId = $organization?->id;
+        $cacheKey = self::CACHE_PREFIX.':tenant:'.($tenantId ?? 'global').":{$group}:{$key}";
+
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default, $tenantId) {
+            if ($tenantId) {
+                $setting = Setting::withoutGlobalScope('organization')
+                    ->where('organization_id', $tenantId)
+                    ->group($group)
+                    ->key($key)
+                    ->first();
+
+                if ($setting) {
+                    return $this->unwrapValue($setting->value);
+                }
+            }
+
+            $setting = Setting::withoutGlobalScope('organization')
+                ->whereNull('organization_id')
+                ->group($group)
+                ->key($key)
+                ->first();
+
+            return $setting ? $this->unwrapValue($setting->value) : $default;
+        });
     }
 
     /**
@@ -412,7 +469,18 @@ class SettingsManager
      */
     public function isRegistrationEnabled(): bool
     {
-        return (bool) $this->get('auth.registration_enabled', true);
+        return $this->isRegistrationEnabledFor(TenantFeature::currentTenant());
+    }
+
+    /**
+     * Check if user registration is enabled for an EXPLICITLY given organization
+     * (or none), bypassing currentTenant()/session-fallback resolution.
+     *
+     * @see getForOrganization()
+     */
+    public function isRegistrationEnabledFor(?Organization $organization): bool
+    {
+        return (bool) $this->getForOrganization('auth.registration_enabled', $organization, true);
     }
 
     /**
@@ -423,6 +491,22 @@ class SettingsManager
     public function contactInformation(): array
     {
         return $this->group('contact');
+    }
+
+    /**
+     * Get the email address for closure requests.
+     *
+     * Falls back to the contact email, then to the platform default.
+     */
+    public function closureRequestEmail(): string
+    {
+        $val = $this->get('account.closure_request_email');
+
+        if (! empty($val) && is_string($val)) {
+            return $val;
+        }
+
+        return $this->contactInformation()['email'] ?? 'kontakt@registro.app';
     }
 
     /**

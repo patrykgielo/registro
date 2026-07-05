@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Middleware;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Http\Middleware\ResolveTenant;
 use App\Models\Organization;
 use App\Models\User;
@@ -20,6 +21,7 @@ class ResolveTenantTest extends TestCase
     {
         parent::setUp();
         $this->middleware = new ResolveTenant;
+        Cache::flush();
     }
 
     public function test_root_domain_passes_through_without_tenant(): void
@@ -47,7 +49,6 @@ class ResolveTenantTest extends TestCase
             'slug' => 'demo',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'is_active' => true,
         ]);
 
         $request = Request::create('https://demo.registro.local/');
@@ -77,17 +78,16 @@ class ResolveTenantTest extends TestCase
         $this->assertStringContains('registro.local', $response->headers->get('Location'));
     }
 
-    public function test_inactive_tenant_redirects_to_root(): void
+    public function test_inactive_suspended_tenant_shows_suspended_page(): void
     {
         config(['app.domain' => 'registro.local']);
 
         $owner = User::factory()->create();
-        Organization::create([
+        Organization::factory()->inactive()->create([
             'name' => 'Inactive Salon',
             'slug' => 'inactive',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'is_active' => false,
         ]);
 
         $request = Request::create('https://inactive.registro.local/');
@@ -97,7 +97,157 @@ class ResolveTenantTest extends TestCase
             return response('ok');
         });
 
-        $this->assertTrue($response->isRedirection());
+        // inactive() factory sets lifecycle_state = Suspended.
+        // Suspended orgs now return 503 (not a redirect) since GAP #3.
+        $this->assertFalse($response->isRedirection());
+        $this->assertSame(503, $response->getStatusCode());
+        $this->assertStringContainsString('Inactive Salon', $response->getContent());
+    }
+
+    public function test_suspended_lifecycle_tenant_shows_business_suspended_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->inactive()->create([
+            'name' => 'Suspended Salon',
+            'slug' => 'suspended',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://suspended.registro.local/');
+        $request->headers->set('HOST', 'suspended.registro.local');
+
+        $response = $this->middleware->handle($request, function ($req) {
+            return response('ok');
+        });
+
+        // Suspended → 503, NOT a redirect; org name appears in body
+        $this->assertFalse($response->isRedirection());
+        $this->assertEquals(503, $response->getStatusCode());
+        $this->assertStringContainsString('Suspended Salon', $response->getContent());
+        $this->assertEquals('3600', $response->headers->get('Retry-After'));
+    }
+
+    public function test_closing_lifecycle_tenant_shows_business_closed_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->closing()->create([
+            'name' => 'Closing Salon',
+            'slug' => 'closingorg',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://closingorg.registro.local/');
+        $request->headers->set('HOST', 'closingorg.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+        $this->assertStringContainsString('Closing Salon', $response->getContent());
+
+        // The closed-page result is cached, but the Active resolution cache must stay empty
+        // (a closing org must never be served as an active tenant).
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has('tenant:slug:closingorg'));
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('tenant:closed:closingorg'));
+    }
+
+    public function test_restore_clears_business_closed_cache(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        $org = Organization::factory()->closing()->create([
+            'name' => 'Restorable', 'slug' => 'restorable',
+            'booking_type' => 'time_slot', 'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://restorable.registro.local/');
+        $request->headers->set('HOST', 'restorable.registro.local');
+        $this->middleware->handle($request, fn () => response('ok')); // primes tenant:closed cache
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('tenant:closed:restorable'));
+
+        // Restore Closing -> Active should invalidate the closed-page cache.
+        $org->lifecycle_state = OrganizationLifecycleState::Active;
+        $org->save();
+
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has('tenant:closed:restorable'));
+    }
+
+    public function test_closed_lifecycle_tenant_shows_business_closed_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->closed()->create([
+            'name' => 'Closed Salon',
+            'slug' => 'closedorg',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://closedorg.registro.local/');
+        $request->headers->set('HOST', 'closedorg.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+        $this->assertStringContainsString('Closed Salon', $response->getContent());
+    }
+
+    public function test_soft_deleted_closed_tenant_shows_business_closed_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        $org = Organization::factory()->closed()->create([
+            'name' => 'Purged Salon',
+            'slug' => 'purgedorg',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+        // Soft-delete the org (simulates purge command path)
+        $org->bypassDeleteGuard = true;
+        $org->delete();
+
+        $request = Request::create('https://purgedorg.registro.local/');
+        $request->headers->set('HOST', 'purgedorg.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+        $this->assertStringContainsString('Purged Salon', $response->getContent());
+    }
+
+    public function test_active_lifecycle_tenant_resolves_successfully(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        $org = Organization::create([
+            'name' => 'Active Salon',
+            'slug' => 'activeslug',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+            // lifecycle_state defaults to 'active' via DB default + observer
+        ]);
+
+        $request = Request::create('https://activeslug.registro.local/');
+        $request->headers->set('HOST', 'activeslug.registro.local');
+
+        $response = $this->middleware->handle($request, function ($req) {
+            return response('ok');
+        });
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertEquals($org->id, $request->attributes->get('tenant')->id);
     }
 
     public function test_invalid_slug_format_redirects_to_root(): void
@@ -138,7 +288,6 @@ class ResolveTenantTest extends TestCase
             'slug' => 'cached',
             'booking_type' => 'time_slot',
             'owner_id' => $owner->id,
-            'is_active' => true,
         ]);
 
         // First request populates cache
@@ -148,6 +297,59 @@ class ResolveTenantTest extends TestCase
         $this->middleware->handle($request, fn () => response('ok'));
 
         $this->assertTrue(Cache::has('tenant:slug:cached'));
+    }
+
+    public function test_suspended_is_not_redirect(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->inactive()->create([
+            'slug' => 'susp2',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://susp2.registro.local/');
+        $request->headers->set('HOST', 'susp2.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertFalse($response->isRedirection(), 'Suspended org must not redirect; must show 503.');
+        $this->assertEquals(503, $response->getStatusCode());
+    }
+
+    public function test_closed_still_returns_410(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::factory()->closed()->create([
+            'name' => 'Closed Firm',
+            'slug' => 'closedfirm',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        $request = Request::create('https://closedfirm.registro.local/');
+        $request->headers->set('HOST', 'closedfirm.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertEquals(410, $response->getStatusCode());
+        $this->assertFalse($response->isRedirection());
+    }
+
+    public function test_unknown_slug_still_redirects(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $request = Request::create('https://neverexisted.registro.local/');
+        $request->headers->set('HOST', 'neverexisted.registro.local');
+
+        $response = $this->middleware->handle($request, fn () => response('ok'));
+
+        $this->assertTrue($response->isRedirection());
     }
 
     private function assertStringContains(string $needle, ?string $haystack): void

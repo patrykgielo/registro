@@ -1,5 +1,17 @@
 @extends('layouts.app')
 
+@push('head')
+    <meta property="og:title" content="{{ $metaTitle }}">
+    @if($metaDescription)
+        <meta property="og:description" content="{{ $metaDescription }}">
+    @endif
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ route('post.show', $post->slug) }}">
+    @if($post->featured_image)
+        <meta property="og:image" content="{{ Storage::url($post->featured_image) }}">
+    @endif
+@endpush
+
 @section('content')
 {{--
     Post Display Template

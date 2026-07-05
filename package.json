@@ -11,6 +11,7 @@
     "dependencies": {
         "@alpinejs/focus": "^3.15.9",
         "alpinejs": "^3.14.1",
+        "apexcharts": "^5.11.0",
         "flatpickr": "^4.6.13"
     },
     "devDependencies": {

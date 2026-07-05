@@ -1,0 +1,16 @@
+#!/bin/bash
+# Reject new/modified migration files with empty/missing down() method.
+# Delegates to `migrations:check-rollback` in Docker — no host PHP dependency,
+# same logic as PHPUnit test.
+
+STAGED_MIGRATIONS=$(git diff --cached --name-only --diff-filter=AM | grep '^database/migrations/.*\.php$')
+
+[ -z "$STAGED_MIGRATIONS" ] && exit 0
+
+echo "Checking migration rollback safety..."
+if ! docker compose exec -T app php artisan migrations:check-rollback; then
+    echo ""
+    echo "Fix the violations above before committing."
+    echo "Every down() needs rollback logic or: throw new \\RuntimeException('Irreversible migration');"
+    exit 1
+fi

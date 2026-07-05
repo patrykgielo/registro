@@ -305,7 +305,7 @@ auth()->user()?->hasRole('staff') ?? false
 ```bash
 # Clear caches
 docker compose exec app php artisan optimize:clear
-docker compose restart app horizon queue scheduler
+docker compose restart app horizon scheduler
 
 # Test as staff user
 # - Login with staff account

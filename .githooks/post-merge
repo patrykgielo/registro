@@ -1,0 +1,18 @@
+#!/bin/bash
+# Auto-runs migrations if migration files changed after merge
+CHANGED=$(git diff --name-only ORIG_HEAD HEAD 2>/dev/null)
+
+if echo "$CHANGED" | grep -qE '^database/migrations/.*\.php$'; then
+    echo ""
+    echo "New migrations detected. Running php artisan migrate..."
+    if docker compose exec -T app php artisan migrate; then
+        echo "Migrations complete."
+    else
+        echo "Migration failed! Run manually: docker compose exec app php artisan migrate"
+        exit 1
+    fi
+fi
+
+if echo "$CHANGED" | grep -q '^composer\.lock$'; then
+    echo "composer.lock changed. Run: docker compose exec app composer install"
+fi

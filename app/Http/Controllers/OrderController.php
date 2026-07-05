@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Services\Order\OrderService;
 use App\Support\TenantFeature;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -12,6 +13,8 @@ use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
+    public function __construct(protected OrderService $orderService) {}
+
     public function index(Request $request): View
     {
         $orders = Order::where('user_id', auth()->id())
@@ -40,8 +43,7 @@ class OrderController extends Controller
         abort_unless($order->user_id === auth()->id() && $order->organization_id === $org->id, 403);
         abort_unless($order->status === 'pending_payment', 403);
 
-        $order->status()->transitionTo('cancelled');
-        $order->update(['cancelled_at' => now()]);
+        $this->orderService->cancel($order, 'Anulowane przez klienta');
 
         return redirect()
             ->route('orders.show', $order)

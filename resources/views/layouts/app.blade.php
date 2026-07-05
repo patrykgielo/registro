@@ -4,7 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? config('app.name') }}</title>
+    <title>{{ $metaTitle ?? $title ?? config('app.name') }}</title>
+    @if($metaDescription ?? null)
+        <meta name="description" content="{{ $metaDescription }}">
+    @endif
 
     <x-gtm-head />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -43,7 +46,7 @@
 
     @stack('head')
 </head>
-<body class="bg-surface min-h-screen flex flex-col antialiased">
+<body class="bg-surface min-h-screen flex flex-col antialiased" data-page-type="{{ $pageType ?? 'unknown' }}">
     <x-gtm-body />
 
     {{-- Skip Link (WCAG 2.2 AA) --}}

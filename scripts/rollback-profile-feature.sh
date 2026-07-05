@@ -143,7 +143,7 @@ echo ""
 
 # Step 5: Restart containers
 echo -e "${BLUE}[5/5] Restarting containers...${NC}"
-docker compose restart app horizon queue
+docker compose restart app horizon
 echo -e "${GREEN}✓ Containers restarted${NC}"
 echo ""
 

@@ -46,11 +46,25 @@
 - save_to_profile in checkout payload → CartService::saveProfileData() persists back to User
 - CheckoutController::show() now passes $profileData to view for Alpine pre-fill
 
+## Tenant Lifecycle Audit Log (Faza 5.5+5.6)
+- OrganizationLifecycleLog: DURABLE, no FK, no BelongsToOrganization — survives org hard-delete
+- OrganizationLifecycleLog::record($org, $event, $actor, $context) static helper — use everywhere
+- closure_requested_at direct assignment: $org->closure_requested_at = now(); $org->save() (NOT fillable)
+- OrganizationObserver::updating() only fires on lifecycle_state change — closure_requested_at saves safely
+- SettingsManager::closureRequestEmail() — falls back to contactInformation()['email']
+- Notifications to super-admins: NotificationFacade (aliased) + User::role('super-admin')->get()
+- SystemSettings has Filament Notification alias conflict: `use Illuminate\Support\Facades\Notification as NotificationFacade`
+- Worktree test isolation: copy new files to main app + run migrate to execute tests from worktree
+
 ## Testing
 - Tests run in Docker only (PHP 8.3, local=8.2)
 - .env.testing MUST exist → DB_CONNECTION=sqlite, DB_DATABASE=:memory:
-- 5 pre-existing failures: BookingServiceArea(4) + TenantFeature(1)
+- develop baseline (post VULN-003 Layers 1-3, as of 2026-07-03): 740 passed / 3 pre-existing failed (CustomerOrdersTest×2 + TenantFeatureTest×1) / 4 skipped — see [project_vuln003_layer2.md](project_vuln003_layer2.md) for the Layer 2-4 mechanism + test pattern
 - CheckoutFlowTest::validCheckoutPayload() updated to include customer_type, legal acceptances, PESEL, address
+- `email_templates` is intentionally global/NULL-organization_id (migration `2026_06_29_120000_fix_tenant_scoped_unique_constraints` skips it) but `EmailTemplate` still uses `BelongsToOrganization` — any test with a real resolved tenant that triggers a templated notification needs `Notification::fake()` or it 500s with "template not found" (root cause of CustomerOrdersTest's 2 pre-existing failures)
 
 ## Hooks
 - [feedback_stop_hook_stderr.md](feedback_stop_hook_stderr.md) — Stop/SubagentStop hooks capture stderr only; all echo must use >&2
+
+## VULN-003 Layer 2 (2026-07-03)
+- [project_vuln003_layer2.md](project_vuln003_layer2.md) — BelongsToOrganization fail-closed hardening, tenant_resolution_attempted mechanism, test-fix patterns

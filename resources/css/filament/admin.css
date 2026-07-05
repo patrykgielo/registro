@@ -1,0 +1,100 @@
+/* Filament admin panel custom styles
+ * Loaded ALONGSIDE Filament's own CSS via renderHook (not replacing it).
+ * Provides Tailwind utilities for statistics page and other custom Filament views.
+ * Class-based dark mode: Filament adds .dark on <html>.
+ */
+@import 'tailwindcss/utilities.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Only scan Filament admin views — keeps bundle small */
+@source '../../views/filament/**/*.blade.php';
+
+/* Analytics badge classes — dynamic PHP closures can't be scanned by Tailwind JIT */
+.analytics-badge-green  { background-color: #dcfce7; color: #15803d; }
+.analytics-badge-yellow { background-color: #fef9c3; color: #a16207; }
+.analytics-badge-red    { background-color: #fee2e2; color: #b91c1c; }
+.analytics-text-green  { color: #16a34a; }
+.analytics-text-yellow { color: #ca8a04; }
+.analytics-text-red    { color: #ef4444; }
+:where(.dark, .dark *) .analytics-badge-green  { background-color: rgba(22,101,52,0.3); color: #4ade80; }
+:where(.dark, .dark *) .analytics-badge-yellow { background-color: rgba(113,63,18,0.3); color: #facc15; }
+:where(.dark, .dark *) .analytics-badge-red    { background-color: rgba(127,29,29,0.3); color: #f87171; }
+:where(.dark, .dark *) .analytics-text-green  { color: #4ade80; }
+:where(.dark, .dark *) .analytics-text-yellow { color: #facc15; }
+:where(.dark, .dark *) .analytics-text-red    { color: #f87171; }
+
+/* Design tokens — @theme registers them with Tailwind so utility classes are generated.
+ * utilities.css alone doesn't include theme values; @theme is required for bg-*, text-*, etc. */
+@theme {
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-gray-50:  oklch(98.5% 0.002 247.839);
+    --color-gray-100: oklch(96.7% 0.003 264.542);
+    --color-gray-200: oklch(92.8% 0.006 264.531);
+    --color-gray-300: oklch(87.2% 0.010 258.338);
+    --color-gray-400: oklch(70.7% 0.022 261.325);
+    --color-gray-500: oklch(55.1% 0.023 264.364);
+    --color-gray-600: oklch(44.6% 0.030 256.802);
+    --color-gray-700: oklch(37.3% 0.034 259.733);
+    --color-gray-800: oklch(27.8% 0.033 256.848);
+    --color-gray-900: oklch(21.0% 0.034 264.665);
+    --color-primary-50:  #E6F4F6;
+    --color-primary-400: #4AA5B0;
+    --color-primary-500: #3D8A94;
+    --color-primary-600: #2F6A72;
+    --color-primary-900: #0A0F10;
+    --color-cyan-50:  oklch(98.4% 0.019 200.873);
+    --color-cyan-400: oklch(78.9% 0.154 211.530);
+    --color-cyan-500: oklch(71.5% 0.143 215.221);
+    --color-cyan-600: oklch(60.9% 0.126 221.723);
+    --color-cyan-900: oklch(30.2% 0.056 229.695);
+    --color-green-50:  oklch(98.2% 0.018 155.826);
+    --color-green-400: oklch(79.2% 0.209 151.711);
+    --color-green-500: oklch(72.3% 0.219 149.579);
+    --color-green-600: oklch(62.7% 0.194 149.214);
+    --color-green-900: oklch(39.3% 0.095 152.535);
+    --color-amber-50:  oklch(98.7% 0.022  95.277);
+    --color-amber-400: oklch(83.0% 0.199  86.407);
+    --color-amber-500: oklch(76.9% 0.188  70.080);
+    --color-amber-600: oklch(65.6% 0.172  63.408);
+    --color-amber-900: oklch(41.4% 0.112  45.904);
+    --spacing: 0.25rem;
+}
+
+/* Content density pass (2026-07-01, user-approved): same treatment as
+ * platform.css, ported to the tenant /admin panel (~50 resources — more
+ * content per screen pays off even more here). Scoped under .fi-panel-admin
+ * (the body class Filament stamps per panel id) so it never bleeds into
+ * /platform, even though both panels share this file. */
+
+/* Filament components render body text via Tailwind's text-sm utility
+ * (font-size: var(--text-sm)), so overriding the custom property cascades
+ * through table cells, section/field labels and KPI stat labels/descriptions
+ * in one place. text-xs (12px) is untouched, so nothing on the page drops
+ * below the 12-13px readability floor. */
+.fi-panel-admin {
+    --text-sm: 0.8125rem; /* 13px, was 0.875rem (14px) */
+}
+
+/* Table rows: -2px per edge. Every stock column type (text/icon/image/
+ * select/checkbox/toggle/text-input) ships the same px-3 py-4 default. */
+.fi-panel-admin
+    :is(
+        .fi-ta-text,
+        .fi-ta-icon,
+        .fi-ta-image,
+        .fi-ta-select,
+        .fi-ta-checkbox,
+        .fi-ta-toggle,
+        .fi-ta-text-input
+    ):not(.fi-inline) {
+    padding-block: 0.875rem; /* 14px, was 1rem (py-4) */
+}
+
+/* Forms: rhythm between stacked top-level components (Sections, bare
+ * fields) tightened by 0.25rem. Section internal padding (p-6) untouched —
+ * only the gap between sections shrinks. */
+.fi-panel-admin .fi-sc-form {
+    gap: 1.25rem; /* was 1.5rem (gap-6) */
+}

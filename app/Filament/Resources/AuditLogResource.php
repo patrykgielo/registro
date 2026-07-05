@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources;
 
+use App\Actions\AuditLog\ExportAuditLogsToCsv;
 use App\Filament\Resources\AuditLogResource\Pages;
 use App\Models\AuditLog;
 use BackedEnum;
@@ -37,11 +38,11 @@ class AuditLogResource extends BaseResource
 
     protected static ?int $navigationSort = 99;
 
-    protected static ?string $navigationLabel = 'Audit Logs';
+    protected static ?string $navigationLabel = 'Logi audytu';
 
-    protected static ?string $modelLabel = 'Audit Log';
+    protected static ?string $modelLabel = 'Log audytu';
 
-    protected static ?string $pluralModelLabel = 'Audit Logs';
+    protected static ?string $pluralModelLabel = 'Logi audytu';
 
     public static function form(Schema $schema): Schema
     {
@@ -249,37 +250,7 @@ class AuditLogResource extends BaseResource
                     Actions\BulkAction::make('export')
                         ->label('Eksportuj zaznaczone')
                         ->icon('heroicon-o-arrow-down-tray')
-                        ->action(function ($records) {
-                            $filename = 'audit-logs-'.now()->format('Y-m-d-His').'.csv';
-                            $headers = [
-                                'Content-Type' => 'text/csv; charset=utf-8',
-                                'Content-Disposition' => "attachment; filename=\"$filename\"",
-                            ];
-
-                            $callback = function () use ($records) {
-                                $file = fopen('php://output', 'w');
-                                // UTF-8 BOM for Excel compatibility
-                                fwrite($file, "\xEF\xBB\xBF");
-                                fputcsv($file, ['ID', 'Data', 'Zdarzenie', 'Użytkownik', 'Obiekt', 'IP', 'Poprzednie wartości', 'Nowe wartości']);
-
-                                foreach ($records as $record) {
-                                    fputcsv($file, [
-                                        $record->id,
-                                        $record->created_at->format('Y-m-d H:i:s'),
-                                        $record->event_label,
-                                        $record->user?->name ?? 'N/A',
-                                        class_basename($record->auditable_type),
-                                        $record->ip_address ?? 'N/A',
-                                        $record->old_values ? json_encode($record->old_values, JSON_UNESCAPED_UNICODE) : '-',
-                                        $record->new_values ? json_encode($record->new_values, JSON_UNESCAPED_UNICODE) : '-',
-                                    ]);
-                                }
-
-                                fclose($file);
-                            };
-
-                            return response()->stream($callback, 200, $headers);
-                        }),
+                        ->action(fn ($records) => (new ExportAuditLogsToCsv)->execute($records)),
                 ]),
             ])
             ->defaultSort('created_at', 'desc')

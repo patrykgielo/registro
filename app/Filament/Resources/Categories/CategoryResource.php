@@ -14,6 +14,7 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
@@ -31,7 +32,7 @@ class CategoryResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 6;
 
     protected static ?string $modelLabel = 'Kategoria';
 
@@ -46,7 +47,7 @@ class CategoryResource extends BaseResource
                     ->required()
                     ->maxLength(255)
                     ->live(onBlur: true)
-                    ->afterStateUpdated(fn (string $state, Forms\Set $set) => $set('slug', Str::slug($state))
+                    ->afterStateUpdated(fn (string $state, Set $set) => $set('slug', Str::slug($state))
                     ),
 
                 Forms\Components\TextInput::make('slug')
@@ -78,6 +79,19 @@ class CategoryResource extends BaseResource
                     ->rows(3)
                     ->maxLength(500)
                     ->columnSpanFull(),
+
+                Forms\Components\TextInput::make('meta_title')
+                    ->label('Meta tytuł')
+                    ->maxLength(60)
+                    ->helperText('Zalecane: do 60 znaków')
+                    ->columnSpanFull(),
+
+                Forms\Components\Textarea::make('meta_description')
+                    ->label('Meta opis')
+                    ->rows(3)
+                    ->maxLength(160)
+                    ->helperText('Zalecane: do 160 znaków')
+                    ->columnSpanFull(),
             ]);
     }
 
@@ -95,7 +109,8 @@ class CategoryResource extends BaseResource
                     ->label('Slug')
                     ->searchable()
                     ->badge()
-                    ->color('gray'),
+                    ->color('gray')
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('type')
                     ->label('Typ')

@@ -17,7 +17,6 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\View;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
 
@@ -31,82 +30,96 @@ class EmailTemplateResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 2;
 
-    protected static ?string $navigationLabel = 'Email Templates';
+    protected static ?string $navigationLabel = 'Szablony Email';
+
+    protected static ?string $modelLabel = 'Szablon Email';
+
+    protected static ?string $pluralModelLabel = 'Szablony Email';
+
+    public static function getNavigationBadge(): ?string
+    {
+        return static::getModel()::count() === 0 ? 'Brak' : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return static::getModel()::count() === 0 ? 'danger' : null;
+    }
 
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make('Template Details')
+            Section::make('Szczegóły szablonu')
                 ->schema([
                     Forms\Components\Select::make('key')
-                        ->label('Template Key')
+                        ->label('Klucz szablonu')
                         ->required()
                         ->options(TemplateKey::optionsForChannel('email'))
                         ->searchable()
-                        ->helperText('Unique identifier for this template'),
+                        ->helperText('Unikalny identyfikator tego szablonu'),
 
                     Forms\Components\Select::make('language')
-                        ->label('Language')
+                        ->label('Język')
                         ->required()
                         ->options([
                             'pl' => 'Polski (PL)',
                             'en' => 'English (EN)',
                         ])
                         ->default('pl')
-                        ->helperText('Template language'),
+                        ->helperText('Język szablonu'),
 
                     Forms\Components\Toggle::make('active')
-                        ->label('Active')
+                        ->label('Aktywny')
                         ->default(true)
-                        ->helperText('Enable/disable this template'),
+                        ->helperText('Włącz/wyłącz ten szablon'),
                 ]),
 
-            Section::make('Email Content')
+            Section::make('Treść e-maila')
                 ->schema([
                     Forms\Components\TextInput::make('subject')
-                        ->label('Subject Line')
+                        ->label('Temat wiadomości')
                         ->required()
                         ->maxLength(255)
-                        ->placeholder('Welcome to {{app_name}}, {{user_name}}!')
-                        ->helperText('Use {{variable}} syntax for placeholders'),
+                        ->placeholder('Witaj w {{app_name}}, {{user_name}}!')
+                        ->helperText('Użyj składni {{zmienna}} dla placeholderów'),
 
                     Forms\Components\Textarea::make('html_body')
-                        ->label('HTML Body')
+                        ->label('Treść HTML')
                         ->required()
                         ->rows(15)
-                        ->placeholder('<h1>Hello {{user_name}}</h1>')
-                        ->helperText('HTML template with {{variable}} placeholders. Supports Blade syntax.'),
+                        ->placeholder('<h1>Witaj {{user_name}}</h1>')
+                        ->helperText('Szablon HTML z placeholderami {{zmienna}}. Uwaga: tylko literalne znaczniki {{zmienna}} są podstawiane — dyrektywy i wyrażenia Blade (np. @if, @foreach) NIE są obsługiwane i pozostaną w treści jako zwykły tekst.'),
 
                     Forms\Components\Textarea::make('text_body')
-                        ->label('Plain Text Body (Optional)')
+                        ->label('Treść tekstowa (opcjonalnie)')
                         ->rows(10)
-                        ->placeholder('Hello {{user_name}}...')
-                        ->helperText('Plain text version for email clients that don\'t support HTML'),
+                        ->placeholder('Witaj {{user_name}}...')
+                        ->helperText('Wersja tekstowa dla klientów pocztowych bez obsługi HTML'),
                 ]),
 
-            Section::make('Available Variables')
+            Section::make('Dostępne zmienne')
                 ->schema([
                     Forms\Components\Placeholder::make('variable_legend')
                         ->label('')
                         ->content(fn (Get $get): HtmlString => self::getVariableLegendForKey($get('key')))
-                        ->helperText('Copy these variable names into your template using {{variable_name}} syntax'),
+                        ->helperText('Skopiuj nazwy zmiennych do szablonu używając składni {{nazwa_zmiennej}}'),
                 ])
-                ->description('Variables you can use in the subject, HTML body, and text body')
+                ->description('Zmienne dostępne w temacie, treści HTML i treści tekstowej')
                 ->collapsible(),
 
-            Section::make('Advanced Settings')
+            Section::make('Ustawienia zaawansowane')
                 ->schema([
                     Forms\Components\TextInput::make('blade_path')
-                        ->label('Blade Path (Fallback)')
+                        ->label('Ścieżka Blade (zapasowa)')
                         ->placeholder('emails.user-registered')
-                        ->helperText('Fallback Blade view path if database template fails'),
+                        ->helperText('Zapasowa ścieżka widoku Blade, gdy szablon z bazy zawiedzie'),
 
                     Forms\Components\TagsInput::make('variables')
-                        ->label('Available Variables')
-                        ->placeholder('user_name, app_name, etc.')
-                        ->helperText('List of variables available for this template (for reference only)'),
+                        ->label('Dostępne zmienne')
+                        ->placeholder('user_name, app_name, itp.')
+                        ->helperText('Lista zmiennych dostępnych dla tego szablonu (tylko informacyjnie)'),
                 ])
                 ->collapsed(),
         ]);
@@ -117,7 +130,7 @@ class EmailTemplateResource extends BaseResource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('key')
-                    ->label('Key')
+                    ->label('Klucz')
                     ->searchable()
                     ->sortable()
                     ->badge()
@@ -125,7 +138,7 @@ class EmailTemplateResource extends BaseResource
                     ->formatStateUsing(fn (string $state): string => TemplateKey::tryFrom($state)?->label() ?? $state),
 
                 Tables\Columns\TextColumn::make('language')
-                    ->label('Language')
+                    ->label('Język')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'pl' => 'success',
@@ -134,7 +147,7 @@ class EmailTemplateResource extends BaseResource
                     }),
 
                 Tables\Columns\TextColumn::make('subject')
-                    ->label('Subject')
+                    ->label('Temat')
                     ->searchable()
                     ->limit(50)
                     ->tooltip(function (EmailTemplate $record): string {
@@ -142,61 +155,45 @@ class EmailTemplateResource extends BaseResource
                     }),
 
                 Tables\Columns\IconColumn::make('active')
-                    ->label('Active')
+                    ->label('Aktywny')
                     ->boolean()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('updated_at')
-                    ->label('Last Updated')
+                    ->label('Aktualizacja')
                     ->dateTime('Y-m-d H:i')
                     ->sortable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('language')
-                    ->label('Language')
+                    ->label('Język')
                     ->options([
                         'pl' => 'Polski',
                         'en' => 'English',
                     ]),
 
                 Tables\Filters\SelectFilter::make('key')
-                    ->label('Template Key')
+                    ->label('Klucz szablonu')
                     ->options(TemplateKey::optionsForChannel('email')),
 
                 Tables\Filters\TernaryFilter::make('active')
-                    ->label('Active Status')
-                    ->placeholder('All templates')
-                    ->trueLabel('Active only')
-                    ->falseLabel('Inactive only'),
+                    ->label('Status')
+                    ->placeholder('Wszystkie szablony')
+                    ->trueLabel('Tylko aktywne')
+                    ->falseLabel('Tylko nieaktywne'),
             ])
             ->recordActions([
-                // Actions\Action::make('preview')
-                //     ->label('Preview')
-                //     ->icon('heroicon-o-eye')
-                //     ->color('info')
-                //     ->modalHeading(fn (EmailTemplate $record): string => "Preview: {$record->key}")
-                //     ->modalContent(fn (EmailTemplate $record) => new HtmlString(
-                //         view('filament.resources.email-template.preview', [
-                //             'template' => $record,
-                //             'rendered' => $record->render(self::getExampleData($record)),
-                //             'renderedText' => $record->renderText(self::getExampleData($record)) ?? '',
-                //         ])->render()
-                //     ))
-                //     ->modalWidth('4xl')
-                //     ->modalSubmitAction(false)
-                //     ->modalCancelActionLabel('Close'),
-
                 Actions\Action::make('testSend')
-                    ->label('Test Send')
+                    ->label('Wyślij testowo')
                     ->icon('heroicon-o-paper-airplane')
                     ->color('success')
                     ->form([
                         Forms\Components\TextInput::make('email')
-                            ->label('Recipient Email')
+                            ->label('Adres e-mail odbiorcy')
                             ->email()
                             ->required()
                             ->placeholder('test@example.com')
-                            ->helperText('Email will be sent to this address with example data'),
+                            ->helperText('E-mail zostanie wysłany na ten adres z przykładowymi danymi'),
                     ])
                     ->action(function (EmailTemplate $record, array $data): void {
                         try {
@@ -214,27 +211,27 @@ class EmailTemplateResource extends BaseResource
                             if ($result) {
                                 Notification::make()
                                     ->success()
-                                    ->title('Test email sent!')
-                                    ->body("Email sent to {$data['email']}")
+                                    ->title('Wysłano testowy e-mail!')
+                                    ->body("Wysłano e-mail na adres {$data['email']}")
                                     ->send();
                             } else {
                                 Notification::make()
                                     ->danger()
-                                    ->title('Failed to send test email')
-                                    ->body('Check the email logs for details')
+                                    ->title('Nie udało się wysłać testowego e-maila')
+                                    ->body('Sprawdź logi e-maili, aby uzyskać szczegóły')
                                     ->send();
                             }
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->danger()
-                                ->title('Error sending test email')
+                                ->title('Błąd podczas wysyłania testowego e-maila')
                                 ->body($e->getMessage())
                                 ->send();
                         }
                     })
                     ->requiresConfirmation()
-                    ->modalHeading('Send Test Email')
-                    ->modalDescription('This will send a test email with example data to verify the template rendering.'),
+                    ->modalHeading('Wyślij testowy e-mail')
+                    ->modalDescription('Wyśle testowy e-mail z przykładowymi danymi, aby zweryfikować renderowanie szablonu.'),
 
                 Actions\EditAction::make(),
 
@@ -287,23 +284,23 @@ class EmailTemplateResource extends BaseResource
             ],
             TemplateKey::PASSWORD_RESET->value => [
                 'reset_url' => url('/reset-password/token123'),
-                'expires_in' => '60 minutes',
+                'expires_in' => '60 minut',
             ],
             TemplateKey::APPOINTMENT_CREATED->value, TemplateKey::APPOINTMENT_RESCHEDULED->value, TemplateKey::APPOINTMENT_REMINDER_24H->value, TemplateKey::APPOINTMENT_REMINDER_2H->value => [
                 'appointment_date' => now()->addDays(2)->format('Y-m-d'),
                 'appointment_time' => '14:00',
-                'service_name' => 'Full Car Detailing',
+                'service_name' => 'Detailing Premium',
                 'location_address' => 'ul. Przykładowa 123, Warszawa',
             ],
             TemplateKey::APPOINTMENT_CANCELLED->value => [
                 'appointment_date' => now()->format('Y-m-d'),
                 'appointment_time' => '14:00',
-                'service_name' => 'Full Car Detailing',
-                'cancellation_reason' => 'Customer request',
+                'service_name' => 'Detailing Premium',
+                'cancellation_reason' => 'Prośba klienta',
             ],
             TemplateKey::APPOINTMENT_FOLLOWUP->value => [
                 'appointment_date' => now()->subDays(3)->format('Y-m-d'),
-                'service_name' => 'Full Car Detailing',
+                'service_name' => 'Detailing Premium',
                 'feedback_url' => url('/feedback/123'),
             ],
             TemplateKey::ADMIN_DAILY_DIGEST->value => [
@@ -354,52 +351,52 @@ class EmailTemplateResource extends BaseResource
     protected static function getVariableLegendForKey(?string $key): HtmlString
     {
         if (! $key) {
-            return new HtmlString('<p class="text-sm text-gray-500">Select a template key to see available variables</p>');
+            return new HtmlString('<p class="text-sm text-gray-500">Wybierz klucz szablonu, aby zobaczyć dostępne zmienne</p>');
         }
 
         // Common variables available in ALL templates
         $commonVariables = [
-            'app_name' => 'Application name (from config)',
-            'app_url' => 'Application URL',
-            'user_name' => 'User\'s full name (first_name + last_name)',
-            'user_email' => 'User\'s email address',
-            'customer_name' => 'Customer\'s full name (alias for user_name)',
-            'current_year' => 'Current year (e.g., 2025)',
-            'contact_email' => 'Support email address',
-            'contact_phone' => 'Support phone number',
+            'app_name' => 'Nazwa aplikacji (z konfiguracji)',
+            'app_url' => 'Adres URL aplikacji',
+            'user_name' => 'Imię i nazwisko użytkownika (first_name + last_name)',
+            'user_email' => 'Adres e-mail użytkownika',
+            'customer_name' => 'Imię i nazwisko klienta (alias dla user_name)',
+            'current_year' => 'Bieżący rok (np. 2026)',
+            'contact_email' => 'Adres e-mail wsparcia',
+            'contact_phone' => 'Numer telefonu wsparcia',
         ];
 
         // Template-specific variables
         $specificVariables = match ($key) {
             TemplateKey::USER_REGISTERED->value => [
-                'verification_url' => 'Email verification link',
+                'verification_url' => 'Link weryfikacji adresu e-mail',
             ],
             TemplateKey::PASSWORD_RESET->value => [
-                'reset_url' => 'Password reset link',
-                'expires_in' => 'Link expiration time (e.g., "60 minutes")',
+                'reset_url' => 'Link resetowania hasła',
+                'expires_in' => 'Czas wygaśnięcia linku (np. "60 minut")',
             ],
             TemplateKey::APPOINTMENT_CREATED->value, TemplateKey::APPOINTMENT_RESCHEDULED->value, TemplateKey::APPOINTMENT_REMINDER_24H->value, TemplateKey::APPOINTMENT_REMINDER_2H->value => [
-                'appointment_date' => 'Appointment date (Y-m-d format)',
-                'appointment_time' => 'Appointment time (H:i format)',
-                'service_name' => 'Service name',
-                'location_address' => 'Service location address',
+                'appointment_date' => 'Data wizyty (format Y-m-d)',
+                'appointment_time' => 'Godzina wizyty (format H:i)',
+                'service_name' => 'Nazwa usługi',
+                'location_address' => 'Adres miejsca świadczenia usługi',
             ],
             TemplateKey::APPOINTMENT_CANCELLED->value => [
-                'appointment_date' => 'Appointment date',
-                'appointment_time' => 'Appointment time',
-                'service_name' => 'Service name',
-                'cancellation_reason' => 'Reason for cancellation',
+                'appointment_date' => 'Data wizyty',
+                'appointment_time' => 'Godzina wizyty',
+                'service_name' => 'Nazwa usługi',
+                'cancellation_reason' => 'Powód anulowania',
             ],
             TemplateKey::APPOINTMENT_FOLLOWUP->value => [
-                'appointment_date' => 'Appointment date',
-                'service_name' => 'Service name',
-                'feedback_url' => 'Feedback form link',
+                'appointment_date' => 'Data wizyty',
+                'service_name' => 'Nazwa usługi',
+                'feedback_url' => 'Link do formularza opinii',
             ],
             TemplateKey::ADMIN_DAILY_DIGEST->value => [
-                'date' => 'Report date',
-                'total_appointments' => 'Total appointments',
-                'pending_appointments' => 'Pending appointments count',
-                'completed_appointments' => 'Completed appointments count',
+                'date' => 'Data raportu',
+                'total_appointments' => 'Łączna liczba wizyt',
+                'pending_appointments' => 'Liczba oczekujących wizyt',
+                'completed_appointments' => 'Liczba zakończonych wizyt',
             ],
             default => [],
         };
@@ -409,7 +406,7 @@ class EmailTemplateResource extends BaseResource
 
         // Common variables section
         $html .= '<div>';
-        $html .= '<h4 class="text-sm font-semibold text-gray-700 mb-2">Common Variables (Available in all templates)</h4>';
+        $html .= '<h4 class="text-sm font-semibold text-gray-700 mb-2">Zmienne wspólne (dostępne we wszystkich szablonach)</h4>';
         $html .= '<div class="bg-gray-50 rounded-lg p-3 space-y-1">';
         foreach ($commonVariables as $var => $description) {
             $html .= sprintf(
@@ -424,7 +421,7 @@ class EmailTemplateResource extends BaseResource
         // Template-specific variables section
         if (! empty($specificVariables)) {
             $html .= '<div>';
-            $html .= '<h4 class="text-sm font-semibold text-gray-700 mb-2">Template-Specific Variables</h4>';
+            $html .= '<h4 class="text-sm font-semibold text-gray-700 mb-2">Zmienne specyficzne dla szablonu</h4>';
             $html .= '<div class="bg-blue-50 rounded-lg p-3 space-y-1">';
             foreach ($specificVariables as $var => $description) {
                 $html .= sprintf(

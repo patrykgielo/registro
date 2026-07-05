@@ -45,13 +45,13 @@
 ### MEDIUM Severity
 
 **VULN-001: Missing Rate Limiting on Booking Endpoints**
-- **Location**: `/booking/step/{step}`, `/booking/confirm`, `/booking/save-progress`
+- **Location**: `/booking/step/{step}`, `/booking/confirm`, `/booking/save-progress`, `/booking/change-service`, `/booking/restore-progress`, `/booking/unavailable-dates`
 - **Risk**: Booking spam, resource exhaustion
-- **Mitigation**: Authentication required (limits attack surface)
-- **Status**: OPEN
+- **Mitigation**: Authentication required (limits attack surface) + throttle middleware on all POST and GET routes
+- **Status**: FIXED (2026-07-05) — see `app/docs/security/vulnerabilities/VULN-001-missing-rate-limiting.md`
 - **Priority**: P2 (Post-deployment)
 - **Effort**: 15 minutes
-- **Fix**: Add `throttle:30,1` middleware to booking routes
+- **Fix**: `throttle:30,1` (POST session writes), `throttle:60,1` (GET view routes), `throttle:20,1` (GET unavailable-dates), `throttle:10,1`/`throttle:100,1` (POST confirm, prod/non-prod)
 
 **VULN-002: No Audit Logging for Bookings**
 - **Location**: `BookingController::confirm()`

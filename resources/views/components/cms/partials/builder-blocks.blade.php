@@ -17,6 +17,9 @@
 ])
 
 @foreach($blocks as $block)
+    <div data-track-section="{{ $block['type'] }}-{{ $loop->index }}"
+         data-track-block="{{ $block['type'] }}"
+         data-track-position="{{ $loop->index }}">
     @if($block['type'] === 'image')
         <div class="mb-8 @if($block['data']['size'] === 'full') w-full @elseif($block['data']['size'] === 'large') max-w-3xl mx-auto @elseif($block['data']['size'] === 'medium') max-w-2xl mx-auto @else max-w-xl mx-auto @endif">
             <img src="{{ Storage::url($block['data']['image']) }}"
@@ -114,4 +117,5 @@
     @elseif($block['type'] === 'custom_html')
         <x-content-blocks.custom-html :data="$block['data']" />
     @endif
+    </div>
 @endforeach

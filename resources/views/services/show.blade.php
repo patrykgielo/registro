@@ -8,8 +8,6 @@
     @if($service->featured_image)
         <meta property="og:image" content="{{ Storage::url($service->featured_image) }}">
     @endif
-    <meta name="description" content="{{ $service->meta_description ?? $service->excerpt }}">
-    <title>{{ $service->meta_title ?? $service->name . ' - ' . config('app.name') }}</title>
     <script type="application/ld+json">{!! $schemaService !!}</script>
     <script type="application/ld+json">{!! $schemaBreadcrumbs !!}</script>
     <style>[x-cloak] { display: none !important; }</style>
@@ -905,6 +903,17 @@
 
 @endsection
 
+@push('scripts')
+<script>
+(function () {
+    var b = document.body;
+    b.dataset.serviceSlug = @json($service->slug);
+    b.dataset.serviceId = '{{ $service->id }}';
+    b.dataset.servicePrice = '{{ (float) ($service->price ?? $service->price_per_day ?? 0) }}';
+})();
+</script>
+@endpush
+
 @if($isRental)
 @push('scripts')
 <script>
@@ -1088,8 +1097,12 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
         init() {
             this.fetchMonth();
             this.$watch('selectedEnd', (val) => {
-                if (val) this.checkRangeAvailability();
-                else this.rangeAvailableQty = null;
+                if (val) {
+                    this.checkRangeAvailability();
+                    this.$dispatch('calendar:date-selected', { slug: document.body.dataset.serviceSlug ?? null });
+                } else {
+                    this.rangeAvailableQty = null;
+                }
             });
         },
 

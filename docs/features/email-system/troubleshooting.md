@@ -105,7 +105,7 @@ $emailService->sendFromTemplate(
 1. Enable 2-Step Verification: https://myaccount.google.com/security
 2. Generate App Password: https://myaccount.google.com/apppasswords
 3. Update `.env`: `MAIL_PASSWORD=your-16-char-app-password`
-4. Restart queue workers: `docker compose restart queue horizon`
+4. Restart queue workers: `docker compose restart horizon`
 
 ### Error: Connection timeout
 
@@ -130,13 +130,13 @@ php artisan tinker
 
 ```bash
 # Check if queue worker running
-docker compose ps queue horizon
+docker compose ps horizon
 
 # Check Horizon dashboard
 https://registro.local:8444/horizon/failed
 
 # Check logs
-docker compose logs -f queue
+docker compose logs -f horizon
 tail -f storage/logs/laravel.log | grep Email
 
 # Retry failed jobs
@@ -280,7 +280,7 @@ ORDER BY ee.occurred_at;
 
 Emails queued but never sent → workers not running.
 
-**Fix:** `docker compose up -d queue horizon`
+**Fix:** `docker compose up -d horizon`
 
 ### 2. Wrong Parameter Order in sendFromTemplate()
 
@@ -304,7 +304,7 @@ sendFromTemplate(
 After updating SMTP settings:
 ```bash
 php artisan optimize:clear
-docker compose restart queue horizon
+docker compose restart horizon
 ```
 
 ## Getting Help

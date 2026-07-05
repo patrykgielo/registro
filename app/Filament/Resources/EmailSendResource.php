@@ -29,9 +29,13 @@ class EmailSendResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'communication';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 3;
 
-    protected static ?string $navigationLabel = 'Email Logs';
+    protected static ?string $navigationLabel = 'Historia Email';
+
+    protected static ?string $modelLabel = 'Wysłany Email';
+
+    protected static ?string $pluralModelLabel = 'Historia Email';
 
     public static function form(Schema $schema): Schema
     {
@@ -46,14 +50,14 @@ class EmailSendResource extends BaseResource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('recipient_email')
-                    ->label('Recipient')
+                    ->label('Odbiorca')
                     ->searchable()
                     ->sortable()
                     ->copyable()
                     ->icon('heroicon-o-envelope'),
 
                 Tables\Columns\TextColumn::make('template_key')
-                    ->label('Template')
+                    ->label('Szablon')
                     ->searchable()
                     ->sortable()
                     ->badge()
@@ -61,7 +65,7 @@ class EmailSendResource extends BaseResource
                     ->formatStateUsing(fn (string $state): string => TemplateKey::tryFrom($state)?->label() ?? $state),
 
                 Tables\Columns\TextColumn::make('subject')
-                    ->label('Subject')
+                    ->label('Temat')
                     ->searchable()
                     ->limit(50)
                     ->tooltip(function (EmailSend $record): string {
@@ -79,6 +83,13 @@ class EmailSendResource extends BaseResource
                         'pending' => 'gray',
                         default => 'gray',
                     })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'sent' => 'Wysłano',
+                        'failed' => 'Błąd',
+                        'bounced' => 'Odrzucono',
+                        'pending' => 'Oczekuje',
+                        default => $state,
+                    })
                     ->icon(fn (string $state): string => match ($state) {
                         'sent' => 'heroicon-o-check-circle',
                         'failed' => 'heroicon-o-x-circle',
@@ -88,13 +99,13 @@ class EmailSendResource extends BaseResource
                     }),
 
                 Tables\Columns\TextColumn::make('sent_at')
-                    ->label('Sent At')
+                    ->label('Wysłano o')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('Created At')
+                    ->label('Utworzono')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -103,24 +114,24 @@ class EmailSendResource extends BaseResource
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
                     ->options([
-                        'pending' => 'Pending',
-                        'sent' => 'Sent',
-                        'failed' => 'Failed',
-                        'bounced' => 'Bounced',
+                        'pending' => 'Oczekuje',
+                        'sent' => 'Wysłano',
+                        'failed' => 'Błąd',
+                        'bounced' => 'Odrzucono',
                     ])
                     ->multiple(),
 
                 Tables\Filters\SelectFilter::make('template_key')
-                    ->label('Template')
+                    ->label('Szablon')
                     ->options(TemplateKey::optionsForChannel('email'))
                     ->multiple(),
 
                 Tables\Filters\Filter::make('sent_at')
                     ->form([
                         Forms\Components\DatePicker::make('sent_from')
-                            ->label('Sent From'),
+                            ->label('Wysłano od'),
                         Forms\Components\DatePicker::make('sent_until')
-                            ->label('Sent Until'),
+                            ->label('Wysłano do'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -138,14 +149,14 @@ class EmailSendResource extends BaseResource
                 Actions\ViewAction::make(),
 
                 Actions\Action::make('resend')
-                    ->label('Resend')
+                    ->label('Wyślij ponownie')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->requiresConfirmation()
-                    ->modalHeading('Resend Email')
-                    ->modalDescription(fn (EmailSend $record): string => "This will create a new email send record and queue the email to {$record->recipient_email}."
+                    ->modalHeading('Wyślij e-mail ponownie')
+                    ->modalDescription(fn (EmailSend $record): string => "Zostanie utworzony nowy wpis wysyłki, a e-mail trafi do kolejki do adresu {$record->recipient_email}."
                     )
-                    ->modalSubmitActionLabel('Resend Email')
+                    ->modalSubmitActionLabel('Wyślij ponownie')
                     ->action(function (EmailSend $record): void {
                         try {
                             // Create new EmailSend record with same data
@@ -175,22 +186,22 @@ class EmailSendResource extends BaseResource
 
                                 Notification::make()
                                     ->success()
-                                    ->title('Email resent successfully')
-                                    ->body("New email queued to {$record->recipient_email}")
+                                    ->title('E-mail wysłany ponownie')
+                                    ->body("Nowy e-mail trafił do kolejki do adresu {$record->recipient_email}")
                                     ->send();
                             } else {
-                                $newSend->markAsFailed('Failed to send via EmailService');
+                                $newSend->markAsFailed('Nie udało się wysłać przez EmailService');
 
                                 Notification::make()
                                     ->danger()
-                                    ->title('Failed to resend email')
-                                    ->body('Check email logs for details')
+                                    ->title('Nie udało się wysłać e-maila ponownie')
+                                    ->body('Sprawdź logi e-maili, aby uzyskać szczegóły')
                                     ->send();
                             }
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->danger()
-                                ->title('Error resending email')
+                                ->title('Błąd podczas ponownej wysyłki e-maila')
                                 ->body($e->getMessage())
                                 ->send();
                         }
@@ -199,11 +210,11 @@ class EmailSendResource extends BaseResource
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
                     Actions\BulkAction::make('export')
-                        ->label('Export Selected')
+                        ->label('Eksportuj zaznaczone')
                         ->icon('heroicon-o-arrow-down-tray')
                         ->action(function ($records) {
                             // Export to CSV
-                            $filename = 'email-logs-'.now()->format('Y-m-d-His').'.csv';
+                            $filename = 'historia-email-'.now()->format('Y-m-d-His').'.csv';
                             $headers = [
                                 'Content-Type' => 'text/csv',
                                 'Content-Disposition' => "attachment; filename=\"$filename\"",
@@ -211,7 +222,7 @@ class EmailSendResource extends BaseResource
 
                             $callback = function () use ($records) {
                                 $file = fopen('php://output', 'w');
-                                fputcsv($file, ['ID', 'Template', 'Recipient', 'Subject', 'Status', 'Sent At', 'Created At']);
+                                fputcsv($file, ['ID', 'Szablon', 'Odbiorca', 'Temat', 'Status', 'Wysłano o', 'Utworzono']);
 
                                 foreach ($records as $record) {
                                     fputcsv($file, [
@@ -240,20 +251,20 @@ class EmailSendResource extends BaseResource
     {
         return $schema
             ->components([
-                Infolists\Components\Section::make('Email Details')
+                Infolists\Components\Section::make('Szczegóły wysyłki')
                     ->schema([
                         Infolists\Components\TextEntry::make('recipient_email')
-                            ->label('Recipient')
+                            ->label('Odbiorca')
                             ->icon('heroicon-o-envelope')
                             ->copyable(),
 
                         Infolists\Components\TextEntry::make('template_key')
-                            ->label('Template Key')
+                            ->label('Klucz szablonu')
                             ->badge()
                             ->color('info'),
 
                         Infolists\Components\TextEntry::make('language')
-                            ->label('Language')
+                            ->label('Język')
                             ->badge()
                             ->color(fn (string $state): string => match ($state) {
                                 'pl' => 'success',
@@ -270,61 +281,68 @@ class EmailSendResource extends BaseResource
                                 'bounced' => 'warning',
                                 'pending' => 'gray',
                                 default => 'gray',
+                            })
+                            ->formatStateUsing(fn (string $state): string => match ($state) {
+                                'sent' => 'Wysłano',
+                                'failed' => 'Błąd',
+                                'bounced' => 'Odrzucono',
+                                'pending' => 'Oczekuje',
+                                default => $state,
                             }),
 
                         Infolists\Components\TextEntry::make('sent_at')
-                            ->label('Sent At')
+                            ->label('Wysłano o')
                             ->dateTime('Y-m-d H:i:s'),
 
                         Infolists\Components\TextEntry::make('created_at')
-                            ->label('Created At')
+                            ->label('Utworzono')
                             ->dateTime('Y-m-d H:i:s'),
                     ])
                     ->columns(2),
 
-                Infolists\Components\Section::make('Email Content')
+                Infolists\Components\Section::make('Treść e-maila')
                     ->schema([
                         Infolists\Components\TextEntry::make('subject')
-                            ->label('Subject Line')
+                            ->label('Temat wiadomości')
                             ->columnSpanFull(),
 
                         Infolists\Components\ViewEntry::make('body_html')
-                            ->label('HTML Body')
+                            ->label('Treść HTML')
                             ->view('filament.resources.email-send.html-preview')
                             ->columnSpanFull(),
 
                         Infolists\Components\TextEntry::make('body_text')
-                            ->label('Plain Text Body')
-                            ->placeholder('No plain text version')
+                            ->label('Treść tekstowa')
+                            ->placeholder('Brak wersji tekstowej')
                             ->columnSpanFull()
                             ->visible(fn (EmailSend $record): bool => ! empty($record->body_text)),
                     ]),
 
-                Infolists\Components\Section::make('Metadata')
+                Infolists\Components\Section::make('Metadane')
                     ->schema([
                         Infolists\Components\TextEntry::make('metadata')
-                            ->label('Additional Data')
-                            ->placeholder('No metadata')
+                            ->label('Dodatkowe dane')
+                            ->placeholder('Brak metadanych')
                             ->formatStateUsing(fn ($state): string => json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE))
                             ->markdown()
                             ->columnSpanFull(),
 
                         Infolists\Components\TextEntry::make('error_message')
-                            ->label('Error Message')
-                            ->placeholder('No errors')
+                            ->label('Komunikat błędu')
+                            ->placeholder('Brak błędów')
                             ->color('danger')
                             ->columnSpanFull()
                             ->visible(fn (EmailSend $record): bool => ! empty($record->error_message)),
                     ])
                     ->collapsed(),
 
-                Infolists\Components\Section::make('Related Events')
+                Infolists\Components\Section::make('Powiązane zdarzenia')
                     ->schema([
                         Infolists\Components\RepeatableEntry::make('emailEvents')
                             ->label('')
                             ->schema([
                                 Infolists\Components\TextEntry::make('event_type')
-                                    ->label('Event')
+                                    ->label('Zdarzenie')
                                     ->badge()
                                     ->color(fn (string $state): string => match ($state) {
                                         'sent' => 'success',
@@ -346,7 +364,7 @@ class EmailSendResource extends BaseResource
                                     }),
 
                                 Infolists\Components\TextEntry::make('occurred_at')
-                                    ->label('Occurred At')
+                                    ->label('Data zdarzenia')
                                     ->dateTime('Y-m-d H:i:s'),
                             ])
                             ->columns(2)

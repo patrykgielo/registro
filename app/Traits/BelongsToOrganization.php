@@ -38,11 +38,23 @@ trait BelongsToOrganization
             }
 
             $tenant = TenantFeature::currentTenant();
+
             if ($tenant) {
                 $builder->where(
                     $builder->getModel()->getTable().'.organization_id',
                     $tenant->id
                 );
+
+                return;
+            }
+
+            // No tenant resolved. Fail closed ONLY if ResolveTenant genuinely ran for
+            // this request (real HTTP/feature-test request through a ResolveTenant-
+            // guarded route) and still found nothing — VULN-003 Layer 2. Bare Unit/
+            // Feature tests that never dispatch through ResolveTenant keep today's
+            // no-op behavior (unaffected).
+            if (app()->bound('request') && app('request')->attributes->get('tenant_resolution_attempted') === true) {
+                $builder->whereRaw('1 = 0');
             }
         });
     }

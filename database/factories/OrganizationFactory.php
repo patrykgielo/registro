@@ -3,6 +3,8 @@
 namespace Database\Factories;
 
 use App\Enums\Industry;
+use App\Enums\OrganizationLifecycleState;
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -22,7 +24,6 @@ class OrganizationFactory extends Factory
             'booking_type' => 'time_slot',
             'industry' => null,
             'owner_id' => User::factory(),
-            'is_active' => true,
             'settings' => null,
             'trial_ends_at' => null,
         ];
@@ -66,10 +67,36 @@ class OrganizationFactory extends Factory
         ]);
     }
 
+    /**
+     * Organization in Suspended lifecycle state (is_active = false).
+     * Uses afterMaking because lifecycle_state is not mass-assignable.
+     */
     public function inactive(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'is_active' => false,
-        ]);
+        return $this->afterMaking(function (Organization $org) {
+            $org->lifecycle_state = OrganizationLifecycleState::Suspended;
+        });
+    }
+
+    /**
+     * Organization in Closing lifecycle state (grace period before permanent closure).
+     * Uses afterMaking because lifecycle_state is not mass-assignable.
+     */
+    public function closing(): static
+    {
+        return $this->afterMaking(function (Organization $org) {
+            $org->lifecycle_state = OrganizationLifecycleState::Closing;
+        });
+    }
+
+    /**
+     * Organization in Closed lifecycle state (terminal).
+     * Uses afterMaking because lifecycle_state is not mass-assignable.
+     */
+    public function closed(): static
+    {
+        return $this->afterMaking(function (Organization $org) {
+            $org->lifecycle_state = OrganizationLifecycleState::Closed;
+        });
     }
 }

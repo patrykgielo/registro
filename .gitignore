@@ -109,3 +109,4 @@ ssh_config
 .staging-credentials.local
 *.credentials.local
 .claude/worktrees/
+/check_loader.php

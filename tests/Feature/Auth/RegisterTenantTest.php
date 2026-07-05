@@ -29,6 +29,7 @@ class RegisterTenantTest extends TestCase
 
         // Simulate a request with tenant resolved by middleware
         $request = Request::create('/customer/register', 'POST');
+        $request->setLaravelSession($this->app['session']->driver());
         $request->attributes->set('tenant', $org);
 
         // Call the registered() hook directly
@@ -46,6 +47,7 @@ class RegisterTenantTest extends TestCase
 
         // Request without tenant attribute (root domain)
         $request = Request::create('/customer/register', 'POST');
+        $request->setLaravelSession($this->app['session']->driver());
 
         $controller = new RegisterController;
         $controller->callAction('registered', [$request, $user]);

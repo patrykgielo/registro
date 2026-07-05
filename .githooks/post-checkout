@@ -1,0 +1,19 @@
+#!/bin/bash
+PREV_HEAD="$1"
+NEW_HEAD="$2"
+BRANCH_SWITCH="$3"
+
+[ "$BRANCH_SWITCH" != "1" ] && exit 0  # Only on branch switches
+
+CHANGED=$(git diff --name-only "$PREV_HEAD" "$NEW_HEAD" 2>/dev/null)
+
+if echo "$CHANGED" | grep -qE '^database/migrations/.*\.php$'; then
+    echo ""
+    echo "Migrations differ between branches. Running php artisan migrate..."
+    if docker compose exec -T app php artisan migrate; then
+        echo "Migrations complete."
+    else
+        echo "Migration failed! Run manually: docker compose exec app php artisan migrate"
+        exit 1
+    fi
+fi

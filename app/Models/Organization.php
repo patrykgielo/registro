@@ -5,15 +5,39 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\Industry;
+use App\Enums\OrganizationLifecycleState;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Organization extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
+
+    /**
+     * Default lifecycle_state mirrors the DB column default ('active').
+     * Ensures getOriginal('lifecycle_state') is never null on freshly created models,
+     * so OrganizationObserver::updating() can always derive a valid $from state.
+     */
+    protected $attributes = ['lifecycle_state' => 'active'];
+
+    /**
+     * Bypass lifecycle-state obligation check in OrganizationObserver::updating().
+     * Set to true before calling save() to skip the guard.
+     * Reset automatically by OrganizationObserver::saved() after each successful save
+     * (saved() fires even on no-op saves, unlike updated()).
+     */
+    public bool $forceLifecycleTransition = false;
+
+    /**
+     * Bypass the delete guard in OrganizationObserver::deleting().
+     * Set to true before calling delete() to skip obligation/lifecycle checks.
+     * Use only in controlled contexts (tests, CLI offboarding tools).
+     */
+    public bool $bypassDeleteGuard = false;
 
     /**
      * Default modules per booking_type.
@@ -53,16 +77,26 @@ class Organization extends Model
         'booking_type',
         'industry',
         'owner_id',
-        'is_active',
         'settings',
         'trial_ends_at',
+        // subscription_status, monthly_fee, subscribed_at, subscription_expires_at
+        // are intentionally excluded — only super-admin may set them via direct assignment
+        // (e.g. $org->subscription_status = 'active'; $org->save()), never mass-assignment.
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'industry' => Industry::class,
+        'lifecycle_state' => OrganizationLifecycleState::class,
         'settings' => 'array',
         'trial_ends_at' => 'datetime',
+        'closing_initiated_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'purge_after' => 'datetime',
+        'closure_requested_at' => 'datetime',
+        'monthly_fee' => 'decimal:2',
+        'subscribed_at' => 'datetime',
+        'subscription_expires_at' => 'datetime',
     ];
 
     /**
@@ -171,6 +205,32 @@ class Organization extends Model
     public function trialExpired(): bool
     {
         return $this->trial_ends_at !== null && $this->trial_ends_at->isPast();
+    }
+
+    /**
+     * Check if organization has an active paid subscription.
+     */
+    public function isSubscribed(): bool
+    {
+        return $this->subscription_status === 'active';
+    }
+
+    /**
+     * Check if organization is in trial period (by subscription_status column).
+     */
+    public function isTrial(): bool
+    {
+        return $this->subscription_status === 'trial';
+    }
+
+    /**
+     * Get all SaaS payments recorded for this tenant.
+     *
+     * @return HasMany<TenantPayment, $this>
+     */
+    public function tenantPayments(): HasMany
+    {
+        return $this->hasMany(TenantPayment::class);
     }
 
     /**

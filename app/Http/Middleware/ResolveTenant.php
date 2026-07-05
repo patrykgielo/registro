@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Enums\OrganizationLifecycleState;
 use App\Models\Organization;
 use Closure;
 use Illuminate\Http\Request;
@@ -23,6 +24,15 @@ class ResolveTenant
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Marker meaning "ResolveTenant genuinely ran for this specific request" —
+        // consumed by BelongsToOrganization's global scope (Layer 2 fail-closed
+        // hardening, VULN-003). Set unconditionally, before any branching, so it
+        // reflects real HTTP/feature-test requests through this middleware —
+        // distinct from runningInConsole()/runningUnitTests(), which can't tell
+        // apart a real request from a bare Unit test that never touches this
+        // middleware at all. See app/Traits/BelongsToOrganization.php.
+        $request->attributes->set('tenant_resolution_attempted', true);
+
         $host = $request->getHost();
         $baseDomain = config('app.domain', 'registro.local');
 
@@ -45,10 +55,13 @@ class ResolveTenant
             return redirect()->to($this->rootUrl($request));
         }
 
-        // Resolve tenant with cache (5 min TTL)
+        // Resolve tenant with cache (5 min TTL).
+        // lifecycle_state is authoritative (Faza 5.2): only Active tenants serve the public site.
+        // is_active is kept as a derived column for other internal uses but is no longer
+        // the gating condition here. Stale cache entries (from pre-5.2) expire in 300 s.
         $tenant = Cache::remember("tenant:slug:{$slug}", 300, function () use ($slug) {
             return Organization::where('slug', $slug)
-                ->where('is_active', true)
+                ->where('lifecycle_state', OrganizationLifecycleState::Active->value)
                 ->first();
         });
 
@@ -56,6 +69,43 @@ class ResolveTenant
             // Unknown or inactive tenant — redirect to root domain (fail closed)
             // Do NOT cache null results (tenant might be created/activated soon)
             Cache::forget("tenant:slug:{$slug}");
+
+            // Before redirecting: check if this is a Closing/Closed tenant.
+            // These states warrant a dedicated "business closed" page rather than a silent
+            // root redirect — the business existed and deliberately shut down.
+            // Suspended and truly unknown slugs still redirect to root (temporary / error state).
+            // withTrashed() catches soft-deleted orgs (purge command soft-deletes Closed orgs).
+            // Cached (5 min): Closing/Closed are terminal/near-terminal, so repeated hits on a
+            // closed slug cost 0 DB queries after the first — limits subdomain-enumeration DoS on
+            // the 410 path (which runs before throttle). select(name) — only column the view uses.
+            $closedOrg = Cache::remember("tenant:closed:{$slug}", 300, fn () => Organization::withTrashed()
+                ->select(['name'])
+                ->where('slug', $slug)
+                ->whereIn('lifecycle_state', [
+                    OrganizationLifecycleState::Closing->value,
+                    OrganizationLifecycleState::Closed->value,
+                ])
+                ->first());
+
+            if ($closedOrg) {
+                return response()->view('errors.business-closed', [
+                    'organizationName' => $closedOrg->name,
+                ], 410);
+            }
+
+            // Suspended tenant: show a temporary suspension page (503).
+            // Suspended orgs are NOT soft-deleted — use a plain query without withTrashed().
+            // Short cache (60 s) so reactivation is reflected quickly.
+            $suspendedOrg = Cache::remember("tenant:suspended:{$slug}", 60, fn () => Organization::select(['name'])
+                ->where('slug', $slug)
+                ->where('lifecycle_state', OrganizationLifecycleState::Suspended->value)
+                ->first());
+
+            if ($suspendedOrg) {
+                return response()->view('errors.business-suspended', [
+                    'organizationName' => $suspendedOrg->name,
+                ], 503)->withHeaders(['Retry-After' => '3600']);
+            }
 
             return redirect()->to($this->rootUrl($request));
         }

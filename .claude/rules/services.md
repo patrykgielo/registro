@@ -146,6 +146,30 @@ throw new StaffNotAvailableException($staffId, $date);
 throw new InvalidBookingTimeException($reason);
 ```
 
+## Carbon vs String Comparison in Collections — CRITICAL (Bug 2026-05-10)
+
+**Problem:** `Collection->where('date', $today->toDateString())` uses loose `==` comparison. In PHP 8, comparing a Carbon object with a string (`Carbon == '2026-05-10'`) ALWAYS returns `false`.
+
+```php
+// ❌ BŁĄD — Carbon cast column vs string: always returns empty
+$todayRows = $rows->where('date', Carbon::today()->toDateString());
+
+// ✅ POPRAWNIE — explicit filter with toDateString() on both sides
+$todayRows = $rows->filter(fn ($r) => (
+    $r->date instanceof \Illuminate\Support\Carbon
+        ? $r->date->toDateString()
+        : (string) $r->date
+) === Carbon::today()->toDateString());
+```
+
+**Dotyczy:** Każdej Collection gdzie model ma kolumnę z `'date' => 'date'` cast.
+Kolumna wraca jako Carbon → `->where('date', 'string')` nie znajdzie nic.
+
+**Uwaga na ->toBase():** Po `->toBase()` kolekcja nadal zawiera obiekty Eloquent z castami.
+stdClass z `liveToCollection()` ma `$obj->date = $date->copy()` (Carbon) — obsłuż oba przypadki.
+
+---
+
 ## Istniejące Services (reference)
 
 - `AppointmentService` - rezerwacje, dostępność staff

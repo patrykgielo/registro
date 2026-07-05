@@ -74,6 +74,14 @@ class StaffSchedule extends Model
 
     /**
      * Scope a query to only include schedules effective on a given date.
+     *
+     * Uses whereDate()/orWhereDate() rather than a raw string where() — effective_from/
+     * effective_until are `date`-cast columns whose storage format is `Y-m-d H:i:s`
+     * (Eloquent's date/datetime casts share the connection's date format). MySQL's native
+     * DATE column silently truncates that on write, so a plain string comparison happens to
+     * work there — but SQLite (used in tests) stores the full datetime string, so an
+     * exact-string match against the schedule's own effective_from day silently fails. Same
+     * class of bug as StaffDateException::scopeOnDate() (see that model's docblock).
      */
     public function scopeEffectiveOn(Builder $query, Carbon $date): Builder
     {
@@ -81,11 +89,11 @@ class StaffSchedule extends Model
             $q->where(function ($q2) use ($date) {
                 // effective_from is null OR date >= effective_from
                 $q2->whereNull('effective_from')
-                    ->orWhere('effective_from', '<=', $date->format('Y-m-d'));
+                    ->orWhereDate('effective_from', '<=', $date->format('Y-m-d'));
             })->where(function ($q2) use ($date) {
                 // effective_until is null OR date <= effective_until
                 $q2->whereNull('effective_until')
-                    ->orWhere('effective_until', '>=', $date->format('Y-m-d'));
+                    ->orWhereDate('effective_until', '>=', $date->format('Y-m-d'));
             });
         });
     }

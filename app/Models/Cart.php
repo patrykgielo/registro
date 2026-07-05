@@ -20,14 +20,36 @@ class Cart extends Model
         'user_id',
         'status',
         'expires_at',
+        'customer_email',
+        'checkout_started_at',
+        'last_checkout_step',
+        'abandoned_at',
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
     ];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
+            'checkout_started_at' => 'datetime',
+            'abandoned_at' => 'datetime',
             'status' => 'string',
         ];
+    }
+
+    /**
+     * Keeps `active_slot` in sync with `status` so the DB-level unique constraint
+     * `(organization_id, user_id, active_slot)` can enforce "at most one active
+     * cart per user per org" while still allowing many non-active
+     * (converted/abandoned) carts — NULL is not unique-constrained.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Cart $cart): void {
+            $cart->active_slot = $cart->status === 'active' ? 1 : null;
+        });
     }
 
     /**
@@ -62,5 +84,10 @@ class Cart extends Model
     public function scopeForUser(Builder $query, User $user): Builder
     {
         return $query->where('user_id', $user->id);
+    }
+
+    public function scopeAbandoned(Builder $query): Builder
+    {
+        return $query->where('status', 'abandoned');
     }
 }

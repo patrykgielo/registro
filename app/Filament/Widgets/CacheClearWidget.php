@@ -49,13 +49,13 @@ class CacheClearWidget extends Widget
             Cache::flush();
 
             Notification::make()
-                ->title('Application cache cleared')
-                ->body('All cached data has been removed successfully.')
+                ->title('Pamięć podręczna aplikacji wyczyszczona')
+                ->body('Wszystkie dane w cache zostały pomyślnie usunięte.')
                 ->success()
                 ->send();
         } catch (\Exception $e) {
             Notification::make()
-                ->title('Cache clear failed')
+                ->title('Czyszczenie cache nie powiodło się')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
@@ -73,13 +73,13 @@ class CacheClearWidget extends Widget
             Artisan::call('view:clear');
 
             Notification::make()
-                ->title('Config cache cleared')
-                ->body('Configuration, routes, and views cache cleared successfully.')
+                ->title('Cache konfiguracji wyczyszczony')
+                ->body('Konfiguracja, trasy i widoki zostały pomyślnie wyczyszczone.')
                 ->success()
                 ->send();
         } catch (\Exception $e) {
             Notification::make()
-                ->title('Cache clear failed')
+                ->title('Czyszczenie cache nie powiodło się')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
@@ -104,13 +104,13 @@ class CacheClearWidget extends Widget
             Artisan::call('filament:clear-cached-components');
 
             Notification::make()
-                ->title('All caches cleared')
-                ->body('Application, config, routes, views, and Filament caches cleared successfully.')
+                ->title('Wszystkie cache wyczyszczone')
+                ->body('Cache aplikacji, konfiguracji, tras, widoków i Filament zostały pomyślnie wyczyszczone.')
                 ->success()
                 ->send();
         } catch (\Exception $e) {
             Notification::make()
-                ->title('Cache clear failed')
+                ->title('Czyszczenie cache nie powiodło się')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();

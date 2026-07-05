@@ -9,7 +9,7 @@
         'pending_payment' => ['bg-warning/10',   'text-warning',  'ring-warning/20',  'Oczekuje na płatność'],
         'paid'            => ['bg-success/10',   'text-success',  'ring-success/20',  'Opłacone'],
         'confirmed'       => ['bg-success/10',   'text-success',  'ring-success/20',  'Potwierdzone'],
-        'in_progress'     => ['bg-info/10',      'text-info',     'ring-info/20',     'W realizacji'],
+        'in_progress'     => ['bg-info/10',      'text-info',     'ring-info/20',     'Sprzęt u klienta'],
         'completed'       => ['bg-surface-sunken', 'text-text-muted', 'ring-border', 'Zakończone'],
         'cancelled'       => ['bg-error/10',     'text-error',    'ring-error/20',    'Anulowane'],
         'refunded'        => ['bg-brand-subtle', 'text-brand',    'ring-brand/20',    'Zwrócone'],

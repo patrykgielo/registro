@@ -96,17 +96,22 @@ class OrderPaidNotification extends Notification implements ShouldBeUnique, Shou
                     ]
                 );
             } else {
+                $order->loadMissing(['items', 'organization']);
+
                 $emailService->sendFromTemplate(
                     TemplateKey::ORDER_PAID->value,
                     $language,
                     $notifiable->email,
-                    [
-                        'customer_name' => $customerName,
-                        'order_number' => $order->order_number,
-                        'total_amount' => number_format((float) $order->total_amount, 2, ',', ' '),
-                        'orders_url' => route('orders.index'),
-                        'app_name' => $appName,
-                    ],
+                    array_merge(
+                        [
+                            'customer_name' => $customerName,
+                            'order_number' => $order->order_number,
+                            'total_amount' => number_format((float) $order->total_amount, 2, ',', ' '),
+                            'orders_url' => route('orders.index'),
+                            'app_name' => $appName,
+                        ],
+                        $this->buildRentalVariables($order)
+                    ),
                     [
                         'order_id' => $order->id,
                         'recipient_type' => 'customer',
@@ -123,5 +128,61 @@ class OrderPaidNotification extends Notification implements ShouldBeUnique, Shou
 
             throw $e;
         }
+    }
+
+    /**
+     * Build rental-specific template variables from order data.
+     * Uses organization->settings JSON directly (queue-safe, no SettingsManager).
+     *
+     * @return array<string, string>
+     */
+    private function buildRentalVariables(Order $order): array
+    {
+        $itemsHtml = '';
+        $itemsText = '';
+
+        foreach ($order->items as $item) {
+            $dates = ($item->start_date && $item->end_date)
+                ? $item->start_date->format('d.m.Y').' – '.$item->end_date->format('d.m.Y')
+                : '';
+            $qty = $item->quantity > 1 ? ' × '.$item->quantity : '';
+            $price = number_format((float) $item->total_price, 2, ',', ' ').' zł';
+
+            $itemsHtml .= '<tr>'
+                .'<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">'
+                .htmlspecialchars($item->service_name.$qty)
+                .'<br><small style="color:#6b7280;">'.$dates.'</small>'
+                .'</td>'
+                .'<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;">'
+                .$price
+                .'</td>'
+                .'</tr>';
+
+            $itemsText .= '- '.$item->service_name.$qty.($dates ? ' ('.$dates.')' : '').': '.$price."\n";
+        }
+
+        $itemsListHtml = $itemsHtml
+            ? '<table style="width:100%;border-collapse:collapse;font-size:14px;">'.$itemsHtml.'</table>'
+            : '';
+
+        $depositAmount = ($order->deposit_amount ?? 0) > 0
+            ? number_format((float) $order->deposit_amount, 2, ',', ' ').' zł'
+            : '';
+
+        $orgSettings = $order->organization?->settings ?? [];
+        $addressLine = data_get($orgSettings, 'contact.address_line', '');
+        $postalCode = data_get($orgSettings, 'contact.postal_code', '');
+        $city = data_get($orgSettings, 'contact.city', '');
+        $phone = data_get($orgSettings, 'contact.phone', '');
+
+        $pickupAddress = trim(implode(', ', array_filter([$addressLine, trim($postalCode.' '.$city)])));
+
+        return [
+            'items_list_html' => $itemsListHtml,
+            'items_list_text' => rtrim($itemsText),
+            'deposit_amount' => $depositAmount,
+            'pickup_address' => $pickupAddress,
+            'pickup_phone' => $phone,
+        ];
     }
 }

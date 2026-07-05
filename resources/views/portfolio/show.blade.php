@@ -1,13 +1,26 @@
 @extends('layouts.app')
 
+@push('head')
+    <meta property="og:title" content="{{ $metaTitle }}">
+    @if($metaDescription)
+        <meta property="og:description" content="{{ $metaDescription }}">
+    @endif
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ route('portfolio.show', $portfolioItem->slug) }}">
+    @if($portfolioItem->before_image)
+        <meta property="og:image" content="{{ Storage::url($portfolioItem->before_image) }}">
+    @endif
+@endpush
+
 @section('content')
 <div class="max-w-6xl mx-auto">
     <article class="bg-white rounded-lg shadow-lg p-8">
         <header class="mb-8">
             @if($portfolioItem->category)
-                <span class="inline-block px-3 py-1 bg-purple-100 text-purple-800 text-sm font-semibold rounded-full mb-4">
+                <a href="{{ route('portfolio.category', $portfolioItem->category) }}"
+                   class="inline-block px-3 py-1 bg-purple-100 text-purple-800 text-sm font-semibold rounded-full mb-4 hover:bg-purple-200 transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
                     {{ $portfolioItem->category->name }}
-                </span>
+                </a>
             @endif
 
             <h1 class="text-4xl font-bold text-gray-900 mb-6">{{ $portfolioItem->title }}</h1>
@@ -163,7 +176,11 @@
                 </p>
                 @if($portfolioItem->category)
                     <p class="text-sm text-gray-600">
-                        Kategoria: <strong>{{ $portfolioItem->category->name }}</strong>
+                        Kategoria:
+                        <a href="{{ route('portfolio.category', $portfolioItem->category) }}"
+                           class="font-semibold text-purple-800 hover:text-purple-600 rounded transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+                            {{ $portfolioItem->category->name }}
+                        </a>
                     </p>
                 @endif
             </div>

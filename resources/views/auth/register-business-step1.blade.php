@@ -52,13 +52,13 @@
             <div class="space-y-3">
                 @foreach($industries as $industry)
                     <label class="flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
-                        {{ $selectedIndustry === $industry->value ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300' }}">
+                        {{ $selectedIndustry === $industry->value ? 'border-brand bg-brand/5' : 'border-gray-200 hover:border-gray-300' }}">
                         <input type="radio" name="industry" value="{{ $industry->value }}"
-                            class="mt-1 w-5 h-5 text-primary-500 focus:ring-primary-500"
+                            class="mt-1 w-5 h-5 text-brand focus:ring-brand"
                             {{ $selectedIndustry === $industry->value ? 'checked' : '' }}>
                         <div class="flex-1">
                             <div class="flex items-center gap-2">
-                                <x-dynamic-component :component="'heroicon-m-' . $industry->icon()" class="w-5 h-5 text-primary-500" />
+                                <x-dynamic-component :component="'heroicon-m-' . $industry->icon()" class="w-5 h-5 text-brand" />
                                 <span class="font-semibold text-gray-900">{{ $industry->label() }}</span>
                             </div>
                             <p class="text-sm text-gray-500 mt-0.5">{{ $industry->description() }}</p>
@@ -70,7 +70,7 @@
 
         {{-- Submit --}}
         <button type="submit"
-                class="w-full bg-primary-500 text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ios-spring focus:outline-none focus:ring-4 focus:ring-primary/30">
+                class="w-full bg-brand text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ios-spring focus:outline-none focus:ring-4 focus:ring-brand/30">
             <span class="flex items-center justify-center gap-2">
                 Dalej
                 <x-heroicon-m-arrow-right class="w-5 h-5" />
@@ -159,11 +159,11 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('input[name="industry"]').forEach(radio => {
         radio.addEventListener('change', function() {
             document.querySelectorAll('input[name="industry"]').forEach(r => {
-                r.closest('label').classList.remove('border-primary-500', 'bg-primary-50');
+                r.closest('label').classList.remove('border-brand', 'bg-brand/5');
                 r.closest('label').classList.add('border-gray-200');
             });
             this.closest('label').classList.remove('border-gray-200');
-            this.closest('label').classList.add('border-primary-500', 'bg-primary-50');
+            this.closest('label').classList.add('border-brand', 'bg-brand/5');
         });
     });
 });

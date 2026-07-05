@@ -14,10 +14,16 @@ use App\Events\OrderCancelled;
 use App\Events\OrderConfirmed;
 use App\Events\OrderPaid;
 use App\Events\PasswordResetRequested;
+use App\Events\RentalCancelled;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
+use App\Listeners\RecordAnalyticsOnOrderPaid;
+use App\Listeners\SendRentalCancelledNotification;
 use App\Models\Appointment;
+use App\Models\Organization;
 use App\Models\Page as PageModel;
+use App\Models\PortfolioItem;
+use App\Models\Post;
 use App\Models\User;
 use App\Notifications\AdminCreatedUserNotification;
 use App\Notifications\AppointmentCancelledNotification;
@@ -29,7 +35,9 @@ use App\Notifications\OrderPaidNotification;
 use App\Notifications\PasswordResetNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
+use App\Observers\OrganizationObserver;
 use App\Observers\PageObserver;
+use App\Observers\SitemapCacheObserver;
 use App\Observers\UserObserver;
 use App\Services\Email\EmailGatewayInterface;
 use App\Services\Email\EmailService;
@@ -41,7 +49,10 @@ use App\Services\Sms\SmsGatewayInterface;
 use App\Services\Sms\SmsService;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -81,7 +92,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Appointment::observe(AppointmentObserver::class);
+        Organization::observe(OrganizationObserver::class);
         PageModel::observe(PageObserver::class);
+        PageModel::observe(SitemapCacheObserver::class);
+        Post::observe(SitemapCacheObserver::class);
+        PortfolioItem::observe(SitemapCacheObserver::class);
         User::observe(UserObserver::class);
 
         // Override mail configuration with database settings
@@ -98,6 +113,70 @@ class AppServiceProvider extends ServiceProvider
 
         // Share brand design variables with mail views
         $this->shareMailBrandVariables();
+
+        // Register analytics rate limiter — per-IP bucket + per-tenant burst guard
+        RateLimiter::for('analytics', function (Request $request): array {
+            /** @var \App\Models\Organization|null $tenant */
+            $tenant = $request->attributes->get('tenant');
+
+            $limits = [Limit::perMinute(120)->by($request->ip())];
+
+            if ($tenant) {
+                $limits[] = Limit::perMinute(600)->by('analytics-tenant:'.$tenant->id);
+            }
+
+            return $limits;
+        });
+
+        // Inject $pageType into frontend layout for analytics tracking
+        view()->composer('layouts.app', \App\View\Composers\PageTypeComposer::class);
+
+        // Livewire admin/platform tenant isolation — see
+        // app/docs/security/patterns/livewire-tenant-isolation.md
+        $this->registerLivewireTenantIsolation();
+    }
+
+    /**
+     * Close the cross-tenant leak on POST /livewire/update (Livewire's own shared
+     * AJAX endpoint, registered with only the base 'web' middleware — it never runs
+     * ResolveTenant/RequireTenant, so almost all real /admin interaction (table
+     * loads, filters, form saves) resolved the tenant from `session('tenant_id')`
+     * alone, which ResolveTenant overwrites on ANY successful subdomain visit by
+     * the same browser (even an unrelated tab, even anonymous) — a poisoned
+     * session let a staff/admin user with an open Org A admin tab silently read
+     * and write Org B's data via ordinary Livewire interactions.
+     *
+     * Fix uses Livewire 3's own `PersistentMiddleware` mechanism (already shipped
+     * for exactly this class of problem — Sanctum/Jetstream auth middleware are
+     * in its default allow-list). Every Livewire component's snapshot carries a
+     * tamper-proof `memo.path`/`memo.method` — the URL that ORIGINALLY mounted it
+     * (set at full-page-load time, verified by Livewire's own checksum before our
+     * code ever sees it). On every subsequent /livewire/update call, Livewire
+     * builds a fake request with that original path/method (but the REAL,
+     * current request's Host header, cookies and session) and replays whichever
+     * of the *matched route's* middleware are in this allow-list.
+     *
+     * Adding ResolveTenant + RequireTenant here means:
+     * - A component mounted under /admin/* replays ResolveTenant against the
+     *   REAL Host header of the tab making the AJAX call (never the stale
+     *   session), re-deriving the correct tenant and re-running the
+     *   canAccessTenant() staff-authorization check — then OVERWRITES
+     *   session('tenant_id') with the correct value before Filament resolves
+     *   any BelongsToOrganization-scoped query for this update.
+     * - A component mounted under /platform/* never matches a route carrying
+     *   these two middleware (PlatformPanelProvider never registers them), so
+     *   the replay is a no-op — platform Livewire traffic is completely
+     *   unaffected, exactly as today.
+     *
+     * See the doc above for the full design/rationale, rejected alternatives,
+     * and residual limitations.
+     */
+    private function registerLivewireTenantIsolation(): void
+    {
+        \Livewire\Livewire::addPersistentMiddleware([
+            \App\Http\Middleware\ResolveTenant::class,
+            \App\Http\Middleware\RequireTenant::class,
+        ]);
     }
 
     /**
@@ -266,8 +345,18 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        // Order Cancelled: notify customer
+        // Order Cancelled: notify customer (unless this was an internal
+        // compensation cancel, e.g. P24 registration failure right after
+        // checkout — see OrderService::cancel($order, $reason, notify: false))
         Event::listen(OrderCancelled::class, function (OrderCancelled $event) {
+            if (! $event->notify) {
+                \Log::info('OrderCancelled: notify=false, skipping customer notification (internal compensation)', [
+                    'order_id' => $event->order->id,
+                ]);
+
+                return;
+            }
+
             $order = $event->order->load('user');
 
             if ($order->user) {
@@ -278,6 +367,14 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             }
         });
+
+        // Order Paid: record analytics
+        Event::listen(OrderPaid::class, RecordAnalyticsOnOrderPaid::class);
+
+        // ========== RENTAL NOTIFICATIONS ==========
+
+        // Rental Cancelled: notify customer
+        Event::listen(RentalCancelled::class, SendRentalCancelledNotification::class);
 
         // ========== SECURITY: SESSION REGENERATION ==========
 

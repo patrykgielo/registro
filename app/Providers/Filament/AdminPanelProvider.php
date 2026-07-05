@@ -5,6 +5,8 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\MaintenanceSettings;
 use App\Filament\Pages\SystemSettings;
 use App\Filament\Widgets\CacheClearWidget;
+use App\Filament\Widgets\RevenueChartWidget;
+use App\Filament\Widgets\TenantStatsOverviewWidget;
 use App\Http\Responses\LoginResponse;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -100,6 +102,7 @@ class AdminPanelProvider extends PanelProvider
                 'communication' => NavigationGroup::make(__('navigation.groups.communication')),
                 'settings' => NavigationGroup::make(__('navigation.groups.settings')),
                 'system' => NavigationGroup::make(__('navigation.groups.system')),
+                'reports' => NavigationGroup::make(__('navigation.groups.reports')),
             ])
 
             // 📄 PAGES & RESOURCES
@@ -116,6 +119,8 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 Widgets\AccountWidget::class,
                 Widgets\FilamentInfoWidget::class,
+                TenantStatsOverviewWidget::class,
+                RevenueChartWidget::class,
                 CacheClearWidget::class,
             ])
 
@@ -131,23 +136,28 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 \App\Http\Middleware\ResolveTenant::class, // Redirect unknown subdomains to root
+                \App\Http\Middleware\RequireTenant::class, // 404 when no tenant resolved (root-domain admin access)
             ])
             ->authMiddleware([
                 Authenticate::class,
                 \App\Http\Middleware\AdminMaintenanceCheck::class, // Block non-super-admin during maintenance
             ])
 
-            // 🎨 CUSTOM CSS - Hide image editor icon (premium feature)
+            // 🎨 CUSTOM CSS + JS - Filament dark mode utilities, ApexCharts Alpine components
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): HtmlString => new HtmlString('
+                fn (): HtmlString => new HtmlString(
+                    '<link rel="stylesheet" href="'.\Illuminate\Support\Facades\Vite::asset('resources/css/filament/admin.css').'">'
+                    .'<script type="module" src="'.\Illuminate\Support\Facades\Vite::asset('resources/js/filament-admin.js').'"></script>'
+                    .'
                     <style>
                         /* Hide image editor button - feature reserved for premium */
                         .no-edit-icon .filepond--action-edit-item {
                             display: none !important;
                         }
                     </style>
-                ')
+                    '
+                )
             );
     }
 }

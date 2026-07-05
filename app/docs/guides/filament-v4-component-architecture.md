@@ -462,6 +462,69 @@ Tabs::make('Content')
 
 ---
 
+### Section/Tabs/Grid/Fieldset Header Actions + Sticky Side Rail (Faza: Platform Redesign)
+
+**Discovery:** `Filament\Schemas\Components\Section` (and any container extending the shared
+`Filament\Schemas\Components\Component` base — Tabs, Grid, Fieldset) includes the
+`HasHeaderActions` trait, so `->headerActions([...])` works inside a **form** `Schema`, not
+just on Infolists. Closures on those actions (`->visible()`, `->action()`, etc.) resolve
+`$record` from the schema's bound model exactly like table row actions — so the *same*
+`Filament\Actions\Action` instances used in `Table::actions()` can be reused as a
+`Section::headerActions()` dropdown on an Edit page, as long as `->visible()` guards against
+`$record === null` (Create pages have no bound record yet):
+
+```php
+// Shared helper, called from both table() and form() — single source of truth.
+protected static function lifecycleActions(): array
+{
+    return [
+        Actions\Action::make('suspend')
+            ->visible(fn (?Organization $record) => $record instanceof Organization && ...)
+            ->action(fn (Organization $record) => ...),
+        // ...
+    ];
+}
+
+// In form(): a 2/3 + 1/3 layout with a sticky summary rail carrying state-change actions.
+Grid::make(3)->schema([
+    Tabs::make('...')->columnSpan(2)->tabs([...]),
+
+    Section::make('Stan')
+        ->columnSpan(1)
+        ->extraAttributes(['class' => 'lg:sticky lg:top-6'])
+        ->headerActions([
+            Actions\ActionGroup::make(self::lifecycleActions())
+                ->label('Akcje')
+                ->icon('heroicon-m-ellipsis-vertical')
+                ->color('gray'),
+        ])
+        ->schema([Forms\Components\Placeholder::make(...), ...]),
+]);
+```
+
+**`->extraAttributes(['class' => '...'])` and literal Tailwind classes in PHP:** a literal
+class string (not dynamically concatenated) inside a Resource's PHP file IS picked up by
+Tailwind v4's automatic content detection — no safelist entry needed, unlike `match()`-built
+dynamic class names (see `frontend-quality.md`).
+
+**Panel `maxContentWidth()` enum is `Width`, not `MaxWidth`:**
+
+```php
+// ❌ Does not exist
+use Filament\Support\Enums\MaxWidth;
+
+// ✅ Filament v4.5 — Filament\Support\Enums\Width
+use Filament\Support\Enums\Width;
+
+$panel->maxContentWidth(Width::ScreenTwoExtraLarge); // 'screen-2xl'
+```
+
+`Width` also backs `Section::maxWidth()` etc. Full case list: `ThreeExtraSmall` … `SevenExtraLarge`,
+`None`, `Full`, `MinContent`, `MaxContent`, `FitContent`, `Prose`, `Container`,
+`ScreenSmall` … `ScreenTwoExtraLarge`, `Screen`.
+
+---
+
 ### Component Visibility Rules
 
 **Pattern:** Show/hide components based on conditions.

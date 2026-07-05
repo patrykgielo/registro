@@ -17,6 +17,26 @@ class AppointmentConfirmation extends Notification implements ShouldQueue, Shoul
 }
 ```
 
+## ⚠️ ShouldBeUnique + wielu odbiorców = fan-out bug (Incident 2026-06-30)
+
+**NIE używaj `ShouldBeUnique` gdy ta sama notyfikacja idzie do WIELU odbiorców jednym `Notification::send($collection, …)`.**
+
+Laravel dispatchuje **jeden `SendQueuedNotifications` job per notifiable**, a wszystkie współdzielą **jeden** klucz locka (`uniqueId()` jest notifiable-agnostyczny). Tylko pierwszy job zdobywa lock — reszta jest **cicho odrzucana**. Efekt: z N super-adminów mail dostaje **tylko 1**.
+
+```php
+// ❌ ŹLE — z 5 super-adminami tylko 1 dostanie mail
+class OrganizationClosureRequestedNotification extends Notification implements ShouldQueue, ShouldBeUnique
+{
+    public function uniqueId(): string { return 'closure:'.$this->org->id; } // wspólny dla wszystkich odbiorców!
+}
+Notification::send(User::role('super-admin')->get(), new OrganizationClosureRequestedNotification($org));
+
+// ✅ DOBRZE — bez ShouldBeUnique; deduplikację rób na poziomie AKCJI (atomowy guard)
+class OrganizationClosureRequestedNotification extends Notification implements ShouldQueue { /* … */ }
+```
+
+**Zasada:** `ShouldBeUnique` jest dla notyfikacji **1-odbiorczych** powiązanych z encją (np. potwierdzenie do jednego klienta). Dla broadcastu do roli/zespołu — **wyłącz** i zapobiegaj duplikatom u źródła (atomowy `whereNull(...)->update(...)`, flaga stanu). Ref: `app/Notifications/OrganizationClosureRequestedNotification.php`.
+
 ## Uniqueness (CRITICAL - prevent duplicates)
 
 ```php

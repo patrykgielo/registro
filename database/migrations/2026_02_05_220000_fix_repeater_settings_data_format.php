@@ -76,6 +76,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Data fix is not reversible - no action needed
+        throw new \RuntimeException('This migration is a data-only fix and cannot be rolled back safely.');
     }
 };

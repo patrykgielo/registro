@@ -8,13 +8,15 @@
     "require": {
         "php": "^8.3",
         "asantibanez/laravel-eloquent-state-machines": "^6.1",
+        "barryvdh/laravel-dompdf": "^3.1",
         "enshrined/svg-sanitize": "^0.22.0",
-        "filament/filament": "^4.0",
+        "filament/filament": "^4.11",
         "guava/calendar": "^2.0",
-        "laravel/framework": "^12.0",
-        "laravel/horizon": "^5.39",
+        "laravel/framework": "^12.60",
+        "laravel/horizon": "^5.47",
         "laravel/tinker": "^2.10.1",
         "laravel/ui": "^4.6",
+        "livewire/livewire": "^3.8",
         "mews/purifier": "*",
         "mnastalski/przelewy24-php": "^1.6",
         "predis/predis": "^3.2",
@@ -52,8 +54,13 @@
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
         ],
+        "post-install-cmd": [
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+            "git config core.hooksPath .githooks || true"
+        ],
         "post-update-cmd": [
-            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
+            "git config core.hooksPath .githooks || true"
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""

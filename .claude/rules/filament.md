@@ -6,328 +6,193 @@ paths:
 
 # Filament v4 Rules
 
-When working with Filament files, ALWAYS follow these rules:
-
-## CRITICAL: Version Check Before New Features
-
-**ALWAYS verify method availability before implementing!**
-
-```bash
-# Check current Filament version
-docker compose exec app composer show filament/filament | grep versions
-
-# Current project version: v4.5.2
-```
-
-**Before using any Filament method:**
-1. Search official docs: https://filamentphp.com/docs/4.x/
-2. Check release notes for when method was introduced
-3. Use web-research-specialist agent with Firecrawl to verify
-
-**Example of version-specific methods:**
-- `automaticallyOpenImageEditorForAspectRatio()` - requires v4.5+
-- `imageAspectRatio()` - requires v4.5+
-
-## Critical Namespace Changes (v4 Breaking)
-
-### Resource/Page Method Signatures (BREAKING!)
-
-**Filament v4 zmienił sygnatury metod — `Form` → `Schema`!**
+## Critical: Form Method Signature (BREAKING!)
 
 ```php
-// ❌ WRONG — v3 signature, NIE DZIAŁA w v4!
+// ❌ v3 — NIE DZIAŁA w v4!
 use Filament\Forms\Form;
 public static function form(Form $form): Form { ... }
 
-// ✅ CORRECT — v4 signature
+// ✅ v4 — wymagane
 use Filament\Schemas\Schema;
 public static function form(Schema $schema): Schema { ... }
 ```
 
-**Dotyczy też property types:**
+Property types (BREAKING):
 ```php
-// ❌ WRONG
-protected static ?string $navigationIcon = 'heroicon-o-...';
-
-// ✅ CORRECT — v4 wymaga union type
-protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-...';
-
-// ❌ WRONG
-protected static ?string $navigationGroup = 'content';
-
-// ✅ CORRECT
-protected static string|\UnitEnum|null $navigationGroup = 'content';
+// ❌ WRONG                                      // ✅ CORRECT
+?string $navigationIcon                          string|\BackedEnum|null $navigationIcon
+?string $navigationGroup                         string|\UnitEnum|null $navigationGroup
 ```
 
-**Table/Resource Actions — przeniesione do `Filament\Actions`!**
-```php
-// ❌ WRONG — v3 namespace, NIE ISTNIEJE w v4!
-use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\DeleteBulkAction;
-Tables\Actions\EditAction::make()
+## Critical: Actions Namespace (BREAKING!)
 
-// ✅ CORRECT — v4: wszystkie Actions w jednym namespace
+```php
+// ❌ WRONG — v3 namespace nie istnieje w v4!
+use Filament\Tables\Actions\EditAction;
+
+// ✅ CORRECT — wszystkie Actions w jednym namespace
 use Filament\Actions;
 Actions\EditAction::make()
 Actions\DeleteBulkAction::make()
 Actions\BulkActionGroup::make([...])
 ```
 
-**Zawsze weryfikuj wzorce z istniejących Resources w projekcie** (np. `ServiceResource.php`).
+## Critical: Container vs Field Namespace
 
-### DECISION RULE: Container vs Field
-
-**Ask yourself:** Is it a CONTAINER (holds other components) or a DATA ENTRY FIELD (user types/selects)?
-
-- **CONTAINER** (layout structure) → `Filament\Schemas\Components`
-- **DATA ENTRY FIELD** (input) → `Filament\Forms\Components`
-
-### Layout/Container Components → `Filament\Schemas\Components\*`
+- **CONTAINER** (Section, Grid, Tabs, Fieldset, Flex, Wizard) → `Filament\Schemas\Components\*`
+- **DATA ENTRY** (TextInput, Select, Textarea, Toggle, DatePicker, FileUpload) → `Filament\Forms\Components\*`
+- **DISPLAY** (TextEntry, IconEntry, ImageEntry) → `Filament\Infolists\Components\*`
 
 ```php
-// These HOLD other components - use Schemas namespace!
-use Filament\Schemas\Components\Section;     // Collapsible section
-use Filament\Schemas\Components\Grid;        // Multi-column layout
-use Filament\Schemas\Components\Tabs;        // Tab container
-use Filament\Schemas\Components\Fieldset;    // Grouped fields
-use Filament\Schemas\Components\Flex;        // Flexbox layout
-use Filament\Schemas\Components\Group;       // Simple grouping
-use Filament\Schemas\Components\Wizard;      // Multi-step wizard
-use Filament\Schemas\Schema;                 // Form schema return type
-```
-
-### Form Input Fields → `Filament\Forms\Components\*`
-
-```php
-// These accept USER INPUT - use Forms namespace!
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\RichEditor;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\ColorPicker;
-use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Toggle;
-use Filament\Forms\Components\Checkbox;
-use Filament\Forms\Components\Slider;
-use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Builder;       // Page builder
-use Filament\Forms\Components\Builder\Block; // Builder block
-```
-
-### ⚠️ COMMON MISTAKE - Grid/Section/Fieldset
-
-```php
-// ❌ WRONG - these don't exist!
-Forms\Components\Grid::make(2)
+// ❌ WRONG — nie istnieje!
 Forms\Components\Section::make()
-Forms\Components\Fieldset::make()
+Forms\Components\Grid::make(2)
 
-// ✅ CORRECT - use Schemas namespace!
-Filament\Schemas\Components\Grid::make(2)
+// ✅ CORRECT
 Filament\Schemas\Components\Section::make()
-Filament\Schemas\Components\Fieldset::make()
+Filament\Schemas\Components\Grid::make(2)
 ```
 
-### Infolist Display Components → `Filament\Infolists\Components\*`
+## Critical: Set/Get Type-Hints (Bug 2026-07-02)
+
+`Set`/`Get` moved namespaces in v4 too. `Forms\Set`/`Forms\Get` shorthand compiles fine but resolves
+to the removed v3 class — TypeError only when the closure fires (`afterStateUpdated`, `->visible()`).
 
 ```php
-// For DISPLAYING data (read-only)
-use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\IconEntry;
-use Filament\Infolists\Components\ImageEntry;
+// ❌ WRONG — v3, TypeError only when closure actually runs
+use Filament\Forms;
+fn (Forms\Set $set) => ...
+use Filament\Forms\Get;
+fn (Get $get) => ...
+
+// ✅ CORRECT
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Components\Utilities\Get;
+fn (Set $set) => ...
+fn (Get $get) => ...
 ```
 
-## Dependent Fields Reset Pattern (Bug z 2026-01-21)
-
-**Problem:** Gdy używasz `->live()` na polu Select, które kontroluje opcje innego pola, zmiana wartości odświeża OPCJE ale NIE resetuje WARTOŚCI zależnego pola.
+## Critical: Widget Properties — Static vs Instance (Bug 2026-05-10)
 
 ```php
-// ❌ BUG: content_items zachowa stare ID po zmianie content_type
-Forms\Components\Select::make('content_type')
-    ->options([...])
-    ->live(),  // Tylko odświeża opcje, nie resetuje wartości!
+// ❌ WRONG — FatalError (ChartWidget/StatsOverviewWidget)
+protected static ?string $heading = '...';
+protected static ?string $pollingInterval = null;
 
-Forms\Components\Select::make('content_items')
-    ->options(fn ($get) => match($get('content_type')) {...})
+// ✅ CORRECT — instance properties (no static)
+protected ?string $heading = '...';
+protected ?string $pollingInterval = null;
+
+// ✅ CORRECT — $sort IS static
+protected static ?int $sort = 2;
 ```
 
-**Rozwiązanie:** Dodaj `->afterStateUpdated()` aby explicite zresetować zależne pole:
+## Dependent Fields Reset (Bug 2026-01-21)
+
+`->live()` odświeża opcje ale NIE resetuje wartości zależnego pola:
 
 ```php
-// ✅ POPRAWNIE: resetuje content_items przy zmianie typu
-Forms\Components\Select::make('content_type')
-    ->options([...])
+// ❌ BUG: content_items zachowa stare ID
+Select::make('content_type')->live()
+
+// ✅ FIX: explicite reset
+Select::make('content_type')
     ->live()
-    ->afterStateUpdated(fn ($set) => $set('content_items', [])),
+    ->afterStateUpdated(fn ($set) => $set('content_items', []))
 ```
 
-**Wzorce użycia:**
-```php
-// Reset do null (pojedyncza wartość)
-->afterStateUpdated(fn ($set) => $set('field_name', null))
-
-// Reset do pustej tablicy (multiple select)
-->afterStateUpdated(fn ($set) => $set('field_name', []))
-
-// Reset wielu pól na raz
-->afterStateUpdated(function ($state, callable $set) {
-    if ($state !== 'expected_value') {
-        $set('field1', null);
-        $set('field2', null);
-    }
-})
-```
-
----
-
-## Livewire Assets - Reactivity Issues
-
-**Symptom:** Warning w konsoli: "Livewire: The published Livewire assets are out of date"
-
-**Problem:** `->live()` i `->afterStateUpdated()` mogą nie działać poprawnie.
-
-**Rozwiązanie:**
-```bash
-php artisan livewire:publish --assets
-php artisan filament:assets
-php artisan optimize:clear
-```
-
-**Kiedy publikować assety:**
-- Po upgrade Livewire/Filament
-- Gdy reactivity przestaje działać
-- Gdy widzisz warning w konsoli
-
----
-
-## Widget Rules (Avoid Recent Bug)
-
-- Widgets are top-level components with built-in layout
-- **NEVER** nest `<x-filament::section>` as root element in widgets
-- Use `<x-filament-widgets::widget>` wrapper in Blade templates
-- Heading/description go to widget slots, NOT section component
-
-## Array Column + formatStateUsing TypeError (Bug z 2026-02-16)
-
-**Problem:** `formatStateUsing()` na kolumnie z `array`-cast modelem rzuca TypeError z `declare(strict_types=1)`.
-
-Filament wewnętrznie wykonuje `array_map` na `formatStateUsing` — przekazuje KAŻDY element tablicy osobno. Gdy kolumna ma array cast, Filament próbuje sformatować tablicę element po elemencie.
+## DatePicker — minDate w Edit Context (Bug 2026-02-16)
 
 ```php
-// ❌ BŁĄD: TypeError z strict_types — Str::limit(6, 40) zwraca int 6
-Tables\Columns\TextColumn::make('old_values')
-    ->formatStateUsing(fn ($state) => Str::limit((string) $state, 40))
-    // $state = array! Filament array_map-uje to → TypeError
+// ❌ Blokuje edycję rekordów z datą w przeszłości
+->minDate(now())
 
-// ✅ POPRAWNIE: użyj getStateUsing() do konwersji PRZED Filament
-Tables\Columns\TextColumn::make('old_values')
-    ->getStateUsing(fn ($record) => json_encode($record->old_values))
-    ->limit(100)
+// ✅ minDate tylko przy tworzeniu
+->minDate(fn (?Appointment $record) => $record ? null : now()->toDateString())
 ```
 
-**Zasada:** Dla kolumn z `array` cast — ZAWSZE używaj `getStateUsing()` zamiast `formatStateUsing()`.
-
----
-
-## SVG w Filament Placeholder — Sizing (Bug z 2026-02-16)
-
-**Problem:** Ikony SVG wewnątrz `Forms\Components\Placeholder` renderują się OGROMNE.
-
-**Root cause:** Filament CSS `.fi-in-entry-content { @apply block w-full }` wymusza `display: block; width: 100%`. SVG bez HTML atrybutów `width`/`height` rozszerzają się do rozmiaru kontenera. Klasy Tailwind (`w-4 h-4`) mają niższy priorytet niż layout flow SVG.
+## Array Column + formatStateUsing TypeError (Bug 2026-02-16)
 
 ```php
-// ❌ BŁĄD: SVG będzie ogromne (100% width kontenera)
-Forms\Components\Placeholder::make('icon')
-    ->content(new HtmlString('
-        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">...</svg>
-    '))
+// ❌ TypeError — Filament array_map-uje na array cast
+->formatStateUsing(fn ($state) => Str::limit((string) $state, 40))
 
-// ✅ POPRAWNIE: dodaj HTML width/height + flex-shrink-0
-Forms\Components\Placeholder::make('icon')
-    ->content(new HtmlString('
-        <svg class="w-4 h-4 flex-shrink-0" width="16" height="16" fill="currentColor" viewBox="0 0 20 20">...</svg>
-    '))
+// ✅ Użyj getStateUsing() dla array-cast kolumn
+->getStateUsing(fn ($record) => json_encode($record->old_values))->limit(100)
 ```
 
-**Zasady:**
-1. SVG w Placeholder MUSI mieć atrybuty HTML `width` i `height`
-2. Dodaj `flex-shrink-0` aby zapobiec kurczeniu w flex kontenerze
-3. Klasy Tailwind (`w-4 h-4`) same w sobie NIE WYSTARCZĄ
-
----
-
-## DatePicker — Warunkowe minDate (Bug z 2026-02-16)
-
-**Problem:** `->minDate(now())` na DatePicker blokuje KAŻDĄ edycję rekordu z datą w przeszłości — nawet zmianę statusu.
-
-Filament waliduje WSZYSTKIE pola formularza przy zapisie, nie tylko te zmienione. Jeśli appointment_date = 2026-01-30 a minDate = now() (2026-02-16), walidacja odrzuci formularz.
+## Action Modal z Infolist (v4 Pattern)
 
 ```php
-// ❌ BŁĄD: blokuje edycję starych rekordów
-Forms\Components\DatePicker::make('appointment_date')
-    ->minDate(now())
-
-// ✅ POPRAWNIE: minDate tylko przy tworzeniu (create), nie przy edycji
-Forms\Components\DatePicker::make('appointment_date')
-    ->minDate(fn (?Appointment $record): ?string => $record ? null : now()->toDateString())
-```
-
-**Zasada:** Gdy pole ma walidację zależną od kontekstu (create vs edit), ZAWSZE sprawdzaj `$record`:
-- `$record === null` → tworzenie nowego rekordu
-- `$record !== null` → edycja istniejącego rekordu
-
----
-
-## Action Modal z Infolist Components (Pattern z 2026-02-16)
-
-**Problem:** W Filament v4 `Filament\Infolists\Infolist` NIE ISTNIEJE. Metoda `->infolist()` jest deprecated alias dla `->schema()`.
-
-```php
-// ❌ BŁĄD: klasa nie istnieje w v4
+// ❌ BŁĄD: Infolist::make() nie istnieje w v4
 use Filament\Infolists\Infolist;
-Actions\Action::make('details')
-    ->infolist(Infolist::make([...]));
-
-// ❌ BŁĄD: Section z Infolists namespace nie istnieje
 use Filament\Infolists\Components\Section;
 
-// ✅ POPRAWNIE: ->schema() + Section z Schemas namespace
+// ✅ POPRAWNIE
 use Filament\Schemas\Components\Section;
 use Filament\Infolists\Components\TextEntry;
-
 Actions\Action::make('details')
-    ->modalHeading('Szczegóły')
-    ->modalSubmitAction(false)
-    ->schema(function (Model $record): array {
-        return [
-            Section::make('Info')
-                ->schema([
-                    TextEntry::make('field')->label('Label'),
-                ])
-                ->columns(2),
-        ];
-    });
+    ->schema([
+        Section::make()->schema([TextEntry::make('field')])->columns(2),
+    ]);
 ```
 
-**Zasady:**
-- `Section` → ZAWSZE z `Filament\Schemas\Components\Section`
-- `TextEntry` → z `Filament\Infolists\Components\TextEntry` (OK)
-- `->schema()` zamiast `->infolist()` na Action
+## SVG w Placeholder — Sizing (Bug 2026-02-16)
 
----
+Filament CSS wymusza `width: 100%` na SVG. Dodaj HTML atrybuty:
+```php
+// ❌ SVG będzie ogromne
+new HtmlString('<svg class="w-4 h-4">...</svg>')
 
-## Module System Integration (Phase 6)
+// ✅ HTML atrybuty + flex-shrink-0
+new HtmlString('<svg class="w-4 h-4 flex-shrink-0" width="16" height="16">...</svg>')
+```
 
-Resources dziedziczą automatyczny `shouldRegisterNavigation()` z `BaseResource` który sprawdza `Organization.hasModule()`.
+## Custom CSS/JS via renderHook (Pattern z Phase 11b)
 
-**Pattern:** `protected static ?string $module = 'services';` na Resource class.
+```php
+// ❌ WRONG — zastępuje CSS Filament (łamie layout)
+->viteTheme('resources/css/filament/admin.css')
 
-Szczegóły: → `filament-resources.md` sekcja "Module Visibility Gating"
+// ✅ CORRECT — additive (dodaje obok Filament)
+->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString(
+    '<link rel="stylesheet" href="' . Vite::asset('resources/css/filament/admin.css') . '">'
+    . '<script type="module" src="' . Vite::asset('resources/js/filament-admin.js') . '"></script>'
+))
+```
 
-## Documentation References
+Tailwind v4 w Filament: używaj `@theme { }` (nie `:root { }`) — tylko `@theme` generuje utility classes.
 
-- [Component Architecture](docs/guides/filament-v4-component-architecture.md)
-- [Migration Guide](docs/guides/filament-v4-migration-guide.md)
-- [Best Practices](docs/guides/filament-v4-best-practices.md)
-- [Widgets Guide](docs/guides/filament-v4-widgets-guide.md)
+Alpine.js w filament-admin.js: rejestruj przez `alpine:init`, BEZ `Alpine.start()`.
+
+## Livewire Assets (gdy `->live()` nie działa)
+
+```bash
+php artisan livewire:publish --assets && php artisan filament:assets && php artisan optimize:clear
+```
+
+## Module System
+
+`protected static ?string $module = 'services';` na Resource → auto-gating przez `BaseResource::shouldRegisterNavigation()`.
+
+## maxContentWidth() — Enum to `Width`, NIE `MaxWidth` (Platform Redesign)
+
+```php
+// ❌ Nie istnieje
+use Filament\Support\Enums\MaxWidth;
+
+// ✅ v4.5
+use Filament\Support\Enums\Width;
+$panel->maxContentWidth(Width::ScreenTwoExtraLarge); // 'screen-2xl'
+```
+
+## Section/Tabs/Grid/Fieldset → `->headerActions()` działa też w Form Schema
+
+`HasHeaderActions` jest w bazowym `Schemas\Components\Component` — nie tylko w Infolist Section.
+`$record` jest auto-resolvowany z bound modelu schematu (jak w table actions). Guard `->visible()`
+na `?Model $record` (Create page nie ma jeszcze rekordu). Pełny przykład: `app/docs/guides/filament-v4-component-architecture.md`.
+
+## Version Check
+
+Projekt: **v4.5.2**. Przed nowymi metodami: https://filamentphp.com/docs/4.x/

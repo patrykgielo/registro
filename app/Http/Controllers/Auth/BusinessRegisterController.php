@@ -102,6 +102,7 @@ class BusinessRegisterController extends Controller
         $result = $createAction->execute($data);
 
         Auth::login($result['user']);
+        $request->session()->regenerate();
 
         $request->session()->forget('business_register');
         $request->session()->put('business_register.organization_id', $result['organization']->id);

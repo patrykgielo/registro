@@ -3,8 +3,10 @@
 namespace Tests\Unit\Services;
 
 use App\Models\Order;
+use App\Notifications\OrderCancelledNotification;
 use App\Services\Order\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class OrderServiceTest extends TestCase
@@ -60,28 +62,30 @@ class OrderServiceTest extends TestCase
         $this->assertTrue($order->cancelled_at->diffInSeconds(now()) < 5);
     }
 
-    public function test_cancel_throws_for_confirmed_order(): void
+    public function test_cancel_transitions_confirmed_order_to_cancelled(): void
     {
         $order = Order::factory()->confirmed()->create();
 
         $svc = $this->makeService();
+        $result = $svc->cancel($order, 'Admin cancellation of confirmed order');
 
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage("Zamówienie o statusie 'confirmed' nie może zostać anulowane");
+        $result->refresh();
 
-        $svc->cancel($order, 'Cannot cancel confirmed');
+        $this->assertEquals('cancelled', $result->status);
+        $this->assertNotNull($result->cancelled_at);
     }
 
-    public function test_cancel_throws_for_in_progress_order(): void
+    public function test_cancel_in_progress_order_succeeds_with_warning(): void
     {
+        \Illuminate\Support\Facades\Notification::fake();
+
         $order = Order::factory()->inProgress()->create();
 
         $svc = $this->makeService();
+        $result = $svc->cancel($order, 'Offboarding: tenant closing');
 
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage("Zamówienie o statusie 'in_progress' nie może zostać anulowane");
-
-        $svc->cancel($order, 'Cannot cancel in-progress');
+        $this->assertEquals('cancelled', $result->status);
+        $this->assertNotNull($result->cancelled_at);
     }
 
     public function test_cancel_throws_for_completed_order(): void
@@ -117,6 +121,48 @@ class OrderServiceTest extends TestCase
 
         $this->assertInstanceOf(Order::class, $result);
         $this->assertEquals($order->id, $result->id);
+    }
+
+    // -------------------------------------------------------------------------
+    // cancel() — notify flag (HIGH fix: internal compensation must not send
+    // the customer-facing cancellation email)
+    // -------------------------------------------------------------------------
+
+    public function test_cancel_notifies_customer_by_default(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->pendingPayment()->create();
+
+        $svc = $this->makeService();
+        $svc->cancel($order, 'Customer request');
+
+        Notification::assertSentTo($order->user, OrderCancelledNotification::class);
+    }
+
+    public function test_cancel_with_notify_false_does_not_send_customer_notification(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->pendingPayment()->create();
+
+        $svc = $this->makeService();
+        $svc->cancel($order, 'P24 registration failed', notify: false);
+
+        Notification::assertNotSentTo($order->user, OrderCancelledNotification::class);
+    }
+
+    public function test_cancel_with_notify_false_still_cancels_the_order(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->pendingPayment()->create();
+
+        $svc = $this->makeService();
+        $result = $svc->cancel($order, 'P24 registration failed', notify: false);
+
+        $this->assertEquals('cancelled', $result->status);
+        $this->assertNotNull($result->cancelled_at);
     }
 
     // -------------------------------------------------------------------------

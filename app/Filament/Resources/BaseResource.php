@@ -20,6 +20,10 @@ abstract class BaseResource extends Resource
      */
     public static function shouldRegisterNavigation(): bool
     {
+        if (! static::$shouldRegisterNavigation) {
+            return false;
+        }
+
         if (static::$module === null) {
             return true;
         }

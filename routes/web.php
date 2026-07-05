@@ -25,13 +25,34 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\CheckBookingEnabled;
 use App\Http\Middleware\CheckRegistrationEnabled;
 use App\Http\Middleware\CheckRentalEnabled;
+use App\Http\Middleware\RequireTenant;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
-// Public routes (ResolveTenant needed for tenant-scoped settings and CMS pages)
-Route::middleware([ResolveTenant::class])->get('/', function () {
+// Public home route — deliberate exception to the RequireTenant pattern below.
+// On the root domain (no subdomain) ResolveTenant sets no `tenant` attribute by
+// design ("marketplace, no tenant context"). RequireTenant would hard-404 that,
+// but this route already has graceful no-page fallbacks (home-fallback view) for
+// exactly this case. Do NOT add RequireTenant::class back here.
+//
+// IMPORTANT: gate on the `tenant` REQUEST ATTRIBUTE directly, not on
+// SettingsManager::get()/Page::find() (which resolve "current tenant" via
+// TenantFeature::currentTenant()). currentTenant() has a 3rd fallback branch
+// reading session('tenant_id'), which ResolveTenant writes on EVERY subdomain
+// visit — including anonymous ones. A visitor who merely browsed orgB's
+// subdomain earlier in the same browser session and then hits the root
+// domain would otherwise have orgB's own homepage setting/page resolved and
+// rendered on the root domain (VULN-003 Layer 1/2 gap). There is no
+// legitimate "global marketplace homepage" built yet, so on a true root-
+// domain request (no tenant attribute) we skip the tenant-aware lookup
+// entirely and always render home-fallback.
+Route::middleware([ResolveTenant::class])->get('/', function (\Illuminate\Http\Request $request) {
+    if (! $request->attributes->get('tenant')) {
+        return view('home-fallback');
+    }
+
     $settingsManager = app(\App\Support\Settings\SettingsManager::class);
     $pageId = $settingsManager->get('cms.homepage_page_id');
 
@@ -48,6 +69,7 @@ Route::middleware([ResolveTenant::class])->get('/', function () {
     return view('pages.show', [
         'page' => $page,
         'layout' => $page->layout,
+        ...\App\Support\Seo\MetaTagBuilder::forModel($page),
     ]);
 })->name('home');
 
@@ -85,9 +107,11 @@ Route::get('/health', function () {
 
 // CMS Content routes - Posts, Promotions, Portfolio (with prefixes)
 // ResolveTenant needed for BelongsToOrganization scope on content models
-Route::middleware([ResolveTenant::class])->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class])->group(function () {
+    Route::get('/aktualnosci/kategoria/{category:slug}', [PostController::class, 'category'])->name('post.category');
     Route::get('/aktualnosci/{slug}', [PostController::class, 'show'])->name('post.show');
     Route::get('/promocje/{slug}', [PromotionController::class, 'show'])->name('promotion.show');
+    Route::get('/portfolio/kategoria/{category:slug}', [PortfolioController::class, 'category'])->name('portfolio.category');
     Route::get('/portfolio/{slug}', [PortfolioController::class, 'show'])->name('portfolio.show');
 });
 
@@ -96,25 +120,31 @@ Route::get('/strona/{slug}', function (string $slug) {
     return redirect()->route('page.show', $slug, 301);
 })->name('page.legacy');
 
+// Sitemap (per-tenant) — queries tenant-owned content models (Page/Post/PortfolioItem/Service),
+// MUST carry RequireTenant (VULN-003) right after ResolveTenant, same as every other content route.
+Route::middleware([ResolveTenant::class, RequireTenant::class])
+    ->get('/sitemap.xml', \App\Http\Controllers\SitemapController::class)
+    ->name('sitemap');
+
 // Service Pages routes (P0: SEO-friendly Polish URLs with rate limiting)
-Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
     Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('service.show');
 });
 
 // Service inquiry (price-on-request contact form)
 Route::post('/uslugi/{service:slug}/zapytaj', [\App\Http\Controllers\ServiceInquiryController::class, 'store'])
-    ->middleware([ResolveTenant::class, 'throttle:5,1'])
+    ->middleware([ResolveTenant::class, RequireTenant::class, 'throttle:5,1'])
     ->name('service.inquiry');
 
 // Rental Catalogue routes (public, tenant-scoped)
-Route::middleware([ResolveTenant::class, 'throttle:60,1'])->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->group(function () {
     Route::get('/wypozyczalnia', [RentalController::class, 'index'])->name('rental.index');
     Route::get('/wypozyczalnia/{category:slug}', [RentalController::class, 'showCategory'])->name('rental.category');
 });
 
 // Rental availability AJAX endpoints (read-only, higher rate limit)
-Route::middleware([ResolveTenant::class, 'throttle:60,1'])->name('rental.')->group(function () {
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])->name('rental.')->group(function () {
     Route::get('/api/rental/{service:slug}/dostepnosc', [RentalBookingController::class, 'checkAvailability'])
         ->name('availability');
     Route::get('/api/rental/{service:slug}/kalendarz', [RentalBookingController::class, 'monthlyAvailability'])
@@ -122,7 +152,10 @@ Route::middleware([ResolveTenant::class, 'throttle:60,1'])->name('rental.')->gro
 });
 
 // Cart & Checkout routes (Sprint 2+ — new e-commerce flow, requires auth + tenant)
-Route::middleware([ResolveTenant::class, 'auth', CheckRentalEnabled::class])->group(function () {
+// RequireTenant right after ResolveTenant (VULN-003 Layer 4) — abort_unless($org !== null)
+// alone in Cart/Checkout/OrderController is not enough: TenantFeature::currentTenant()'s
+// session fallback resolves a stale tenant on the root domain even without RequireTenant.
+Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRentalEnabled::class])->group(function () {
     Route::get('/koszyk', [CartController::class, 'show'])->name('cart.show');
     Route::post('/koszyk/dodaj', [CartController::class, 'add'])->name('cart.add');
     Route::delete('/koszyk/usun/{item}', [CartController::class, 'remove'])->name('cart.remove');
@@ -219,17 +252,22 @@ Route::prefix('api/webhooks')->name('webhooks.')->middleware('throttle:120,1')->
 });
 
 // Protected routes (require authentication + tenant resolution)
-Route::middleware(['auth', ResolveTenant::class])->group(function () {
+// RequireTenant closes the VULN-003 session-fallback gap: booking/appointments/profile
+// routes must hard-404 on the root domain even when a stale session tenant_id exists —
+// see app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md (Layer 3).
+Route::middleware(['auth', ResolveTenant::class, RequireTenant::class])->group(function () {
     // Booking routes - protected by CheckBookingEnabled middleware
     // When booking is disabled, these redirect to home page
     Route::middleware([CheckBookingEnabled::class])->group(function () {
-        // Booking (old single-page flow)
-        Route::get('/services/{service}/book', [BookingController::class, 'create'])->name('booking.create');
-        Route::get('/booking/available-slots', [BookingController::class, 'getAvailableSlots'])->name('booking.slots');
-
-        // Booking Wizard (new multi-step flow)
-        Route::get('/booking/step/{step}', [BookingController::class, 'showStep'])->name('booking.step');
-        Route::get('/booking/change-service', [BookingController::class, 'changeService'])->name('booking.change-service');
+        // Booking Wizard (new multi-step flow) + old single-page flow's view route —
+        // VULN-001: view/AJAX-restore GET endpoints rate limited (60/min per user/IP)
+        // to close the gap left by the original fix (only the POST endpoints were throttled).
+        Route::middleware(['throttle:60,1'])->group(function () {
+            Route::get('/services/{service}/book', [BookingController::class, 'create'])->name('booking.create');
+            Route::get('/booking/step/{step}', [BookingController::class, 'showStep'])->name('booking.step');
+            Route::get('/booking/change-service', [BookingController::class, 'changeService'])->name('booking.change-service');
+            Route::get('/booking/restore-progress', [BookingController::class, 'restoreProgress'])->name('booking.restore-progress');
+        });
 
         // Booking Wizard - Rate Limited POST endpoints
         Route::middleware(['throttle:30,1'])->group(function () {
@@ -237,11 +275,16 @@ Route::middleware(['auth', ResolveTenant::class])->group(function () {
             Route::post('/booking/save-progress', [BookingController::class, 'saveProgress'])->name('booking.save-progress');
         });
 
-        Route::get('/booking/restore-progress', [BookingController::class, 'restoreProgress'])->name('booking.restore-progress');
-
-        // Calendar availability endpoint (AJAX)
-        Route::get('/booking/unavailable-dates', [BookingController::class, 'getUnavailableDates'])
-            ->name('booking.unavailable-dates');
+        // Heavy-computation availability endpoints (AJAX) — VULN-001: stricter limit (20/min).
+        // unavailable-dates scans 60 days across all staff for a service; available-slots
+        // (old single-page flow) computes per-staff slot availability for a single day and
+        // has the same-or-worse DoS profile (AppointmentService::getAvailableSlotsAcrossAllStaff()),
+        // so it gets the same tier for consistency.
+        Route::middleware(['throttle:20,1'])->group(function () {
+            Route::get('/booking/unavailable-dates', [BookingController::class, 'getUnavailableDates'])
+                ->name('booking.unavailable-dates');
+            Route::get('/booking/available-slots', [BookingController::class, 'getAvailableSlots'])->name('booking.slots');
+        });
 
         // Booking confirmation - Stricter rate limit (production only)
         $confirmThrottle = app()->environment('production') ? 'throttle:10,1' : 'throttle:100,1';
@@ -307,7 +350,7 @@ Route::middleware(['auth', ResolveTenant::class])->group(function () {
     });
 });
 
-Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->group(function () {
+Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class, 'throttle:60,1,vehicle-data'])->group(function () {
     Route::get('/vehicle-types', [VehicleDataController::class, 'vehicleTypes'])->name('vehicle-types');
     Route::get('/car-brands', [VehicleDataController::class, 'brands'])->name('car-brands');
     Route::get('/car-models', [VehicleDataController::class, 'models'])->name('car-models');
@@ -319,9 +362,21 @@ Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->
 // =============================================================================
 if (! app()->isProduction()) {
     Route::post('/dev/fake-pay', [FakePaymentController::class, 'pay'])
-        ->middleware(['auth', ResolveTenant::class])
+        ->middleware(['auth', ResolveTenant::class, RequireTenant::class])
         ->name('dev.fake-pay');
 }
+
+// =============================================================================
+// Platform — Organization Data Export (signed URL, Art. 28(3)(g) RODO)
+// =============================================================================
+// Accessible by: valid signed URL (7 days) OR authenticated super-admin.
+// Authorization is handled in the controller — no auth middleware here,
+// because the org owner may not have a Registro account / be logged in.
+// Throttled: the signed URL streams a ZIP with full org PII.
+// =============================================================================
+Route::get('/platform/organizations/{organization}/data-export', [\App\Http\Controllers\Platform\OrganizationDataExportController::class, 'download'])
+    ->name('platform.organization.data-export')
+    ->middleware('throttle:10,1440');
 
 // =============================================================================
 // CMS Pages - Catch-all Route (MUST BE LAST!)
@@ -332,6 +387,6 @@ if (! app()->isProduction()) {
 // This route MUST be defined LAST to prevent matching other routes.
 // Reserved slugs are blocked in Page model validation.
 // =============================================================================
-Route::middleware([ResolveTenant::class])->get('/{slug}', [PageController::class, 'show'])
+Route::middleware([ResolveTenant::class, RequireTenant::class])->get('/{slug}', [PageController::class, 'show'])
     ->name('page.show')
     ->where('slug', '^(?!admin|platform|api|livewire|filament|horizon|storage|sanctum|health|register|customer|get-started).*$');

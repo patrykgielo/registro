@@ -38,6 +38,7 @@
         method="POST"
         action="{{ route('checkout.submit') }}"
         novalidate
+        data-checkout-form
         x-data="{
             customerType: '{{ old('customer_type', $profileData['customer_type'] ?? 'natural_person') }}',
 
@@ -80,7 +81,7 @@
             {{-- Consent validation --}}
             consentSubmitAttempted: false,
 
-            depositTotal: {{ $cart->items->sum(fn($item) => ($item->service->deposit_amount ?? 0) * $item->quantity) }},
+            depositTotal: {{ $depositTotal }},
 
             get consentErrors() {
                 if (!this.consentSubmitAttempted) return {};
@@ -101,6 +102,8 @@
                             firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     });
+                } else {
+                    window.dispatchEvent(new CustomEvent('checkout:submitted'));
                 }
             }
         }"
@@ -340,7 +343,7 @@
                                     <p id="customer_pesel-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
                                 @enderror
                                 <p id="customer_pesel-hint" class="text-xs text-text-muted mt-1 leading-relaxed">
-                                    Numer PESEL jest wymagany do zawarcia umowy najmu i ewentualnego dochodzenia roszczeń.
+                                    Wymagany do weryfikacji tożsamości przy odbiorze sprzętu.
                                 </p>
                             </div>
 
@@ -1335,10 +1338,7 @@
                         <p class="mt-1 text-xs text-text-muted">Ceny brutto, w tym VAT {{ app(\App\Support\Settings\SettingsManager::class)->vatRate() }}%</p>
                     </div>
 
-                    {{-- Kaucja (conditionally shown) --}}
-                    @php
-                        $depositTotal = $cart->items->sum(fn($item) => ($item->service->deposit_amount ?? 0) * $item->quantity);
-                    @endphp
+                    {{-- Kaucja (conditionally shown) — $depositTotal computed once in CheckoutController::show() --}}
                     @if($depositTotal > 0)
                         <div class="mt-4 pt-4 border-t border-border">
                             <div class="flex justify-between items-baseline gap-3">
@@ -1352,6 +1352,27 @@
                             </p>
                         </div>
                     @endif
+
+                    {{-- Co się dzieje dalej? --}}
+                    <div class="mt-4 pt-4 border-t border-border">
+                        <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2.5">
+                            Co się dzieje dalej?
+                        </h3>
+                        <ol class="space-y-2 text-xs text-text-muted" role="list">
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">1</span>
+                                <span>Opłacasz zamówienie — otrzymasz e-mail z potwierdzeniem i szczegółami odbioru.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">2</span>
+                                <span>Administrator potwierdza dostępność sprzętu i kontaktuje się z Tobą w razie pytań.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">3</span>
+                                <span>Odbierasz sprzęt osobiście w umówionym terminie — miej przy sobie dokument tożsamości.</span>
+                            </li>
+                        </ol>
+                    </div>
 
                     {{-- Przelewy24 CTA --}}
                     <div class="mt-6">

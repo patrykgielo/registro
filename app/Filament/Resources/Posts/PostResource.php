@@ -33,7 +33,7 @@ class PostResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $modelLabel = 'Wpis';
 
@@ -176,6 +176,13 @@ class PostResource extends BaseResource
                     ->sortable()
                     ->weight('bold'),
 
+                Tables\Columns\TextColumn::make('slug')
+                    ->label('Slug')
+                    ->searchable()
+                    ->badge()
+                    ->color('gray')
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('category.name')
                     ->label('Kategoria')
                     ->badge()
@@ -185,12 +192,7 @@ class PostResource extends BaseResource
                 Tables\Columns\TextColumn::make('layout')
                     ->label('Layout')
                     ->badge()
-                    ->color(fn (PageLayout $state): string => match ($state) {
-                        PageLayout::DEFAULT => 'info',
-                        PageLayout::FULL_WIDTH => 'success',
-                        PageLayout::MINIMAL => 'warning',
-                        PageLayout::HOME => 'danger',
-                    })
+                    ->color(fn (PageLayout $state): string => $state->badgeColor())
                     ->formatStateUsing(fn (PageLayout $state): string => $state->label())
                     ->toggleable(isToggledHiddenByDefault: true),
 
@@ -204,6 +206,12 @@ class PostResource extends BaseResource
                             : 'Wersja robocza'
                     )
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Utworzono')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Ostatnia aktualizacja')

@@ -5,6 +5,52 @@ paths:
 
 # Database Migration Rules
 
+## Tenant-Scoped Unique Constraints (CRITICAL)
+
+**Any table with `organization_id` MUST use composite unique constraints that include `organization_id`.**
+Single-column uniques on tenant-scoped tables break multi-tenant onboarding: vertical seeders inserting
+records (e.g., service names, page slugs) fail when a 2nd tenant signs up with the same data.
+
+```php
+// ❌ WRONG — breaks multi-tenancy
+$table->unique('name');                    // services_name_unique
+$table->unique('slug');                    // pages_slug_unique
+
+// ✅ CORRECT — scoped per tenant
+$table->unique(['organization_id', 'name'], 'services_org_name_unique');
+$table->unique(['organization_id', 'slug'], 'pages_org_slug_unique');
+```
+
+**Exception — globally unique by design (no organization_id):** `orders.p24_session_id`,
+`payments.p24_session_id`, `email_sends.message_key`, `sms_sends.message_key`.
+
+**Exception — NULL-org global templates:** `email_templates` and `sms_templates` use
+`(key, language)` global unique because all rows are NULL-org system templates. MySQL treats
+NULL as distinct in unique indexes — converting to composite would break seed migration
+idempotency (`insertOrIgnore` would allow duplicate NULL-org rows).
+
+Incident 2026-06-29: 2nd equipment-rental tenant 500s on `UniqueConstraintViolationException`
+at `services.services_name_unique`. Migration `2026_06_29_120000_fix_tenant_scoped_unique_constraints.php`
+converted 9 constraints.
+
+## FK onDelete Policy — tenant lifecycle (Faza 5.2)
+
+`organization_id` FK behaviour is **category-driven**, not uniform:
+
+- **Legal records** (`orders`, `payments`, `tenant_payments`, `rentals`) → `restrictOnDelete`. Must
+  survive org deletion for ≥5–6 yrs (Art. 112 VAT / Art. 70 Ordynacja). The DB FK is the last-resort
+  backstop; `OrganizationObserver::deleting()` throws `OrganizationHasLegalRecordsException` first.
+- **Staff link** `appointments.staff_id` → `nullOnDelete` (column made nullable). Preserves historical
+  appointments when a staff user is deleted. NEVER `restrict` here — it would conflict with the 5.1
+  guard that only blocks *future* appointments.
+- **Ephemeral** (`carts`, `statistics_daily_snapshots`, `analytics_events`) → `cascade`/`null`. OK to drop.
+
+Changing an existing FK onDelete = `dropForeign(['col'])` → (optional `->nullable()->change()` guarded by
+`DB::getDriverName() !== 'sqlite'`) → re-add `->foreign()...->restrictOnDelete()`. Ref:
+`2026_06_30_000001_fix_lifecycle_fk_constraints.php`, `2026_03_20_000001_fix_rental_service_fk_cascade_behavior.php`.
+When making a column nullable in `up()`, do NOT blindly restore NOT NULL in `down()` — it fails if null
+rows exist; leave nullable (safe superset) or resolve nulls first.
+
 ## Security First
 
 ### Never in Migrations
@@ -72,12 +118,50 @@ docker compose exec -T app php artisan migrate
 
 ---
 
-## Rollback Safety
+## Rollback Safety (CRITICAL — enforced automatically)
 
-Always implement `down()` method:
+### Rules
+- **MANDATORY:** Every `down()` must have a non-empty body. Empty body = blocked by `pre-commit` hook.
+- **ALWAYS:** `Schema::dropIfExists()` not `Schema::drop()` — never fails on missing table.
+- **Data-only migrations:** Cannot be reversed → use `throw new \RuntimeException('...')` explicitly.
+- `MigrationRollbackTest` catches violations in CI before they reach develop.
+- Manual audit: `php artisan migrations:check-rollback`
+- Auto-run on merge/checkout: `.githooks/post-merge` + `.githooks/post-checkout` (activated via `composer install`)
+
+### Patterns
+
 ```php
+// Schema migration — always revert the column/table change
 public function down(): void
 {
     Schema::dropIfExists('appointments');
 }
+
+// Column change (nullable→NOT NULL): handle NULL rows FIRST or MySQL rejects the constraint
+public function down(): void
+{
+    DB::table('users')->whereNull('password')->update([
+        'password' => password_hash(\Illuminate\Support\Str::random(40), PASSWORD_BCRYPT),
+    ]);
+    Schema::table('users', function (Blueprint $table) {
+        $table->string('password')->nullable(false)->change();
+    });
+}
+
+// Irreversible data migration — explicit, never silent
+public function down(): void
+{
+    throw new \RuntimeException('This migration is a data-only fix and cannot be rolled back safely.');
+}
 ```
+
+### Git Hooks Setup
+
+Hooks live in `.githooks/` (committed to repo). They are activated automatically on `composer install`:
+```bash
+git config core.hooksPath .githooks
+```
+
+- `pre-commit` — rejects new migrations with empty `down()` (strips comments before checking)
+- `post-merge` — auto-runs `php artisan migrate` if migration files changed
+- `post-checkout` — same but on branch switches only

@@ -179,11 +179,83 @@ class Service extends Model
 - Dodaje global scope filtrujący po `organization_id`
 - Auto-assigns `organization_id` z `TenantFeature::currentTenant()` przy tworzeniu
 - Pomija scope w console (bez testów)
+- **FAIL-CLOSED (VULN-003 Layer 2, 2026-07-03):** gdy brak tenanta, scope zwraca ZERO wierszy
+  (`whereRaw('1 = 0')`) zamiast no-opować — ALE tylko gdy `ResolveTenant` faktycznie przetworzył
+  bieżący request i nic nie znalazł (patrz niżej). **NIE cofaj tego do no-op** bez zrozumienia
+  dlaczego tu jest — patrz `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
 
 **Aby ominąć scope (np. w seederach):**
 ```php
 Service::withoutGlobalScope('organization')->create([...]);
 ```
+
+### `tenant_resolution_attempted` — jak działa fail-closed (VULN-003 Layer 2)
+
+`ResolveTenant::handle()` (`app/Http/Middleware/ResolveTenant.php`) ustawia
+`$request->attributes->set('tenant_resolution_attempted', true)` jako PIERWSZĄ linię, przed
+jakimkolwiek branchowaniem — na KAŻDYM requeście który przez nią przechodzi. To marker: "ResolveTenant
+faktycznie zadziałał dla TEGO requestu" — inny niż `runningInConsole()`/`runningUnitTests()`, które
+NIE odróżniają prawdziwego HTTP/feature-testu od gołego Unit testu (bo `runningUnitTests()` jest
+`true` dla całego procesu PHPUnit, niezależnie od tego).
+
+`BelongsToOrganization`'s global scope:
+```php
+$tenant = TenantFeature::currentTenant();
+
+if ($tenant) {
+    $builder->where(...); // normalny branch — istniał od zawsze
+    return;
+}
+
+// Brak tenanta. Fail-closed TYLKO gdy ResolveTenant faktycznie zadziałał dla tego requestu
+// i nadal nic nie znalazł — gołe Unit/Feature testy bez HTTP requestu keep permissive no-op.
+if (app()->bound('request') && app('request')->attributes->get('tenant_resolution_attempted') === true) {
+    $builder->whereRaw('1 = 0');
+}
+```
+
+**Konsekwencja dla testów:** każdy test, który tworzy model `BelongsToOrganization` I wykonuje
+prawdziwy HTTP request (`$this->get()`/`->post()`) przez trasę z `ResolveTenant::class` (nawet
+pośrednio — np. `route()` resolvuje do skonfigurowanej domeny root z `.env.testing`) MUSI albo
+symulować tenanta, albo spodziewać się pustych wyników/404. Wzorzec `actingAsTenant()` (bindowanie
+test double dla `ResolveTenant::class` w kontenerze, patrz `TenantFeatureTest`,
+`CustomerOrdersTest`, `BookingConfirmationSecurityTest`) — **replace'uje CAŁĄ klasę** więc
+`tenant_resolution_attempted` NIGDY się nie ustawia dla takich requestów (prawdziwy `handle()`
+nie jest wywoływany) — normalny "tenant found" branch scope'a i tak działa poprawnie, bo
+`actingAsTenant()` ustawia atrybut `tenant` bezpośrednio.
+
+**Gołe testy bez HTTP requestu** (Unit testy, `Model::factory()->create()` w `setUp()` przed
+jakimkolwiek `$this->get()`) pozostają nienaruszone — `app('request')` to wtedy domyślny,
+nietknięty przez `ResolveTenant` obiekt bootstrapowy, `tenant_resolution_attempted` nigdy nie jest
+`true`, scope zachowuje dotychczasowe permissive no-op.
+
+**Powiązany gotcha:** stale `session('tenant_id')` powoduje podobny błędny-tenant problem także
+poza Layer 2 — patrz GOTCHA LC-9 niżej (tam: cichy zapis do złego tenanta w panelu `/platform`;
+tutaj: `currentTenant()`'s session-fallback branch omija fail-closed check całkowicie, bo zwraca
+non-null PRZED dotarciem do gałęzi `tenant_resolution_attempted` — patrz "Booking/Appointment"
+follow-up w `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`).
+
+### GOTCHA: zapis wiersza GLOBALNEGO (`organization_id = null`) — Incident 2026-06-30 (LC-9)
+
+`withoutGlobalScope` wyłącza tylko scope **odczytu**. Hook `creating` nadal auto-wypełnia `organization_id` z `TenantFeature::currentTenant()` gdy pole jest puste (null jest falsy!). W panelu `/platform` **stale `session('tenant_id')`** (po wcześniejszej wizycie na subdomenie tenanta) sprawia, że "globalny" `updateOrCreate(['organization_id' => null, ...])` ląduje jako **tenant-scoped** — cicha korupcja danych.
+
+```php
+// ❌ ŹLE — creating hook nadpisze null tenant-id ze stale session
+Setting::withoutGlobalScope('organization')->updateOrCreate(
+    ['organization_id' => null, 'group' => $g, 'key' => $k], ['value' => $v]
+);
+
+// ✅ DOBRZE — withoutEvents wycisza creating hook → null zostaje null
+Setting::withoutEvents(fn () => Setting::withoutGlobalScope('organization')
+    ->updateOrCreate(['organization_id' => null, 'group' => $g, 'key' => $k], ['value' => $v]));
+```
+
+Dla settingsów: `SettingsManager::getGlobal()`/`setGlobal()` robią to poprawnie — w panelu platformy NIGDY nie używaj `get()`/`set()` (są tenant-aware przez session fallback).
+
+**Powiązane:** ten sam `session('tenant_id')` fallback jest źródłem osobnego, potwierdzonego
+cross-tenant read+write ryzyka w `BookingController`/`AppointmentController` — patrz sekcja
+"`tenant_resolution_attempted`" wyżej i "Booking/Appointment" follow-up w
+`app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
 
 ## Organization Model — kluczowe pola i metody
 
@@ -493,3 +565,146 @@ $orderItem->deposit_amount  // DECIMAL(10,2) — kaucja za tę pozycję
 ```
 
 Suma `order_items.deposit_amount` = `orders.deposit_amount` (obliczone w `CartService::convertToOrder()`).
+
+---
+
+## Organization — Lifecycle State (Faza 5.0+5.1, 2026-06-29)
+
+```php
+// Cast → App\Enums\OrganizationLifecycleState
+$org->lifecycle_state          // OrganizationLifecycleState enum instance
+$org->lifecycle_state->value   // 'active' | 'suspended' | 'closing' | 'closed'
+
+// Helpers
+$org->lifecycle_state->allowsPublicSite()   // true tylko dla Active
+$org->lifecycle_state->allowsNewBookings()  // true tylko dla Active
+$org->lifecycle_state->isTerminal()         // true dla Closed
+
+// Daty lifecycle (set automatically by OrganizationObserver)
+$org->closing_initiated_at  // Carbon|null — set when → Closing, cleared when Closing → Active
+$org->closed_at             // Carbon|null — set when → Closed
+$org->purge_after           // Carbon|null (Faza 5.3) — cleared when Closing → Active
+$org->closure_requested_at  // Carbon|null
+
+// Transient flags (not persisted — reset after save)
+$org->forceLifecycleTransition = true;  // bypasses obligation check (observer updating()); auto-reset by saved()
+$org->bypassDeleteGuard = true;         // bypasses all checks (observer deleting()); auto-reset by deleted()
+```
+
+**KRYTYCZNE — lifecycle_state jest autorytatywny; is_active jest fully derived (Faza 5.1 + code-review hardening):**
+- `lifecycle_state` NIE JEST w `$fillable` — nie można ustawiać przez mass-assignment!
+  - ❌ `Organization::create(['lifecycle_state' => 'closed'])` → ignorowane (MassAssignmentGuard)
+  - ✅ Przy tworzeniu: ustaw bezpośrednio przed `save()` lub użyj factory state (`->closed()`)
+  - ✅ Przy aktualizacji: `$org->lifecycle_state = State::Foo; $org->save();`
+- Nie ustawiaj `is_active` bezpośrednio — NIE jest w `$fillable`, ustawiane WYŁĄCZNIE przez `OrganizationObserver`
+- `OrganizationObserver` egzekwuje: state machine + obligacje + is_active sync + timestamps + flag reset
+- Flagi transient (nie persystowane): `forceLifecycleTransition` resetowany przez `saved()` (odpala się też na no-op save), `bypassDeleteGuard` przez `deleted()`
+- State machine: `app/StateMachines/OrganizationLifecycleStateMachine.php` — `transitions()` jest PRIVATE
+- Wyjątki: `InvalidLifecycleTransitionException` (nielegalne przejście), `OrganizationNotClosedException` (delete gdy nie Closed), `OrganizationHasActiveObligationsException` (blokada przez in-flight obligacje)
+- `completed` order NIE jest in-flight — nie blokuje zamknięcia org! Tylko: pending_payment/paid/confirmed/in_progress
+- Factory states: `->inactive()` (Suspended), `->closing()` (Closing), `->closed()` (Closed) — wszystkie używają `afterMaking`
+- `is_active` nadal używane przez ResolveTenant (zmiana w Fazie 5.2)
+
+## Organization — Billing Fields (NIE w fillable!)
+
+`subscription_status`, `monthly_fee`, `subscribed_at`, `subscription_expires_at` są celowo wykluczone z `$fillable`.
+
+```php
+// ❌ ZAKAZANE — mass-assignment billing fields
+Organization::create(['subscription_status' => 'active']);  // IGNOROWANE
+$org->update(['monthly_fee' => 999]);  // IGNOROWANE
+
+// ✅ Tylko bezpośrednie przypisanie (super-admin actions)
+$org->subscription_status = 'active';
+$org->monthly_fee = 999;
+$org->save();
+```
+
+## TenantPayment — organization_id i recorded_by NIE w fillable
+
+```php
+// ❌ ZAKAZANE
+TenantPayment::create(['organization_id' => $org->id, 'recorded_by' => auth()->id()]);
+
+// ✅ Przez relację + bezpośrednie przypisanie
+$payment = $org->tenantPayments()->create(['amount' => 599, 'currency' => 'PLN', 'paid_at' => now()]);
+$payment->recorded_by = auth()->id();
+$payment->save();
+```
+
+## Order — Auditable + Immutable Fields (2026-06-29)
+
+Order model używa `App\Traits\Auditable` z explicit `$auditInclude` (PII + status) i `$auditExclude` (p24_*, expires_at, cart_id, ip_address).
+
+### Immutable fields (booted() guard)
+
+Poniższe pola rzucają `\LogicException` przy próbie zmiany przez `update()`:
+
+```
+organization_id, order_number, total_amount, subtotal, discount_amount,
+tax_amount, deposit_amount, rodo_accepted_at, rodo_accepted_ip,
+terms_accepted_at, withdrawal_exclusion_accepted_at
+```
+
+```php
+// ❌ LogicException!
+$order->update(['total_amount' => 999]);
+
+// ✅ Mutable — dozwolone
+$order->update(['customer_city' => 'Kraków']);        // dane adresowe
+$order->update(['deposit_status' => 'collected']);    // kaucja
+$order->update(['notes' => 'Admin note']);             // notatka
+$order->status()->transitionTo('confirmed');           // state machine
+```
+
+### OrderService::cancel() — allowed statuses
+
+`pending_payment`, `paid`, **`confirmed`** — wszystkie trzy mogą być anulowane przez admina.
+State machine potwierdza: `confirmed → cancelled` jest legalnym przejściem.
+
+### UWAGA: `saveQuietly()` omija immutable guard
+
+`Order::saveQuietly()` suppresses model events → `updating()` hook NIE jest wywoływany → immutable field guard jest pominięty.
+
+```php
+// ❌ NIGDY dla pól immutable — guard pominięty, brak LogicException!
+$order->saveQuietly();  // gdy dirty: total_amount, order_number itp.
+
+// ✅ saveQuietly() tylko dla pól operacyjnych (events OK to suppress)
+$order->p24_token = '...';
+$order->saveQuietly();  // OK — p24_* nie jest immutable ani w $auditInclude
+```
+
+Pola OK dla `saveQuietly()`: `p24_*`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`.
+Pola ZAKAZANE dla `saveQuietly()`: wszystkie z listy immutable (`total_amount`, `order_number`, `rodo_accepted_at`, itp.).
+
+---
+
+## Organization SoftDeletes (Faza 5.3a)
+
+Organization używa `use SoftDeletes` od migracji `2026_06_30_100001_add_soft_deletes_to_organizations.php`.
+
+- `$org->delete()` = soft-delete (UPDATE deleted_at). Nie triggeruje FK RESTRICT.
+- `$org->forceDelete()` = hard-delete (zarezerwowane dla Faza 5.4 po upływie retention).
+- `Organization::withTrashed()` — do odczytu soft-deleted orgs (np. w purge command).
+- `$org->bypassDeleteGuard = true` — pomija guard w ObserverOrganiozacjix; soft-delete nadal działa.
+
+### config/retention.php — centralizacja okresów retencji
+
+**ZAWSZE czytaj okresy z `config('retention.*')`, nie hardcoduj:**
+
+```php
+config('retention.purge_grace_days', 30)   // dni od Closed do purge_after
+config('retention.legal_records_years', 6) // faktury (Art. 112 VAT)
+config('retention.analytics_months', 13)   // analytics_events
+config('retention.carts_days', 7)          // carts
+```
+
+### Anonimizacja PII vs dane księgowe (RODO + Art. 112 VAT)
+
+`OrganizationAnonymizationService` (`app/Services/Lifecycle/`) — używa wyłącznie `DB::table()` (NIE Eloquent), by ominąć immutable guard na Order.
+
+**Reguła:** PII osoby fizycznej → anonymize. Dane księgowe (NIP, REGON, kwoty, daty, numery zamówień) → zostają przez okres retencji.
+
+`customer_last_name` na `orders` jest NOT NULL → placeholder `'Anonimizowane'`, NIE null.
+Anonimizowany email: `"anon_{id}@anonymized.local"` — unikalny per rząd (chunkById).

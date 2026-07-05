@@ -11,12 +11,15 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
+use Filament\View\PanelsRenderHook;
 use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class PlatformPanelProvider extends PanelProvider
@@ -38,7 +41,8 @@ class PlatformPanelProvider extends PanelProvider
             ->brandName('Registro Platform')
 
             ->sidebarCollapsibleOnDesktop(true)
-            ->maxContentWidth('full')
+            ->sidebarWidth('14rem')
+            ->maxContentWidth(Width::ScreenTwoExtraLarge)
             ->darkMode(true)
 
             ->discoverResources(in: app_path('Filament/Platform/Resources'), for: 'App\\Filament\\Platform\\Resources')
@@ -66,6 +70,17 @@ class PlatformPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
                 EnsureSuperAdmin::class,
-            ]);
+            ])
+
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): HtmlString => new HtmlString(
+                    '<link rel="stylesheet" href="'.\Illuminate\Support\Facades\Vite::asset('resources/css/filament/admin.css').'">'
+                    .'<script type="module" src="'.\Illuminate\Support\Facades\Vite::asset('resources/js/filament-admin.js').'"></script>'
+                    // Loaded AFTER admin.css — platform-only chrome overrides (sidebar density).
+                    // admin.css is shared with the tenant /admin panel and must never be edited here.
+                    .'<link rel="stylesheet" href="'.\Illuminate\Support\Facades\Vite::asset('resources/css/filament/platform.css').'">'
+                )
+            );
     }
 }

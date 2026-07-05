@@ -2,8 +2,11 @@
 
 use App\Jobs\Email\CleanupOldEmailLogsJob;
 use App\Jobs\Email\SendAdminDigestJob;
+use App\Jobs\MarkCartsAbandonedJob;
+use App\Jobs\RecalculateDailyStatisticsJob;
 use App\Jobs\Reminder\ProcessRemindersJob;
 use App\Jobs\Sms\CleanupOldSmsLogsJob;
+use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -119,3 +122,97 @@ Schedule::command('carts:cleanup-abandoned')
     ->withoutOverlapping()
     ->name('carts:cleanup-abandoned')
     ->onOneServer();
+
+// Mark active carts as abandoned after 30 min of inactivity + dispatch analytics event
+// Runs: Every 5 minutes
+Schedule::job(new MarkCartsAbandonedJob)
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->name('carts:mark-abandoned')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Analytics System
+|--------------------------------------------------------------------------
+*/
+
+// Delete analytics events older than 13 months (GDPR retention)
+// Runs: Monthly (first of month at midnight)
+Schedule::command('analytics:prune')
+    ->monthly()
+    ->withoutOverlapping()
+    ->name('analytics:prune')
+    ->onOneServer();
+
+// Roll up raw events into hourly aggregation buckets (default: previous 2 hours)
+// For catch-up after downtime: php artisan analytics:rollup-hourly --hours=24
+Schedule::command('analytics:rollup-hourly')
+    ->hourly()
+    ->withoutOverlapping(5)
+    ->name('analytics:rollup-hourly')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Horizon
+|--------------------------------------------------------------------------
+*/
+
+// Required for Horizon metrics dashboard (throughput/runtime graphs)
+// Without this, Horizon shows blank charts even when queue is healthy
+Schedule::command('horizon:snapshot')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5)
+    ->name('horizon:snapshot')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Tenant Lifecycle — Purge
+|--------------------------------------------------------------------------
+|
+| Anonymize PII and soft-delete closed organizations past their purge_after date.
+| Legal records (orders, payments, rentals) are retained — already anonymized.
+| Retention: config/retention.php (legal_records_years = 6 per Art. 112 VAT).
+|
+*/
+
+// Finalize Closing organizations past their grace window (closing_grace_days = 14)
+// Transitions eligible orgs from Closing → Closed; observer sets closed_at + purge_after.
+// Runs: Daily at 02:30 AM (before purge at 03:00)
+Schedule::command('organizations:finalize-closing --force')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->name('organizations:finalize-closing')
+    ->onOneServer();
+
+// Purge closed organizations (PII anonymization + soft-delete)
+// Runs: Daily at 03:00 AM (low-traffic window)
+Schedule::command('organizations:purge --force')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->name('organizations:purge')
+    ->onOneServer();
+
+// Delete tenant data-export ZIPs past their retention window (GDPR art. 5(1)(e)).
+// Signed URLs expire in 7 days; files are removed after retention.export_files_days.
+Schedule::command('organizations:cleanup-exports')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->name('organizations:cleanup-exports')
+    ->onOneServer();
+
+/*
+|--------------------------------------------------------------------------
+| Statistics System
+|--------------------------------------------------------------------------
+*/
+
+// Recalculate today + yesterday snapshots every hour
+// Keeps statistics_daily_snapshots fresh for all UI consumers
+// Runs: Hourly
+Schedule::call(function () {
+    dispatch(new RecalculateDailyStatisticsJob(Carbon::yesterday()));
+    dispatch(new RecalculateDailyStatisticsJob(Carbon::today()));
+})->hourly()->name('statistics-recalculate')->withoutOverlapping();

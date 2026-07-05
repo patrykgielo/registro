@@ -80,6 +80,11 @@ class RegisterController extends Controller
      */
     protected function registered(Request $request, User $user)
     {
+        // Rotate the session ID post-authentication (session-fixation defense-in-depth),
+        // matching the flow already enforced by LoginController::authenticated() via
+        // AuthenticatesUsers::sendLoginResponse().
+        $request->session()->regenerate();
+
         $user->assignRole('customer');
 
         // Attach user to tenant organization when registering on a subdomain

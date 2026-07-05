@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\AppointmentStatus;
+use App\Models\Service;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -21,6 +22,8 @@ class AppointmentFactory extends Factory
         $startTime = fake()->time('H:i:s');
 
         return [
+            'service_id' => Service::factory(),
+            'customer_id' => \App\Models\User::factory(),
             'appointment_date' => $appointmentDate->format('Y-m-d'),
             'start_time' => $startTime,
             'end_time' => date('H:i:s', strtotime($startTime) + 3600),

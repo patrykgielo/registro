@@ -9,6 +9,8 @@ use Carbon\Carbon;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 
 class EditAppointment extends EditRecord
 {
@@ -78,5 +80,33 @@ class EditAppointment extends EditRecord
         }
 
         return $data;
+    }
+
+    /**
+     * Catches the appointments_staff_slot_unique DB constraint (double-booking
+     * guard — see database/migrations/2026_07_05_000001_*) so an admin who
+     * races a customer/another admin for the same slot sees a friendly
+     * notification instead of an uncaught QueryException. mutateFormDataBeforeSave()'s
+     * SELECT-based check above already narrows this to genuinely concurrent
+     * saves; the DB constraint remains the authoritative guard either way.
+     */
+    protected function handleRecordUpdate(Model $record, array $data): Model
+    {
+        try {
+            return parent::handleRecordUpdate($record, $data);
+        } catch (QueryException $e) {
+            if (! app(AppointmentService::class)->isDoubleBookingViolation($e)) {
+                throw $e;
+            }
+
+            Notification::make()
+                ->danger()
+                ->title('Termin już zajęty')
+                ->body('Wybrany termin został właśnie zarezerwowany przez inną osobę. Wybierz inny termin.')
+                ->persistent()
+                ->send();
+
+            $this->halt();
+        }
     }
 }

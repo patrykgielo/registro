@@ -32,7 +32,7 @@ class PortfolioItemResource extends BaseResource
 
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 5;
 
     protected static ?string $modelLabel = 'Realizacja';
 
@@ -191,6 +191,13 @@ class PortfolioItemResource extends BaseResource
                     ->sortable()
                     ->weight('bold'),
 
+                Tables\Columns\TextColumn::make('slug')
+                    ->label('Slug')
+                    ->searchable()
+                    ->badge()
+                    ->color('gray')
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('category.name')
                     ->label('Kategoria')
                     ->badge()
@@ -207,6 +214,12 @@ class PortfolioItemResource extends BaseResource
                             : 'Wersja robocza'
                     )
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Utworzono')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Ostatnia aktualizacja')

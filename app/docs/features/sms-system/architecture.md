@@ -534,7 +534,7 @@ $this->assertDatabaseHas('sms_sends', [
 - [ ] Enable desired notifications
 - [ ] Configure webhook URL in SMSAPI dashboard
 - [ ] Test with sandbox mode enabled
-- [ ] Verify queue processing (`docker compose logs queue`)
+- [ ] Verify queue processing (`docker compose logs horizon`)
 - [ ] Check cron/scheduler running (`artisan schedule:list`)
 - [ ] Monitor first sends in production
 

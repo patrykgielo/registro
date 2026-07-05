@@ -107,6 +107,8 @@ class VacationPeriodsRelationManager extends RelationManager
                     Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->defaultSort('start_date', 'desc');
+            ->defaultSort('start_date', 'desc')
+            ->emptyStateHeading('Brak urlopów')
+            ->emptyStateDescription('Pracownik nie ma jeszcze zarejestrowanych urlopów.');
     }
 }

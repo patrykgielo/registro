@@ -4,7 +4,7 @@
 
 ## Overview
 
-This application runs in Docker containers for consistent development and production environments. Docker Compose orchestrates 8 services that work together to provide a complete development stack.
+This application runs in Docker containers for consistent development and production environments. Docker Compose orchestrates 7 services that work together to provide a complete development stack.
 
 ## Quick Reference
 
@@ -166,45 +166,38 @@ docker compose exec redis redis-cli MONITOR
 docker compose exec redis redis-cli LLEN queues:default
 ```
 
-### 6. queue (Queue Worker)
-
-**Container:** `registro-queue`
-**Base Image:** Same as `app` (PHP-FPM)
-**Purpose:** Processes queued jobs (emails, notifications)
-
-**Command:** `php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --queue=emails,reminders,default`
-
-**Queue Priorities:**
-1. `emails` (highest)
-2. `reminders`
-3. `default` (lowest)
-
-**Commands:**
-```bash
-# View queue worker logs
-docker compose logs -f queue
-
-# Restart queue worker (after code changes)
-docker compose restart queue
-```
-
-### 7. horizon (Queue Monitor)
+### 6. horizon (Queue Manager + Monitor)
 
 **Container:** `registro-horizon`
 **Base Image:** Same as `app` (PHP-FPM)
-**Purpose:** Laravel Horizon queue monitoring dashboard
+**Purpose:** Laravel Horizon — manages queue workers AND provides monitoring dashboard
 
 **Command:** `php artisan horizon`
 
 **Dashboard:** https://registro.local:8444/horizon
 
 **Features:**
+- Manages all queue workers (emails, reminders, analytics, default) via supervisor config
 - Real-time queue monitoring
 - Failed job management
-- Metrics and statistics
-- Auto-scaling workers
+- Metrics and statistics (requires `horizon:snapshot` scheduled every 5 min)
+- Auto-scaling workers per `config/horizon.php` supervisors
 
-### 8. scheduler (Task Scheduler)
+**Access:** super-admin role required (all environments)
+
+**Commands:**
+```bash
+# View Horizon logs
+docker compose logs -f horizon
+
+# Restart Horizon (after code/config changes)
+docker compose restart horizon
+
+# Check status
+docker compose exec app php artisan horizon:status
+```
+
+### 7. scheduler (Task Scheduler)
 
 **Container:** `registro-scheduler`
 **Base Image:** Same as `app` (PHP-FPM)
@@ -261,8 +254,7 @@ services:
   mysql:      # Database
   node:       # Vite dev server
   redis:      # Queue/cache backend
-  queue:      # Queue worker
-  horizon:    # Queue monitor
+  horizon:    # Queue manager + monitor (replaces raw queue:work)
   scheduler:  # Task scheduler
 
 volumes:

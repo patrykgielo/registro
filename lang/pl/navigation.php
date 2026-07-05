@@ -11,5 +11,6 @@ return [
         'communication' => 'Komunikacja',
         'settings' => 'Ustawienia',
         'system' => 'System',
+        'reports' => 'Raporty',
     ],
 ];
