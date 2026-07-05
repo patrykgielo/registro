@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class CustomerOrdersTest extends TestCase
@@ -364,5 +365,42 @@ class CustomerOrdersTest extends TestCase
             ->post(route('orders.cancel', $order));
 
         $response->assertRedirect(route('login'));
+    }
+
+    // -------------------------------------------------------------------------
+    // orders.cancel — delegates to OrderService (no duplicated business logic)
+    // -------------------------------------------------------------------------
+
+    public function test_cancel_delegates_to_order_service_with_customer_reason(): void
+    {
+        // Cancellation fires OrderCancelled -> OrderCancelledNotification, which
+        // looks up the 'order-cancelled' email template (a pre-existing gap
+        // unrelated to this test — see CalendarService/OrderService test notes).
+        Notification::fake();
+
+        $user = User::factory()->create();
+
+        $order = Order::factory()->pendingPayment()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+        ]);
+
+        $this->mock(\App\Services\Order\OrderService::class, function ($mock) use ($order) {
+            $mock->shouldReceive('cancel')
+                ->once()
+                ->with(\Mockery::on(fn ($arg) => $arg->is($order)), 'Anulowane przez klienta')
+                ->andReturnUsing(function ($order) {
+                    $order->status()->transitionTo('cancelled');
+                    $order->update(['cancelled_at' => now()]);
+
+                    return $order;
+                });
+        });
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->post(route('orders.cancel', $order));
+
+        $response->assertRedirect(route('orders.show', $order));
     }
 }

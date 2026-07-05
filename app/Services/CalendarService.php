@@ -98,12 +98,12 @@ class CalendarService
 
         // Add organizer (business contact)
         $organizerEmail = config('mail.from.address');
-        $organizerName = config('app.name');
-        $ical .= "ORGANIZER;CN={$organizerName}:mailto:{$organizerEmail}\r\n";
+        $organizerName = self::sanitizeIcalParam(config('app.name'));
+        $ical .= "ORGANIZER;CN=\"{$organizerName}\":mailto:{$organizerEmail}\r\n";
 
         // Add attendee (customer)
-        $attendeeName = $appointment->first_name.' '.$appointment->last_name;
-        $ical .= "ATTENDEE;CN={$attendeeName};RSVP=FALSE:mailto:{$appointment->email}\r\n";
+        $attendeeName = self::sanitizeIcalParam($appointment->first_name.' '.$appointment->last_name);
+        $ical .= "ATTENDEE;CN=\"{$attendeeName}\";RSVP=FALSE:mailto:{$appointment->email}\r\n";
 
         // Add reminder (24h before)
         $ical .= "BEGIN:VALARM\r\n";
@@ -179,5 +179,19 @@ class CalendarService
         $text = str_replace("\r", '', $text); // Remove carriage return
 
         return $text;
+    }
+
+    /**
+     * Sanitize a value for use inside a quoted iCal PARAMETER value (RFC 5545 §3.2),
+     * e.g. ATTENDEE;CN="...". This is a DIFFERENT grammar than escapeIcalText()'s
+     * TEXT property escaping: an unquoted param-value cannot contain `;`/`:`/`,`
+     * at all (no backslash-escape exists for them), and a quoted-string param-value
+     * (QSAFE-CHAR) cannot contain DQUOTE or control characters — also with no
+     * escape mechanism. The only safe transform is stripping the forbidden
+     * characters, then wrapping the caller's value in double quotes.
+     */
+    private static function sanitizeIcalParam(string $text): string
+    {
+        return preg_replace('/[\x00-\x1F\x7F"]/', '', $text);
     }
 }

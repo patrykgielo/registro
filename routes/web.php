@@ -350,7 +350,7 @@ Route::middleware(['auth', ResolveTenant::class, RequireTenant::class])->group(f
     });
 });
 
-Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class])->group(function () {
+Route::prefix('api')->name('api.')->middleware(['auth', ResolveTenant::class, 'throttle:60,1,vehicle-data'])->group(function () {
     Route::get('/vehicle-types', [VehicleDataController::class, 'vehicleTypes'])->name('vehicle-types');
     Route::get('/car-brands', [VehicleDataController::class, 'brands'])->name('car-brands');
     Route::get('/car-models', [VehicleDataController::class, 'models'])->name('car-models');

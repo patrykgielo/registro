@@ -19,6 +19,7 @@ Complete security documentation for the Registro application.
 - [VULN-006: Tenant-Scoping Gaps](vulnerabilities/VULN-006-tenant-scoping-gaps.md) (HIGH — FIXED)
 - [VULN-007: P24 Payment Reconciliation Gaps](vulnerabilities/VULN-007-payment-reconciliation.md) (HIGH — FIXED)
 - [VULN-008: Audit Log PII Protection](vulnerabilities/VULN-008-audit-log-pii-protection.md) (MEDIUM — FIXED)
+- [VULN-009: Low-Severity Cleanup Batch](vulnerabilities/VULN-009-low-severity-cleanup.md) (LOW — FIXED)
 
 ### Fix Guides
 - [Rate Limiting Guide](remediation-guides/rate-limiting.md)
