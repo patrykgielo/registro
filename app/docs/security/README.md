@@ -13,7 +13,8 @@ Complete security documentation for the Registro application.
 ### Known Issues
 - [VULN-001: Missing Rate Limiting](vulnerabilities/VULN-001-missing-rate-limiting.md) (MEDIUM)
 - [VULN-002: No Audit Logging](vulnerabilities/VULN-002-no-audit-logging.md) (MEDIUM)
-- [VULN-003: Root-Domain Tenant Isolation Bypass](vulnerabilities/VULN-003-root-domain-tenant-bypass.md) (CRITICAL — FIXED, Layer 1)
+- [VULN-003: Root-Domain Tenant Isolation Bypass](vulnerabilities/VULN-003-root-domain-tenant-bypass.md) (CRITICAL — FIXED, Layers 1-6)
+- [VULN-006: Tenant-Scoping Gaps](vulnerabilities/VULN-006-tenant-scoping-gaps.md) (HIGH — FIXED)
 
 ### Fix Guides
 - [Rate Limiting Guide](remediation-guides/rate-limiting.md)
