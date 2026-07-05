@@ -14,6 +14,7 @@ Complete security documentation for the Registro application.
 - [VULN-001: Missing Rate Limiting](vulnerabilities/VULN-001-missing-rate-limiting.md) (MEDIUM)
 - [VULN-002: No Audit Logging](vulnerabilities/VULN-002-no-audit-logging.md) (MEDIUM)
 - [VULN-003: Root-Domain Tenant Isolation Bypass](vulnerabilities/VULN-003-root-domain-tenant-bypass.md) (CRITICAL — FIXED, Layer 1)
+- [VULN-009: Low-Severity Cleanup Batch](vulnerabilities/VULN-009-low-severity-cleanup.md) (LOW — FIXED)
 
 ### Fix Guides
 - [Rate Limiting Guide](remediation-guides/rate-limiting.md)

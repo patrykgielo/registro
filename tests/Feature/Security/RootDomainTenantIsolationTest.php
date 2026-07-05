@@ -144,4 +144,32 @@ class RootDomainTenantIsolationTest extends TestCase
 
         $response->assertNotFound();
     }
+
+    /**
+     * VULN-003 doc correction (2026-07-05): the doc's Follow-ups section previously
+     * claimed there is no in-app navigation path from the root domain to /login —
+     * that premise was wrong (see resources/views/components/nav/header.blade.php's
+     * "Zaloguj" link, rendered on the root-domain home-fallback view). This test
+     * asserts the actual load-bearing safety property: a customer authenticating
+     * via a root-domain /login still cannot reach cross-tenant data — the redirect
+     * target (appointments.index) is protected by RequireTenant (Layer 3) and 404s.
+     */
+    public function test_customer_login_from_root_domain_redirects_to_404_not_cross_tenant_leak(): void
+    {
+        $user = User::factory()->create([
+            'password' => bcrypt('password'),
+        ]);
+
+        $response = $this->post('http://registro.local/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $response->assertRedirect(route('appointments.index'));
+        $this->assertAuthenticatedAs($user);
+
+        // Following the redirect on the root domain must 404, not leak any
+        // tenant's appointment data.
+        $this->get(route('appointments.index'))->assertNotFound();
+    }
 }

@@ -718,9 +718,24 @@ confirmed it **passes** against the fixed version. Full suite: 780 passed, 3 pre
   (`return redirect()->route('appointments.index')`) has no tenant/subdomain check, unlike the
   admin/staff branch above it. Since `appointments.index` now requires `RequireTenant` (Layer 3),
   a customer authenticating via a root-domain `/login` would hit a 404 instead of the previous
-  empty-list page. Reviewer could not find an actual in-app navigation path to `/login` from the
-  root domain, so real-world exposure looks low — documented as a known, low-exposure limitation,
-  no code change made here.
+  empty-list page.
+
+  **Correction (2026-07-05):** the original premise here — "reviewer could not find an actual
+  in-app navigation path to `/login` from the root domain" — was factually wrong and has been
+  removed. The root domain's home route falls back to `home-fallback.blade.php`
+  (`@extends('layouts.app')`), which unconditionally renders `<x-nav.header>`
+  (`resources/views/components/nav/header.blade.php:119,235-236`) — a direct "Zaloguj" link to
+  `route('login')` in both the desktop and mobile nav variants. So there **is** a one-click nav
+  path from the root domain to `/login`; this was never an exotic, hard-to-reach edge case.
+
+  The practical risk is nonetheless still limited, for a different reason than originally stated:
+  the customer-redirect target (`appointments.index`) is already protected by `RequireTenant`
+  (Layer 3, already fixed) — the root-domain login flow ends in a 404, not a cross-tenant data
+  leak. Since this chain (root domain → `/login` → authenticate as customer → 404, not a leak) is
+  a load-bearing assumption per this doc's own Layer 5 "Zapobieganie" section rather than a
+  structural fix, it is now covered by a regression test:
+  `tests/Feature/Security/RootDomainTenantIsolationTest.php::test_customer_login_from_root_domain_redirects_to_404_not_cross_tenant_leak`.
+  No code change — this remains a documentation-only correction of the stated risk premise.
 - `AppointmentController::store` — `exists:services,id` validation rule allows cross-tenant
   service IDs (IDOR follow-up ticket).
 - `ServiceAreaWaitlist` model has no `organization_id` — design question for a future ticket
@@ -745,5 +760,6 @@ confirmed it **passes** against the fixed version. Full suite: 780 passed, 3 pre
 **Updated**: 2026-07-03 (Layer 1 gap fixes from adversarial re-review), 2026-07-03 (Layer 2 —
 BelongsToOrganization fail-closed), 2026-07-03 (Layer 3 — booking/appointments session-fallback
 gap), 2026-07-03 (Layer 4 — cart/checkout/orders session-fallback gap), 2026-07-03 (dead
-`@test`-annotation cleanup, last remaining test-cleanup follow-up resolved)
+`@test`-annotation cleanup, last remaining test-cleanup follow-up resolved), 2026-07-05
+(documentation-only correction: root-domain → `/login` nav path premise, Follow-ups section)
 **Related**: [Lifecycle Security Decisions](../lifecycle-security-decisions.md), [Orders Security Hardening](../../features/orders-security-hardening.md)
