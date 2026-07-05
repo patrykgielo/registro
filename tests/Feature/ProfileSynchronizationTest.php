@@ -77,6 +77,9 @@ class ProfileSynchronizationTest extends TestCase
             'email_verified_at' => now(),
         ]);
         $this->staff->assignRole('staff');
+        // Required since AppointmentController::store()'s staff_id validation
+        // was tenant-scoped (2026-07 booking integrity review, defense in depth).
+        $this->staff->organizations()->attach($this->org->id);
 
         // Create staff schedules for all weekdays (Mon-Fri) to cover test appointments
         for ($day = 1; $day <= 5; $day++) {
