@@ -84,6 +84,23 @@ JOIN fix and confirmed it closed after. An exhaustive grep of `app/` for every `
 pattern (the one other candidate, `RentalAvailabilityService::createHold()`, is `@deprecated`
 dead code with zero callers).
 
+**Update (2026-07-05, merge with VULN-007 `fix/payment-reconciliation`):** combining this fix
+with VULN-007's grace-period-aware availability check surfaced two more issues, both fixed during
+the merge and re-verified with two independent reviews plus a live empirical reproduction against
+real MySQL: (1) `CartService::reactivate()` used `$cart->update(['status' => 'active', ...])` on
+a caller-side Cart instance that goes stale the moment `convertToOrder()` internally re-fetches
+its own copy inside a transaction (a caller's in-memory `status` can still read `'active'` after
+the DB row is `'converted'`) — Eloquent's dirty-tracking then silently dropped `status` from the
+UPDATE. Fixed via a direct query-builder update, immune to caller-side staleness, with
+`active_slot` set explicitly since a query-builder update bypasses the model's `saving` hook. (2)
+That fix's own check-then-update (has-another-active-cart, then flip this one) is not atomic —
+the review reproduced a genuine two-connection race where the `carts_org_user_active_unique`
+constraint (this doc's own backstop) throws a `QueryException` in the TOCTOU window, which
+propagated uncaught into `CheckoutController::submit()`'s already-in-progress error handling
+(surfacing a raw 500 instead of the intended retry flash). Fixed by catching it the same way
+`getOrCreateCart()` already does — losing that race just leaves the cart `'converted'`, which is
+the same safe outcome as the intentional early-return check above it.
+
 ## Zapobieganie (Prevention)
 
 - **`Model::lockForUpdate()` does nothing without a terminal query method** — always write

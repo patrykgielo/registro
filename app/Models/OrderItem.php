@@ -80,16 +80,34 @@ class OrderItem extends Model
      * allowing overselling. A real INNER JOIN's rows, by contrast, ARE part of
      * the same statement's row set and ARE correctly locked/read-fresh by the
      * outer `FOR UPDATE`. See RentalAvailabilityService::getAvailableQuantity().
+     *
+     * IMPORTANT: the pending_payment branch below MUST mirror
+     * Order::scopeExpired() exactly (same grace-period logic, inverted). An
+     * order the expiry scope still considers "alive" (P24 transaction
+     * registered, within grace) must also still block the inventory it's
+     * holding — otherwise a second customer could book/pay for the same
+     * item/dates while the first customer's slow bank/BLIK confirmation is
+     * still in flight (overbooking).
      */
     public function scopeBlockingAvailability(Builder $query): Builder
     {
+        $graceMinutes = Order::ttlGraceMinutes();
+
         return $query
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->where(function (Builder $inner) {
+            ->where(function (Builder $inner) use ($graceMinutes) {
                 $inner->whereIn('orders.status', ['paid', 'confirmed', 'in_progress'])
-                    ->orWhere(function (Builder $pending) {
+                    ->orWhere(function (Builder $pending) use ($graceMinutes) {
                         $pending->where('orders.status', 'pending_payment')
-                            ->where('orders.expires_at', '>', now());
+                            ->where(function (Builder $ttl) use ($graceMinutes) {
+                                $ttl->where(function (Builder $noTransaction) {
+                                    $noTransaction->whereNull('orders.p24_token')
+                                        ->where('orders.expires_at', '>', now());
+                                })->orWhere(function (Builder $withTransaction) use ($graceMinutes) {
+                                    $withTransaction->whereNotNull('orders.p24_token')
+                                        ->where('orders.expires_at', '>', now()->subMinutes($graceMinutes));
+                                });
+                            });
                     });
             })
             ->select('order_items.*');

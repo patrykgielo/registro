@@ -3,8 +3,10 @@
 namespace Tests\Unit\Services;
 
 use App\Models\Order;
+use App\Notifications\OrderCancelledNotification;
 use App\Services\Order\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class OrderServiceTest extends TestCase
@@ -119,6 +121,48 @@ class OrderServiceTest extends TestCase
 
         $this->assertInstanceOf(Order::class, $result);
         $this->assertEquals($order->id, $result->id);
+    }
+
+    // -------------------------------------------------------------------------
+    // cancel() — notify flag (HIGH fix: internal compensation must not send
+    // the customer-facing cancellation email)
+    // -------------------------------------------------------------------------
+
+    public function test_cancel_notifies_customer_by_default(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->pendingPayment()->create();
+
+        $svc = $this->makeService();
+        $svc->cancel($order, 'Customer request');
+
+        Notification::assertSentTo($order->user, OrderCancelledNotification::class);
+    }
+
+    public function test_cancel_with_notify_false_does_not_send_customer_notification(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->pendingPayment()->create();
+
+        $svc = $this->makeService();
+        $svc->cancel($order, 'P24 registration failed', notify: false);
+
+        Notification::assertNotSentTo($order->user, OrderCancelledNotification::class);
+    }
+
+    public function test_cancel_with_notify_false_still_cancels_the_order(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->pendingPayment()->create();
+
+        $svc = $this->makeService();
+        $result = $svc->cancel($order, 'P24 registration failed', notify: false);
+
+        $this->assertEquals('cancelled', $result->status);
+        $this->assertNotNull($result->cancelled_at);
     }
 
     // -------------------------------------------------------------------------

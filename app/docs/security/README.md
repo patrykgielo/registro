@@ -17,6 +17,7 @@ Complete security documentation for the Registro application.
 - [VULN-004: Template Rendering SSTI → RCE](vulnerabilities/VULN-004-template-rendering-rce.md) (CRITICAL — FIXED)
 - [VULN-005: Cart/Rental Overselling Race](vulnerabilities/VULN-005-cart-rental-overselling-race.md) (CRITICAL — FIXED)
 - [VULN-006: Tenant-Scoping Gaps](vulnerabilities/VULN-006-tenant-scoping-gaps.md) (HIGH — FIXED)
+- [VULN-007: P24 Payment Reconciliation Gaps](vulnerabilities/VULN-007-payment-reconciliation.md) (HIGH — FIXED)
 
 ### Fix Guides
 - [Rate Limiting Guide](remediation-guides/rate-limiting.md)

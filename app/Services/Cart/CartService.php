@@ -291,6 +291,69 @@ class CartService
     }
 
     /**
+     * Restores a just-converted cart back to a usable 'active' state.
+     *
+     * Used when checkout fails AFTER convertToOrder() already committed
+     * (e.g. Przelewy24Service::registerTransaction() throws) — the cart's
+     * items are untouched by convertToOrder(), so flipping status back to
+     * 'active' (and refreshing the TTL) lets the customer retry checkout
+     * without re-adding every item.
+     *
+     * Guards against a two-tab race: if the user already has ANOTHER active
+     * cart for this user/org (e.g. they opened a second tab and started a
+     * fresh cart while this one was mid-compensation), do NOT create a second
+     * simultaneous active cart — getOrCreateCart() would then resolve between
+     * them non-deterministically. Leave this cart in its current
+     * ('converted') state instead; the customer already has a usable active
+     * cart to continue with. The check-then-update below is not atomic (a
+     * genuine TOCTOU window remains), but the DB-level unique constraint
+     * `carts_org_user_active_unique` (organization_id, user_id, active_slot)
+     * is the actual backstop for the rare case both requests still land in
+     * that window — see the catch below, matching the same pattern already
+     * used in getOrCreateCart().
+     */
+    public function reactivate(Cart $cart): void
+    {
+        $hasOtherActiveCart = Cart::query()
+            ->active()
+            ->where('organization_id', $cart->organization_id)
+            ->where('user_id', $cart->user_id)
+            ->where('id', '!=', $cart->id)
+            ->exists();
+
+        if ($hasOtherActiveCart) {
+            return;
+        }
+
+        // A query-builder update, not `$cart->update()`: the caller's $cart instance
+        // can be stale by this point (CartService::convertToOrder() re-fetches its
+        // OWN Cart instance inside its transaction rather than mutating the caller's
+        // object in place, so the caller's copy still shows the pre-conversion
+        // in-memory status). Calling `$cart->update(['status' => 'active', ...])`
+        // on that stale instance would have `status` match Eloquent's own dirty-check
+        // baseline (both say 'active') and silently skip that column in the SQL
+        // UPDATE — only `expires_at` would change, leaving the DB row stuck
+        // 'converted'. A direct query-builder update is immune to the caller's
+        // object staleness; `active_slot` is set explicitly since a query-builder
+        // update bypasses the `booted()` saving hook that normally keeps it in sync.
+        try {
+            Cart::where('id', $cart->id)->update([
+                'status' => 'active',
+                'active_slot' => 1,
+                'expires_at' => now()->addHours(2),
+            ]);
+        } catch (QueryException $e) {
+            // Lost the race: another active cart was created for this user/org
+            // between the check above and this update — the unique constraint
+            // rejected it. Leave this cart 'converted', same as the intentional
+            // early-return above; the customer still has a usable active cart.
+            return;
+        }
+
+        $cart->refresh();
+    }
+
+    /**
      * Persist checkout data back to the user profile when "save_to_profile" is requested.
      * Only updates non-null fields to avoid overwriting existing data with empty values.
      */
