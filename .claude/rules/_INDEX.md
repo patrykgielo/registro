@@ -5,9 +5,9 @@
 | File | Key Rule |
 |------|----------|
 | `self-improvement.md` | Production consent, error docs, search case-insensitive |
-| `agent-usage.md` | ZAWSZE agent przed działaniem, który agent do czego |
+| `agent-usage.md` | ZAWSZE agent przed działaniem, który agent do czego, bounded retry (3 próby) |
 | `git-workflow.md` | feature/* → develop → main, hook blokuje direct commits |
-| `deployment.md` | FILESYSTEM_DISK=public, NIGDY migrate:fresh, .env.testing |
+| `deployment.md` | FILESYSTEM_DISK=public, NIGDY migrate:fresh, .env.testing, zakaz /goal+/loop na destrukcyjnych op. |
 | `planning.md` | Nowe zadanie = nowy plik planu |
 | `ci-cd-troubleshooting.md` | Docker API v1.44+, użyj services: block |
 | `claude-code-config.md` | CC v2.1.84+ subagent bugs, worktree.baseRef, agent model config |
@@ -21,7 +21,7 @@
 | `filament-resources.md` | `app/Filament/Resources/**` | StaysOnPageAfterSave, $module gating |
 | `filament-settings-pages.md` | `app/Filament/Pages/*Settings.php` | Per-tab validation, HasGroupedSettings |
 | `spatie-roles.md` | `app/Actions/**` | firstOrCreate przed assignRole! |
-| `tests.md` | `tests/**` | SQLite in-memory, locale=pl |
+| `tests.md` | `tests/**` | SQLite in-memory, locale=pl, nigdy nie osłabiaj testu |
 | `migrations.md` | `database/migrations/**` | Security, indexes, rollback |
 | `security.md` | `app/Http/Controllers/Auth/**` | OWASP basics |
 | `notifications.md` | `app/Notifications/**` | ShouldQueue, ShouldBeUnique |

@@ -82,6 +82,22 @@ State: **"Pint: [pass/fail]. Tests: [X passed, Y failed]"**
 
 ---
 
+## GATE 5b: Bounded Retry Gate
+
+If Gate 5 failed: do NOT fix inline and do NOT call `code-reviewer` on broken code.
+Re-invoke the SAME building agent from Gate 2/4 with the exact Pint/test failure
+output. Repeat Gate 5 → Gate 5b up to 3 cycles total on the same failure.
+
+- If the failure changes each cycle (real progress) → keep going, up to the cap.
+- If cycle 3 still fails on the SAME error with no diff change → STOP. Do not
+  attempt a 4th cycle automatically. Report the failure to the user and wait —
+  see the bounded-retry rule in `.claude/rules/agent-usage.md`.
+- NEVER weaken, skip, or delete a test to force green (`.claude/rules/tests.md`).
+
+State: **"Retry cycles used: [N/3]. Final: [ALL GREEN / escalated to user]"**
+
+---
+
 ## GATE 6: Documentation Gate (MANDATORY)
 
 Answer EACH question explicitly:

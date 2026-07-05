@@ -86,6 +86,13 @@ User::factory()->unverified()->create();
 - Always test: Authentication, Authorization, Validation
 - Run: `composer run test` before commits
 
+### Never Weaken a Test to Pass It
+
+Jedyna rzecz gorsza niż niezaliczony test to redukcja pokrycia testami.
+NIGDY nie usuwaj/pomijaj/osłabiaj testu żeby uzyskać zielone CI — napraw kod
+pod test, nie test pod kod. Jeśli test wydaje się błędny — zatrzymaj się i
+zapytaj, nie modyfikuj go samodzielnie w ramach tego samego zadania.
+
 ## CI/CD Environment Rules
 
 ### CRITICAL: .env.testing chroni dev MySQL (NIGDY nie usuwaj!)
