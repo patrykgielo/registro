@@ -15,9 +15,16 @@ class OrderService
      * Supports: pending_payment, paid, confirmed, in_progress.
      * in_progress cancellation is exceptional (e.g. tenant offboarding) and logged.
      *
+     * @param  bool  $notify  Whether to send the customer-facing cancellation email.
+     *                        Set to false for internal-compensation scenarios (e.g. P24
+     *                        registration failure right after checkout) where the
+     *                        customer never actually saw a completed order and a
+     *                        "your order was cancelled" email would just be confusing
+     *                        noise ahead of an immediate, successful retry.
+     *
      * @throws \LogicException when order status does not allow cancellation
      */
-    public function cancel(Order $order, string $reason): Order
+    public function cancel(Order $order, string $reason, bool $notify = true): Order
     {
         if (! in_array($order->status, ['pending_payment', 'paid', 'confirmed', 'in_progress'], strict: true)) {
             throw new \LogicException("Zamówienie o statusie '{$order->status}' nie może zostać anulowane");
@@ -29,6 +36,8 @@ class OrderService
                 'reason' => $reason,
             ]);
         }
+
+        $order->notifyOnCancel = $notify;
 
         $order->status()->transitionTo('cancelled', ['reason' => $reason]);
 

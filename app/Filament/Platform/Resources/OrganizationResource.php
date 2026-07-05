@@ -262,6 +262,7 @@ class OrganizationResource extends Resource
                 ->action(function (Organization $record): void {
                     $record->lifecycle_state = OrganizationLifecycleState::Suspended;
                     $record->save();
+                    OrganizationLifecycleLog::record($record, 'suspended', auth()->user());
                     Notification::make()->title('Organizacja zawieszona')->warning()->send();
                 }),
 
@@ -281,6 +282,7 @@ class OrganizationResource extends Resource
                 ->action(function (Organization $record): void {
                     $record->lifecycle_state = OrganizationLifecycleState::Active;
                     $record->save();
+                    OrganizationLifecycleLog::record($record, 'reactivated', auth()->user());
                     Notification::make()->title('Organizacja reaktywowana')->success()->send();
                 }),
 

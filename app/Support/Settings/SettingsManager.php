@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Settings;
 
+use App\Models\Organization;
 use App\Models\Setting;
 use App\Support\TenantFeature;
 use Illuminate\Support\Facades\Cache;
@@ -39,39 +40,7 @@ class SettingsManager
      */
     public function get(string $path, mixed $default = null): mixed
     {
-        [$group, $key] = $this->parsePath($path);
-
-        $cacheKey = $this->getCacheKey($group, $key);
-
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default) {
-            $tenantId = $this->getCurrentTenantId();
-
-            // Try tenant-specific setting first
-            if ($tenantId) {
-                $setting = Setting::withoutGlobalScope('organization')
-                    ->where('organization_id', $tenantId)
-                    ->group($group)
-                    ->key($key)
-                    ->first();
-
-                if ($setting) {
-                    return $this->unwrapValue($setting->value);
-                }
-            }
-
-            // Fall back to global default (organization_id IS NULL)
-            $setting = Setting::withoutGlobalScope('organization')
-                ->whereNull('organization_id')
-                ->group($group)
-                ->key($key)
-                ->first();
-
-            if (! $setting) {
-                return $default;
-            }
-
-            return $this->unwrapValue($setting->value);
-        });
+        return $this->getForOrganization($path, TenantFeature::currentTenant(), $default);
     }
 
     /**
@@ -154,6 +123,44 @@ class SettingsManager
     private function globalCacheKey(string $group, string $key): string
     {
         return self::CACHE_PREFIX.":tenant:global:{$group}:{$key}";
+    }
+
+    /**
+     * Read a setting scoped to an EXPLICITLY given organization (or none), bypassing
+     * currentTenant()/session-fallback resolution entirely.
+     *
+     * Use when the calling context has already deterministically resolved the tenant for
+     * THIS request (e.g. the `tenant` request attribute set by ResolveTenant) and the
+     * decision must not be silently overridden by a stale `session('tenant_id')` left by
+     * a prior subdomain visit — see CheckRegistrationEnabled for the motivating case.
+     */
+    public function getForOrganization(string $path, ?Organization $organization, mixed $default = null): mixed
+    {
+        [$group, $key] = $this->parsePath($path);
+        $tenantId = $organization?->id;
+        $cacheKey = self::CACHE_PREFIX.':tenant:'.($tenantId ?? 'global').":{$group}:{$key}";
+
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default, $tenantId) {
+            if ($tenantId) {
+                $setting = Setting::withoutGlobalScope('organization')
+                    ->where('organization_id', $tenantId)
+                    ->group($group)
+                    ->key($key)
+                    ->first();
+
+                if ($setting) {
+                    return $this->unwrapValue($setting->value);
+                }
+            }
+
+            $setting = Setting::withoutGlobalScope('organization')
+                ->whereNull('organization_id')
+                ->group($group)
+                ->key($key)
+                ->first();
+
+            return $setting ? $this->unwrapValue($setting->value) : $default;
+        });
     }
 
     /**
@@ -462,7 +469,18 @@ class SettingsManager
      */
     public function isRegistrationEnabled(): bool
     {
-        return (bool) $this->get('auth.registration_enabled', true);
+        return $this->isRegistrationEnabledFor(TenantFeature::currentTenant());
+    }
+
+    /**
+     * Check if user registration is enabled for an EXPLICITLY given organization
+     * (or none), bypassing currentTenant()/session-fallback resolution.
+     *
+     * @see getForOrganization()
+     */
+    public function isRegistrationEnabledFor(?Organization $organization): bool
+    {
+        return (bool) $this->getForOrganization('auth.registration_enabled', $organization, true);
     }
 
     /**

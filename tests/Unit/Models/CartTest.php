@@ -59,8 +59,11 @@ class CartTest extends TestCase
 
         $org = Organization::factory()->create();
 
+        // Two carts for the same user+org must differ in status — the
+        // `carts_org_user_active_unique` constraint allows only one *active*
+        // cart per (organization_id, user_id).
         Cart::factory()->create(['user_id' => $userA->id, 'organization_id' => $org->id]);
-        Cart::factory()->create(['user_id' => $userA->id, 'organization_id' => $org->id]);
+        Cart::factory()->abandoned()->create(['user_id' => $userA->id, 'organization_id' => $org->id]);
         Cart::factory()->create(['user_id' => $userB->id, 'organization_id' => $org->id]);
 
         $results = Cart::forUser($userA)->get();

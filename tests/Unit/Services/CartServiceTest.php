@@ -2,6 +2,8 @@
 
 namespace Tests\Unit\Services;
 
+use App\Exceptions\CartNotActiveException;
+use App\Exceptions\RentalUnavailableException;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Order;
@@ -11,8 +13,10 @@ use App\Models\Service;
 use App\Models\User;
 use App\Services\Cart\CartService;
 use App\Services\RentalAvailabilityService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CartServiceTest extends TestCase
@@ -83,6 +87,75 @@ class CartServiceTest extends TestCase
         // The abandoned cart + a new active one
         $this->assertDatabaseCount('carts', 2);
         $this->assertEquals('active', $cart->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // getOrCreateCart — duplicate-cart prevention (point 3)
+    // -------------------------------------------------------------------------
+
+    public function test_duplicate_active_cart_for_same_org_and_user_is_blocked_by_db_constraint(): void
+    {
+        Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        // Bypassing CartService entirely — this proves the DB-level unique
+        // constraint `carts_org_user_active_unique` (organization_id, user_id,
+        // active_slot) is the real backstop, not just app-level locking.
+        $this->expectException(QueryException::class);
+
+        Cart::create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_get_or_create_cart_does_not_create_duplicate_on_repeated_calls(): void
+    {
+        $service = $this->makeService();
+
+        $first = $service->getOrCreateCart($this->org, $this->user);
+        $second = $service->getOrCreateCart($this->org, $this->user);
+
+        $this->assertEquals($first->id, $second->id);
+        $this->assertDatabaseCount('carts', 1);
+    }
+
+    public function test_get_or_create_cart_eager_loads_items_and_service_without_n_plus_one(): void
+    {
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        CartItem::factory()->count(3)->create([
+            'cart_id' => $cart->id,
+            'service_id' => fn () => Service::factory()->itemRental()->create([
+                'organization_id' => $this->org->id,
+            ])->id,
+        ]);
+
+        $service = $this->makeService();
+
+        DB::enableQueryLog();
+        $result = $service->getOrCreateCart($this->org, $this->user);
+        $queriesAfterFetch = count(DB::getQueryLog());
+
+        foreach ($result->items as $item) {
+            // Accessing ->service on every item must not trigger additional
+            // queries — proves items.service is eager-loaded (point 4).
+            $item->service->name;
+        }
+        $queriesAfterIteration = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertSame(
+            $queriesAfterFetch,
+            $queriesAfterIteration,
+            'Iterating cart items and accessing ->service triggered extra queries (N+1 regression).'
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -395,6 +468,177 @@ class CartServiceTest extends TestCase
             // No orders should have been persisted
             $this->assertDatabaseCount('orders', 0);
             throw $e;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // reactivate()
+    // -------------------------------------------------------------------------
+
+    public function test_reactivate_flips_converted_cart_back_to_active(): void
+    {
+        $cart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'converted',
+            'expires_at' => now()->subMinutes(5),
+        ]);
+
+        $service = $this->makeService();
+        $service->reactivate($cart);
+
+        $cart->refresh();
+        $this->assertSame('active', $cart->status);
+        $this->assertTrue($cart->expires_at->isFuture());
+    }
+
+    public function test_reactivate_does_not_create_second_active_cart_when_one_already_exists(): void
+    {
+        // Simulates the two-tab race: while this (converted) cart's checkout
+        // was mid-compensation, the user opened a second tab and started a
+        // fresh active cart for the same user/org.
+        $otherActiveCart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $convertedCart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'converted',
+        ]);
+
+        $service = $this->makeService();
+        $service->reactivate($convertedCart);
+
+        $convertedCart->refresh();
+        $otherActiveCart->refresh();
+
+        // The converted cart is left untouched — NOT flipped back to active.
+        $this->assertSame('converted', $convertedCart->status);
+        // Only one active cart exists for this user/org.
+        $this->assertSame('active', $otherActiveCart->status);
+        $this->assertSame(
+            1,
+            Cart::query()->active()
+                ->where('organization_id', $this->org->id)
+                ->where('user_id', $this->user->id)
+                ->count()
+        );
+    }
+
+    public function test_reactivate_ignores_active_carts_belonging_to_other_users(): void
+    {
+        $otherUser = User::factory()->create();
+        Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $otherUser->id,
+        ]);
+
+        $cart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'converted',
+        ]);
+
+        $service = $this->makeService();
+        $service->reactivate($cart);
+
+        $cart->refresh();
+        $this->assertSame('active', $cart->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // convertToOrder — empty cart guard (point 2)
+    // -------------------------------------------------------------------------
+
+    public function test_convert_to_order_throws_when_cart_has_no_items(): void
+    {
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $service = $this->makeService();
+
+        // NOTE: assertDatabaseCount() must live INSIDE the catch — expectException()
+        // intercepts the thrown exception before any code after the triggering call
+        // ever runs, so an assertion placed after it (outside try/catch) is dead code
+        // that always silently "passes". Same pattern as
+        // test_convert_to_order_is_atomic_and_rolls_back_on_failure() above.
+        $this->expectException(CartNotActiveException::class);
+        $this->expectExceptionMessage('Koszyk jest pusty.');
+
+        try {
+            $service->convertToOrder($cart, ['customer_email' => 'x@example.com']);
+        } catch (CartNotActiveException $e) {
+            $this->assertDatabaseCount('orders', 0);
+            throw $e;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // convertToOrder — overselling regression (point 1, CRITICAL)
+    // -------------------------------------------------------------------------
+
+    public function test_convert_to_order_prevents_overselling_across_two_separate_carts(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+            'price_per_day' => 100,
+        ]);
+
+        $userB = User::factory()->create();
+
+        $cartA = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+        $cartB = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $userB->id,
+        ]);
+
+        foreach ([$cartA, $cartB] as $cart) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $rentalService->id,
+                'quantity' => 1,
+                'start_date' => '2026-04-10',
+                'end_date' => '2026-04-12',
+                'rental_days' => 3,
+                'unit_price' => 100.00,
+                'total_price' => 300.00,
+            ]);
+        }
+
+        $service = $this->makeService();
+
+        // First checkout claims the only unit in stock.
+        $orderA = $service->convertToOrder($cartA, [
+            'customer_email' => 'a@example.com',
+            'customer_first_name' => 'Anna',
+            'customer_last_name' => 'A',
+        ]);
+        $this->assertInstanceOf(Order::class, $orderA);
+
+        // Second checkout for the same item/dates must fail cleanly — no
+        // Order/OrderItem created, and cartB is left untouched (still active).
+        try {
+            $service->convertToOrder($cartB, [
+                'customer_email' => 'b@example.com',
+                'customer_first_name' => 'Bogdan',
+                'customer_last_name' => 'B',
+            ]);
+            $this->fail('Expected RentalUnavailableException was not thrown.');
+        } catch (RentalUnavailableException $e) {
+            $this->assertDatabaseMissing('orders', ['user_id' => $userB->id]);
+            $this->assertDatabaseCount('orders', 1);
+            $this->assertSame(0, OrderItem::whereHas('order', fn ($q) => $q->where('user_id', $userB->id))->count());
+
+            $cartB->refresh();
+            $this->assertEquals('active', $cartB->status);
         }
     }
 }

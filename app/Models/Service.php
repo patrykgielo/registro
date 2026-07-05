@@ -286,7 +286,7 @@ class Service extends Model
         $reservedByOrders = OrderItem::where('service_id', $this->id)
             ->overlappingDates($startDate, $endDate)
             ->blockingAvailability()
-            ->sum('quantity');
+            ->sum('order_items.quantity');
 
         return max(0, ($this->quantity_total ?? 0) - $reservedByRentals - $reservedByOrders);
     }

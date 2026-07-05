@@ -10,9 +10,11 @@ use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Service;
 use App\Models\User;
+use App\Notifications\OrderCancelledNotification;
 use App\Services\Payment\Przelewy24Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class CheckoutFlowTest extends TestCase
@@ -129,18 +131,13 @@ class CheckoutFlowTest extends TestCase
 
     public function test_submit_with_empty_cart_redirects_back_with_general_error(): void
     {
-        // With no cart items, CartService::convertToOrder() creates an order
-        // with subtotal = 0. Przelewy24Service::registerTransaction() is then
-        // called and will throw because there is no real API token in the test
-        // environment. The CheckoutController catch block redirects back with
-        // a 'general' error flash.
-        //
-        // We simulate the P24 failure explicitly so the test does not depend on
-        // real network or env credentials.
+        // CartService::convertToOrder() now guards against empty carts and
+        // throws CartNotActiveException before creating any Order — P24 is
+        // never reached, so no Order/OrderCancelled compensation path fires
+        // either. The CheckoutController catch block redirects back with a
+        // 'general' error flash regardless of which exception fired.
         $this->mock(Przelewy24Service::class, function ($mock) {
-            $mock->shouldReceive('registerTransaction')
-                ->once()
-                ->andThrow(new \RuntimeException('No P24 credentials in test env'));
+            $mock->shouldReceive('registerTransaction')->never();
         });
 
         $response = $this->actingAs($this->user)
@@ -149,6 +146,8 @@ class CheckoutFlowTest extends TestCase
 
         $response->assertRedirect();
         $response->assertSessionHasErrors('general');
+
+        $this->assertDatabaseCount('orders', 0);
     }
 
     // -------------------------------------------------------------------------
@@ -309,6 +308,10 @@ class CheckoutFlowTest extends TestCase
 
     public function test_przelewy24_failure_returns_error_flash_without_redirect_to_payment(): void
     {
+        // The compensation path (OrderService::cancel()) fires OrderCancelled,
+        // which sends a templated customer notification — irrelevant here.
+        Notification::fake();
+
         $this->mock(Przelewy24Service::class, function ($mock) {
             $mock->shouldReceive('registerTransaction')
                 ->once()
@@ -328,5 +331,144 @@ class CheckoutFlowTest extends TestCase
 
         $response->assertRedirect();
         $response->assertSessionHasErrors('general');
+    }
+
+    // -------------------------------------------------------------------------
+    // P24 failure — compensation: order cancelled, cart restored to usable state
+    // -------------------------------------------------------------------------
+
+    public function test_przelewy24_failure_cancels_orphaned_order(): void
+    {
+        // OrderService::cancel($order, $reason, notify: false) is used for this
+        // compensation path, so no customer notification is ever dispatched —
+        // see test_przelewy24_failure_does_not_send_customer_cancellation_email()
+        // below. Notification::fake() here is just defensive isolation.
+        Notification::fake();
+
+        $this->mock(Przelewy24Service::class, function ($mock) {
+            $mock->shouldReceive('registerTransaction')
+                ->once()
+                ->andThrow(new \RuntimeException('P24 connection refused'));
+        });
+
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+        ]);
+
+        $this->cartWithItem($this->user, $this->org, $service);
+
+        $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
+            ->post(route('checkout.submit'), $this->validCheckoutPayload());
+
+        $order = Order::where('user_id', $this->user->id)->first();
+
+        $this->assertNotNull($order);
+        $this->assertSame('cancelled', $order->fresh()->status);
+    }
+
+    public function test_przelewy24_failure_does_not_send_customer_cancellation_email(): void
+    {
+        // The customer never saw a completed order (they're mid-checkout,
+        // about to see a generic retry flash) — a "your order was cancelled"
+        // email would just be confusing noise ahead of an immediate, successful
+        // retry. See OrderService::cancel(..., notify: false).
+        Notification::fake();
+
+        $this->mock(Przelewy24Service::class, function ($mock) {
+            $mock->shouldReceive('registerTransaction')
+                ->once()
+                ->andThrow(new \RuntimeException('P24 connection refused'));
+        });
+
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+        ]);
+
+        $this->cartWithItem($this->user, $this->org, $service);
+
+        $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
+            ->post(route('checkout.submit'), $this->validCheckoutPayload());
+
+        Notification::assertNotSentTo($this->user, OrderCancelledNotification::class);
+    }
+
+    public function test_przelewy24_failure_restores_cart_to_active_with_items_intact(): void
+    {
+        Notification::fake();
+
+        $this->mock(Przelewy24Service::class, function ($mock) {
+            $mock->shouldReceive('registerTransaction')
+                ->once()
+                ->andThrow(new \RuntimeException('P24 connection refused'));
+        });
+
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+        ]);
+
+        $cart = $this->cartWithItem($this->user, $this->org, $service);
+
+        $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
+            ->post(route('checkout.submit'), $this->validCheckoutPayload());
+
+        $cart->refresh();
+
+        $this->assertSame('active', $cart->status);
+        $this->assertSame(1, $cart->items()->count());
+    }
+
+    public function test_przelewy24_failure_then_retry_reuses_same_cart_and_succeeds(): void
+    {
+        Notification::fake();
+
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+        ]);
+
+        $cart = $this->cartWithItem($this->user, $this->org, $service);
+
+        // Laravel caches the resolved controller instance on the Route object
+        // for the lifetime of the test, so both requests below share the SAME
+        // Przelewy24Service mock instance — configure it with two sequential
+        // expectations (fail once, then succeed) rather than rebinding the
+        // container mid-test (a second $this->mock() call would have no
+        // effect on the already-instantiated controller).
+        $fakePaymentUrl = 'https://sandbox.przelewy24.pl/trnRequest/retry-token';
+        $this->mock(Przelewy24Service::class, function ($mock) use ($fakePaymentUrl) {
+            $mock->shouldReceive('registerTransaction')
+                ->once()
+                ->andThrow(new \RuntimeException('P24 connection refused'));
+
+            $mock->shouldReceive('registerTransaction')
+                ->once()
+                ->andReturn($fakePaymentUrl);
+        });
+
+        // First attempt fails at the P24 registration step.
+        $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
+            ->post(route('checkout.submit'), $this->validCheckoutPayload());
+
+        // Retry with the exact same (now-reactivated) cart — no re-adding items.
+        $response = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
+            ->post(route('checkout.submit'), $this->validCheckoutPayload());
+
+        $response->assertRedirect($fakePaymentUrl);
+
+        $cart->refresh();
+        $this->assertSame('converted', $cart->status);
+
+        $this->assertDatabaseHas('orders', [
+            'cart_id' => $cart->id,
+            'status' => 'pending_payment',
+        ]);
     }
 }

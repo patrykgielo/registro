@@ -67,16 +67,49 @@ class OrderItem extends Model
             ->whereDate('end_date', '>=', $start);
     }
 
+    /**
+     * CRITICAL (2026-07-05, empirically verified with two real concurrent MySQL
+     * connections): this used to be `whereHas('order', ...)` — a correlated
+     * EXISTS subquery. `FOR UPDATE` on the OUTER query does NOT force a fresh
+     * read for a correlated subquery's own table: a transaction that had
+     * already done some earlier plain read (fixing its REPEATABLE READ
+     * snapshot) could still have `EXISTS(SELECT ... FROM orders ...)` evaluate
+     * against that stale snapshot even though the outer `order_items` scan
+     * itself was `FOR UPDATE` and genuinely fresh — silently excluding a
+     * concurrently-committed reservation from the availability count and
+     * allowing overselling. A real INNER JOIN's rows, by contrast, ARE part of
+     * the same statement's row set and ARE correctly locked/read-fresh by the
+     * outer `FOR UPDATE`. See RentalAvailabilityService::getAvailableQuantity().
+     *
+     * IMPORTANT: the pending_payment branch below MUST mirror
+     * Order::scopeExpired() exactly (same grace-period logic, inverted). An
+     * order the expiry scope still considers "alive" (P24 transaction
+     * registered, within grace) must also still block the inventory it's
+     * holding — otherwise a second customer could book/pay for the same
+     * item/dates while the first customer's slow bank/BLIK confirmation is
+     * still in flight (overbooking).
+     */
     public function scopeBlockingAvailability(Builder $query): Builder
     {
-        return $query->whereHas('order', function (Builder $q) {
-            $q->where(function (Builder $inner) {
-                $inner->whereIn('status', ['paid', 'confirmed', 'in_progress'])
-                    ->orWhere(function (Builder $pending) {
-                        $pending->where('status', 'pending_payment')
-                            ->where('expires_at', '>', now());
+        $graceMinutes = Order::ttlGraceMinutes();
+
+        return $query
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where(function (Builder $inner) use ($graceMinutes) {
+                $inner->whereIn('orders.status', ['paid', 'confirmed', 'in_progress'])
+                    ->orWhere(function (Builder $pending) use ($graceMinutes) {
+                        $pending->where('orders.status', 'pending_payment')
+                            ->where(function (Builder $ttl) use ($graceMinutes) {
+                                $ttl->where(function (Builder $noTransaction) {
+                                    $noTransaction->whereNull('orders.p24_token')
+                                        ->where('orders.expires_at', '>', now());
+                                })->orWhere(function (Builder $withTransaction) use ($graceMinutes) {
+                                    $withTransaction->whereNotNull('orders.p24_token')
+                                        ->where('orders.expires_at', '>', now()->subMinutes($graceMinutes));
+                                });
+                            });
                     });
-            });
-        });
+            })
+            ->select('order_items.*');
     }
 }
