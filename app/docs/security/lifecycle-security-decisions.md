@@ -289,4 +289,19 @@ Przelewy24 nie ma publicznie dostępnego API do automatycznych zwrotów (wymaga�
 
 ---
 
+## LC-10 — Suspend/reactivate/closed audit trail gap (2026-07-05, multi-agent security review)
+
+- **Severity wejściowe:** 🟠 HIGH (brak jakiegokolwiek śladu audytowego dla zawieszenia/reaktywacji/zamknięcia najemcy).
+- **Gdzie:** `app/Filament/Platform/Resources/OrganizationResource.php` (`suspend`/`reactivate`), `app/Console/Commands/FinalizeClosingOrganizationsCommand.php` (`closed`)
+
+### Problem
+
+`suspend`/`reactivate` w `OrganizationResource` mutowały `lifecycle_state` bez żadnego wpisu w `OrganizationLifecycleLog` — jedyny ślad to `updated_at`. Niespójne z sąsiednimi akcjami w tym samym pliku (`initiateClosing`, `clearClosureRequest`), które już logują. `FinalizeClosingOrganizationsCommand` (finalizacja zamknięcia po okresie karencji — nieodwracalne, wyzwala czyszczenie PII) miało ten sam brak — `OrganizationLifecycleLogResource` już miał gotową etykietę `'closed' => 'Zamknięte'` w UI, ale żadne zdarzenie o tej nazwie nigdy nie powstawało.
+
+### Rozwiązanie
+
+Dodano `OrganizationLifecycleLog::record()` do wszystkich trzech miejsc — `suspend`/`reactivate` z `auth()->user()` jako aktorem (panel `/platform`, zawsze super-admin), `closed` z `actor = null` (zdarzenie systemowe ze scheduled command, model już wspierał `?User $actor = null`). Regresja: `tests/Feature/Platform/OrganizationLifecycleAuditActionsTest.php`, `tests/Feature/Console/FinalizeClosingOrganizationsTest.php`.
+
+---
+
 *Rejestr utworzony 2026-06-30. Powiązane: `app/docs/features/tenant-lifecycle.md`, `app/docs/features/orders-security-hardening.md`, `app/docs/features/analytics-event-tracking.md`, `.claude/rules/ci-cd-troubleshooting.md`, `.claude/rules/models.md`, `.claude/rules/notifications.md`.*
