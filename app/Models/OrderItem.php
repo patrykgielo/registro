@@ -67,16 +67,31 @@ class OrderItem extends Model
             ->whereDate('end_date', '>=', $start);
     }
 
+    /**
+     * CRITICAL (2026-07-05, empirically verified with two real concurrent MySQL
+     * connections): this used to be `whereHas('order', ...)` — a correlated
+     * EXISTS subquery. `FOR UPDATE` on the OUTER query does NOT force a fresh
+     * read for a correlated subquery's own table: a transaction that had
+     * already done some earlier plain read (fixing its REPEATABLE READ
+     * snapshot) could still have `EXISTS(SELECT ... FROM orders ...)` evaluate
+     * against that stale snapshot even though the outer `order_items` scan
+     * itself was `FOR UPDATE` and genuinely fresh — silently excluding a
+     * concurrently-committed reservation from the availability count and
+     * allowing overselling. A real INNER JOIN's rows, by contrast, ARE part of
+     * the same statement's row set and ARE correctly locked/read-fresh by the
+     * outer `FOR UPDATE`. See RentalAvailabilityService::getAvailableQuantity().
+     */
     public function scopeBlockingAvailability(Builder $query): Builder
     {
-        return $query->whereHas('order', function (Builder $q) {
-            $q->where(function (Builder $inner) {
-                $inner->whereIn('status', ['paid', 'confirmed', 'in_progress'])
+        return $query
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where(function (Builder $inner) {
+                $inner->whereIn('orders.status', ['paid', 'confirmed', 'in_progress'])
                     ->orWhere(function (Builder $pending) {
-                        $pending->where('status', 'pending_payment')
-                            ->where('expires_at', '>', now());
+                        $pending->where('orders.status', 'pending_payment')
+                            ->where('orders.expires_at', '>', now());
                     });
-            });
-        });
+            })
+            ->select('order_items.*');
     }
 }

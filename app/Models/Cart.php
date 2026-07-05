@@ -40,6 +40,19 @@ class Cart extends Model
     }
 
     /**
+     * Keeps `active_slot` in sync with `status` so the DB-level unique constraint
+     * `(organization_id, user_id, active_slot)` can enforce "at most one active
+     * cart per user per org" while still allowing many non-active
+     * (converted/abandoned) carts — NULL is not unique-constrained.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Cart $cart): void {
+            $cart->active_slot = $cart->status === 'active' ? 1 : null;
+        });
+    }
+
+    /**
      * @return BelongsTo<Organization, $this>
      */
     public function organization(): BelongsTo
