@@ -11,7 +11,6 @@ use App\Models\EmailSuppression;
 use App\Models\EmailTemplate;
 use App\Models\User;
 use App\Support\Settings\SettingsManager;
-use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -212,7 +211,7 @@ class EmailService
     }
 
     /**
-     * Render email template with Blade engine.
+     * Render email template via plain {{variable}} substitution (no Blade/PHP execution).
      *
      * @param  array  $data  Variables to render
      * @return array{subject: string, html: string, text: string|null}
@@ -220,8 +219,8 @@ class EmailService
     public function renderTemplate(EmailTemplate $template, array $data): array
     {
         try {
-            // Use EmailTemplate's render methods which handle {{variable}} → {{ $variable }} conversion
-            // This ensures templates work with both {{variable}} and {{ $variable }} syntax
+            // Use EmailTemplate's render methods — plain {{variable}} string substitution only,
+            // never compiled/executed as Blade or PHP
             $subject = $template->renderSubject($data);
             $html = $template->render($data);
             $text = $template->renderText($data);

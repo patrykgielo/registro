@@ -7,7 +7,6 @@ namespace App\Models;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Blade;
 
 /**
  * Email Template Model
@@ -111,40 +110,41 @@ class EmailTemplate extends Model
     /**
      * Render the HTML body with the provided data.
      *
-     * Uses Blade's compileString to render template with variables.
+     * SECURITY: this is plain string substitution only — the template body is NEVER
+     * compiled or executed as PHP/Blade (was a critical SSTI/RCE vector, since
+     * html_body is editable by tenant-level admins, not just super-admins). Only
+     * literal {{key}} tokens are replaced; everything else in the body (including
+     * Blade-looking directives like `@php`) is left as inert literal text.
+     * Substituted values are HTML-escaped since html_body is rendered as email HTML.
      *
      * @param  array  $data  Key-value pairs to replace in template
      * @return string Rendered HTML content
      */
     public function render(array $data): string
     {
-        // Replace {{variable}} placeholders with Blade syntax
-        $template = $this->html_body;
-
-        // Convert {{variable}} to {{ $variable }}
-        $template = preg_replace('/\{\{(\w+)\}\}/', '{{ $\1 }}', $template);
-
-        // Compile and render the Blade template
-        try {
-            return Blade::render($template, $data);
-        } catch (\Exception $e) {
-            // Fallback to simple string replacement if Blade rendering fails
-            return $this->simpleRender($data);
-        }
+        return $this->substitutePlaceholders($this->html_body, $data, escape: true);
     }
 
     /**
-     * Simple string replacement for rendering (fallback).
+     * Simple, non-executing string replacement shared by render() and other renderers.
+     *
+     * Only exact `{{key}}` tokens (word characters, no spaces/expressions) are replaced.
+     * Unknown tokens are left untouched. This never invokes Blade/eval — it cannot execute
+     * PHP embedded in a template body.
      */
-    protected function simpleRender(array $data): string
+    protected function substitutePlaceholders(string $template, array $data, bool $escape): string
     {
-        $content = $this->html_body;
+        return preg_replace_callback('/\{\{(\w+)\}\}/', function (array $matches) use ($data, $escape) {
+            $key = $matches[1];
 
-        foreach ($data as $key => $value) {
-            $content = str_replace('{{'.$key.'}}', (string) $value, $content);
-        }
+            if (! array_key_exists($key, $data)) {
+                return $matches[0];
+            }
 
-        return $content;
+            $value = (string) $data[$key];
+
+            return $escape ? e($value) : $value;
+        }, $template);
     }
 
     /**

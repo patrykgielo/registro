@@ -11,7 +11,6 @@ use App\Models\SmsSend;
 use App\Models\SmsSuppression;
 use App\Models\SmsTemplate;
 use App\Support\Settings\SettingsManager;
-use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -228,9 +227,7 @@ class SmsService
     }
 
     /**
-     * Render SMS template with Blade engine.
-     *
-     * Converts {{variable}} syntax to {{ $variable }} and renders with Blade.
+     * Render SMS template via plain {{variable}} substitution (no Blade/PHP execution).
      *
      * @param  array  $data  Variables to render
      * @return string Rendered message body
@@ -238,7 +235,8 @@ class SmsService
     public function renderTemplate(SmsTemplate $template, array $data): string
     {
         try {
-            // Use SmsTemplate's render method which handles {{variable}} → {{ $variable }} conversion
+            // Use SmsTemplate's render method — plain {{variable}} string substitution only,
+            // never compiled/executed as Blade or PHP
             return $template->render($data);
         } catch (\Throwable $e) {
             Log::error('SMS template rendering failed', [
