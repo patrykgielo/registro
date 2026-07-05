@@ -8,6 +8,7 @@ use App\Http\Requests\Checkout\SubmitCheckoutRequest;
 use App\Models\Order;
 use App\Services\Analytics\AnalyticsEventDispatcher;
 use App\Services\Cart\CartService;
+use App\Services\Order\OrderService;
 use App\Services\Payment\Przelewy24Service;
 use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
@@ -23,6 +24,7 @@ class CheckoutController extends Controller
         protected Przelewy24Service $p24,
         protected SettingsManager $settings,
         protected AnalyticsEventDispatcher $analytics,
+        protected OrderService $orderService,
     ) {}
 
     /**
@@ -83,7 +85,11 @@ class CheckoutController extends Controller
             'deposit_policy_note' => $this->settings->get('checkout.deposit_policy_note', 'Kaucja pobierana gotówką / kartą przy odbiorze sprzętu. Zwracana po oddaniu sprzętu w stanie nienaruszonym.'),
         ];
 
-        return view('checkout.show', compact('cart', 'profileData', 'checkoutSettings'));
+        // Computed once here (items.service already eager-loaded by getOrCreateCart())
+        // instead of being summed twice in checkout/show.blade.php (JS payload + display block).
+        $depositTotal = $cart->items->sum(fn ($item) => ($item->service->deposit_amount ?? 0) * $item->quantity);
+
+        return view('checkout.show', compact('cart', 'profileData', 'checkoutSettings', 'depositTotal'));
     }
 
     /**
@@ -95,27 +101,51 @@ class CheckoutController extends Controller
 
         abort_unless($org !== null, 404);
 
-        try {
-            $cart = $this->cart->getOrCreateCart($org, auth()->user());
+        $cart = $this->cart->getOrCreateCart($org, auth()->user());
 
+        try {
             $order = $this->cart->convertToOrder(
                 $cart,
                 array_merge($request->validated(), ['ip' => $request->ip()])
             );
-
-            $paymentUrl = $this->p24->registerTransaction($order);
-
-            $this->analytics->trackForCart($cart, 'checkout.submitted', [
-                'order_id' => $order->id,
-                'total_amount' => $order->total_amount,
-            ]);
-
-            return redirect($paymentUrl);
         } catch (\Exception $e) {
-            Log::error('Checkout failed', ['exception' => $e, 'user_id' => auth()->id()]);
+            Log::error('Checkout failed: could not convert cart to order', ['exception' => $e, 'user_id' => auth()->id()]);
 
             return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
         }
+
+        try {
+            $paymentUrl = $this->p24->registerTransaction($order);
+        } catch (\Exception $e) {
+            // convertToOrder() already committed (Order pending_payment + Cart
+            // 'converted'). Leaving it that way would orphan the order (it
+            // blocks inventory until TTL) and strand the customer with an
+            // empty, unusable cart. Compensate immediately: release the order
+            // and restore the same cart so the customer can retry without
+            // re-adding every item.
+            //
+            // notify: false — the customer never saw a completed order (they're
+            // still mid-checkout, about to see a generic retry flash), so the
+            // customer-facing "your order was cancelled" email would just be
+            // confusing noise ahead of an immediate, successful retry.
+            Log::error('Checkout failed: P24 registration error — cancelling orphaned order', [
+                'exception' => $e,
+                'order_id' => $order->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            $this->orderService->cancel($order, 'P24 registration failed', notify: false);
+            $this->cart->reactivate($cart);
+
+            return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
+        }
+
+        $this->analytics->trackForCart($cart, 'checkout.submitted', [
+            'order_id' => $order->id,
+            'total_amount' => $order->total_amount,
+        ]);
+
+        return redirect($paymentUrl);
     }
 
     /**

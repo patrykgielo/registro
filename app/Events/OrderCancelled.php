@@ -24,9 +24,14 @@ class OrderCancelled
      *
      * @param  \App\Models\Order  $order  The cancelled order
      * @param  string  $reason  Optional cancellation reason
+     * @param  bool  $notify  Whether the customer-facing cancellation email should be
+     *                        sent. False for internal-compensation scenarios (e.g. P24
+     *                        registration failure) where the customer never actually
+     *                        saw a completed order — see OrderService::cancel().
      */
     public function __construct(
         public Order $order,
-        public string $reason = ''
+        public string $reason = '',
+        public bool $notify = true,
     ) {}
 }

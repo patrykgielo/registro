@@ -174,6 +174,50 @@ class OrderItemTest extends TestCase
         $this->assertContains($activePending->id, $orderIds);
     }
 
+    // -------------------------------------------------------------------------
+    // scopeBlockingAvailability — P24 grace period (HIGH fix: must mirror
+    // Order::scopeExpired() exactly, otherwise an order the expiry scope
+    // still considers "alive" would stop blocking the inventory it holds).
+    // -------------------------------------------------------------------------
+
+    public function test_scope_blocking_availability_returns_items_from_p24_registered_order_past_normal_ttl_within_grace(): void
+    {
+        $order = Order::factory()->pendingPayment()->create([
+            // Well past the normal 20-minute TTL, but still within the grace period.
+            'expires_at' => now()->subMinutes(30),
+            'p24_token' => 'p24-token-in-flight',
+        ]);
+        OrderItem::factory()->create(['order_id' => $order->id]);
+
+        $this->assertCount(1, OrderItem::blockingAvailability()->get());
+    }
+
+    public function test_scope_blocking_availability_does_not_return_items_from_p24_registered_order_past_grace_period(): void
+    {
+        $graceMinutes = Order::ttlGraceMinutes();
+
+        $order = Order::factory()->pendingPayment()->create([
+            'expires_at' => now()->subMinutes($graceMinutes + 5),
+            'p24_token' => 'p24-token-abandoned',
+        ]);
+        OrderItem::factory()->create(['order_id' => $order->id]);
+
+        $this->assertCount(0, OrderItem::blockingAvailability()->get());
+    }
+
+    public function test_scope_blocking_availability_does_not_return_items_from_order_without_p24_token_past_normal_ttl_even_within_grace_window(): void
+    {
+        // No p24_token — the normal (short) TTL applies regardless of the
+        // extended grace period granted to orders with a registered transaction.
+        $order = Order::factory()->pendingPayment()->create([
+            'expires_at' => now()->subMinutes(30),
+            'p24_token' => null,
+        ]);
+        OrderItem::factory()->create(['order_id' => $order->id]);
+
+        $this->assertCount(0, OrderItem::blockingAvailability()->get());
+    }
+
     public function test_order_item_belongs_to_order(): void
     {
         $order = Order::factory()->create();

@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Enums\OrganizationLifecycleState;
 use App\Jobs\CancelInFlightObligationsJob;
 use App\Models\Organization;
+use App\Models\OrganizationLifecycleLog;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -103,10 +104,19 @@ class FinalizeClosingOrganizationsCommand extends Command
                 $org->lifecycle_state = OrganizationLifecycleState::Closed;
                 $org->save();
 
+                $fresh = $org->fresh();
+
+                // Durable audit log — no acting user, this is a scheduled command.
+                OrganizationLifecycleLog::record($org, 'closed', null, [
+                    'closed_at' => $fresh->closed_at?->toIso8601String(),
+                    'purge_after' => $fresh->purge_after?->toIso8601String(),
+                    'grace_days' => $graceDays,
+                ]);
+
                 Log::info('organizations:finalize-closing: org finalized', [
                     'org_id' => $org->id,
-                    'closed_at' => $org->fresh()->closed_at?->toIso8601String(),
-                    'purge_after' => $org->fresh()->purge_after?->toIso8601String(),
+                    'closed_at' => $fresh->closed_at?->toIso8601String(),
+                    'purge_after' => $fresh->purge_after?->toIso8601String(),
                 ]);
 
                 $this->info("  Org #{$org->id}: transitioned to Closed.");

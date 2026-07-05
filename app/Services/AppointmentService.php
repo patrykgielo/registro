@@ -228,6 +228,16 @@ class AppointmentService
                 continue;
             }
 
+            // Check the 24h advance-booking rule against THIS slot's own start time —
+            // not the day's business-hours-open instant. Gating on the latter hid
+            // legitimately bookable later-in-the-day slots (e.g. tomorrow afternoon)
+            // whenever the earliest slot of the day fell inside the advance window.
+            if (! $this->meetsAdvanceBookingRequirement($currentSlot)) {
+                $currentSlot->addMinutes($slotInterval);
+
+                continue;
+            }
+
             // Check if ANY staff member is available for this slot
             if ($this->isAnyStaffAvailable($serviceId, $date, $currentSlot, $slotEnd)) {
                 $slotKey = $currentSlot->format('H:i');
@@ -272,6 +282,71 @@ class AppointmentService
         $minimumDateTime = now()->addHours($advanceHours);
 
         return $appointmentDateTime->gte($minimumDateTime);
+    }
+
+    /**
+     * Get IDs of staff members eligible to perform the given service.
+     *
+     * @return array<int, int>
+     */
+    public function getEligibleStaffIds(int $serviceId): array
+    {
+        return User::whereHas('roles', function ($query) {
+            $query->where('name', 'staff');
+        })->whereHas('services', function ($query) use ($serviceId) {
+            $query->where('service_id', $serviceId);
+        })->pluck('id')->all();
+    }
+
+    /**
+     * Acquire row-level locks on existing appointments for the given staff
+     * members and date, to serialize concurrent booking attempts for the same
+     * slot(s) (double-booking race condition defense in depth).
+     *
+     * MUST be called inside a DB::transaction(). This is a best-effort
+     * optimization only — SQLite ignores FOR UPDATE entirely, and even on
+     * MySQL it cannot guarantee serialization of two INSERTs into a
+     * previously-empty slot (no existing row to lock). The authoritative
+     * guard is the `appointments_staff_slot_unique` DB constraint — see
+     * isDoubleBookingViolation().
+     */
+    public function lockStaffAppointmentsForDate(array $staffIds, Carbon $date): void
+    {
+        if (empty($staffIds)) {
+            return;
+        }
+
+        Appointment::query()
+            ->whereIn('staff_id', $staffIds)
+            ->where('appointment_date', $date->format('Y-m-d'))
+            ->lockForUpdate()
+            ->get();
+    }
+
+    /**
+     * Determine whether a query exception was caused by the double-booking
+     * unique constraint (appointments_staff_slot_unique), as opposed to some
+     * other integrity violation. Used by controllers to translate the raw
+     * QueryException into the same user-facing "slot no longer available"
+     * error path used for the SELECT-based rejection.
+     */
+    public function isDoubleBookingViolation(\Throwable $e): bool
+    {
+        if (! $e instanceof \Illuminate\Database\QueryException) {
+            return false;
+        }
+
+        // Driver-specific wording, checked defensively rather than relying on
+        // just one: MySQL's duplicate-key error names the INDEX
+        // ("... for key 'appointments_staff_slot_unique'"), while SQLite's
+        // "UNIQUE constraint failed" error instead lists the COLUMN NAMES
+        // ("appointments.staff_id, appointments.appointment_date,
+        // appointments.start_time, appointments.active_slot") and never
+        // mentions the index name at all.
+        $message = $e->getMessage();
+
+        return str_contains($message, 'appointments_staff_slot_unique')
+            || str_contains($message, 'appointments.active_slot');
     }
 
     /**
@@ -508,17 +583,22 @@ class AppointmentService
         $businessStart = Carbon::parse($date->format('Y-m-d').' '.$businessHours['start']);
         $businessEnd = Carbon::parse($date->format('Y-m-d').' '.$businessHours['end']);
 
-        // Check if date meets advance booking requirement (using pre-calculated minimum)
-        $earliestSlotDateTime = Carbon::parse($date->format('Y-m-d').' '.$businessHours['start']);
-        if ($earliestSlotDateTime->lt($minimumBookingDateTime)) {
-            return 0;
-        }
-
         $availableSlots = 0;
         $currentSlot = $businessStart->copy();
 
         while ($currentSlot->copy()->addMinutes($serviceDurationMinutes)->lte($businessEnd)) {
             $slotEnd = $currentSlot->copy()->addMinutes($serviceDurationMinutes);
+
+            // Check the 24h advance-booking rule against THIS slot's own start time —
+            // not the day's business-hours-open instant (see getAvailableSlotsAcrossAllStaff()
+            // for the same fix applied to the single-day slot endpoint). Gating on the
+            // earliest slot hid legitimately bookable later slots on the calendar's
+            // "unavailable dates" endpoint too.
+            if ($currentSlot->lt($minimumBookingDateTime)) {
+                $currentSlot->addMinutes($slotInterval);
+
+                continue;
+            }
 
             // Check if ANY staff member is available for this slot
             $isAnyStaffAvailable = false;

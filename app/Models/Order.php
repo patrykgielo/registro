@@ -71,6 +71,22 @@ class Order extends Model
         'status' => OrderStatusStateMachine::class,
     ];
 
+    /**
+     * Transient, non-persisted flag — a real declared PHP property, NOT an
+     * Eloquent attribute, so setting it never touches $attributes/getDirty()
+     * and can never leak into an UPDATE query.
+     *
+     * Consulted by OrderStatusStateMachine's 'cancelled' afterTransitionHook
+     * to decide whether to fire the customer-facing OrderCancelled
+     * notification. Defaults to true (normal cancellations always notify).
+     * Set to false via OrderService::cancel($order, $reason, notify: false)
+     * for internal-compensation scenarios (e.g. P24 registration failure)
+     * where the customer never actually saw a completed order and a
+     * "your order was cancelled" email would just be confusing noise ahead
+     * of an immediate, successful retry.
+     */
+    public bool $notifyOnCancel = true;
+
     protected $fillable = [
         'organization_id',
         'user_id',
@@ -227,9 +243,52 @@ class Order extends Model
         return $query->where('status', 'paid');
     }
 
+    /**
+     * Clamped `przelewy24.transaction_grace_minutes` config value.
+     *
+     * Single source of truth shared by scopeExpired() (this class) and
+     * OrderItem::scopeBlockingAvailability() — the two MUST stay in sync,
+     * otherwise an order the expiry scope still considers "alive" could stop
+     * blocking the inventory it's holding (overbooking) or vice versa.
+     *
+     * Clamped to [0, 1440] minutes (0 = no extra grace, 1440 = 24h max) so a
+     * misconfigured negative value can't invert the intent (cancelling
+     * P24-registered orders EARLY, mid-payment) and an absurd value can't
+     * effectively disable expiry for P24-registered orders indefinitely.
+     */
+    public static function ttlGraceMinutes(): int
+    {
+        return max(0, min(1440, (int) config('przelewy24.transaction_grace_minutes', 120)));
+    }
+
+    /**
+     * Orders eligible for TTL cleanup (orders:cleanup-expired).
+     *
+     * An order that already has a P24 transaction registered (p24_token set)
+     * means the customer is/was actively on P24's own gateway — a slow
+     * bank/BLIK confirmation must not be cancelled out from under them while
+     * a real payment attempt may still be in flight. Such orders get an
+     * extended effective TTL (normal expires_at + a configurable grace
+     * period) before they're eligible for cancellation. Orders with no
+     * registered transaction keep the normal 20-minute TTL.
+     *
+     * IMPORTANT: mirrors OrderItem::scopeBlockingAvailability()'s
+     * pending_payment branch exactly — an order this scope still considers
+     * "alive" must also still block the inventory it's holding.
+     */
     public function scopeExpired(Builder $query): Builder
     {
+        $graceMinutes = self::ttlGraceMinutes();
+
         return $query->where('status', 'pending_payment')
-            ->where('expires_at', '<', now());
+            ->where(function (Builder $q) use ($graceMinutes): void {
+                $q->where(function (Builder $noTransaction): void {
+                    $noTransaction->whereNull('p24_token')
+                        ->where('expires_at', '<', now());
+                })->orWhere(function (Builder $withTransaction) use ($graceMinutes): void {
+                    $withTransaction->whereNotNull('p24_token')
+                        ->where('expires_at', '<', now()->subMinutes($graceMinutes));
+                });
+            });
     }
 }
