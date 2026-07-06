@@ -4,15 +4,30 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 class OrderItem extends Model
 {
-    use HasFactory;
+    use Auditable, HasFactory;
+
+    /**
+     * Only end_date/rental_days/total_price are audited — these are the
+     * fields RentalExtensionService::approve() mutates on an already-paid
+     * order item. Everything else (unit_price, price_snapshot, etc.) is set
+     * once at checkout and never changes afterwards, so it isn't worth
+     * tracking here.
+     */
+    protected array $auditInclude = [
+        'end_date',
+        'rental_days',
+        'total_price',
+    ];
 
     protected $fillable = [
         'order_id',
@@ -58,6 +73,14 @@ class OrderItem extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * @return HasMany<OrderItemExtensionRequest, $this>
+     */
+    public function extensionRequests(): HasMany
+    {
+        return $this->hasMany(OrderItemExtensionRequest::class);
     }
 
     public function scopeOverlappingDates(Builder $query, Carbon $start, Carbon $end): Builder

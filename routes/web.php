@@ -18,6 +18,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionController;
 use App\Http\Controllers\RentalBookingController;
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\RentalExtensionController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\UserAddressController;
 use App\Http\Controllers\UserVehicleController;
@@ -168,6 +169,14 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRent
     Route::get('/moje-zamowienia', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/moje-zamowienia/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/moje-zamowienia/{order}/anuluj', [OrderController::class, 'cancel'])->name('orders.cancel');
+
+    // Rental extension requests
+    Route::get('/api/zamowienia/{order}/pozycje/{orderItem}/sprawdz-przedluzenie', [RentalExtensionController::class, 'checkAvailability'])
+        ->name('orders.extension.check')
+        ->middleware('throttle:20,1,rental-extension-check');
+    Route::post('/moje-zamowienia/{order}/pozycje/{orderItem}/przedluz', [RentalExtensionController::class, 'store'])
+        ->name('orders.extension.store')
+        ->middleware('throttle:3,1,rental-extension-store');
 });
 
 // Przelewy24 webhook (no auth, no CSRF — excluded in bootstrap/app.php)

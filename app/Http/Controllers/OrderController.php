@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Services\Order\OrderService;
+use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -13,7 +14,10 @@ use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
-    public function __construct(protected OrderService $orderService) {}
+    public function __construct(
+        protected OrderService $orderService,
+        protected SettingsManager $settings
+    ) {}
 
     public function index(Request $request): View
     {
@@ -32,7 +36,10 @@ class OrderController extends Controller
         abort_unless($org !== null, 404);
         abort_unless($order->user_id === auth()->id() && $order->organization_id === $org->id, 403);
 
-        return view('orders.show', compact('order'));
+        $rentalExtensionEnabled = $this->settings->isRentalExtensionEnabled();
+        $order->load(['items.extensionRequests']);
+
+        return view('orders.show', compact('order', 'rentalExtensionEnabled'));
     }
 
     public function cancel(Request $request, Order $order): RedirectResponse

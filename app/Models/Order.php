@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Order extends Model
 {
@@ -51,6 +52,10 @@ class Order extends Model
         'paid_at',
         'cancelled_at',
         'completed_at',
+        // Financial totals — only ever mutated via applyFinancialAdjustment() (see below),
+        // included here so that escape-hatch is actually captured in the audit trail.
+        'subtotal',
+        'total_amount',
     ];
 
     // Defensive: fields outside $auditInclude are already rejected by the allowlist.
@@ -86,6 +91,41 @@ class Order extends Model
      * of an immediate, successful retry.
      */
     public bool $notifyOnCancel = true;
+
+    /**
+     * Transient, non-persisted escape hatch — mirrors
+     * Organization::$forceLifecycleTransition. `total_amount`/`subtotal` are
+     * normally immutable (see booted()'s updating guard) because a naive
+     * ->update() must never silently drift an order's financial totals away
+     * from its line items. Some flows (e.g. RentalExtensionService::approve())
+     * legitimately need to adjust them — call applyFinancialAdjustment()
+     * instead of mutating the attributes directly; it flips this flag for the
+     * duration of a single save() and the static::saved() listener below
+     * resets it immediately after, so it can never leak into an unrelated
+     * later save.
+     */
+    public bool $allowFinancialAdjustment = false;
+
+    /**
+     * Sanctioned way to mutate Order's normally-immutable financial totals
+     * (subtotal/total_amount). Applies each delta additively (positive to
+     * increase, negative to decrease) and saves through the normal Eloquent
+     * lifecycle — NOT saveQuietly() — so the updated `updated` event fires,
+     * Auditable::bootAuditable() logs the change (subtotal/total_amount are
+     * both in $auditInclude above), and the audit trail stays intact.
+     *
+     * @param  array<string, float|int|string>  $deltas  e.g. ['subtotal' => 400.00, 'total_amount' => 400.00]
+     */
+    public function applyFinancialAdjustment(array $deltas, string $reason): void
+    {
+        $this->allowFinancialAdjustment = true;
+
+        foreach ($deltas as $field => $delta) {
+            $this->{$field} = $this->{$field} + $delta;
+        }
+
+        $this->save();
+    }
 
     protected $fillable = [
         'organization_id',
@@ -192,12 +232,29 @@ class Order extends Model
             ];
 
             foreach ($immutable as $field) {
+                // total_amount/subtotal are exempted while allowFinancialAdjustment is
+                // true — set only by applyFinancialAdjustment(), for the duration of a
+                // single save() (mirrors Organization::$forceLifecycleTransition).
+                if (in_array($field, ['total_amount', 'subtotal'], true) && $order->allowFinancialAdjustment) {
+                    continue;
+                }
+
                 if ($order->isDirty($field)) {
                     throw new \LogicException(
                         "Field '{$field}' is immutable on Order and cannot be changed after creation."
                     );
                 }
             }
+        });
+
+        // Resets allowFinancialAdjustment so it can never leak into a later,
+        // unrelated save() on the same model instance. Uses saved() rather than
+        // updated() because updated() only fires when the save actually wrote
+        // dirty attributes — saved() fires on every save(), including no-op
+        // ones, and is therefore the correct cleanup hook (same reasoning as
+        // OrganizationObserver::saved() for forceLifecycleTransition).
+        static::saved(function (self $order): void {
+            $order->allowFinancialAdjustment = false;
         });
     }
 
@@ -231,6 +288,14 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * @return HasManyThrough<OrderItemExtensionRequest, OrderItem, $this>
+     */
+    public function extensionRequests(): HasManyThrough
+    {
+        return $this->hasManyThrough(OrderItemExtensionRequest::class, OrderItem::class);
     }
 
     public function scopePendingPayment(Builder $query): Builder
