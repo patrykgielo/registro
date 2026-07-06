@@ -6,6 +6,7 @@ use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Support\BuilderBlocks;
 use App\Models\Service;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -34,6 +35,49 @@ class ServiceResource extends BaseResource
     protected static ?string $modelLabel = 'Usługa';
 
     protected static ?string $pluralModelLabel = 'Usługi';
+
+    /**
+     * Pure rental tenants (booking_type === 'item_rental') never store
+     * time-slot services, so this resource presents as their product
+     * catalogue ("Produkty") grouped under Wypożyczenia. Mixed tenants
+     * (booking_type === 'both') still use this resource for actual
+     * time-slot services alongside RentalResource for rental items —
+     * they must keep the default "Usługi"/content label, otherwise their
+     * time-slot services would be mislabeled as rental products.
+     *
+     * Known narrow gap: a tenant with booking_type = 'item_rental' but
+     * industry left null (reachable only via a manual super-admin edit in
+     * /platform, never through normal onboarding — Industry::EquipmentRental's
+     * defaultModules() always includes 'services') has the 'services' module
+     * disabled by Organization::MODULE_DEFAULTS['item_rental'], so this
+     * resource — while correctly labeled "Produkt" if visited directly —
+     * never registers in the sidebar for that tenant shape. Not fixed here;
+     * out of scope for this label/grouping change.
+     */
+    private static function isPureRentalTenant(): bool
+    {
+        return TenantFeature::currentTenant()?->booking_type === 'item_rental';
+    }
+
+    public static function getModelLabel(): string
+    {
+        return static::isPureRentalTenant() ? 'Produkt' : static::$modelLabel;
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return static::isPureRentalTenant() ? 'Produkty' : static::$pluralModelLabel;
+    }
+
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return static::isPureRentalTenant() ? 'rentals' : static::$navigationGroup;
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        return static::isPureRentalTenant() ? 2 : static::$navigationSort;
+    }
 
     public static function form(Schema $schema): Schema
     {

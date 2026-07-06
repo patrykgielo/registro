@@ -80,6 +80,7 @@ Archived legacy docs: docs/archive/
 | Skill | Effort | Purpose |
 |-------|--------|---------|
 | `/implement <task>` | high | Gated workflow: agent → branch → code → test → docs |
+| `/ship <task>` | medium | Lightweight loop for small fixes: builder → bounded retry (max 3) → code-reviewer |
 | `/review [scope]` | high | Code review (architecture, security, docs) |
 | `/deep-research <topic>` | high | Web research with Firecrawl |
 | `/commit [msg]` | low | Stage, Pint, test, conventional commit |
@@ -87,6 +88,14 @@ Archived legacy docs: docs/archive/
 | `/test [--filter]` | low | Run Pint + PHPUnit in Docker |
 | `/catchup` | low | Session start briefing (recent changes, PRs) |
 | `/browser-use` | — | Browser automation (visible Chrome, user profile) |
+
+### Kiedy Workflow / Agent Team / `/ship` / `/implement`
+
+- **Mały fix, jeden-kilka plików** (typo, drobna poprawka, jeden bug) → `/ship` — builder → bounded retry (max 3 cykle) → code-reviewer, bez pełnego 7-gate procesu.
+- **Nowy feature / zmiana architektury / 5+ plików** → `/implement` — pełny gated proces, dokumentacja obowiązkowa (Stop hook i tak to wymusi).
+- **Duże, wieloobszarowe zadanie** (audyt bezpieczeństwa całego API, redesign wielu ekranów) → Agent Team, 3-5 teammates — patrz `docs/guides/agent-teams.md`.
+- **Dziesiątki niezależnych, równoległych sprawdzeń** (audyt N endpointów, deep research, przegląd wielu plików tym samym wzorcem) → Workflow tool.
+- Nie odpalaj Workflow ani Agent Team na drobną poprawkę — to overkill i marnowanie tokenów na coś, co `/ship` załatwia w minutę.
 
 ## Quick Commands
 
