@@ -465,6 +465,14 @@ class SettingsManager
     }
 
     /**
+     * Check if customers can request rental order extensions.
+     */
+    public function isRentalExtensionEnabled(): bool
+    {
+        return (bool) $this->get('rentals.rental_extension_enabled', false);
+    }
+
+    /**
      * Check if user registration is enabled.
      */
     public function isRegistrationEnabled(): bool

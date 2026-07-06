@@ -678,6 +678,19 @@ $order->saveQuietly();  // OK — p24_* nie jest immutable ani w $auditInclude
 Pola OK dla `saveQuietly()`: `p24_*`, `deposit_status`, `deposit_collected_at`, `deposit_returned_at`.
 Pola ZAKAZANE dla `saveQuietly()`: wszystkie z listy immutable (`total_amount`, `order_number`, `rodo_accepted_at`, itp.).
 
+### `Order::applyFinancialAdjustment()` — sankcjonowany escape hatch (2026-07-06)
+
+`total_amount`/`subtotal` są immutable, ale niektóre flow (np. `RentalExtensionService::approve()`) muszą je legalnie zmienić. Mirror `Organization::$forceLifecycleTransition`:
+
+```php
+$order->applyFinancialAdjustment(['subtotal' => $amount, 'total_amount' => $amount], 'rental_extension_approved');
+```
+
+- Ustawia transient `$allowFinancialAdjustment = true`, zwalnia oba pola z guarda `updating()` TYLKO na czas jednego `save()`
+- `static::saved()` w `Order::booted()` resetuje flagę po KAŻDYM save() (także no-op) — nigdy nie przecieka do kolejnego zapisu
+- Woła `save()`, NIE `saveQuietly()` — `Auditable` nadal loguje zmianę (`subtotal`/`total_amount` są w `$auditInclude`)
+- NIE twórz osobnego `OrderObserver` dla tego — logika żyje w `Order::booted()` (ten sam plik zarządza już immutable guardem), zgodnie z istniejącym stylem tego modelu
+
 ---
 
 ## Organization SoftDeletes (Faza 5.3a)

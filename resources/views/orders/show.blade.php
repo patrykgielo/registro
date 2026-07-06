@@ -208,6 +208,172 @@
                     </x-ui.card>
                 </section>
 
+                {{-- ─── Rental extension requests ─── --}}
+                @if($rentalExtensionEnabled && in_array($order->status, ['paid', 'confirmed', 'in_progress']))
+                    <section aria-labelledby="extension-heading">
+                        <x-ui.card>
+                            <h2 id="extension-heading" class="text-base font-semibold text-text-primary mb-5">
+                                Przedłuż wypożyczenie
+                            </h2>
+
+                            @if(session('success'))
+                                <div class="mb-4 rounded-lg bg-success/10 text-success ring-1 ring-success/20 px-4 py-3 text-sm">
+                                    {{ session('success') }}
+                                </div>
+                            @endif
+
+                            @foreach($order->items as $item)
+                                @if($item->end_date)
+                                    @php
+                                        $pendingRequest  = $item->extensionRequests->first(fn($r) => $r->status === \App\Enums\ExtensionRequestStatus::Pending);
+                                        $approvedRequest = $item->extensionRequests->last(fn($r)  => $r->status === \App\Enums\ExtensionRequestStatus::Approved);
+                                    @endphp
+
+                                    <div
+                                        class="mb-6 last:mb-0 pb-6 last:pb-0 border-b last:border-b-0 border-border"
+                                        x-data="{
+                                            itemId: {{ $item->id }},
+                                            newEndDate: '',
+                                            availability: null,
+                                            loading: false,
+                                            errors: {},
+                                            async checkAvailability() {
+                                                if (!this.newEndDate) { this.availability = null; return; }
+                                                this.loading = true;
+                                                this.errors = {};
+                                                try {
+                                                    const resp = await fetch('{{ route('orders.extension.check', [$order, $item]) }}?new_end_date=' + this.newEndDate, {
+                                                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                                                    });
+                                                    if (resp.status === 422) {
+                                                        const json = await resp.json();
+                                                        this.errors = json.errors || {};
+                                                        this.availability = null;
+                                                    } else {
+                                                        this.availability = await resp.json();
+                                                    }
+                                                } catch(e) {
+                                                    this.availability = null;
+                                                } finally {
+                                                    this.loading = false;
+                                                }
+                                            }
+                                        }"
+                                    >
+                                        <p class="text-sm font-medium text-text-primary mb-2">
+                                            {{ $item->service_name }}
+                                            <span class="text-text-muted font-normal ml-1">
+                                                (do {{ $item->end_date->format('d.m.Y') }})
+                                            </span>
+                                        </p>
+
+                                        @if($pendingRequest)
+                                            <div class="rounded-lg bg-warning/10 text-warning ring-1 ring-warning/20 px-4 py-3 text-sm flex items-start gap-2">
+                                                <x-heroicon-m-clock class="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                                                <span>
+                                                    Wniosek o przedłużenie do <strong>{{ $pendingRequest->requested_end_date->format('d.m.Y') }}</strong> oczekuje na zatwierdzenie.
+                                                </span>
+                                            </div>
+                                        @else
+                                            @if($approvedRequest)
+                                                <div class="rounded-lg bg-success/10 text-success ring-1 ring-success/20 px-4 py-3 text-sm flex items-start gap-2 mb-3">
+                                                    <x-heroicon-m-check-circle class="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                                                    <span>Ostatnie przedłużenie do {{ $approvedRequest->requested_end_date->format('d.m.Y') }} zostało zatwierdzone.</span>
+                                                </div>
+                                            @endif
+
+                                            <form
+                                                method="POST"
+                                                action="{{ route('orders.extension.store', [$order, $item]) }}"
+                                                class="mt-3"
+                                            >
+                                                @csrf
+                                                <div class="flex flex-col sm:flex-row gap-3">
+                                                    <div class="flex-1">
+                                                        <label for="new_end_date_{{ $item->id }}" class="sr-only">
+                                                            Nowa data końca wypożyczenia
+                                                        </label>
+                                                        <input
+                                                            id="new_end_date_{{ $item->id }}"
+                                                            name="new_end_date"
+                                                            type="date"
+                                                            min="{{ $item->end_date->copy()->addDay()->toDateString() }}"
+                                                            x-model="newEndDate"
+                                                            @change="checkAvailability()"
+                                                            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary
+                                                                   focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand
+                                                                   transition-colors duration-200"
+                                                            required
+                                                        >
+                                                        @error('new_end_date')
+                                                            <p class="mt-1 text-xs text-error">{{ $message }}</p>
+                                                        @enderror
+                                                    </div>
+
+                                                    <button
+                                                        type="submit"
+                                                        :disabled="loading || !availability?.can_extend"
+                                                        class="shrink-0 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+                                                               bg-brand text-white
+                                                               hover:bg-brand-hover
+                                                               disabled:opacity-50 disabled:cursor-not-allowed
+                                                               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
+                                                               transition-all duration-150 ease-out"
+                                                    >
+                                                        <x-heroicon-m-arrow-path-rounded-square class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                                        Złóż wniosek
+                                                    </button>
+                                                </div>
+
+                                                {{-- Availability feedback --}}
+                                                <div x-show="availability !== null" class="mt-2 text-sm" x-cloak>
+                                                    <template x-if="availability?.can_extend">
+                                                        <p class="text-success flex items-center gap-1.5">
+                                                            <x-heroicon-m-check-circle class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                                            <span>
+                                                                Dostępne &bull;
+                                                                <span x-text="availability.additional_days"></span> dni &bull;
+                                                                +<span x-text="parseFloat(availability.estimated_amount).toFixed(2).replace('.', ',')"></span>&nbsp;zł
+                                                            </span>
+                                                        </p>
+                                                    </template>
+                                                    <template x-if="availability && !availability.can_extend">
+                                                        <p class="text-error flex items-center gap-1.5">
+                                                            <x-heroicon-m-x-circle class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                                            Sprzęt niedostępny w wybranym terminie
+                                                        </p>
+                                                    </template>
+                                                </div>
+
+                                                <div x-show="loading" class="mt-2 text-xs text-text-muted" x-cloak>
+                                                    Sprawdzam dostępność…
+                                                </div>
+
+                                                <div class="mt-3">
+                                                    <label for="customer_notes_{{ $item->id }}" class="text-xs text-text-muted">
+                                                        Notatka (opcjonalna)
+                                                    </label>
+                                                    <textarea
+                                                        id="customer_notes_{{ $item->id }}"
+                                                        name="customer_notes"
+                                                        rows="2"
+                                                        maxlength="500"
+                                                        placeholder="Powód przedłużenia (opcjonalnie)…"
+                                                        class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary
+                                                               placeholder:text-text-muted
+                                                               focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand
+                                                               transition-colors duration-200 resize-none"
+                                                    ></textarea>
+                                                </div>
+                                            </form>
+                                        @endif
+                                    </div>
+                                @endif
+                            @endforeach
+                        </x-ui.card>
+                    </section>
+                @endif
+
                 {{-- ─── Contact details ─── --}}
                 <section aria-labelledby="contact-heading">
                     <x-ui.card>
