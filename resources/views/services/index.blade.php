@@ -78,6 +78,12 @@
             <p class="text-text-secondary">Wkrótce pojawią się nowe usługi. Sprawdź ponownie później.</p>
         </div>
     @endif
+
+    @if($services->hasPages())
+        <div class="mt-12 flex justify-center">
+            {{ $services->links() }}
+        </div>
+    @endif
 </x-layout.section>
 
 {{-- CTA --}}
