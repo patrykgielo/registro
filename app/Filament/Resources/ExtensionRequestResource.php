@@ -204,4 +204,9 @@ class ExtensionRequestResource extends BaseResource
             'index' => Pages\ListExtensionRequests::route('/'),
         ];
     }
+
+    public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
 }

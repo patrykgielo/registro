@@ -153,14 +153,32 @@ class RentalExtensionService
     public function approve(OrderItemExtensionRequest $extensionRequest, User $admin): void
     {
         DB::transaction(function () use ($extensionRequest, $admin) {
-            // Pessimistic lock on request + item + service
+            $tenant = TenantFeature::currentTenant();
+            if ($tenant !== null && $tenant->id !== $extensionRequest->organization_id) {
+                abort(403);
+            }
+
+            // Lock order: OrderItem BEFORE OrderItemExtensionRequest, matching
+            // requestExtension()'s convention above. order_item_id is read off the
+            // still-unlocked $extensionRequest parameter first — it never changes
+            // after creation, so this is safe without a lock.
+            //
+            // Why this order matters: the old order (request → item) deadlocks when
+            // two admins concurrently approve two DIFFERENT pending requests for the
+            // SAME OrderItem. TxA locks request-A, TxB locks request-B (different rows,
+            // both succeed), then TxA locks the item (succeeds) while TxB blocks waiting
+            // on that same item lock. TxA then reaches the auto-reject-competing-requests
+            // query below, which tries to lock request-B — but TxB already holds that row
+            // while blocked on the item lock TxA holds. Circular wait → deadlock. Locking
+            // the item first serialises both approve() calls on the item lock before
+            // either can touch a request row, closing the cycle.
+            $item = OrderItem::where('id', $extensionRequest->order_item_id)->lockForUpdate()->first();
+
             $extensionRequest = OrderItemExtensionRequest::where('id', $extensionRequest->id)->lockForUpdate()->first();
 
             if ($extensionRequest->status !== ExtensionRequestStatus::Pending) {
                 throw new \RuntimeException('Wniosek nie jest już oczekujący.');
             }
-
-            $item = OrderItem::where('id', $extensionRequest->order_item_id)->lockForUpdate()->first();
 
             // Lock the Service row too — matches RentalAvailabilityService::createHold()'s
             // pattern and requestExtension() above. Without this, the forUpdate: true count
@@ -226,6 +244,11 @@ class RentalExtensionService
     public function reject(OrderItemExtensionRequest $extensionRequest, User $admin, string $reason): void
     {
         DB::transaction(function () use ($extensionRequest, $admin, $reason) {
+            $tenant = TenantFeature::currentTenant();
+            if ($tenant !== null && $tenant->id !== $extensionRequest->organization_id) {
+                abort(403);
+            }
+
             $extensionRequest = OrderItemExtensionRequest::where('id', $extensionRequest->id)->lockForUpdate()->first();
 
             if ($extensionRequest->status !== ExtensionRequestStatus::Pending) {

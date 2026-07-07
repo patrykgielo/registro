@@ -29,9 +29,10 @@ class RentalExtensionController extends Controller
         abort_unless($org !== null, 404);
         abort_unless($order->user_id === auth()->id() && $order->organization_id === $org->id, 403);
         abort_unless($orderItem->order_id === $order->id, 403);
+        abort_unless(in_array($order->status, ['paid', 'confirmed', 'in_progress'], true), 422);
 
         $request->validate([
-            'new_end_date' => ['required', 'date', 'after:'.$orderItem->end_date->toDateString()],
+            'new_end_date' => ['required', 'date', 'after:'.$orderItem->end_date->toDateString(), 'before:'.now()->addYears(2)->toDateString()],
         ]);
 
         $requestedEndDate = Carbon::parse($request->input('new_end_date'))->startOfDay();
@@ -64,7 +65,7 @@ class RentalExtensionController extends Controller
         abort_unless(in_array($order->status, ['paid', 'confirmed', 'in_progress'], true), 422);
 
         $validated = $request->validate([
-            'new_end_date' => ['required', 'date', 'after:'.$orderItem->end_date->toDateString()],
+            'new_end_date' => ['required', 'date', 'after:'.$orderItem->end_date->toDateString(), 'before:'.now()->addYears(2)->toDateString()],
             'customer_notes' => ['nullable', 'string', 'max:500'],
         ]);
 
