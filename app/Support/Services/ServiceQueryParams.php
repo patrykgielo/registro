@@ -13,7 +13,5 @@ class ServiceQueryParams
         public readonly array $exclude = [],
         public readonly string $orderBy = 'sort_order',
         public readonly int $limit = 0,
-        public readonly bool $withPagination = false,
-        public readonly int $perPage = 20,
     ) {}
 }

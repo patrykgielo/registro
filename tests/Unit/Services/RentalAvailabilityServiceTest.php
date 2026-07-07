@@ -284,4 +284,91 @@ class RentalAvailabilityServiceTest extends TestCase
 
         $this->assertEquals(0, $available);
     }
+
+    // -------------------------------------------------------------------------
+    // getMonthlyAvailability() — bulk calendar query, must mirror
+    // getAvailableQuantity()'s blockingAvailability() logic exactly (Bug fix
+    // 2026-07-07: hand-rolled whereHas() was missing the P24 grace period).
+    // -------------------------------------------------------------------------
+
+    public function test_monthly_availability_day_with_no_reservations_is_fully_available(): void
+    {
+        $result = $this->svc->getMonthlyAvailability($this->item, 2026, 5);
+
+        $this->assertSame(10, $result['2026-05-15']['available_quantity']);
+        $this->assertSame('available', $result['2026-05-15']['status']);
+    }
+
+    public function test_monthly_availability_day_blocked_by_paid_order(): void
+    {
+        $order = Order::factory()->paid()->create([
+            'organization_id' => $this->org->id,
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 4,
+            'start_date' => Carbon::parse('2026-05-10'),
+            'end_date' => Carbon::parse('2026-05-12'),
+        ]);
+
+        $result = $this->svc->getMonthlyAvailability($this->item, 2026, 5);
+
+        $this->assertSame(6, $result['2026-05-11']['available_quantity']);
+        $this->assertSame('partial', $result['2026-05-11']['status']);
+        // Outside the reserved range — untouched
+        $this->assertSame(10, $result['2026-05-20']['available_quantity']);
+    }
+
+    public function test_monthly_availability_day_blocked_by_pending_payment_order_within_p24_grace(): void
+    {
+        // expires_at already elapsed, but p24_token is set → still within
+        // Order::ttlGraceMinutes() → must still block (this is the fix for Bug 1).
+        $order = Order::factory()->create([
+            'organization_id' => $this->org->id,
+            'status' => 'pending_payment',
+            'p24_token' => 'test-p24-token-123',
+            'expires_at' => now()->subMinutes(5),
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 3,
+            'start_date' => Carbon::parse('2026-05-10'),
+            'end_date' => Carbon::parse('2026-05-12'),
+        ]);
+
+        $result = $this->svc->getMonthlyAvailability($this->item, 2026, 5);
+
+        $this->assertSame(7, $result['2026-05-11']['available_quantity']);
+        $this->assertSame('partial', $result['2026-05-11']['status']);
+    }
+
+    public function test_monthly_availability_day_not_blocked_by_genuinely_expired_pending_order(): void
+    {
+        // p24_token set, but expires_at is past even the grace period → free.
+        $graceMinutes = Order::ttlGraceMinutes();
+
+        $order = Order::factory()->create([
+            'organization_id' => $this->org->id,
+            'status' => 'pending_payment',
+            'p24_token' => 'test-p24-token-456',
+            'expires_at' => now()->subMinutes($graceMinutes + 10),
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 3,
+            'start_date' => Carbon::parse('2026-05-10'),
+            'end_date' => Carbon::parse('2026-05-12'),
+        ]);
+
+        $result = $this->svc->getMonthlyAvailability($this->item, 2026, 5);
+
+        $this->assertSame(10, $result['2026-05-11']['available_quantity']);
+        $this->assertSame('available', $result['2026-05-11']['status']);
+    }
 }

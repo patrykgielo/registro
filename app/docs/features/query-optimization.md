@@ -35,6 +35,15 @@ $reservedViaRentals = (int) $monthRentals
 
 **Uwaga:** `start_date`/`end_date` są rzutowane jako `'date'` (Carbon) w obu modelach — `->lte()` i `->gte()` działają poprawnie. NIE używaj `Collection->where('date', string)` — patrz `rules/services.md` bug Carbon 2026-05-10.
 
+**Fix 2026-07-07:** bulk `$monthOrderItems` query pierwotnie hand-rollowała własną logikę "które
+zamówienia blokują dostępność" przez `whereHas('order', ...)`, sprawdzając tylko
+`status IN ('paid','confirmed','in_progress')` OR `(pending_payment AND expires_at > now())`. To
+pomijało P24 grace-period (`Order::ttlGraceMinutes()`) dla zamówień z ustawionym `p24_token` —
+kalendarz mógł pokazać "dostępne" dla dnia wciąż blokowanego przez zamówienie z płatnością w locie.
+Naprawione przez podmianę na kanoniczny `OrderItem::scopeBlockingAvailability()` (ten sam scope,
+którego już używa `getAvailableQuantity()` powyżej) — `select()` qualifikowany jako
+`order_items.start_date/end_date/quantity`, bo scope robi realny `JOIN` na `orders`.
+
 ### 2. ServiceQueryParams — WP_Query equivalent
 
 **Nowy plik:** `app/Support/Services/ServiceQueryParams.php`
@@ -57,7 +66,12 @@ Service::filterBy(new ServiceQueryParams(
 - `exclude` — array ID do wykluczenia
 - `orderBy` — `'sort_order'` | `'price_asc'` | `'price_desc'` | `'newest'`
 - `limit` — `0` = bez limitu
-- `withPagination` / `perPage` — do użycia przez caller
+
+**Uwaga:** `withPagination`/`perPage` zostały usunięte (2026-07-07) — były martwym kodem, nigdy nie
+skonsumowanym przez `scopeFilterBy()`. Paginacja `ServiceController::index()` (patrz niżej) jest
+osobnym `->paginate(24)` na oddzielnym query, w ogóle nie przechodzącym przez `filterBy()`/DTO. Jeśli
+w przyszłości `filterBy()` zyska realnego callera potrzebującego paginacji, dodaj ją z powrotem wtedy
+— razem z tym callerem, nie jako "może się przyda".
 
 ### 3. Paginacja ServiceController
 

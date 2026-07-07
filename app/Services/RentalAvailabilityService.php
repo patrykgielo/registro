@@ -10,7 +10,6 @@ use App\Models\OrderItem;
 use App\Models\Rental;
 use App\Models\Service;
 use App\Support\TenantFeature;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -121,19 +120,12 @@ class RentalAvailabilityService
             ->select('start_date', 'end_date', 'quantity')
             ->get();
 
+        // Qualified columns — scopeBlockingAvailability() joins `orders` (see
+        // getAvailableQuantity() above, which mirrors this same pattern).
         $monthOrderItems = OrderItem::where('service_id', $service->id)
-            ->whereDate('start_date', '<=', $monthEnd)
-            ->whereDate('end_date', '>=', $monthStart)
-            ->whereHas('order', function (Builder $q) {
-                $q->where(function (Builder $inner) {
-                    $inner->whereIn('status', ['paid', 'confirmed', 'in_progress'])
-                        ->orWhere(function (Builder $pending) {
-                            $pending->where('status', 'pending_payment')
-                                ->where('expires_at', '>', now());
-                        });
-                });
-            })
-            ->select('start_date', 'end_date', 'quantity')
+            ->overlappingDates($monthStart, $monthEnd)
+            ->blockingAvailability()
+            ->select('order_items.start_date', 'order_items.end_date', 'order_items.quantity')
             ->get();
 
         $daysInMonth = $monthStart->daysInMonth;

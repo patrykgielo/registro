@@ -202,6 +202,10 @@ class Service extends Model
             ->when($params->orderBy === 'price_desc', fn ($q) => $q->orderByDesc('price_per_day')->orderByDesc('price'))
             ->when($params->orderBy === 'newest', fn ($q) => $q->latest())
             ->when($params->orderBy === 'sort_order', fn ($q) => $q->ordered())
+            ->when(
+                ! in_array($params->orderBy, ['price_asc', 'price_desc', 'newest', 'sort_order'], true),
+                fn ($q) => $q->ordered()
+            )
             ->when($params->limit > 0, fn ($q) => $q->limit($params->limit));
     }
 
