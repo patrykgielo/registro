@@ -52,6 +52,9 @@ enum TemplateKey: string
 
     // ── Rental lifecycle (Email only) ────────────────────────────
     case RENTAL_CANCELLED = 'rental-cancelled';
+    case RENTAL_EXTENSION_REQUESTED = 'rental-extension-requested';
+    case RENTAL_EXTENSION_APPROVED = 'rental-extension-approved';
+    case RENTAL_EXTENSION_REJECTED = 'rental-extension-rejected';
 
     // ── Admin (Email only) ───────────────────────────────────────
     case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
@@ -83,6 +86,9 @@ enum TemplateKey: string
             self::ORDER_CANCELLED => 'Zamówienie anulowane',
             self::ADMIN_NEW_ORDER => 'Nowe zamówienie (admin)',
             self::RENTAL_CANCELLED => 'Wypożyczenie anulowane',
+            self::RENTAL_EXTENSION_REQUESTED => 'Wniosek o przedłużenie (admin)',
+            self::RENTAL_EXTENSION_APPROVED => 'Przedłużenie zatwierdzone (klient)',
+            self::RENTAL_EXTENSION_REJECTED => 'Przedłużenie odrzucone (klient)',
             self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
             self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
         };

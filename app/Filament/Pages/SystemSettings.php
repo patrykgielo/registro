@@ -117,6 +117,7 @@ class SystemSettings extends Page implements HasForms
         'cms' => 'website',
         'integrations' => 'website',
         'checkout' => 'rentals',
+        'wypozyczalnia' => 'rentals',
     ];
 
     /**
@@ -305,6 +306,12 @@ class SystemSettings extends Page implements HasForms
                     'gtm_container_id' => ['nullable', 'string', 'max:20', 'regex:/^GTM-[A-Z0-9]+$/'],
                 ],
             ],
+            'rentals' => [
+                'label' => 'Ustawienia wypożyczalni',
+                'rules' => [
+                    'rental_extension_enabled' => ['nullable', 'boolean'],
+                ],
+            ],
         ];
     }
 
@@ -329,6 +336,7 @@ class SystemSettings extends Page implements HasForms
                         $this->cmsTab(),
                         $this->integrationsTab(),
                         $this->checkoutTab(),
+                        $this->rentalsTab(),
                         $this->accountClosureTab(),
                     ])
                     ->persistTabInQueryString('tab')
@@ -1448,6 +1456,44 @@ class SystemSettings extends Page implements HasForms
     public function saveCheckoutSettings(): void
     {
         $this->saveSettingsGroup('checkout');
+    }
+
+    /**
+     * Rentals settings tab.
+     */
+    private function rentalsTab(): Tabs\Tab
+    {
+        return Tabs\Tab::make('Wypożyczalnia')
+            ->id('wypozyczalnia')
+            ->key('wypozyczalnia')
+            ->visible(fn () => $this->isTabVisible('wypozyczalnia'))
+            ->icon('heroicon-o-arrow-path-rounded-square')
+            ->schema([
+                Section::make('Przedłużenie wypożyczenia')
+                    ->description('Pozwól klientom składać wnioski o przedłużenie aktywnych wypożyczeń. Każdy wniosek wymaga Twojego zatwierdzenia.')
+                    ->schema([
+                        Toggle::make('rentals.rental_extension_enabled')
+                            ->label('Zezwól na wnioski o przedłużenie')
+                            ->helperText('Gdy włączone, klienci zobaczą formularz przedłużenia w szczegółach zamówienia. Wyłącz, jeśli Twój kalendarz jest zbyt pełny na przyjmowanie dodatkowych wniosków.')
+                            ->default(false),
+                    ]),
+
+                \Filament\Schemas\Components\Actions::make([
+                    \Filament\Actions\Action::make('saveRentals')
+                        ->label('Zapisz ustawienia')
+                        ->action('saveRentalsSettings')
+                        ->color('primary')
+                        ->icon('heroicon-o-check'),
+                ])->columnSpanFull(),
+            ]);
+    }
+
+    /**
+     * Save rentals settings.
+     */
+    public function saveRentalsSettings(): void
+    {
+        $this->saveSettingsGroup('rentals');
     }
 
     /**
