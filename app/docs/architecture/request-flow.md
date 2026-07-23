@@ -45,7 +45,7 @@ sequenceDiagram
     MW->>Ctrl: submit(SubmitCheckoutRequest $request)
     Note over Ctrl: Body is ~5 delegations, no locking/pricing/validation logic itself
     Ctrl->>Ctrl: $org = TenantFeature::currentTenant()<br/>abort_unless($org !== null, 404)
-    Ctrl->>Cart: getOrCreateCart($org, auth()-&gt;user())
+    Ctrl->>Cart: getOrCreateCart($org, auth().user())
     Cart->>DB: SELECT ... FOR UPDATE (active cart, org+user scoped)
     DB-->>Cart: Cart
 
@@ -59,7 +59,7 @@ sequenceDiagram
     Cart-->>Ctrl: Order
 
     Ctrl->>P24Svc: registerTransaction($order)
-    P24Svc->>P24: transactions()-&gt;register(sessionId, amount, urlReturn, urlStatus)
+    P24Svc->>P24: transactions().register(sessionId, amount, urlReturn, urlStatus)
     P24-->>P24Svc: gatewayUrl + token
     P24Svc->>DB: UPDATE order (p24_session_id, p24_token, p24_amount)
     P24Svc-->>Ctrl: gatewayUrl
@@ -68,10 +68,10 @@ sequenceDiagram
         Note over Ctrl: Compensate — order already committed as pending_payment
         Ctrl->>OrderSvc: cancel($order, 'P24 registration failed', notify: false)
         Ctrl->>Cart: reactivate($cart)
-        Ctrl-->>Customer: redirect()-&gt;back()-&gt;withErrors(...)
+        Ctrl-->>Customer: redirect().back().withErrors(...)
     else success
         Ctrl->>Analytics: trackForCart($cart, 'checkout.submitted')
-        Note right of Analytics: dispatches IngestAnalyticsEventsJob<br/>-&gt;onQueue('analytics') — async, see below
+        Note right of Analytics: dispatches IngestAnalyticsEventsJob<br/>.onQueue('analytics') — async, see below
         Ctrl-->>Customer: redirect($paymentUrl)
     end
 ```
