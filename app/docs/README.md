@@ -50,6 +50,7 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 
 | Section | Lokalizacja | Opis |
 |---------|-------------|------|
+| **Architecture** | `architecture/` | Mermaid diagrams: panel/data isolation, infrastructure, tenant provisioning, request flow |
 | **Analytics** | `analytics/` | Tech reference + client guide dla systemu analitycznego |
 | **Features** | `features/` | Dokumentacja funkcjonalności |
 | **Guides** | `guides/` | How-to guides i best practices |
@@ -58,6 +59,20 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 | **Legal** | `legal/` | GDPR assessments (analytics-gdpr-lia.md) |
 | **Deployment** | `deployment/` | Deploy scripts, pre-deployment checks |
 | **Dependencies** | `dependencies.md` | External packages i wersje |
+
+### Architecture
+
+Mermaid diagrams, verified against current code — the reference set for "how does this actually
+work," not just "how was it designed to work." See also `guides/multi-tenancy-architecture.md`
+for the conceptual overview these deep-dive.
+
+| Diagram | Plik | Covers |
+|---------|------|--------|
+| Panel Isolation | `architecture/panel-isolation.md` | `/platform` vs `/admin` split, authorization layering, the boundary behind VULN-003 and the EditOrder PII leak |
+| Data Isolation | `architecture/data-isolation.md` | `organization_id` scoping end-to-end — `ResolveTenant` → `BelongsToOrganization` fail-closed scope |
+| Infrastructure | `architecture/infrastructure.md` | Docker Compose topology across dev/staging/prod, real drift between the 4 compose files |
+| Tenant Provisioning | `architecture/tenant-provisioning.md` | Signup → `CreateOrganizationWithOwner` → active tenant; automatic vs. manual `onboarding:seed-vertical` |
+| Request Flow | `architecture/request-flow.md` | Checkout sequence diagram (thin-controller pattern) + the sync/async queue boundary |
 
 ### Features
 

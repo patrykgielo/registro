@@ -4,6 +4,11 @@
 
 Registro uses subdomain-based multi-tenancy. Each `Organization` is a tenant with its own subdomain (`slug.registro.local`). All tenant-scoped data is automatically filtered via global query scopes.
 
+**See also:** this guide is the conceptual overview. For the enforced, code-level mechanics —
+middleware ordering, the global scope's fail-closed behavior, and the two panels' authorization
+boundary — see [`architecture/data-isolation.md`](../architecture/data-isolation.md) and
+[`architecture/panel-isolation.md`](../architecture/panel-isolation.md).
+
 ---
 
 ## Core Components
@@ -83,6 +88,29 @@ Request (Host: demo.registro.local)
   → Not found / inactive → redirect to root domain
 ```
 
+Same flow as a diagram — useful for spotting the two "fail-closed" exit points at a glance:
+
+```mermaid
+flowchart TD
+    Req["Request<br/>Host: demo.registro.local"]
+    Base{"Host == config('app.domain')?"}
+    RootPass["Root domain request<br/>no tenant, pass through"]
+    Slug["Extract slug<br/>(strip base domain suffix) → 'demo'"]
+    Valid{"Slug matches<br/>^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$ ?"}
+    Cache["Cache::remember('tenant:slug:demo', 300)<br/>→ Organization query"]
+    Found{"Organization found<br/>AND is_active?"}
+    SetAttr["request-&gt;attributes-&gt;set('tenant', $org)"]
+    Redirect["Redirect to root domain<br/>(null results never cached)"]
+
+    Req --> Base
+    Base -->|yes| RootPass
+    Base -->|no| Slug --> Valid
+    Valid -->|no| Redirect
+    Valid -->|yes| Cache --> Found
+    Found -->|yes| SetAttr
+    Found -->|no| Redirect
+```
+
 **Security:**
 - Strict regex validation prevents Host header injection
 - Fail-closed: unknown/inactive slugs redirect to root domain
@@ -148,6 +176,26 @@ Used in `BusinessRegisterController` for post-onboarding redirects and welcome s
 1. Explicit override  → settings.features.{feature}  (highest priority)
 2. Industry defaults  → $this->industry->defaultFeatures()
 3. booking_type defaults → FEATURE_DEFAULTS[booking_type]  (lowest priority)
+```
+
+`Organization::hasModule()` (see [Module System](#module-system-phase-6) below) resolves through
+the identical shape, just against a different settings key and default table — one diagram covers
+both:
+
+```mermaid
+flowchart TD
+    Check["hasFeature('vehicles') / hasModule('rentals')"]
+    L1{"settings.features.{x} /<br/>settings.modules.{x} explicitly set?"}
+    L1Val["Return explicit override value<br/>(even if false — wins unconditionally)"]
+    L2{"$this-&gt;industry set?"}
+    L2Val["Return industry-&gt;defaultFeatures()[x] /<br/>industry-&gt;defaultModules() contains x"]
+    L3["Return FEATURE_DEFAULTS[booking_type] /<br/>MODULE_DEFAULTS[booking_type]"]
+
+    Check --> L1
+    L1 -->|yes| L1Val
+    L1 -->|no| L2
+    L2 -->|yes| L2Val
+    L2 -->|no| L3
 ```
 
 **Level 1 — Explicit override:** Written by `enableFeature()` / `disableFeature()` into the `settings` JSON column. If set (even `false`), this wins unconditionally. Allows per-tenant customization.
