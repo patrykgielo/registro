@@ -334,6 +334,7 @@ this.$wire.set('data.field', value);
 - **[Project Map](./project_map.md)** - Complete system overview, domain model, relationships
 - **[Database Schema](./architecture/database-schema.md)** - ERD, tables, indexes
 - **[Technology Stack](./architecture/technology-stack.md)** - Complete technology stack with versions
+- **[Architecture Docs Portal](./guides/architecture-docs-portal.md)** - Self-hosted, always-current MkDocs + D2 site rendering this docs tree live at `http://localhost:8090`, with auto-rebuild on save
 
 ---
 

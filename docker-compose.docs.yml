@@ -1,0 +1,54 @@
+# Self-hosted architecture documentation portal (MkDocs + D2), fully separate
+# from the application's own docker-compose*.yml files. Does not touch or
+# depend on any service defined there.
+#
+# Usage:
+#   docker compose -f docker-compose.docs.yml up -d --build
+#   open http://localhost:8090
+#   docker compose -f docker-compose.docs.yml down
+#
+# See app/docs/guides/architecture-docs-portal.md for full documentation.
+#
+# IMPORTANT: explicit `name:` below keeps this in its own Compose project
+# namespace. Without it, Compose derives the project name from the current
+# directory ("app"), which collides with the main stack's project name and
+# makes it see registro-mysql/redis/horizon/etc. as "orphan containers" of
+# THIS file — a `down --remove-orphans` in that state could stop/remove the
+# real application stack. Confirmed via `docker compose -f
+# docker-compose.docs.yml up` before this fix was added (real warning, not
+# hypothetical) — see the dual-queue-worker incident in
+# .claude/rules/ci-cd-troubleshooting.md for why this class of mistake matters.
+name: registro-docs
+
+services:
+  docs-builder:
+    build: ./docs-site
+    volumes:
+      # Real docs tree, mounted at the container path the mkdocs.yml /
+      # build.sh / watch.sh scripts expect (/workspace/app/docs).
+      - ./docs:/workspace/app/docs
+      - ./docs-site:/workspace/docs-site
+      - docs_output:/workspace/docs-site/site
+    environment:
+      # Consumed by mkdocs.yml's `site_url: !ENV [DOCS_SITE_URL, ...]`. This is
+      # machine-specific (it must match the host:port you actually browse the
+      # portal on, incl. over VPN/Tailscale — a mismatch silently breaks the
+      # language switcher), so set it in the repo's gitignored .env rather than
+      # committing an address here. The default suits browsing from the same
+      # machine that runs the containers.
+      DOCS_SITE_URL: ${DOCS_SITE_URL:-http://localhost:8090/}
+    command: ["/workspace/docs-site/watch.sh"]
+    restart: unless-stopped
+
+  docs-nginx:
+    image: nginx:alpine
+    volumes:
+      - docs_output:/usr/share/nginx/html:ro
+    ports:
+      - "8090:80"
+    depends_on:
+      - docs-builder
+    restart: unless-stopped
+
+volumes:
+  docs_output:

@@ -1,0 +1,150 @@
+site_name: Registro — Architecture Docs
+site_description: Live, self-hosted architecture documentation portal for Registro
+# Must match the actual reachable URL, not just be a placeholder: Material's
+# client-side JS bakes this in as config.base and uses it (via sitemap.xml-
+# derived alternate-language links) to rewrite language-switcher navigation.
+# A mismatched site_url (e.g. localhost when you actually browse over a VPN
+# address) makes that rewrite silently no-op and the switcher lands on the
+# wrong port/host.
+#
+# Machine-specific, so it is NOT hardcoded here: set DOCS_SITE_URL in the
+# repo's .env (gitignored) to whatever host:port you actually open the portal
+# on, then restart the docs stack. The fallback below only works if you browse
+# from the same machine that runs the containers.
+site_url: !ENV [DOCS_SITE_URL, 'http://localhost:8090/']
+docs_dir: ../app/docs
+site_dir: site
+
+plugins:
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      languages:
+        - locale: pl
+          name: Polski
+          build: true
+          default: true
+          # The base `nav:` block below is written in English (it's also the
+          # `en` locale's nav as-is) — since pl is the default language, its
+          # sidebar labels need an explicit translation here or they render
+          # in English even on Polish pages.
+          nav_translations:
+            Home: Strona główna
+            Business: Biznes
+            Overview: Przegląd
+            Customer Journey — Booking (time_slot): Ścieżka klienta — Rezerwacja (time_slot)
+            Customer Journey — Rental (item_rental): Ścieżka klienta — Wypożyczenie (item_rental)
+            Customer Journey — Inquiry: Ścieżka klienta — Zapytanie
+            Cancellation (customer + admin): Anulowanie (klient + administrator)
+            Guest vs Authenticated: Gość a zalogowany
+            Purchase Process (funnel view): Proces zakupowy (widok lejka)
+            Onboarding & Registration: Onboarding i rejestracja
+            Admin Business Overview: Przegląd biznesowy administratora
+            Development: Rozwój
+            Database Schema: Schemat bazy danych
+            Status Machines: Maszyny stanów
+            Technology Stack: Stos technologiczny
+            User Model: Model użytkownika
+            "Panel Isolation (D2 diagram demo)": Izolacja paneli (demo diagramu D2)
+            Project Map: Mapa projektu
+        - locale: en
+          name: English
+          build: true
+  - search
+  - panzoom:
+      # Mermaid (.mermaid) and D2 (.d2) diagrams are covered by the plugin's
+      # own defaults; add plain <img> so the pre-rendered D2 SVGs (embedded
+      # as normal Markdown images, e.g. panel-isolation-d2-demo.md) also get
+      # click-to-zoom/pan/fullscreen, not just live-rendered Mermaid.
+      include_selectors:
+        - img
+      hint_location: bottom
+      full_screen: true
+      # Default "alt" gating never actually registers as held (confirmed via
+      # both real user interaction and automated testing) — Alt+scroll and
+      # Alt+drag silently no-op, which made tall diagrams unreachable past
+      # the fold in fullscreen (no way to pan down). Any value other than
+      # ctrl/shift/alt disables the modifier requirement in the plugin's own
+      # JS (mkdocs_panzoom_plugin/zoompan.js beforeWheel/beforeMouseDown),
+      # so plain scroll/drag always pans+zooms. Trade-off: hovering an
+      # inline (non-fullscreen) diagram now captures the scroll wheel too.
+      key: none
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: teal
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+  # Vendored locally (docs/assets/vendor/mermaid.min.js) — no CDN/runtime
+  # internet dependency, consistent with this portal's "fully self-hosted"
+  # design goal. UMD build (not ESM) so it loads via plain <script> tag.
+  - assets/vendor/mermaid.min.js
+
+nav:
+  - Home: README.md
+  - Business:
+      - Overview: business/README.md
+      - Customer Journey — Booking (time_slot): business/customer-journey-booking.md
+      - Customer Journey — Rental (item_rental): business/customer-journey-rental.md
+      - Customer Journey — Inquiry: business/customer-journey-inquiry.md
+      - Cancellation (customer + admin): business/customer-journey-cancellation.md
+      - Guest vs Authenticated: business/guest-vs-authenticated.md
+      - Purchase Process (funnel view): business/purchase-process.md
+      - Onboarding & Registration: business/onboarding-registration.md
+      - Admin Business Overview: business/admin-business-overview.md
+  - Development:
+      - Database Schema: architecture/database-schema.md
+      - Status Machines: architecture/status-machines.md
+      - Technology Stack: architecture/technology-stack.md
+      - User Model: architecture/user-model.md
+      - "Panel Isolation (D2 diagram demo)": architecture/panel-isolation-d2-demo.md
+  - Project Map: project_map.md
+
+# NOTE (feature/d2-mkdocs-docs-portal, 2026-07-30): feature/architecture-docs-panel-data-isolation
+# has now been merged — app/docs/architecture/{panel-isolation,data-isolation,infrastructure,
+# tenant-provisioning,request-flow}.md, app/docs/features/tenant-lifecycle.md, and an enhanced
+# app/docs/guides/multi-tenancy-architecture.md all exist for real now.
+#
+# They are STILL NOT in the Development nav above, and can't be added by just pointing at them:
+# this portal's docs_dir resolves (via docker-compose.docs.yml's `./docs:/workspace/app/docs`
+# bind mount) to the repo-ROOT `docs/` tree, which is a physically separate tree from the
+# Laravel-canonical `app/docs/` the branch just added content to. The new files also use relative
+# links (e.g. `../security/vulnerabilities/VULN-003-...`) that only resolve inside `app/docs/` —
+# copying them into root `docs/architecture/` as-is would silently break those links, since root
+# `docs/security/` is a stale, unrelated placeholder tree (see app/docs/deployment/
+# production-readiness-checklist.md §6, "Docs tree consolidation").
+#
+# That section lays out the real fix (relocate the portal's live content — business/, architecture/,
+# assets/ — into app/docs/ and repoint docs_dir there) as a decision for the user to make
+# explicitly, not something to do silently here. Until that decision lands, the 5 new pages are
+# readable in the repo/GitHub (app/docs/architecture/) but not in this self-hosted portal.
+#
+# `architecture/user-journeys.md` still exists on disk (untouched, historical)
+# but is intentionally NOT in this nav anymore — its content was ported,
+# split per-journey, and corrected into the Business section above
+# (business/customer-journey-*.md, business/guest-vs-authenticated.md,
+# business/purchase-process.md). Same for the business-flow parts of
+# `features/checkout-order-flow.md`, `features/payment-flow.md`,
+# `features/booking-wizard-flow.md`, `features/rental-flow.md`,
+# `features/auth-onboarding-flow.md`, `features/admin-panel-flows.md` — those
+# feature docs are untouched on disk but superseded in this portal's nav by
+# the Business section pages.
