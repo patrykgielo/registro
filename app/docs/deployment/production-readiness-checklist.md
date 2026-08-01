@@ -230,6 +230,28 @@ listens; 2 GB swap active; Docker log rotation in place.
   configured. Now merged with `jq` (backing up the previous file), preserving the provider's
   settings while adding rotation and `live-restore`.
 
+### Found by re-reading the diff before merge
+
+- [x] **`deploy-init.sh`'s certificate step had become a silent no-op.** It rewrote
+  `/etc/letsencrypt/live/DOMAIN` inside `app.prod.conf` — a file that, after the §1b split,
+  contains no `ssl_certificate` directive at all; the placeholder is now `CERT_DOMAIN` and lives
+  in `app.prod-tls.conf`. `sed` matched nothing and the script still printed "Nginx config
+  updated with domain". The same function also (a) served the ACME challenge from
+  `/var/www/certbot` while nginx serves it from `/var/www/letsencrypt`, (b) always requested
+  `www.$domain`, which fails the *entire* issuance for a technical hostname that has no `www`
+  record, and (c) went straight for a real certificate with no `--dry-run`, against a five-
+  failures-per-hour limit. All four fixed, and the function now also flips `NGINX_CONF` to the
+  TLS config once the certificate exists.
+
+### Known gap, deliberately not fixed
+
+- **`docker/nginx/staging/app.staging.conf` still hardcodes the predecessor's staging host** in
+  `server_name` and in both certificate paths — the same defect class fixed for production in
+  §1b. Not touched because no staging server exists and none is planned; `docker-compose.
+  staging.yml` was parameterised (`APP_URL`, `APP_DOMAIN`) so the compose side is ready. Whoever
+  stands staging up must apply the production split (HTTP config + TLS config + `NGINX_CONF`)
+  there too, or it will fail to start for exactly the reasons documented above.
+
 ### The AAAA record stays — the earlier recommendation to delete it was wrong
 
 `2a02:4780:c:fdab::1` is a real, working global address **on this machine**, with a default

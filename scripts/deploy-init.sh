@@ -193,37 +193,73 @@ setup_ssl_certificates() {
         fi
     fi
 
-    # Create webroot directory for ACME challenge
-    mkdir -p /var/www/certbot
+    # Webroot must be the directory nginx actually serves /.well-known from --
+    # docker-compose.prod.yml bind-mounts the host's /var/www/letsencrypt into
+    # the nginx container and both configs serve the challenge from there. The
+    # previous /var/www/certbot was served by nothing.
+    local webroot="/var/www/letsencrypt"
+    mkdir -p "$webroot"
 
-    # Start temporary Nginx for certificate validation
-    log "Starting temporary Nginx container for ACME challenge..."
-    docker run --rm -d \
-        --name temp-nginx \
-        -p 80:80 \
-        -v /var/www/certbot:/usr/share/nginx/html \
-        nginx:alpine
-
-    # Generate certificates
-    log "Generating SSL certificates..."
-    certbot certonly --webroot \
-        -w /var/www/certbot \
-        -d "$domain" \
-        -d "www.$domain" \
-        --email "admin@$domain" \
-        --agree-tos \
-        --no-eff-email \
-        --non-interactive
-
-    # Stop temporary Nginx
-    docker stop temp-nginx
-
-    # Update production Nginx config with actual domain
-    local nginx_config="${PROJECT_ROOT}/docker/nginx/production/app.prod.conf"
-    if [[ -f "$nginx_config" ]]; then
-        sed -i "s|/etc/letsencrypt/live/DOMAIN|/etc/letsencrypt/live/$domain|g" "$nginx_config"
-        success "Nginx config updated with domain: $domain"
+    # Only request www. if it actually resolves. Let's Encrypt fails the WHOLE
+    # request when any single name fails validation, and technical hostnames
+    # like srvNNNNN.hstgr.cloud have no www record.
+    local domains=(-d "$domain")
+    if host "www.$domain" >/dev/null 2>&1 || getent hosts "www.$domain" >/dev/null 2>&1; then
+        domains+=(-d "www.$domain")
+        log "www.$domain resolves -- including it in the certificate"
+    else
+        warn "www.$domain does not resolve -- requesting a single-name certificate"
     fi
+
+    local temp_nginx_started=false
+    if ! docker ps --format '{{.Names}}' | grep -qx registro-nginx; then
+        log "Starting temporary Nginx container for ACME challenge..."
+        docker run --rm -d --name temp-nginx -p 80:80 \
+            -v "${webroot}:/usr/share/nginx/html:ro" nginx:alpine >/dev/null
+        temp_nginx_started=true
+    else
+        log "Using the running registro-nginx to serve the ACME challenge"
+    fi
+
+    # Dry run FIRST, against the ACME staging server. Let's Encrypt allows five
+    # failed validations per hour per account; without this, one typo in nginx
+    # or DNS locks certificate issuance for the next 60 minutes.
+    log "Certbot dry run (ACME staging)..."
+    if ! certbot certonly --webroot -w "$webroot" "${domains[@]}" \
+        --email "admin@$domain" --agree-tos --no-eff-email --non-interactive --dry-run; then
+        [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
+        error "Certbot dry run failed -- NOT requesting a real certificate."
+        error "Fix DNS or the HTTP challenge path first; the rate limit is intact."
+        exit 1
+    fi
+    success "Dry run passed"
+
+    log "Requesting the real certificate..."
+    certbot certonly --webroot -w "$webroot" "${domains[@]}" \
+        --email "admin@$domain" --agree-tos --no-eff-email --non-interactive
+
+    [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
+
+    # The certificate path placeholder lives in the TLS config, not in
+    # app.prod.conf -- that one deliberately contains no ssl_certificate at all,
+    # so nginx can start before any certificate exists.
+    local tls_config="${PROJECT_ROOT}/docker/nginx/production/app.prod-tls.conf"
+    if [[ -f "$tls_config" ]]; then
+        sed -i "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${domain}/|g" "$tls_config"
+        success "TLS config points at /etc/letsencrypt/live/${domain}/"
+    else
+        error "$tls_config not found -- cannot wire up the certificate"
+        exit 1
+    fi
+
+    # Activate TLS by switching which config nginx mounts. Reversible: set this
+    # back to app.prod.conf and re-run `up -d nginx`.
+    if grep -q '^NGINX_CONF=' "$ENV_FILE" 2>/dev/null; then
+        sed -i 's|^NGINX_CONF=.*|NGINX_CONF=app.prod-tls.conf|' "$ENV_FILE"
+    else
+        echo "NGINX_CONF=app.prod-tls.conf" >> "$ENV_FILE"
+    fi
+    log "NGINX_CONF=app.prod-tls.conf written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
 
     success "SSL certificates generated successfully"
 }
