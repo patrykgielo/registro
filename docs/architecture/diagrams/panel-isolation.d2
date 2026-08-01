@@ -1,0 +1,119 @@
+# Panel Isolation — Registro Multi-Tenancy
+# Verified against: AdminPanelProvider.php, PlatformPanelProvider.php,
+# ResolveTenant.php, RequireTenant.php, BaseResource.php (2026-07)
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+title: |md
+  # Panel Isolation Architecture
+| {near: top-center}
+
+request: Incoming HTTP Request {
+  shape: oval
+  style.fill: "#E6F4F6"
+  style.stroke: "#3D8A94"
+}
+
+host_check: Host Resolution {
+  shape: diamond
+  style.fill: "#FFF3CD"
+  style.stroke: "#FF9500"
+  label: "{slug}.registro.local\nvs root domain?"
+}
+
+root_domain: Root Domain Path {
+  style.fill: "#F0F0F0"
+  style.stroke: "#666666"
+
+  marketplace: Marketplace / Public Site {
+    shape: rectangle
+  }
+
+  platform_panel: /platform Panel {
+    shape: rectangle
+    style.fill: "#E6F4F6"
+    style.stroke: "#3D8A94"
+    style.bold: true
+
+    ensure_super_admin: EnsureSuperAdmin\nMiddleware {
+      shape: hexagon
+      style.fill: "#FF3B30"
+      style.font-color: "#FFFFFF"
+    }
+
+    platform_resources: Platform Resources\n(no tenant scope,\nsees ALL organizations) {
+      shape: cylinder
+    }
+
+    ensure_super_admin -> platform_resources: "authorized"
+  }
+}
+
+tenant_domain: Tenant Subdomain Path {
+  style.fill: "#F0F0F0"
+  style.stroke: "#666666"
+
+  resolve_tenant: ResolveTenant\nMiddleware {
+    shape: hexagon
+    style.fill: "#4AA5B0"
+    style.font-color: "#FFFFFF"
+    tooltip: "Resolves Organization by slug, cache 5min TTL,\nsets request attribute tenant_resolution_attempted=true"
+  }
+
+  require_tenant: RequireTenant\nMiddleware {
+    shape: hexagon
+    style.fill: "#4AA5B0"
+    style.font-color: "#FFFFFF"
+    tooltip: "404 if no resolved tenant attribute present\n(fail-closed on root-domain admin access)"
+  }
+
+  admin_panel: /admin Panel {
+    shape: rectangle
+    style.fill: "#E6F4F6"
+    style.stroke: "#3D8A94"
+    style.bold: true
+
+    admin_maintenance: AdminMaintenanceCheck\nMiddleware {
+      shape: hexagon
+      style.fill: "#FF9500"
+    }
+
+    base_resource: BaseResource\n(module property gating +\nBelongsToOrganization scope) {
+      shape: cylinder
+    }
+
+    admin_maintenance -> base_resource: "authorized, org-scoped"
+  }
+
+  resolve_tenant -> require_tenant -> admin_panel
+}
+
+request -> host_check
+
+host_check -> root_domain.marketplace: "root domain,\nno tenant context"
+host_check -> root_domain.platform_panel: "root domain,\n/platform path"
+host_check -> tenant_domain.resolve_tenant: "{slug}.registro.local"
+
+unknown_subdomain: Unknown Subdomain {
+  shape: oval
+  style.fill: "#FFCDD2"
+  style.stroke: "#FF3B30"
+}
+
+host_check -> unknown_subdomain: "unrecognized slug\n(fail closed)"
+unknown_subdomain -> root_domain.marketplace: "redirect to root"
+
+note: |md
+  **Isolation guarantee:** platform resources never scope by organization
+  (super-admin sees everything); admin resources are always scoped via
+  `BelongsToOrganization` global scope + `$module` navigation gating.
+  `RequireTenant` MUST run after `ResolveTenant` in the middleware chain.
+| {
+  near: bottom-center
+  shape: text
+  style.font-size: 13
+}

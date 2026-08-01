@@ -2,8 +2,11 @@
 
 This document provides a comprehensive overview of all technologies used in the Registro project.
 
-**Last Updated**: 2025-11-11
-**Environment**: Staging VPS (72.60.17.138)
+**Last Updated**: 2026-07-30
+**Environment**: Not yet deployed. Target VPS is `srv1342834.hstgr.cloud` (76.13.76.104) —
+a **technical hostname, not a production domain**; substitute the real domain once one is
+chosen. This document was last refreshed ahead of that first deployment; see
+`app/docs/deployment/production-readiness-checklist.md` for what's still outstanding.
 
 ---
 
@@ -59,9 +62,10 @@ Registro is a modern Laravel application built with Docker containerization, fea
 
 ### PHP Runtime
 
-**PHP 8.2.29 with PHP-FPM**
+**PHP 8.3 with PHP-FPM**
 - **Container**: `registro-app`
-- **Base Image**: `php:8.2-fpm-alpine`
+- **Base Image**: `php:8.3-fpm` (Debian, not Alpine — required for Playwright/browser-testing
+  compatibility per `app/docs/decisions/ADR-013-docker-user-model.md`)
 - **Process Manager**: PHP-FPM (FastCGI Process Manager)
 - **Configuration**: `docker/php/php.ini`
 
@@ -141,7 +145,7 @@ opcache.enable = 1
 
 ## Admin Panel
 
-### Filament v4.2.3
+### Filament v4 (^4.11)
 
 **Purpose**: Modern admin panel built on Laravel and Livewire
 
@@ -185,7 +189,9 @@ app/Filament/
 
 **Container**: `registro-mysql`
 - **Image**: `mysql:8.0`
-- **Port**: 3306 (exposed for external tools)
+- **Port**: per `docker-compose.prod.yml`, **not published to the host at all** — reachable only
+  from other containers on the internal `registro-prod` bridge network. (Dev compose exposes
+  3306 to `0.0.0.0` for local tooling; never use the dev compose file on the public VPS.)
 - **Character Set**: `utf8mb4` / `utf8mb4_unicode_ci`
 - **Storage**: Docker volume `registro_mysql-data`
 
@@ -204,10 +210,9 @@ collation-server=utf8mb4_unicode_ci
 - `root` - Administrative access
 - `registro` - Application user (limited privileges)
 
-**Connection from Host**:
-```bash
-mysql -h 72.60.17.138 -u registro -p registro
-```
+**Connection from Host**: not directly reachable from outside the Docker network (see Port note
+above) — connect via `docker compose exec mysql mysql -u registro -p registro`, or an SSH tunnel
+if external access is genuinely needed.
 
 ---
 
@@ -217,9 +222,12 @@ mysql -h 72.60.17.138 -u registro -p registro
 
 **Container**: `registro-redis`
 - **Image**: `redis:7.2-alpine`
-- **Port**: 6379 (exposed)
+- **Port**: per `docker-compose.prod.yml`, **not published to the host** — internal network only,
+  same as MySQL above
 - **Persistence**: Disabled (cache only)
-- **Password**: Protected with strong password
+- **Password**: `--requirepass` set via `REDIS_PASSWORD`; must be identical on `app`, `horizon`,
+  and `scheduler` containers — a mismatch here was a real past incident (see
+  `app/docs/deployment/known-issues.md`)
 
 **Usage in Application**:
 ```
@@ -233,10 +241,8 @@ Session Driver:   redis (config/session.php)
 - DB 1: Sessions
 - DB 2: Queues
 
-**Connection from Host**:
-```bash
-redis-cli -h 72.60.17.138 -a <password>
-```
+**Connection from Host**: not directly reachable from outside the Docker network — use
+`docker compose exec redis redis-cli -a <password>`.
 
 ---
 
@@ -246,8 +252,11 @@ redis-cli -h 72.60.17.138 -a <password>
 
 **Container**: `registro-nginx`
 - **Image**: `nginx:1.25-alpine`
-- **Ports**: 80 (HTTP), 443 (HTTPS - ready, not configured)
-- **Configuration**: `docker/nginx/app.prod.conf`
+- **Ports**: 80 (HTTP), 443 (HTTPS)
+- **Configuration**: `docker/nginx/production/app.prod.conf` — note the actual path has a
+  `production/` subdirectory; `docker-compose.prod.yml` currently mounts the wrong flat path
+  (`docker/nginx/app.prod.conf`), a known bug tracked in
+  `app/docs/deployment/production-readiness-checklist.md`
 
 **Features**:
 - Reverse proxy to PHP-FPM
@@ -320,35 +329,38 @@ protected function schedule(Schedule $schedule)
 
 ## Containerization
 
-### Docker Engine 29.0.0
+### Docker Engine
 
 **Purpose**: Container runtime
-- **Installation**: Docker CE on Ubuntu 24.04
+- **Installation**: Docker CE on Ubuntu 24.04 (target VPS currently ships Docker CE 29.6.2 via
+  the hosting provider's base image — confirmed empty of containers/volumes/images after reset)
 - **Storage Driver**: overlay2
 - **Logging Driver**: json-file
 
-### Docker Compose 2.40.3
+### Docker Compose
 
 **Purpose**: Multi-container orchestration
 - **Configuration**: `docker-compose.prod.yml`
-- **Network**: `registro_network` (bridge)
+- **Network**: `registro-prod` (bridge) — `mysql`/`redis` have no `ports:` published to the host
+  on this network; only `nginx` exposes 80/443
 
-**Container Architecture**:
+**Container Architecture** (6 services, matches `docker-compose.prod.yml`):
 
 ```yaml
 Services:
-  app:          PHP-FPM application (port 9000)
-  nginx:        Web server (ports 80, 443)
-  mysql:        Database (port 3306)
-  redis:        Cache/Queue (port 6379)
+  app:          PHP-FPM application (internal only, no host port)
+  nginx:        Web server (ports 80, 443 — the only host-published ports)
+  mysql:        Database (internal only, no host port)
+  redis:        Cache/Queue (internal only, no host port)
   horizon:      Queue worker
   scheduler:    Task scheduler
 ```
 
-**Volumes**:
+**Volumes** (named Docker volumes, not host bind-mounts, per `docker-compose.prod.yml`):
 ```yaml
-registro_mysql-data:  MySQL persistent storage
-Application Code:      Bind mount from /var/www/registro
+mysql_data, redis_data:                          Database/cache persistent storage
+app_public, storage-app-public, storage-app-private,
+storage-framework, storage-logs:                 Shared Laravel storage/ across app+horizon+scheduler
 ```
 
 ---
@@ -358,11 +370,11 @@ Application Code:      Bind mount from /var/www/registro
 ### Operating System
 
 **Ubuntu 24.04 LTS (Noble Numbat)**
-- **Kernel**: Linux 6.14.0-1015-oem (custom)
 - **Architecture**: x86_64
-- **Memory**: 2GB RAM + 2GB Swap
-- **Hostname**: registro.local (old: srv1117368.hstgr.cloud)
-- **IP Address**: 72.60.17.138
+- **Target host**: `srv1342834.hstgr.cloud` / `76.13.76.104` — a fresh reset (no prior Registro
+  deployment), currently a bare OS with only a provider-preinstalled, empty Docker CE. RAM/CPU
+  sizing not yet confirmed for this specific box; verify with `free -h`/`nproc` before deploying
+  and consider a swapfile if RAM is 4GB or less (see `production-readiness-checklist.md`).
 
 ### Firewall
 
@@ -376,9 +388,11 @@ Application Code:      Bind mount from /var/www/registro
   ```
 
 **UFW-Docker Integration**
-- **Purpose**: Prevent Docker from bypassing firewall rules
-- **Implementation**: Custom ufw-docker script
-- **See**: [ADR-001-ufw-docker-security.md](decision_log/ADR-001-ufw-docker-security.md)
+- **Purpose**: Prevent Docker from bypassing firewall rules (Docker writes its own `DOCKER-USER`
+  iptables chain, which plain `ufw allow/deny` does not constrain)
+- **Implementation**: `ufw-docker` helper script
+- **See**: `app/docs/decisions/ADR-007-ufw-docker-security.md` — not yet installed on the target
+  VPS; tracked in `production-readiness-checklist.md`
 
 ### System Services
 
@@ -417,15 +431,17 @@ docker-compose -f docker-compose.prod.yml ps
 - **Guards**: `web` (session-based)
 - **Password Hashing**: Bcrypt (Laravel default)
 
-**Admin Credentials** (Temporary):
-- Email: admin@registro.com
-- Password: Admin123! (MUST BE CHANGED)
+**Admin Credentials**: created interactively during `deploy-init.sh`'s bootstrap step (or
+manually via `php artisan make:filament-user`) — never hardcode or document a real admin
+password in this file or anywhere else in the repo.
 
 ### Password Management
 
 **System Passwords**:
-- All passwords stored in `docs/environments/staging/03-CREDENTIALS.md`
-- Generated using secure random strings
+- Real secrets live only in the untracked `.env` on the server (and, temporarily, in an
+  encrypted local backup archive per `production-readiness-checklist.md` §3) — never committed,
+  never written into a doc
+- Generated using secure random strings (e.g. `openssl rand -base64 32`)
 - Minimum 32 characters for service passwords
 
 **Application Secrets**:
@@ -437,10 +453,12 @@ docker-compose -f docker-compose.prod.yml ps
 
 ### SSL/TLS
 
-**Status**: Not configured (pending)
-- **Tool**: Certbot (installed)
-- **Certificate**: Let's Encrypt
-- **See**: [07-NEXT-STEPS.md](../environments/staging/07-NEXT-STEPS.md)
+**Status**: Not yet provisioned on the target VPS (fresh reset). Pattern is designed and
+documented, just needs to be run against the real host once a domain is chosen.
+- **Tool**: Certbot (`certonly`, standalone for first issuance, webroot for renewal)
+- **Certificate**: Let's Encrypt, mounted read-only into the `nginx` container, with a
+  `renewal-hooks/deploy/` script that restarts nginx + a systemd timer for auto-renewal
+- **See**: `app/docs/decisions/ADR-014-ssl-https-configuration.md`
 
 ---
 
@@ -456,10 +474,10 @@ docker-compose -f docker-compose.prod.yml ps
 **Key Dependencies**:
 ```json
 {
-  "laravel/framework": "^12.0",
-  "filament/filament": "^3.0",
-  "livewire/livewire": "^3.0",
-  "laravel/horizon": "^5.0",
+  "laravel/framework": "^12.60",
+  "filament/filament": "^4.11",
+  "livewire/livewire": "^3.8",
+  "laravel/horizon": "^5.47",
   "laravel/sanctum": "^4.0"
 }
 ```
@@ -481,19 +499,22 @@ docker-compose -f docker-compose.prod.yml ps
 
 ### Application Storage
 
-**Current Configuration**:
-- **Driver**: `local` (filesystem)
+**Required Configuration**:
+- **Driver**: `FILESYSTEM_DISK=public` — **never `local`**; `local` breaks Filament file uploads,
+  per `.claude/rules/deployment.md` and `CLAUDE.md`
 - **Root**: `storage/app`
 - **Public Disk**: `storage/app/public` → symlinked to `public/storage`
 
 **Permissions**:
 ```bash
-Owner: ubuntu:ubuntu (1000:1000)
+Owner: laravel:laravel (1000:1000) — non-root container user, see
+       app/docs/decisions/ADR-013-docker-user-model.md
 Directories: 775
 Files: 664
 ```
 
-**Future Consideration**: AWS S3 or similar for scalability
+**S3-compatible storage**: supported and documented as optional in
+`app/docs/deployment/environment-variables.md`; not required for the initial deploy.
 
 ### Build Artifacts
 
@@ -501,7 +522,6 @@ Files: 664
 - **Location**: `public/.vite/`
 - **Manifest**: `public/.vite/manifest.json`
 - **Symlink**: `public/build/manifest.json` → `.vite/manifest.json`
-- **See**: [ADR-003-vite-manifest-symlink.md](decision_log/ADR-003-vite-manifest-symlink.md)
 
 ---
 
@@ -509,23 +529,14 @@ Files: 664
 
 ### Mail Driver
 
-**Current**: `log` (emails written to `storage/logs/laravel.log`)
+**Local/dev default**: `log` (emails written to `storage/logs/laravel.log`) / Mailpit
+(`docker-compose.yml`, `docker-compose.staging.yml`)
 
-**Pending**: Gmail SMTP
-- **Configuration**: Requires Gmail App Password
-- **See**: [07-NEXT-STEPS.md](../environments/staging/07-NEXT-STEPS.md)
-
-**Future Configuration** (example):
-```env
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=your-email@gmail.com
-MAIL_PASSWORD=your-app-password
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=noreply@registro.com
-MAIL_FROM_NAME="Registro"
-```
+**Production**: SMTP — no real provider decided yet for this deployment. A local, untracked
+`.env.production` on this machine uses a Gmail App Password, but that credential should be
+rotated and not reused as-is (see `production-readiness-checklist.md` §3); pick a real
+transactional-mail provider before go-live rather than relying on Gmail SMTP long-term.
+- **Env vars**: documented per-service in `app/docs/deployment/environment-variables.md`
 
 ---
 
@@ -587,35 +598,35 @@ docker-compose -f docker-compose.prod.yml logs -f nginx
 
 ## Backup Strategy
 
-**Status**: Not implemented (pending)
+**Status**: Not implemented on the target VPS yet (fresh host)
 
 **Recommended Approach**:
-- Daily MySQL dumps
-- Weekly full backups
-- Offsite storage (S3, Backblaze)
-- **See**: [07-NEXT-STEPS.md](../environments/staging/07-NEXT-STEPS.md)
+- Daily `pg_dump`-equivalent for MySQL (`mysqldump` or `docker exec ... mysqldump`) + `gzip`
+- Weekly full backups (DB + `.env` + any config drift)
+- Offsite storage (download to a machine outside the VPS — see the historical lesson in
+  `.claude/rules/ci-cd-troubleshooting.md` about a cron backup silently dying for 44 days
+  unnoticed on a different project's VPS; verify the cron actually still writes files, don't just
+  trust that it's configured)
 
 ---
 
 ## Version Information
 
-### Production Versions (as of 2025-11-11)
+### Versions (as of 2026-07-30, per `composer.json`/`Dockerfile`/`docker-compose.prod.yml` — no
+production instance exists yet to read live versions from)
 
 | Component | Version | Container/Location |
 |-----------|---------|-------------------|
-| Laravel | 12.32.5 | `registro-app` |
-| PHP | 8.2.29 | `registro-app` |
+| Laravel | ^12.60 | `registro-app` |
+| PHP | 8.3 | `registro-app` |
 | MySQL | 8.0 | `registro-mysql` |
 | Redis | 7.2 | `registro-redis` |
-| Nginx | 1.25.5 | `registro-nginx` |
-| Node.js | 20.19.5 | Build-time only |
-| Vite | 7.1.9 | Build-time only |
-| Filament | 4.2.3 | Application |
-| Livewire | 3.6.4 | Application |
+| Nginx | 1.25-alpine | `registro-nginx` |
+| Node.js | 20 (alpine) | Build-time only |
+| Filament | ^4.11 | Application |
+| Livewire | ^3.8 | Application |
 | Tailwind CSS | 4.0 | Build-time only |
-| Docker | 29.0.0 | Host system |
-| Docker Compose | 2.40.3 | Host system |
-| Ubuntu | 24.04 LTS | Host OS |
+| Ubuntu | 24.04 LTS | Target VPS host OS |
 
 ### Version Management
 
@@ -669,13 +680,21 @@ docker-compose -f docker-compose.prod.yml logs -f nginx
 
 ## Related Documentation
 
-- **Deployment Process**: [01-DEPLOYMENT-LOG.md](../environments/staging/01-DEPLOYMENT-LOG.md)
-- **Configuration Details**: [02-CONFIGURATIONS.md](../environments/staging/02-CONFIGURATIONS.md)
-- **Service Management**: [04-SERVICES.md](../environments/staging/04-SERVICES.md)
-- **Architecture Decisions**: [decision_log/README.md](decision_log/README.md)
+- **Production readiness / open gaps**: `app/docs/deployment/production-readiness-checklist.md`
+- **Past deployment incidents**: `app/docs/deployment/known-issues.md`,
+  `app/docs/deployment/deployment-history.md`
+- **Environment variables per service**: `app/docs/deployment/environment-variables.md`
+- **Multi-tenancy / panel architecture**: `app/docs/guides/multi-tenancy-architecture.md`,
+  `app/docs/architecture/panel-isolation.md`, `app/docs/architecture/data-isolation.md`
+- **Architecture Decisions**: `app/docs/decisions/`
+- **Security posture**: `app/docs/security/`
+
+*(The `docs/environments/staging/` and `decision_log/` paths previously linked here belonged to
+the decommissioned predecessor server and have moved to `docs/archive/`.)*
 
 ---
 
 **Document Owner**: Development Team
-**Last Review**: 2025-11-11
-**Next Review**: 2025-12-11 (quarterly)
+**Last Review**: 2026-07-30
+**Next Review**: before the first production deploy to `srv1342834.hstgr.cloud`, and quarterly
+thereafter

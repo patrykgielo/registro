@@ -16,3 +16,12 @@ fi
 if echo "$CHANGED" | grep -q '^composer\.lock$'; then
     echo "composer.lock changed. Run: docker compose exec app composer install"
 fi
+
+# --- OPTIONAL / BEST-EFFORT: architecture docs portal rebuild ---
+# If the docs-builder container (docker-compose.docs.yml) happens to be
+# running, trigger one rebuild pass so the portal reflects this merge
+# immediately instead of waiting for the next file-change event. Purely
+# best-effort: must NEVER fail or block the merge if the docs stack isn't
+# running (or docker-compose.docs.yml doesn't exist / docker isn't
+# available). See app/docs/guides/architecture-docs-portal.md.
+docker compose -f docker-compose.docs.yml exec -T docs-builder /workspace/docs-site/build.sh 2>/dev/null || true

@@ -44,6 +44,30 @@ The migration is additive and non-breaking. `is_active` is now a **fully derived
 - **5.4 (legal purge)** — hard-delete of legal records (orders/payments/rentals/tenant_payments) after `legal_records_years` (6) from `closed_at`. Requires dropping the RESTRICT FK before `forceDelete()`. See [§10](#10-follow-ups--technical-debt).
 - **5.5 / 5.7** — staff `null`-on-delete double-booking follow-up and DPO open questions (JDG REGON, `order_status_history.properties`, `customer_id` nulling). See [§10](#10-follow-ups--technical-debt).
 
+### `lifecycle_state` at a glance
+
+```mermaid
+stateDiagram-v2
+    [*] --> Active
+    Active --> Suspended : suspend (reversible)
+    Suspended --> Active : reactivate (reversible)
+    Active --> Closing : initiate closing
+    Suspended --> Closing : initiate closing
+    Closing --> Active : restore during grace (reversible)
+    Closing --> Closed : grace expired / confirmed (TERMINAL)
+    Closed --> [*]
+```
+
+Verified against `OrganizationLifecycleStateMachine::transitions()` (private method,
+`app/StateMachines/OrganizationLifecycleStateMachine.php:16-23`): every transition above is
+reversible except `Closing → Closed`, which is a one-way door — `Closed` has no outgoing
+transitions at all (`OrganizationLifecycleState::isTerminal()` returns `true` only for it). Note
+that `Closing` is reachable directly from `Suspended`, not only from `Active` — a suspended org
+does not need to pass back through `Active` before closing. Full per-state semantics
+(`allowsPublicSite()`, `allowsNewBookings()`), the transition map, and enforcement points are
+detailed in [§2 State machine](#2-state-machine) below — this diagram is a visual index into that
+section, not a replacement for it.
+
 ---
 
 ## Faza 5.4a — Graceful Offboarding (Backend)
