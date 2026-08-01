@@ -1,0 +1,296 @@
+#!/bin/bash
+###############################################################################
+# Registro production server bootstrap
+#
+# Prepares a bare Ubuntu 24.04 VPS to run Registro. Machine only -- it installs
+# no application, pulls no image, touches no database.
+#
+# Unlike setup-staging-server.sh (which drives a remote host over SSH from a
+# laptop), this runs ON the server, as root:
+#
+#   scp scripts/setup-production-server.sh scripts/server/deploy.sh root@HOST:/root/
+#   ssh root@HOST 'bash /root/setup-production-server.sh'
+#
+# Idempotent: safe to re-run. Every step checks its own end state first, so a
+# half-finished run can simply be repeated.
+#
+# Exit codes: 0 - ok, 1 - usage/environment error, 2 - verification failed
+###############################################################################
+
+set -euo pipefail
+
+readonly DEPLOY_USER="deploy"
+readonly PROJECT_DIR="/var/www/registro"
+readonly DEPLOY_SCRIPT_DIR="/opt/registro"
+readonly SWAP_FILE="/swapfile"
+readonly SWAP_SIZE_MB=2048
+readonly TIMEZONE="Europe/Warsaw"
+
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly RED='\033[0;31m'
+readonly NC='\033[0m'
+
+log()  { echo -e "${GREEN}[+]${NC} $*"; }
+warn() { echo -e "${YELLOW}[!]${NC} $*"; }
+die()  { echo -e "${RED}[x]${NC} $*" >&2; exit "${2:-1}"; }
+
+[ "$(id -u)" -eq 0 ] || die "run as root"
+[ -r /etc/os-release ] && . /etc/os-release
+[ "${ID:-}" = "ubuntu" ] || warn "not Ubuntu (${ID:-unknown}) -- proceeding anyway"
+
+###############################################################################
+log "System packages"
+###############################################################################
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get upgrade -y -qq
+apt-get install -y -qq \
+    ca-certificates curl wget git gnupg lsb-release unzip \
+    ufw htop vim certbot unattended-upgrades jq
+
+timedatectl set-timezone "$TIMEZONE"
+log "Timezone: $(timedatectl show -p Timezone --value)"
+
+# Security updates only, applied automatically. Reboots stay manual.
+cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+###############################################################################
+log "Swap (${SWAP_SIZE_MB} MB)"
+###############################################################################
+
+# A small VPS running MySQL + Redis + PHP-FPM + Horizon has no headroom.
+# Migrations and queue bursts are where the OOM killer usually shows up.
+if swapon --show --noheadings | grep -q .; then
+    log "Swap already active: $(swapon --show=NAME,SIZE --noheadings | tr '\n' ' ')"
+else
+    fallocate -l "${SWAP_SIZE_MB}M" "$SWAP_FILE" || dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$SWAP_SIZE_MB"
+    chmod 600 "$SWAP_FILE"
+    mkswap "$SWAP_FILE" >/dev/null
+    swapon "$SWAP_FILE"
+    grep -q "^${SWAP_FILE}" /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" >>/etc/fstab
+    log "Swap enabled"
+fi
+
+sysctl -q -w vm.swappiness=10
+grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >>/etc/sysctl.conf
+
+###############################################################################
+log "Docker"
+###############################################################################
+
+if ! command -v docker >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh
+    rm -f /tmp/get-docker.sh
+fi
+apt-get install -y -qq docker-compose-plugin
+systemctl enable --now docker
+
+# Without log rotation the JSON log files grow until the disk is full -- weeks,
+# not months. Merge rather than overwrite: cloud images ship their own
+# daemon.json (this VPS came with default-address-pools), so writing the file
+# wholesale would discard the provider's settings, while skipping it entirely
+# when the file exists would silently leave rotation unconfigured.
+mkdir -p /etc/docker
+DESIRED_DAEMON='{"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"3"},"live-restore":true}'
+
+if [ -s /etc/docker/daemon.json ]; then
+    current="$(cat /etc/docker/daemon.json)"
+else
+    current='{}'
+fi
+
+merged="$(jq -S --argjson want "$DESIRED_DAEMON" '. * $want' <<<"$current")" \
+    || die "/etc/docker/daemon.json is not valid JSON -- fix it by hand" 2
+
+if [ "$(jq -S . <<<"$current")" = "$merged" ]; then
+    log "Docker daemon.json already correct"
+else
+    cp /etc/docker/daemon.json "/etc/docker/daemon.json.bak-$(date +%s)" 2>/dev/null || true
+    printf '%s\n' "$merged" >/etc/docker/daemon.json
+    systemctl restart docker
+    log "Docker daemon.json updated (log rotation + live-restore), previous file backed up"
+fi
+
+docker --version
+docker compose version
+
+###############################################################################
+log "User: ${DEPLOY_USER}"
+###############################################################################
+
+if ! id -u "$DEPLOY_USER" >/dev/null 2>&1; then
+    adduser --disabled-password --gecos "" "$DEPLOY_USER"
+fi
+usermod -aG docker "$DEPLOY_USER"
+
+# Deliberately NOT in sudo. Membership in `docker` is already root-equivalent
+# (docker run -v /:/host), so adding sudo buys nothing and widens what a
+# compromised CI key reaches. Administration happens as root over a separate key.
+if id -nG "$DEPLOY_USER" | tr ' ' '\n' | grep -qx sudo; then
+    warn "${DEPLOY_USER} is in the sudo group -- remove it: deluser ${DEPLOY_USER} sudo"
+fi
+
+install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/${DEPLOY_USER}/.ssh"
+if [ ! -s "/home/${DEPLOY_USER}/.ssh/authorized_keys" ]; then
+    if [ -s /root/.ssh/authorized_keys ]; then
+        cp /root/.ssh/authorized_keys "/home/${DEPLOY_USER}/.ssh/authorized_keys"
+        chown "${DEPLOY_USER}:${DEPLOY_USER}" "/home/${DEPLOY_USER}/.ssh/authorized_keys"
+        chmod 600 "/home/${DEPLOY_USER}/.ssh/authorized_keys"
+        warn "Seeded ${DEPLOY_USER}'s authorized_keys from root's -- replace with the CI key"
+        warn "and prepend the forced command before wiring up GitHub Actions (see below)."
+    else
+        warn "No authorized_keys for ${DEPLOY_USER} -- add the CI key before deploying"
+    fi
+fi
+
+###############################################################################
+log "Directories"
+###############################################################################
+
+install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$PROJECT_DIR"
+install -d -m 755 -o root -g root "$DEPLOY_SCRIPT_DIR"
+
+# The forced-command target must not be writable by the account it constrains.
+if [ -f "$(dirname "$0")/server/deploy.sh" ]; then
+    install -m 755 -o root -g root "$(dirname "$0")/server/deploy.sh" "${DEPLOY_SCRIPT_DIR}/deploy.sh"
+    log "Installed ${DEPLOY_SCRIPT_DIR}/deploy.sh"
+elif [ -f /root/deploy.sh ]; then
+    install -m 755 -o root -g root /root/deploy.sh "${DEPLOY_SCRIPT_DIR}/deploy.sh"
+    log "Installed ${DEPLOY_SCRIPT_DIR}/deploy.sh from /root/deploy.sh"
+else
+    warn "deploy.sh not found -- copy scripts/server/deploy.sh to ${DEPLOY_SCRIPT_DIR}/deploy.sh manually"
+fi
+
+install -m 664 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /dev/null /var/log/registro-deploy.log 2>/dev/null || true
+install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/backups/registro
+
+###############################################################################
+log "SSH hardening"
+###############################################################################
+
+# The filename must sort FIRST, not last. sshd keeps the FIRST value it sees for
+# a keyword -- the opposite of nearly every other drop-in config system -- and
+# Ubuntu's cloud images ship /etc/ssh/sshd_config.d/50-cloud-init.conf containing
+# `PasswordAuthentication yes`. A file named 99-registro.conf is read after it
+# and is therefore completely inert: the box goes on accepting password logins
+# while the config file says otherwise. Observed on this exact server.
+rm -f /etc/ssh/sshd_config.d/99-registro.conf
+cat >/etc/ssh/sshd_config.d/00-registro.conf <<'EOF'
+PasswordAuthentication no
+PermitRootLogin prohibit-password
+KbdInteractiveAuthentication no
+X11Forwarding no
+MaxAuthTries 3
+EOF
+
+sshd -t || die "sshd config invalid -- NOT restarting sshd, fix /etc/ssh/sshd_config.d/00-registro.conf" 2
+systemctl reload ssh
+
+# Assert the value actually took effect rather than trusting that writing the
+# file was enough -- that assumption is what this whole block exists to correct.
+#
+# Deliberately not `sshd -T | grep -q ...`: under `set -o pipefail`, grep -q
+# exits on first match, sshd -T then dies of SIGPIPE (141), and the pipeline
+# reports failure precisely when the check SUCCEEDS. Command substitution reads
+# the whole stream, so nothing gets a broken pipe.
+effective_pwauth="$(sshd -T 2>/dev/null | awk '/^passwordauthentication/{print $2; exit}')"
+[ "$effective_pwauth" = "no" ] \
+    || die "PasswordAuthentication is '${effective_pwauth:-unknown}' -- another sshd_config.d file sorts before 00-registro.conf" 2
+log "SSH: password auth disabled, root login key-only"
+
+###############################################################################
+log "Firewall"
+###############################################################################
+
+# This host publishes an AAAA record and serves over IPv6, so the firewall must
+# cover it. Ubuntu ships IPV6=yes, but an inherited /etc/default/ufw may not --
+# and with it off, ufw silently protects only half the attack surface.
+if grep -q '^IPV6=no' /etc/default/ufw 2>/dev/null; then
+    sed -i 's/^IPV6=no/IPV6=yes/' /etc/default/ufw
+    warn "Enabled IPV6=yes in /etc/default/ufw"
+fi
+
+ufw --force reset >/dev/null
+ufw default deny incoming >/dev/null
+ufw default allow outgoing >/dev/null
+ufw allow 22/tcp >/dev/null
+ufw allow 80/tcp >/dev/null
+ufw allow 443/tcp >/dev/null
+ufw --force enable >/dev/null
+
+# Plain ufw does not cover ports Docker publishes: Docker inserts its own rules
+# into the DOCKER-USER chain, ahead of ufw's. Without ufw-docker, a published
+# 3306 is reachable from the internet with ufw reporting "deny incoming".
+if [ ! -x /usr/local/bin/ufw-docker ]; then
+    wget -q -O /usr/local/bin/ufw-docker \
+        https://github.com/chaifeng/ufw-docker/raw/master/ufw-docker
+    chmod +x /usr/local/bin/ufw-docker
+fi
+/usr/local/bin/ufw-docker install >/dev/null
+systemctl restart ufw
+ufw status verbose
+
+###############################################################################
+log "Verification"
+###############################################################################
+
+fail=0
+# NOTE: never use `grep -q` inside these expressions. This script runs under
+# `set -o pipefail`, and grep -q closes the pipe on first match, so the upstream
+# command dies of SIGPIPE and the pipeline reports failure on a PASSING check.
+# Plain grep reads the whole stream; the redirect below discards its output.
+check() {
+    if eval "$2" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}ok${NC}   $1"
+    else
+        echo -e "  ${RED}FAIL${NC} $1"
+        fail=1
+    fi
+}
+
+check "docker runs"                       "docker run --rm hello-world"
+check "${DEPLOY_USER} can use docker"     "su - ${DEPLOY_USER} -c 'docker ps'"
+check "${PROJECT_DIR} owned by ${DEPLOY_USER}" "[ \"\$(stat -c %U ${PROJECT_DIR})\" = ${DEPLOY_USER} ]"
+check "deploy.sh installed root:root"     "[ \"\$(stat -c '%U:%a' ${DEPLOY_SCRIPT_DIR}/deploy.sh)\" = 'root:755' ]"
+check "deploy.sh not writable by ${DEPLOY_USER}" "! su - ${DEPLOY_USER} -c 'test -w ${DEPLOY_SCRIPT_DIR}/deploy.sh'"
+check "swap active"                       "swapon --show --noheadings | grep ."
+check "ufw active"                        "ufw status | grep 'Status: active'"
+check "ufw covers IPv6"                   "grep '^IPV6=yes' /etc/default/ufw"
+check "password auth disabled"            "[ \"\$(sshd -T 2>/dev/null | awk '/^passwordauthentication/{print \$2; exit}')\" = no ]"
+# Certbot's HTTP-01 challenge resolves AAAA first and never falls back to IPv4.
+# If this host has a global IPv6 address, the stack must be reachable over it or
+# certificate issuance fails against a site that otherwise works fine.
+check "global IPv6 address present"       "ip -6 addr show scope global | grep inet6"
+check "IPv6 default route present"        "ip -6 route show default | grep default"
+
+echo ""
+if [ "$fail" -ne 0 ]; then
+    die "verification failed -- fix the items above before deploying" 2
+fi
+
+cat <<EOF
+
+$(log "Server ready. Remaining manual steps:")
+
+  1. Replace ${DEPLOY_USER}'s authorized_keys with the CI key, prefixed by the
+     forced command (one line, no wrapping):
+
+       command="${DEPLOY_SCRIPT_DIR}/deploy.sh",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,restrict ssh-ed25519 AAAA... ci@github
+
+  2. As ${DEPLOY_USER}, log in to GHCR once so deploys need no token:
+       su - ${DEPLOY_USER} -c 'docker login ghcr.io -u <user> --password-stdin'
+
+  3. git clone the repository into ${PROJECT_DIR} as ${DEPLOY_USER}, then
+     create .env from .env.production.example and run:
+       ./scripts/validate-env.sh production
+
+  4. Verify nothing but 22/80/443 is reachable once the stack is up:
+       ss -tlnp && docker ps --format '{{.Names}} {{.Ports}}'
+
+EOF

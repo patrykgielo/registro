@@ -1,8 +1,11 @@
 # Production Readiness Checklist — First Deploy to `srv1342834.hstgr.cloud`
 
-**Status**: Report/checklist only. Nothing in this document has been executed — items are
-flagged for manual fix before (or shortly after) the first real deploy. See
-`~/.claude/plans/no-tak-z-innej-scalable-meadow.md` for the full analysis behind this list.
+**Status (2026-08-01)**: §1 fixed in code, §1b found and fixed by the local dress rehearsal
+(Phase 2), §2 executed on the VPS (Phase 3). §3–§8 remain open. The machine is bootstrapped;
+**the application has never run on it** — no clone, no `.env`, no image pulled, and
+`/opt/registro/deploy.sh` has still never been executed. That is Phase 4. Plan:
+`~/.claude/plans/vps-bootstrap-registro-first-deploy.md`; original analysis:
+`~/.claude/plans/no-tak-z-innej-scalable-meadow.md`.
 
 **Context**: VPS `76.13.76.104` (`srv1342834.hstgr.cloud`) was reset to a clean Ubuntu 24.04 and
 is now dedicated to Registro (a prior, unrelated project was wiped off it). This will be
@@ -19,32 +22,51 @@ acceptable for now.
 
 ---
 
-## 1. Blocking infra bugs — fix before running any deploy script
+## 1. Blocking infra bugs — FIXED 2026-08-01 (`feature/deploy-infra-fixes`)
 
-- [ ] **nginx config path mismatch.** `docker-compose.prod.yml` and `docker-compose.staging.yml`
+Fourteen bugs, not the nine originally listed: five more surfaced while fixing the first nine, and
+one listed item turned out to be a false alarm. Each entry keeps its original description so the
+diff is reviewable against what was actually claimed.
+
+- [x] **nginx config path mismatch.** `docker-compose.prod.yml` and `docker-compose.staging.yml`
   mount `./docker/nginx/app.{prod,staging}.conf`; the real files are at
   `docker/nginx/{production,staging}/app.{prod,staging}.conf`. Same wrong path is baked into
   `scripts/deploy-init.sh` (line 222) and the `curl` steps in
   `.github/workflows/deploy-production.yml` / `ci-staging.yml`. As committed, any of these will
   either fail to mount a config or write a 404 page into nginx's conf.
-- [ ] **`scripts/deploy-with-healthcheck.sh` references undefined `$VERSION`** under `set -euo
+- [x] **`scripts/deploy-with-healthcheck.sh` references undefined `$VERSION`** under `set -euo
   pipefail` — running it with no arguments aborts immediately ("unbound variable") unless the
   caller exports `VERSION` first, which isn't documented anywhere in the script's own usage text.
-- [ ] **`scripts/deploy-init.sh` seeds `ServiceAvailabilitySeeder`**, which does not exist in
+- [x] **`scripts/deploy-init.sh` seeds `ServiceAvailabilitySeeder`**, which does not exist in
   `database/seeders/` (only `ServiceAreaSeeder` and `ServiceSeeder` do) — this step will fail.
-- [ ] **Inconsistent hardcoded project paths across scripts.** `deploy.sh` and
-  `deploy-with-healthcheck.sh` assume `/var/www/registro`; `deploy-init.sh`/`deploy-update.sh`
-  self-derive from the script's own location. Pick one convention and align all four before first
-  use — decide what the real path on the new VPS will be first.
-- [ ] **`.env.production.example` and `.env.local.example` are not git-tracked** (the `.gitignore`
+- [x] **`deploy-init.sh` and `deploy-update.sh` derive the project root one directory too high.**
+  `deploy-init.sh:43-44` and `deploy-update.sh:50-51` set `SCRIPT_DIR` to the directory containing
+  the script — `<repo>/scripts` — and then assign `PROJECT_ROOT="$SCRIPT_DIR"` with no `dirname`.
+  Invoked the documented way (`./scripts/deploy-init.sh`, per its own line 9), both look for
+  `docker-compose.prod.yml`, `.env` and `.env.production.example` inside `<repo>/scripts/` and abort
+  immediately. This is not merely "an inconsistent convention" — this convention is broken outright.
+  Fix: `PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"`.
+- [x] **Align every script on the agreed path.** Decision (2026-08-01): the repo lives at
+  **`/var/www/registro`**. `deploy.sh:31`, `setup-staging-server.sh:33` and
+  `deploy-production.yml:194` already use it; the two scripts above must be fixed to resolve to the
+  same place. Note that `/opt/registro/deploy.sh` — the root-owned forced-command target from §8 —
+  deliberately sits *outside* the repo: if it were writable by the deploy user, the forced-command
+  restriction would protect nothing.
+- [x] **`setup-staging-server.sh` creates a user named `ubuntu`** (line 187, plus the `chown` at
+  line 206). Decision (2026-08-01): the service account is **`deploy`** — key-only, no password, in
+  the `docker` group. Rename in the script when adapting it for production, and set the GitHub
+  `VPS_USER` secret to match. Be explicit about what group membership means: `docker` is
+  root-equivalent, so a shell as `deploy` is a shell as root. That is the reason the forced-command
+  work in §8 matters — it exists to prevent obtaining that shell in the first place.
+- [x] **`.env.production.example` and `.env.local.example` are not git-tracked** (the `.gitignore`
   pattern for `.env*` has no carve-out for them, unlike `.env.example`/`.env.staging.example`) —
   a fresh `git clone` on the new VPS won't have the file `deploy-init.sh` depends on. Either
   track them or have `deploy-init.sh` generate its own template.
-- [ ] **`scripts/setup-staging-server.sh` step 7 runs `php artisan db:seed --force`** — this
+- [x] **`scripts/setup-staging-server.sh` step 7 runs `php artisan db:seed --force`** — this
   directly violates the project's own rule (`.claude/rules/deployment.md`: "NIGDY: `db:seed` w
   deploy scripts — nadpisuje dane admina"). Remove or gate it before reusing this script as a
   template for a production bootstrap script.
-- [ ] **Image tag is hardcoded to `:latest`, which makes rollback impossible without editing files
+- [x] **Image tag is hardcoded to `:latest`, which makes rollback impossible without editing files
   on the live server.** `docker-compose.prod.yml:3,132,183` (`app`, `horizon`, `scheduler`) all pin
   `ghcr.io/patrykgielo/registro:latest`; `docker-compose.staging.yml:11,155,202` does the same with
   `:develop`. The build job (`deploy-production.yml:156-163`) *does* push an immutable
@@ -55,20 +77,199 @@ acceptable for now.
   `REGISTRO_VERSION` in the server's `.env`, so rollback becomes
   `REGISTRO_VERSION=<previous-tag> docker compose -f docker-compose.prod.yml up -d` — no build, no
   GitHub, no runner. See §8.
-- [ ] **No `setup-production-server.sh` exists.** Only staging has a from-scratch VPS bootstrap
+- [x] **No `setup-production-server.sh` exists.** Only staging has a from-scratch VPS bootstrap
   script (Docker install, `ufw`/`ufw-docker`, user creation, certbot). Adapt it for production —
   fixing the `db:seed` issue above in the process — before using it on `srv1342834.hstgr.cloud`.
+- [x] **The deploy step sent a 70-line shell script over SSH** (`deploy-production.yml:186-256`,
+  `ssh … 'bash -s' << 'DEPLOY_SCRIPT'`). That makes the CI key a run-anything-as-`deploy` key, and
+  `deploy` is in the `docker` group — i.e. root. Replaced by a single
+  `ssh deploy@host "deploy <tag>"` against `/opt/registro/deploy.sh`, whose source lives at
+  `scripts/server/deploy.sh` and which is installed root-owned, outside the repo. The script
+  re-validates its own arguments out of `SSH_ORIGINAL_COMMAND` rather than trusting the caller.
 
-## 2. Network / firewall
+### Found while fixing the above
 
-- [ ] Install **`ufw-docker`**, not just plain `ufw` — Docker writes its own `DOCKER-USER` chain
+- [x] **`composer install --optimize-autoloader --no-dev` ran on every production deploy**
+  (`deploy-production.yml:245`), inside a container whose image already ships a built `vendor/`.
+  It made each deploy depend on packagist being up, opened a supply-chain window at the worst
+  possible moment, and wrote into a container layer that the next `up -d --force-recreate`
+  discards — so the box silently drifted from the image it claimed to run. Removed.
+- [x] **Deploy `curl`-ed `docker-compose.prod.yml` and the nginx config from
+  `raw.githubusercontent.com`** using `secrets.GITHUB_TOKEN` (`deploy-production.yml:200-209`,
+  `ci-staging.yml:210-217`). The repo is private and that endpoint is not the API — the token is
+  not reliable there. It also overwrote tracked files inside what is otherwise a git working tree.
+  Both replaced with `git fetch --tags` + `git checkout <tag>`: one source of truth, no token.
+- [x] **`workflow_dispatch` had no `version` input**, while the build job derived the tag from
+  `${GITHUB_REF#refs/tags/}`. Triggered manually (the only trigger this workflow has), that yields
+  a *branch name* as the image tag. Added a required `version` input, validated against
+  `vMAJOR.MINOR.PATCH` and checked for existence before anything is built, with both `checkout`
+  steps pinned to that tag rather than to the dispatch branch.
+- [x] **`scripts/validate-env.sh` never read `.env`.** Every check reads shell variables, and the
+  script sources nothing — so the documented `./scripts/validate-env.sh production` validated an
+  empty environment and reported all variables missing. Exactly backwards from its purpose, and it
+  is the gate that is supposed to run *before* the first `up`. Now loads `.env` (overridable via
+  `ENV_FILE`) and fails loudly when the file is absent.
+- [x] **Three scripts ran `docker compose build` against compose files that declare no build
+  context** (`deploy-init.sh:242`, `deploy.sh:190,250`, `setup-staging-server.sh:338`). The
+  production and staging images come from GHCR; `build` there fails outright. Changed to `pull`.
+- [x] **`scripts/backup-maintenance.sh` printed an "Emergency Rollback" runbook telling the
+  operator to run a destructive migration command** (`migrate:` + `fresh --seed`) on production —
+  the exact operation `.claude/rules/deployment.md` forbids, handed to a human at their most
+  stressed. Rewritten to the tag-repin rollback, with an explicit warning that rolling the image
+  back does not roll the schema back.
+- [x] **`deploy-init.sh` seeded `VehicleTypeSeeder`** — a leftover from the automotive project this
+  infrastructure was inherited from, with no meaning in Registro. Dropped; the three genuine
+  bootstrap seeders (`RolePermissionSeeder`, `SettingSeeder`, `EmailTemplateSeeder`) remain.
+- [x] **`.env.production.example` was missing variables `docker-compose.prod.yml` requires** —
+  `DB_ROOT_PASSWORD`, `REGISTRO_VERSION`, `SMSAPI_*`. Filled in, with `APP_URL` pointed at the
+  technical host and comments on the three settings that fail silently when wrong
+  (`REDIS_PASSWORD` mismatch, `FILESYSTEM_DISK`, `SESSION_DOMAIN`).
+
+### False alarm
+
+- The `db:seed --force` calls in `deploy-production.yml:97` and `ci-staging.yml:101` are **correct
+  and must stay**. They run in the `test` job on `ubuntu-latest` against a throwaway
+  `registro_test` database. The deployment rule they appeared to violate is about deploy scripts,
+  not CI. Only `setup-staging-server.sh` had a real violation.
+
+### Not fixed here, deliberately
+
+- **Migrations run against live traffic.** `up -d --force-recreate` brings new containers up
+  *before* migrations, and nothing puts the app into maintenance mode. `scripts/server/deploy.sh`
+  now wraps migrations in `artisan down`/`up`, but the ordering question (start containers, then
+  migrate) is a design decision worth revisiting once there is real traffic. With zero customers
+  it is harmless. See Phase 6 of the bootstrap plan.
+- **Four overlapping deploy scripts still exist** — `deploy.sh`, `deploy-update.sh`,
+  `deploy-with-healthcheck.sh`, and now `server/deploy.sh`. All four are individually correct
+  after this pass, but "which one do I run at 2am" is its own failure mode. Consolidating to one
+  is a follow-up decision, not a bug fix.
+
+## 1b. Found by the local dress rehearsal (Phase 2, 2026-08-01)
+
+Phase 2 ran `docker-compose.prod.yml` against the real production image on a laptop, from an
+empty state, layer by layer. It surfaced six more defects — four of which would have taken the
+first VPS bring-up down outright, and one of which would have left the site technically "up" and
+completely unusable. This is what the phase exists for.
+
+- [x] **`docker/nginx/production/app.prod.conf` could not have started at all, and would have
+  been wrong if it had.** Every HTTPS block referenced
+  `/etc/letsencrypt/live/{registro.local,srv1117368.hstgr.cloud}/…` — certificates for the *local
+  dev domain* and the *predecessor project's host*. nginx refuses to start when a referenced
+  certificate is missing, so the first bring-up on a fresh VPS dies immediately. Worse, the
+  `:80` block 301-redirected everything to `https://registro.local`, so even a running stack
+  would have bounced every visitor to a hostname that does not exist. Replaced with a two-file
+  scheme: `app.prod.conf` (HTTP, no certificates, catch-all `server_name`) is the default, and
+  `app.prod-tls.conf` is switched in via `NGINX_CONF` in `.env` once certbot has succeeded —
+  reversible with the same one-line edit. Both now also listen on IPv6.
+- [x] **`APP_DOMAIN` was set nowhere** — absent from `.env.production.example` and from all three
+  `environment:` blocks — so it fell back to `registro.local` (`config/app.php:68`). This is the
+  value `ResolveTenant` derives every tenant subdomain from; on the VPS it would have resolved no
+  tenant for any host and redirected every root-domain visitor to `http://registro.local/`. The
+  rehearsal caught it as a 302 to a nonexistent host on the very first request to `/`. Added to
+  the example (with the reasoning) and to prod and staging compose.
+- [x] **The entrypoint ran `migrate --force` on every container start.** `app`, `horizon` and
+  `scheduler` share one image and start concurrently, so every deploy and every reboot raced
+  three migrators against one database, before any maintenance mode, and the failure was
+  swallowed (`"container will start anyway"`) — leaving a container serving traffic against a
+  half-migrated schema with nothing failing loudly. Migrations now have exactly one owner:
+  `/opt/registro/deploy.sh`, which wraps them in `artisan down` and aborts on failure. Verified:
+  the rehearsal asserts the entrypoint does *not* migrate.
+- [x] **`scripts/validate-env.sh` aborted after its first check.** Under `set -euo pipefail`,
+  `((CHECKS++))` returns 1 when `CHECKS` is 0, and the `check_var_*` helpers return 1 by design
+  when a variable is missing — so `set -e` killed the run at the first `pass` and again at the
+  first real failure. Combined with the §1 finding that it never read `.env` at all, this gate
+  has never once done its job. Counters are plain arithmetic now and `-e` is off, which is
+  correct for a script that accumulates errors and exits on the total.
+- [x] **`scripts/verify-deployment.sh` had the identical counter bug** (`((MISSING_COUNT++))`),
+  so it would abort on the first missing file instead of reporting the list — the exact failure
+  mode the script was written to catch.
+- [x] **`.env.production.example` drifted from what the containers actually run:**
+  `SESSION_DRIVER=database` vs `redis`, `SESSION_SAME_SITE=strict` vs `lax`, `LOG_STACK=single`
+  vs `daily`. Because compose `environment:` beats `.env`, editing those keys on the server does
+  nothing — a genuinely confusing trap. Aligned, with a comment naming the keys that compose pins.
+
+**Phase 2 exit condition met:** two consecutive clean runs from an empty state, 26/26 assertions,
+with no changes between them. Covered: layered bring-up and health, 127 migrations on an empty
+database, volume writability as `laravel:1000`, Redis reachability, Horizon as sole consumer
+processing a real job end-to-end, scheduler ticking, HTTP 200 on `/` and `/up`, built assets
+served, `/.env` refused, no orphan containers.
+
+**What the rehearsal did NOT cover** — do not read the above as "the deploy works":
+`scripts/server/deploy.sh` and `scripts/setup-production-server.sh` have still never been
+executed. Every *command* deploy.sh issues has now been exercised in the same order by hand, but
+its own orchestration (git checkout of a tag, GHCR pull, lock handling, rollback path) has not.
+It runs for the first time in Phase 4. Nothing has been pushed to GHCR either — the image exists
+only on this laptop.
+
+## 2. Network / firewall — DONE 2026-08-01 (executed on the VPS)
+
+`scripts/setup-production-server.sh` ran on `76.13.76.104` and passed 11/11 self-checks on two
+consecutive runs, confirming idempotency. Verified independently afterwards, not taken from the
+script's own report: `deploy` logs in by key and is in `docker` but **not** `sudo`; password
+auth is genuinely refused (`Permission denied (publickey)`); `/opt/registro/deploy.sh` is
+`root:root 755` and unwritable by `deploy`; `/var/www/registro` is `deploy:deploy`; only port 22
+listens; 2 GB swap active; Docker log rotation in place.
+
+### Three defects the execution exposed
+
+- **SSH hardening was inert, and the box was accepting password logins.** `sshd` uses the
+  **first** value it sees for a keyword — the opposite of almost every other drop-in config
+  system — and files in `/etc/ssh/sshd_config.d/` are read in alphabetical order. Ubuntu's cloud
+  image ships `50-cloud-init.conf` with `PasswordAuthentication yes`, so a hardening file named
+  `99-registro.conf` (the intuitive choice) never took effect. Renamed to `00-registro.conf`,
+  plus a hard assertion on the *effective* value from `sshd -T` rather than trusting that
+  writing the file was enough.
+- **The verification helper reported failure on checks that passed.** `sshd -T | grep -q …`
+  under `set -o pipefail`: `grep -q` exits at the first match, the upstream command dies of
+  SIGPIPE (141), and the pipeline is reported as failed. Every `grep -q` in a pipe was removed
+  from the checks and the note explaining why is in the script, because this reads as a genuine
+  failure and sends you debugging the wrong thing.
+- **`/etc/docker/daemon.json` was written all-or-nothing.** This VPS shipped one containing
+  `default-address-pools`, so the original code took the "file exists, just warn" branch —
+  meaning on any machine with a pre-existing daemon.json, log rotation would silently never be
+  configured. Now merged with `jq` (backing up the previous file), preserving the provider's
+  settings while adding rotation and `live-restore`.
+
+### Found by re-reading the diff before merge
+
+- [x] **`deploy-init.sh`'s certificate step had become a silent no-op.** It rewrote
+  `/etc/letsencrypt/live/DOMAIN` inside `app.prod.conf` — a file that, after the §1b split,
+  contains no `ssl_certificate` directive at all; the placeholder is now `CERT_DOMAIN` and lives
+  in `app.prod-tls.conf`. `sed` matched nothing and the script still printed "Nginx config
+  updated with domain". The same function also (a) served the ACME challenge from
+  `/var/www/certbot` while nginx serves it from `/var/www/letsencrypt`, (b) always requested
+  `www.$domain`, which fails the *entire* issuance for a technical hostname that has no `www`
+  record, and (c) went straight for a real certificate with no `--dry-run`, against a five-
+  failures-per-hour limit. All four fixed, and the function now also flips `NGINX_CONF` to the
+  TLS config once the certificate exists.
+
+### Known gap, deliberately not fixed
+
+- **`docker/nginx/staging/app.staging.conf` still hardcodes the predecessor's staging host** in
+  `server_name` and in both certificate paths — the same defect class fixed for production in
+  §1b. Not touched because no staging server exists and none is planned; `docker-compose.
+  staging.yml` was parameterised (`APP_URL`, `APP_DOMAIN`) so the compose side is ready. Whoever
+  stands staging up must apply the production split (HTTP config + TLS config + `NGINX_CONF`)
+  there too, or it will fail to start for exactly the reasons documented above.
+
+### The AAAA record stays — the earlier recommendation to delete it was wrong
+
+`2a02:4780:c:fdab::1` is a real, working global address **on this machine**, with a default
+IPv6 route and functioning outbound IPv6. The record is accurate, not stale. Deleting working
+infrastructure to dodge a certbot failure would be the wrong repair; instead
+`docker-compose.prod.yml` now publishes nginx on `0.0.0.0` **and** `[::]` (verified locally:
+both `127.0.0.1` and `[::1]` return 200), and both nginx configs `listen [::]`. Docker's
+userland proxy forwards the IPv6 connection to the container over IPv4, so no daemon-level
+container IPv6 is needed. `ufw` covers v6 as well.
+
+- [x] Install **`ufw-docker`**, not just plain `ufw` — Docker writes its own `DOCKER-USER` chain
   in iptables and silently bypasses bare `ufw allow`/`deny` rules for published container ports.
   See `app/docs/decisions/ADR-007-ufw-docker-security.md`.
-- [ ] Open only 22 (SSH), 80/443 (nginx). Confirm after bring-up that mysql/redis are **not**
+- [x] Open only 22 (SSH), 80/443 (nginx). Confirm after bring-up that mysql/redis are **not**
   reachable from the host at all — `docker-compose.prod.yml` already publishes no ports for
   them (correct design), just verify with `docker compose -f docker-compose.prod.yml config` and
   `docker ps` on the live VPS rather than trusting the file alone.
-- [ ] This VPS is now dedicated solely to Registro — the port-80/443-conflict risk that existed
+- [x] This VPS is now dedicated solely to Registro — the port-80/443-conflict risk that existed
   when it hosted an unrelated Docker stack no longer applies, but re-confirm with `docker ps`
   after reset that nothing else is listening before bringing the stack up.
 
@@ -84,41 +285,58 @@ acceptable for now.
 - [ ] Use `srv1342834.hstgr.cloud` for `APP_URL` and nginx `server_name` for now; mark it clearly
   as a technical/interim host in whatever config carries it, so it's obvious it needs replacing
   once a real domain is picked.
-- [ ] **Deferred, not blocking:** `P24_MERCHANT_ID`, `P24_REPORTS_KEY`, `P24_CRC`, `P24_LIVE`,
-  `P24_POS_ID` — read by `config/przelewy24.php` but absent from every `.env*.example` and from
-  `docker-compose.prod.yml`'s `environment:` blocks. Add these when online payments are actually
-  needed; the app can launch without them.
+- [x] **Deferred, not blocking — plumbing added 2026-08-01.** `P24_MERCHANT_ID`,
+  `P24_POS_ID`, `P24_CRC`, `P24_REPORTS_KEY`, `P24_LIVE` and `P24_TRANSACTION_GRACE_MINUTES`
+  (the sixth was missing from the original list) are read by `config/przelewy24.php` but were
+  absent from every `.env*.example` and from all three `environment:` blocks in
+  `docker-compose.prod.yml`. Now present and empty-by-default everywhere, so switching payments
+  on is an `.env` edit rather than a compose edit on a live server. The app still launches
+  without them.
 
 ## 4. Security follow-ups before going internet-facing
 
-- [ ] `CheckRegistrationEnabled` middleware still resolves tenant via the poisonable
-  `TenantFeature::currentTenant()` session-fallback pattern — the same bug class already fixed 6×
-  elsewhere as part of VULN-003. Lower severity (no PII leak) but should be closed before
-  `/customer/register` is reachable from the internet.
+- [x] ~~`CheckRegistrationEnabled` resolves tenant via the poisonable
+  `TenantFeature::currentTenant()` session-fallback pattern.~~ **Stale — verified fixed
+  2026-08-01.** The middleware reads `$request->attributes->get('tenant')` and calls
+  `isRegistrationEnabledFor($tenant)` (`app/Http/Middleware/CheckRegistrationEnabled.php:29-32`),
+  with the rationale in its own docblock. Both `/register` routes wire it after
+  `ResolveTenant` (`routes/web.php:237,240`). This item was carried over from the VULN-003
+  follow-up list after the fix had already landed.
 - [ ] `app/docs/security/baseline.md` is stale (dated 2025-12-10, predates the entire
   VULN-003…009 remediation round from July 2026). Regenerate it before treating it as a go-live
   sign-off artifact.
 - [ ] VULN-002 (no audit logging for booking events) — open, low severity, non-blocking, but
   worth closing before this becomes a live multi-tenant system with real customer data.
-- [ ] **Doc tree duplication:** root `docs/security/` is an unfilled template
-  (`docs/security/baseline.md` literally says "Template (not yet scanned)"); the real, current
-  security posture lives in `app/docs/security/`. Consolidate or archive the root duplicate so
-  nobody mistakes the placeholder for the actual state.
+- [x] **Doc tree duplication — partially resolved 2026-08-01; the original claim was wrong.**
+  Root `docs/security/` is *not* an unfilled template: only `baseline.md` was
+  ("Template (not yet scanned)"), and six of its eight files exist **only** there — including
+  `compliance.md` (631 lines) and `patterns/file-upload-security.md` (703 lines), both served by
+  the MkDocs portal. Archiving the tree wholesale would have destroyed ~1,500 lines of unique
+  content. Only the misleading placeholder was replaced, with a pointer to the real
+  `app/docs/security/baseline.md`. Whether to merge the trees remains open — see §6.
 
 ## 5. CI/CD
 
 - [ ] `deploy-production.yml` and `ci-staging.yml` assume the target path already exists on the
   server with a populated `.env` — they're **update** workflows, not fresh-bootstrap workflows.
-  The very first deploy has to go through a (fixed) `deploy-init.sh` or an equivalent manual
-  setup before either workflow does anything useful.
+  Still true after the §1 rewrite, and now explicit: `/opt/registro/deploy.sh` aborts with a
+  clear message if `/var/www/registro`, its `.env`, or the compose file is missing. The first
+  deploy goes through `setup-production-server.sh` + a manual clone + `deploy-init.sh`.
 - [ ] GitHub Secrets `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY` (production) and `STAGING_VPS_*`
   (staging) almost certainly still point at the decommissioned predecessor hosts — update them to
   `76.13.76.104` before the first workflow run. Workflows remain `workflow_dispatch`-only by
   design; don't switch them to auto-trigger without a separate, explicit decision.
-- [ ] `.claude/agents/devops-engineer.md` describes a `meilisearch` service that doesn't exist in
-  any current `docker-compose*.yml` — doc drift, refresh the agent description.
-- [ ] `README.md`'s deployment section links to `docs/deployment/runbooks/ci-cd-deployment.md`,
-  which has moved to `docs/archive/deployment/runbooks/ci-cd-deployment.md` — fix the link.
+- [x] `.claude/agents/devops-engineer.md` described a `meilisearch` service that exists in no
+  `docker-compose*.yml`. Corrected 2026-08-01 to the actual 8 dev services (verified against
+  `docker compose config --services`; production has 6), with the Horizon sole-consumer rule
+  and the "no build context in prod" note attached.
+- [x] **`README.md`'s whole deployment section was substantially false**, not just one dead link.
+  It advertised tag-triggered automatic deployment, Trivy vulnerability scanning and "automatic
+  rollback on failure" — none of which exist (every workflow is `workflow_dispatch`-only, there
+  is no Trivy step anywhere, and there is no rollback-on-failure path). It also told the reader
+  to SSH into a decommissioned predecessor host by raw IP. Rewritten 2026-08-01 to
+  describe what the pipeline actually does, with an explicit "nothing here has ever run" status
+  banner, the forced-command SSH syntax, and the archived runbook link corrected.
 
 ## 6. Docs tree consolidation (architectural decision, not yet made)
 

@@ -12,7 +12,13 @@
 #   2 - Script usage error
 ###############################################################################
 
-set -euo pipefail
+# NOT -e. This script accumulates failures and reports them together, exiting on
+# the ERRORS count at the very end. Under `set -e` the first failing check_var_*
+# (they return 1 by design) killed the run, so you saw one problem per
+# invocation instead of the list -- and every `pass` did too, because
+# `((CHECKS++))` returns 1 when CHECKS is 0. The counters are plain arithmetic
+# assignments now for the same reason.
+set -uo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,19 +46,19 @@ echo ""
 
 error() {
     echo -e "${RED}✗ ERROR:${NC} $1"
-    ((ERRORS++))
-    ((CHECKS++))
+    ERRORS=$((ERRORS + 1))
+    CHECKS=$((CHECKS + 1))
 }
 
 warn() {
     echo -e "${YELLOW}⚠ WARNING:${NC} $1"
-    ((WARNINGS++))
-    ((CHECKS++))
+    WARNINGS=$((WARNINGS + 1))
+    CHECKS=$((CHECKS + 1))
 }
 
 pass() {
     echo -e "${GREEN}✓${NC} $1"
-    ((CHECKS++))
+    CHECKS=$((CHECKS + 1))
 }
 
 check_var_set() {
@@ -95,6 +101,32 @@ check_var_not_equals() {
         return 0
     fi
 }
+
+###############################################################################
+# Load .env
+#
+# Every check below reads shell variables. Without this block the script
+# validates an empty environment and reports every variable as missing, which
+# is exactly backwards from what it is for. ENV_FILE can be overridden to
+# validate a file that is not the one next to the script.
+###############################################################################
+
+ENV_FILE="${ENV_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.env}"
+
+if [ -f "$ENV_FILE" ]; then
+    echo "Loading ${ENV_FILE}"
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+    echo ""
+else
+    echo -e "${RED}✗ ERROR:${NC} ${ENV_FILE} not found -- nothing to validate"
+    exit 1
+fi
+
+# Re-resolve after loading: with no argument, ENV comes from the file we just read.
+ENV="${1:-${APP_ENV:-local}}"
 
 ###############################################################################
 # Core Application Checks

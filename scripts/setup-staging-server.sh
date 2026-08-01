@@ -28,7 +28,7 @@ set -e  # Exit on error
 # IMPORTANT: Never commit actual IP addresses to the repository
 # Set these in your shell or use: source ~/.registro-staging.env
 STAGING_HOST="${STAGING_VPS_HOST:-srv1203357.hstgr.cloud}"
-STAGING_USER="${STAGING_VPS_USER:-root}"  # Will create 'ubuntu' user during setup
+STAGING_USER="${STAGING_VPS_USER:-root}"  # Will create 'deploy' user during setup
 STAGING_DOMAIN="${STAGING_DOMAIN:-srv1203357.hstgr.cloud}"
 PROJECT_DIR="/var/www/registro"
 
@@ -181,29 +181,29 @@ chmod +x /usr/local/bin/ufw-docker
 echo "🕐 Setting timezone to Europe/Warsaw..."
 timedatectl set-timezone Europe/Warsaw
 
-# Create ubuntu user (if not exists)
-if ! id -u ubuntu &>/dev/null; then
-    echo "👤 Creating ubuntu user..."
-    adduser --disabled-password --gecos "" ubuntu
-    usermod -aG sudo ubuntu
-    usermod -aG docker ubuntu
+# Create deploy user (if not exists)
+if ! id -u deploy &>/dev/null; then
+    echo "👤 Creating deploy user..."
+    adduser --disabled-password --gecos "" deploy
+    usermod -aG sudo deploy
+    usermod -aG docker deploy
 
-    # Copy root's SSH keys to ubuntu user
-    mkdir -p /home/ubuntu/.ssh
-    cp /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys
-    chown -R ubuntu:ubuntu /home/ubuntu/.ssh
-    chmod 700 /home/ubuntu/.ssh
-    chmod 600 /home/ubuntu/.ssh/authorized_keys
+    # Copy root's SSH keys to deploy user
+    mkdir -p /home/deploy/.ssh
+    cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+    chown -R deploy:deploy /home/deploy/.ssh
+    chmod 700 /home/deploy/.ssh
+    chmod 600 /home/deploy/.ssh/authorized_keys
 
-    echo "✅ Ubuntu user created with docker and sudo access"
+    echo "✅ deploy user created with docker and sudo access"
 else
-    echo "✅ Ubuntu user already exists"
+    echo "✅ deploy user already exists"
 fi
 
 # Create project directory
 echo "📁 Creating project directory..."
 mkdir -p /var/www/registro
-chown -R ubuntu:ubuntu /var/www
+chown -R deploy:deploy /var/www
 chmod 755 /var/www
 
 echo "=================================================="
@@ -334,8 +334,9 @@ set -e
 
 cd /var/www/registro
 
-echo "🐳 Building and starting Docker containers..."
-docker compose -f docker-compose.staging.yml up -d --build
+echo "🐳 Pulling and starting Docker containers..."
+docker compose -f docker-compose.staging.yml pull
+docker compose -f docker-compose.staging.yml up -d
 
 echo "⏳ Waiting for services to be ready (30 seconds)..."
 sleep 30
@@ -359,8 +360,9 @@ cd /var/www/registro
 echo "🗄️  Running database migrations..."
 docker compose -f docker-compose.staging.yml exec -T app php artisan migrate --force
 
-echo "🌱 Seeding database..."
-docker compose -f docker-compose.staging.yml exec -T app php artisan db:seed --force
+# No db:seed here. DatabaseSeeder overwrites administrator accounts and settings,
+# and this script is re-runnable -- see .claude/rules/deployment.md. Bootstrap
+# seeding of an empty database is deploy-init.sh's job, once, with named classes.
 
 echo "🔗 Creating storage symlink..."
 docker compose -f docker-compose.staging.yml exec -T app php artisan storage:link
@@ -411,7 +413,7 @@ log "  Project: ${PROJECT_DIR}"
 log ""
 log "GitHub Actions Secrets Needed:"
 log "  STAGING_VPS_HOST=${STAGING_HOST}"
-log "  STAGING_VPS_USER=ubuntu"
+log "  STAGING_VPS_USER=deploy"
 log "  STAGING_VPS_SSH_KEY=(copy from ~/.ssh/id_rsa or generate new key)"
 log ""
 log "Next Steps:"

@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/patrykgielo/registro:latest
+    image: ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}
     container_name: registro-app
     restart: unless-stopped
     working_dir: /var/www
@@ -24,6 +24,7 @@ services:
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL}
+      - APP_DOMAIN=${APP_DOMAIN}
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - DB_DATABASE=${DB_DATABASE}
@@ -57,6 +58,15 @@ services:
       - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
       - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
+      # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
+      # defaults every value). Present here so enabling online payments is an .env
+      # change, not a compose change on a live server.
+      - P24_MERCHANT_ID=${P24_MERCHANT_ID:-0}
+      - P24_POS_ID=${P24_POS_ID:-}
+      - P24_CRC=${P24_CRC:-}
+      - P24_REPORTS_KEY=${P24_REPORTS_KEY:-}
+      - P24_LIVE=${P24_LIVE:-false}
+      - P24_TRANSACTION_GRACE_MINUTES=${P24_TRANSACTION_GRACE_MINUTES:-120}
     depends_on:
       mysql:
         condition: service_healthy
@@ -108,11 +118,22 @@ services:
     image: nginx:1.25-alpine
     container_name: registro-nginx
     restart: unless-stopped
+    # Dual-stack ingress. The bare "80:80" form binds IPv4 only, and this host
+    # has a published AAAA record: Let's Encrypt resolves AAAA first and does
+    # NOT fall back to IPv4, so HTTP-01 validation would fail against an
+    # otherwise perfectly working site -- burning the 5-failures-per-hour limit.
+    # Docker's userland proxy accepts the IPv6 connection and forwards it to the
+    # container over IPv4, so no daemon-level IPv6 is required.
     ports:
-      - "80:80"
-      - "443:443"
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "[::]:80:80"
+      - "[::]:443:443"
     volumes:
-      - ./docker/nginx/app.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # app.prod.conf (HTTP, no certificates required) is the default so the
+      # very first bring-up works on a machine with no certificate. Switch to
+      # app.prod-tls.conf via NGINX_CONF in .env once certbot has succeeded.
+      - ./docker/nginx/production/${NGINX_CONF:-app.prod.conf}:/etc/nginx/conf.d/default.conf:ro
       - app_public:/var/www/public:ro
       - storage-app-public:/var/www/storage/app/public:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
@@ -129,7 +150,7 @@ services:
       retries: 3
 
   horizon:
-    image: ghcr.io/patrykgielo/registro:latest
+    image: ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}
     container_name: registro-horizon
     restart: unless-stopped
     working_dir: /var/www
@@ -140,6 +161,7 @@ services:
       - APP_ENV=production
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL}
+      - APP_DOMAIN=${APP_DOMAIN}
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - DB_DATABASE=${DB_DATABASE}
@@ -167,6 +189,15 @@ services:
       - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
       - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
+      # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
+      # defaults every value). Present here so enabling online payments is an .env
+      # change, not a compose change on a live server.
+      - P24_MERCHANT_ID=${P24_MERCHANT_ID:-0}
+      - P24_POS_ID=${P24_POS_ID:-}
+      - P24_CRC=${P24_CRC:-}
+      - P24_REPORTS_KEY=${P24_REPORTS_KEY:-}
+      - P24_LIVE=${P24_LIVE:-false}
+      - P24_TRANSACTION_GRACE_MINUTES=${P24_TRANSACTION_GRACE_MINUTES:-120}
     depends_on:
       - app
       - redis
@@ -180,7 +211,7 @@ services:
       start_period: 30s
 
   scheduler:
-    image: ghcr.io/patrykgielo/registro:latest
+    image: ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}
     container_name: registro-scheduler
     restart: unless-stopped
     working_dir: /var/www
@@ -192,6 +223,7 @@ services:
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL}
+      - APP_DOMAIN=${APP_DOMAIN}
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - DB_DATABASE=${DB_DATABASE}
@@ -223,6 +255,15 @@ services:
       - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
       - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
+      # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
+      # defaults every value). Present here so enabling online payments is an .env
+      # change, not a compose change on a live server.
+      - P24_MERCHANT_ID=${P24_MERCHANT_ID:-0}
+      - P24_POS_ID=${P24_POS_ID:-}
+      - P24_CRC=${P24_CRC:-}
+      - P24_REPORTS_KEY=${P24_REPORTS_KEY:-}
+      - P24_LIVE=${P24_LIVE:-false}
+      - P24_TRANSACTION_GRACE_MINUTES=${P24_TRANSACTION_GRACE_MINUTES:-120}
     depends_on:
       - app
       - mysql

@@ -43,7 +43,10 @@ for file in "${EXPECTED_FILES[@]}"; do
         echo -e "${GREEN}✅ Found: $file${NC}"
     else
         echo -e "${RED}❌ MISSING: $file${NC}"
-        ((MISSING_COUNT++))
+        # Not ((MISSING_COUNT++)): post-increment evaluates to the OLD value, so
+        # the very first miss returns 1 and `set -e` kills the script before it
+        # can report the rest. Same bug this script exists to catch, one level up.
+        MISSING_COUNT=$((MISSING_COUNT + 1))
     fi
 done
 

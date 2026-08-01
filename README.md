@@ -71,9 +71,17 @@ See comprehensive guide: **[`docs/deployment/VPS_SETUP.md`](docs/deployment/VPS_
 
 [![Deploy](https://github.com/patrykgielo/registro/actions/workflows/deploy-production.yml/badge.svg)](https://github.com/patrykgielo/registro/actions/workflows/deploy-production.yml)
 
-### CI/CD Automated Deployment
+### CI/CD Deployment
 
-**Modern, automated deployment with GitHub Actions + Docker + MaintenanceService integration.**
+> **Status (2026-08-01): nothing here has ever run.** There is no staging or production
+> server yet, and **every** workflow is `workflow_dispatch`-only — pushing a tag deploys
+> nothing. The pipeline below is inherited infrastructure that is being brought up for the
+> first time; see `app/docs/deployment/production-readiness-checklist.md` for what is still
+> open and `~/.claude/plans/vps-bootstrap-registro-first-deploy.md` for the order of work.
+
+Deployment is a manual `workflow_dispatch` run of `deploy-production.yml`, which takes the
+release tag as an input, builds and pushes the image to GHCR, then invokes
+`/opt/registro/deploy.sh` on the server over SSH (source: `scripts/server/deploy.sh`).
 
 #### Creating a Release
 
@@ -88,14 +96,20 @@ See comprehensive guide: **[`docs/deployment/VPS_SETUP.md`](docs/deployment/VPS_
 ./scripts/release.sh major
 ```
 
-**What happens automatically:**
-1. ✅ Build Docker image (tagged with version)
-2. ✅ Run PHPUnit tests + Laravel Pint
-3. ✅ Scan for vulnerabilities (Trivy)
-4. ✅ Wait for manual approval (production environment)
-5. ✅ Deploy to VPS with MaintenanceService
-6. ✅ Run migrations & health checks
-7. ✅ Automatic rollback on failure
+`release.sh` only creates and pushes the tag. Nothing is triggered by it — deployment is a
+separate, manual `workflow_dispatch` run against that tag.
+
+**What that run does:**
+1. Runs PHPUnit + Laravel Pint against the tag
+2. Builds the Docker image and pushes `:${VERSION}` and `:latest` to GHCR
+3. Waits for approval on the `production` GitHub environment
+4. Calls `deploy <tag>` on the server, which checks out the tag, pulls the image,
+   migrates behind `artisan down`, rebuilds caches, restarts Horizon, health-checks
+
+**What it does NOT do** (contrary to earlier versions of this README): no vulnerability
+scanning, and **no automatic rollback on failure**. A failed deploy leaves the previous tag
+in the server's `.env`; recovery is a manual `rollback <tag>` — see the checklist's
+break-glass section.
 
 #### Monitor Deployment
 
@@ -105,28 +119,31 @@ See comprehensive guide: **[`docs/deployment/VPS_SETUP.md`](docs/deployment/VPS_
 
 #### Manual Deployment (SSH)
 
-```bash
-# SSH to VPS
-ssh deploy@72.60.17.138
+The deploy user's key is pinned to a forced command, so the SSH command line is the whole
+API — there is no shell on the far end:
 
-# Deploy specific version
-cd /var/www/registro
-./scripts/deploy-update.sh v1.2.3
+```bash
+ssh deploy@srv1342834.hstgr.cloud "deploy v1.2.3"
+ssh deploy@srv1342834.hstgr.cloud "status"
 ```
 
 ### Backup & Rollback
 
-```bash
-# Automated backup before every deployment
-# Location: /var/www/registro/backups/db-v1.0.0-20251128.sql
+Rolling back means re-pinning the image tag; no build, no GitHub, no runner:
 
-# Rollback to previous version
-ssh deploy@72.60.17.138
-cd /var/www/registro
-./scripts/deploy-update.sh v1.0.4  # Previous working version
+```bash
+ssh deploy@srv1342834.hstgr.cloud "rollback v1.2.2"
 ```
 
-**See:** [Deployment Runbook](docs/deployment/runbooks/ci-cd-deployment.md) for complete procedures.
+**Rolling the image back does not roll migrations back.** Additive migrations survive it,
+`drop`/`rename` do not — check with `php artisan migrations:check-rollback` before relying
+on this. Database backups: `scripts/backup-database.sh` (to `/var/backups/registro`); a
+backup you have not restored is not a backup.
+
+**See:** [Deployment Runbook](docs/archive/deployment/runbooks/ci-cd-deployment.md) —
+archived and written for the predecessor project's hosts; treat as reference, not
+instructions. The current source of truth is
+`app/docs/deployment/production-readiness-checklist.md`.
 
 ---
 
