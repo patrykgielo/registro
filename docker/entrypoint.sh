@@ -77,13 +77,19 @@ else
 fi
 
 # Production optimizations
+#
+# Migrations are deliberately NOT run here. This entrypoint is shared by three
+# containers -- app, horizon and scheduler -- which start concurrently from the
+# same image, so `migrate --force` here meant three migrators racing each other
+# against one database on every deploy and on every reboot. It also ran before
+# any maintenance mode was engaged, and swallowed its own failure ("container
+# will start anyway"), leaving a container serving traffic against a
+# half-migrated schema with nothing failing loudly.
+#
+# Migrations now have exactly one owner: /opt/registro/deploy.sh (first install:
+# scripts/deploy-init.sh), which wraps them in `artisan down` and aborts the
+# deploy if they fail. A reboot must never migrate.
 if [ "$APP_ENV" = "production" ]; then
-    echo "🗄️ Running migrations..."
-    php artisan migrate --force || {
-        echo "⚠️  Migrations failed - container will start anyway"
-        echo "   Check logs: docker compose -f docker-compose.prod.yml logs app"
-    }
-
     echo "🧹 Optimizing application..."
     php artisan config:cache
     php artisan route:cache

@@ -1,111 +1,28 @@
-# Security Baseline - Registro
+# Security Baseline — moved
 
-**Last Updated**: Template (not yet scanned)
-**Laravel Version**: 12.32.5
-**PHP Version**: 8.2.29
-**Scan Duration**: Not yet performed
+This file used to be an unfilled template ("Last Updated: Template (not yet scanned)",
+Laravel 12.32.5 / PHP 8.2.29). It predated every real security finding in this project and,
+sitting next to genuine documents, read like a sign-off artifact for a scan that had never
+run.
 
----
+**The real baseline is `app/docs/security/baseline.md`.**
 
-## 🚀 Initial Setup Required
+Related, also under `app/docs/security/`:
 
-This is a **template file**. To generate your security baseline, ask the `security-audit-specialist` agent:
+- `vulnerabilities/` — VULN-001…009, including the VULN-003 root-domain tenant bypass and
+  its six defence layers
+- `audit-reports/` — the July 2026 remediation round
+- `patterns/` — reusable hardening patterns (e.g. Livewire tenant isolation)
 
-```bash
-"Generate security baseline"
-```
+Note that the baseline there carries its own caveat: it is dated 2025-12-10, which is
+*before* the VULN-003…009 remediation. Regenerate it before treating it as a go-live
+sign-off. See `app/docs/deployment/production-readiness-checklist.md` §4.
 
-The agent will:
-1. Scan entire project (5-7 minutes)
-2. Detect vulnerabilities using OWASP Top 10 patterns
-3. Compute file checksums for change detection
-4. Generate risk profile and compliance status
-5. Create vulnerability docs for CRITICAL/HIGH issues
-6. Update this file with complete baseline data
+## Why this file still exists
 
----
-
-## What Gets Scanned
-
-**Routes & Endpoints**:
-- `routes/web.php` - Authentication, booking, CMS routes
-- `routes/api.php` - API endpoints
-
-**Authentication & Authorization**:
-- `config/auth.php` - Guards, providers, password settings
-- `config/session.php` - Session security configuration
-- `app/Http/Middleware/*.php` - Security middleware
-- `app/Policies/*.php` - Authorization policies
-
-**Models & Validation**:
-- `app/Models/*.php` - Mass assignment vulnerabilities
-- `app/Http/Requests/**/*.php` - Input validation coverage
-
-**Infrastructure**:
-- `docker-compose.yml` - Exposed ports, default passwords
-- `.env.example` - Security configuration patterns
-- `.github/workflows/*.yml` - CI/CD security
-- `docker/nginx/app.conf` - Security headers
-
----
-
-## Expected Baseline Structure
-
-After first scan, this file will contain:
-
-### Risk Profile
-- Overall rating (CRITICAL/HIGH/MODERATE/LOW)
-- Risk score (0-100)
-- Vulnerability counts by severity
-
-### OWASP Top 10 Compliance
-- Status for each category (Passed/Failed/Partial)
-- Notes on findings
-
-### Authentication & Authorization
-- Guard configuration
-- Session settings
-- 2FA status
-- Rate limiting status
-
-### Input Validation
-- Form Request count
-- Validation coverage percentage
-- Missing validation on endpoints
-
-### API Security
-- Authenticated vs public endpoints
-- Rate limiting status
-- CSRF protection status
-
-### Infrastructure Security
-- Docker port exposure
-- Nginx security headers
-- SSL/TLS configuration
-- Firewall status
-
-### File Checksums (Change Detection)
-- SHA256 hashes of monitored files
-- Used to detect changes for incremental scans
-
-### Next Actions
-- Prioritized list of fixes (CRITICAL → LOW)
-
----
-
-## Quick Start
-
-```bash
-# Ask the security agent
-"Generate security baseline"
-
-# Or trigger a full audit
-"Run full security audit"
-
-# Agent will populate this file with real data
-```
-
----
-
-**Status**: ⏳ Awaiting first scan
-**Invoke**: `security-audit-specialist` agent to generate baseline
+The rest of this directory is **not** a duplicate — `compliance.md`,
+`content-security-policy.md`, `patterns/file-upload-security.md`, the two `SECURITY-FIX-*`
+documents and `vulnerabilities/README.md` exist only here and are served by the MkDocs
+portal. Whether to merge this tree into `app/docs/` or keep it deliberately separate is an
+open decision (§6 of the readiness checklist), so only the misleading placeholder was
+replaced.

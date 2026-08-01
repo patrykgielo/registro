@@ -37,6 +37,11 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
+# Version (image tag) to deploy. Exported so docker-compose.prod.yml resolves
+# ${REGISTRO_VERSION} to the same tag for app, horizon and scheduler.
+VERSION="${1:-latest}"
+export REGISTRO_VERSION="$VERSION"
+
 # Configuration
 readonly APP_DIR="/var/www/registro"
 readonly COMPOSE_FILE="docker-compose.prod.yml"

@@ -41,7 +41,7 @@ readonly NC='\033[0m' # No Color
 
 # Script configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$SCRIPT_DIR"
+readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 readonly APP_DIR="$PROJECT_ROOT"
 readonly ENV_FILE="${APP_DIR}/.env"
 readonly ENV_EXAMPLE="${APP_DIR}/.env.production.example"
@@ -219,7 +219,7 @@ setup_ssl_certificates() {
     docker stop temp-nginx
 
     # Update production Nginx config with actual domain
-    local nginx_config="${PROJECT_ROOT}/docker/nginx/app.prod.conf"
+    local nginx_config="${PROJECT_ROOT}/docker/nginx/production/app.prod.conf"
     if [[ -f "$nginx_config" ]]; then
         sed -i "s|/etc/letsencrypt/live/DOMAIN|/etc/letsencrypt/live/$domain|g" "$nginx_config"
         success "Nginx config updated with domain: $domain"
@@ -233,13 +233,14 @@ setup_ssl_certificates() {
 ################################################################################
 
 build_and_start_containers() {
-    log "Building and starting Docker containers..."
+    log "Pulling and starting Docker containers..."
 
     cd "$PROJECT_ROOT"
 
-    # Build containers
-    log "Building Docker images..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" build --no-cache
+    # docker-compose.prod.yml declares no build context -- the application image
+    # is built by CI and pulled from GHCR. `docker compose build` would fail here.
+    log "Pulling Docker images..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" pull
 
     # Start containers
     log "Starting containers..."
@@ -270,11 +271,12 @@ run_migrations_and_seeds() {
     log "Executing migrations..."
     docker compose -f "$DOCKER_COMPOSE_FILE" exec -T app php artisan migrate --force
 
-    # Seed critical data
+    # Seed bootstrap data only. This runs exactly once, on an empty database,
+    # during first installation -- never from deploy-update.sh. VehicleTypeSeeder
+    # is not seeded: it is a leftover from the automotive project this
+    # infrastructure was inherited from and has no meaning in Registro.
     log "Seeding database..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" exec -T app php artisan db:seed --class=VehicleTypeSeeder --force
     docker compose -f "$DOCKER_COMPOSE_FILE" exec -T app php artisan db:seed --class=RolePermissionSeeder --force
-    docker compose -f "$DOCKER_COMPOSE_FILE" exec -T app php artisan db:seed --class=ServiceAvailabilitySeeder --force
     docker compose -f "$DOCKER_COMPOSE_FILE" exec -T app php artisan db:seed --class=SettingSeeder --force
     docker compose -f "$DOCKER_COMPOSE_FILE" exec -T app php artisan db:seed --class=EmailTemplateSeeder --force
 

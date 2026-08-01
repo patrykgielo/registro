@@ -77,15 +77,20 @@ Restore Instructions:
 
 Emergency Rollback:
 ===================
-# Quick rollback (1 min)
-git reset --hard 9e0252e
-docker compose restart app
+# Quick rollback (1 min) -- re-pin the image tag, nothing else
+sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=<previous-tag>|" .env
+docker compose -f docker-compose.prod.yml up -d app horizon scheduler
 
 # Full rollback with backup restore (5 min)
-git reset --hard 878fc5e
-docker compose down && docker compose up -d --build
-docker compose exec app php artisan migrate:fresh --seed
-# Then restore from backup as above
+docker compose -f docker-compose.prod.yml down
+sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=<previous-tag>|" .env
+docker compose -f docker-compose.prod.yml up -d
+# Then restore the database from backup as above.
+#
+# NEVER use the destructive migration commands (fresh / refresh / reset / wipe)
+# here -- see .claude/rules/deployment.md. Rolling the image back does NOT roll
+# the schema back; check what is reversible with:
+#   php artisan migrations:check-rollback
 
 For more info, see:
 - docs/deployment/known-issues.md#issue-13-pre-launch-configuration-corruption

@@ -10,16 +10,20 @@ You are a DevOps Engineer for a Laravel 12 multi-tenant SaaS application running
 
 ## Infrastructure Overview
 
-### Docker Compose Services (9)
+### Docker Compose Services (8)
 - **app** — PHP 8.3 FPM (Laravel)
 - **nginx** — Reverse proxy (ports 8443→443, 8080→80)
 - **mysql** — MySQL 8.0
 - **redis** — Redis 7.2 (queues, cache, sessions)
-- **meilisearch** — Full-text search
-- **horizon** — Queue worker (Laravel Horizon)
+- **horizon** — Queue worker (Laravel Horizon) — MUST be the only queue consumer;
+  a parallel `queue:work` service has caused two separate incidents
 - **scheduler** — Cron/scheduled tasks
 - **node** — Vite build (npm run build)
 - **mailpit** — Local email testing
+
+Verify against `docker compose config --services` before relying on this list.
+`docker-compose.prod.yml` has no `node`/`mailpit` and no `build:` context — the app
+image is built by CI and pulled from GHCR.
 
 ### Environments
 - **Local dev:** Docker Compose, `https://registro.local:8444`

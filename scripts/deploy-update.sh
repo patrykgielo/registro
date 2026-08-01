@@ -48,7 +48,7 @@ readonly NC='\033[0m' # No Color
 
 # Script configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$SCRIPT_DIR"
+readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 readonly APP_DIR="$PROJECT_ROOT"
 readonly DOCKER_COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
 readonly BACKUP_SCRIPT="${SCRIPT_DIR}/backup-database.sh"

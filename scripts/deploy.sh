@@ -186,10 +186,9 @@ print_header "Step 4: Build Docker Images"
 log "Pulling latest base images..."
 docker compose -f "$COMPOSE_FILE" pull
 
-log "Building application images..."
-docker compose -f "$COMPOSE_FILE" build --no-cache app
-
-log_success "Docker images built successfully"
+# docker-compose.prod.yml has no build context -- the image is built by CI and
+# pulled from GHCR. Pin the tag with REGISTRO_VERSION before running this.
+log_success "Docker images pulled successfully"
 
 # Step 5: Run Tests
 if [ "$SKIP_TESTS" = false ]; then
@@ -247,7 +246,7 @@ print_header "Step 10: Restart Application Containers"
 log "Restarting app and nginx containers..."
 
 # Graceful restart (zero downtime)
-docker compose -f "$COMPOSE_FILE" up -d --no-deps --build app nginx
+docker compose -f "$COMPOSE_FILE" up -d --no-deps app nginx
 
 log "Waiting for containers to be healthy (10 seconds)..."
 sleep 10

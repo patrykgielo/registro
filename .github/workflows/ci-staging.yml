@@ -206,15 +206,12 @@ jobs:
             source .env
             set +a
 
-            # Download configs from develop branch
-            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -o docker-compose.staging.yml \
-              "https://raw.githubusercontent.com/patrykgielo/registro/develop/docker-compose.staging.yml"
-
-            mkdir -p docker/nginx
-            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -o docker/nginx/app.staging.conf \
-              "https://raw.githubusercontent.com/patrykgielo/registro/develop/docker/nginx/app.staging.conf"
+            # Configs come from the checkout that already exists on the box.
+            # raw.githubusercontent does not accept the Actions GITHUB_TOKEN for
+            # a private repository, and the curl variant silently overwrote
+            # tracked files in a git working tree.
+            git fetch --prune origin develop
+            git checkout --force origin/develop
 
             # Login and pull image
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
