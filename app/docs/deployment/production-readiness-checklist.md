@@ -385,6 +385,64 @@ for rotation — and these same rows can be retried.
 Both tenant subdomains serve: `detailing.` and `testowa.` return 200 (with `-k`; the certificate
 still covers only the bare host).
 
+## Phase 7 — tenant subdomains over TLS, and why there is no wildcard (2026-08-03)
+
+**A wildcard certificate is not obtainable on this installation.** Not misconfigured — impossible.
+
+Let's Encrypt issues wildcards only through DNS-01, which requires publishing
+`_acme-challenge.<domain>` TXT. `srv1342834.hstgr.cloud` has **no NS delegation of its own**: it is a
+record inside Hostinger's `hstgr.cloud` zone, authoritative servers `any1`/`any2.hostinger.com`. The
+TXT would have to be created in a zone we do not control, and VPS customers do not get write access
+to it. Confirmed by lookup before attempting anything, so no failed validation was spent on it.
+
+### What works instead
+
+One certificate carrying **every tenant subdomain as a SAN**, validated over HTTP-01. Hostinger
+publishes a wildcard A record, so every `<slug>.<domain>` already resolves to this machine and nginx
+answers the ACME path from the catch-all server block — verified before issuing: that path returns
+**404, not 403**, so the location matches and only the file is absent.
+
+`hstgr.cloud` is on the **Public Suffix List**, which matters more than it looks: Let's Encrypt
+therefore treats `srv1342834.hstgr.cloud` as its own registered domain, so the rate limits are this
+server's alone rather than shared with every Hostinger VPS. Budget: **50 new orders per week, 100
+names per certificate.**
+
+### Reconciliation, split along the privilege boundary
+
+- `php artisan tenants:hostnames` — prints the names the certificate must cover, bare, one per line.
+  `Active` and `Suspended` are included: a suspension is temporary and its 503 page should load over
+  HTTPS rather than behind a browser warning. `Closed`, `Closing` and deleted are excluded — they
+  serve nothing, and **every name is published to Certificate Transparency logs** for the life of the
+  certificate.
+- `/opt/registro/sync-certificate.sh` — runs as root from `/etc/cron.d/registro-certificate` every
+  15 minutes. Compares that list with what the certificate actually carries and re-issues **only when
+  the set changed**, exiting immediately otherwise, so the interval costs nothing. It refuses at >100
+  names rather than burning a weekly order on a request that would be rejected, and will not reload
+  nginx if `nginx -t` fails.
+
+### Verified on the server, whole cycle
+
+| step | result |
+|---|---|
+| no change | `Certificate already covers 2 name(s) -- nothing to do` |
+| tenant added | detected, `Requesting certificate for 3 name(s)`, nginx reloaded |
+| new subdomain | `https://certtest…` → **200 without `-k`** |
+| tenant removed | detected as `removed:`, re-issued down to 2 names |
+| removed subdomain | certificate no longer covers it |
+
+Both live names validate in a browser: `srv1342834.hstgr.cloud` and
+`budowlana.srv1342834.hstgr.cloud`, no `-k` required.
+
+### The residual, stated plainly
+
+A new tenant's subdomain shows a browser warning for **up to 15 minutes** — the gap until the next
+cron run. Closing that would mean crossing from the application (running as `laravel`) to certbot
+(needing root), which is a privileged helper and a queue, not a config change. At the current rate
+of tenant creation it is not worth that machinery.
+
+**The real fix is a domain of your own**, where DNS-01 and a true wildcard become possible and the
+15-minute window disappears entirely. This makes the technical hostname usable until then.
+
 ## Phase 5 — TLS, and three things that only a browser could find (2026-08-02)
 
 The site was answering 200 to `curl` and the operator's browser showed
