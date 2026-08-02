@@ -274,6 +274,79 @@ from Phase 2 held exactly: executed code was sound, unexecuted code was not.
 - [x] **The `deploy` job had no `permissions:` block.** It never checks out code and never calls
   the GitHub API, so it is now `permissions: {}`.
 
+### Second review round — the fixes above were themselves reviewed (2026-08-02)
+
+This time the gate ran **before** the PR. It found one Critical caused by a §1c fix and one that
+the new compose guards introduced. Both are fixed in the same commit.
+
+- [x] **Moving `artisan down` before `up -d` could strand the site in permanent 503.** The
+  maintenance flag lives in a named volume — the property that makes the fix work across container
+  recreation is also what makes a stranded flag survive reboots. With `down` now running earlier,
+  a failure at `up -d`, the MySQL wait or the Redis wait left the flag set, and `public/index.php`
+  short-circuits **every** request including `/up`. Worse, `rollback` never cleared it, so the
+  operator's instinctive recovery would inherit the 503 *and then fail its own health check
+  because of it* — reporting a broken rollback that actually worked. The forced-command grammar
+  (`deploy|rollback|status`) offers no way to run `artisan up`, so recovery needed the root key.
+  Fixed with an `EXIT` trap that lifts maintenance on any non-zero exit, plus an unconditional
+  lift at the start of every rollback. Verified across all seven failure paths.
+
+  One deliberate exception: **a failed migration now stays in maintenance**. Serving new code
+  against a half-applied schema risks user-visible errors and bad writes; an honest 503 is better.
+  That is only a safe choice because `rollback` now lifts the flag, so recovery no longer requires
+  the root key. The error message names the exact rollback command.
+- [x] **The `${VAR:?}` guards deadlocked the first-ever bootstrap.** Compose evaluates
+  interpolation for *every* subcommand, not just `up`. `deploy-init.sh` copies
+  `.env.production.example` — which ships `APP_KEY=` and `REDIS_PASSWORD=` empty — and then
+  immediately ran a compose command, which now aborts the whole script under `set -e`. Phase 4
+  would have died at step 2. Secrets are now generated on the host with `openssl` before compose
+  is touched at all, and only when empty, so re-running never rotates a live `APP_KEY` (which
+  would break every encrypted value and every session) or a password MySQL was initialised with.
+
+  This also fixed a silent pre-existing bug: the old `docker compose run --rm app php artisan
+  key:generate` wrote `.env` **inside an ephemeral container** — no `.env` is bind-mounted into
+  the app service — so it had never once generated a key that survived.
+- [x] **`deploy.sh status` was collateral damage from the same guards.** It is the only diagnostic
+  the forced command exposes, and it would have returned a compose interpolation error instead of
+  container state in exactly the situations where you need it: `.env` not yet written (all of
+  Phase 4), or a password blanked by a bad edit. Switched to `docker ps --filter name=registro-`,
+  which does not read the compose file. Note the general escape hatch: `docker compose` subcommands
+  can be forced past a guard with `REDIS_PASSWORD=x docker compose down`.
+- [x] **The TLS regeneration could write a config nginx will not start on.** Three defects in the
+  §1c fix: `sed` exits 0 when it substitutes nothing, so a release whose template changed shape
+  would yield a file still containing `CERT_DOMAIN`; the write was not atomic, so a disk-full
+  truncation would sit there until the next reboot recreated nginx on it; and the domain came from
+  `APP_URL`, while certbot appends `-0001` to the live directory whenever the SAN set changes —
+  which happens the first time `www.<host>` starts resolving, since `deploy-init.sh` adds it
+  conditionally. Now: render to `.tmp`, reject any output still containing `CERT_DOMAIN`, `mv` into
+  place, and take the directory name from `CERT_DIR` in `.env` (falling back to the host) after
+  checking that `/etc/letsencrypt/live/$CERT_DIR` actually exists.
+- [x] **`REGISTRO_VERSION` was still written too early.** §1c moved it after the pull, but `up -d`
+  comes after that, so a failed `up -d` left `.env` naming a version the running containers were
+  not on — and `restart: unless-stopped` means a reboot would silently promote it, in the worst
+  case against a schema never migrated for it. Now written after the health check passes.
+- [x] **Two of the `grep -q` replacements were faithful to a check that never worked.**
+  `*healthy*` also matches `unhealthy`, so `deploy-init.sh` reported "All services are healthy"
+  for an explicitly broken stack — reproduced against a container with a failing healthcheck. And
+  `docker compose ps` lists only *running* containers, so `deploy-update.sh`'s "some containers
+  have exited" guard could never fire — also reproduced. Fixed to `*"(healthy)"*` and `ps -a`.
+  §1c listed both as fixed when only their SIGPIPE half was.
+- [x] **A failed sshd assertion left the box with no firewall.** The five hard `die`s sat between
+  `systemctl reload ssh` and the ufw block, trading a possible SSH misconfiguration for a
+  guaranteed absence of a firewall. The assertions now run after the firewall is up.
+
+### Pre-existing, outside this work, but it will break Phase 4
+
+**`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds
+a named volume from the image only when the volume is *empty*, so from the second deploy onward
+`/var/www/public` never receives the new image's contents. `docker/entrypoint.sh` tries to
+compensate for `public/build`, but its guard compares modification times and `cp -r` stamps the
+destination with the copy time, so the destination is always newer and the copy is skipped
+permanently. Vite emits content-hashed filenames each release, so `manifest.json` in the volume
+stays frozen at the first release's hashes and **every asset 404s from deploy #2 onward**. It will
+present as "the deploy succeeded and the site is unstyled". Not fixed here — it needs a decision
+about how `public/` is served (bind-mount, image-only with nginx reading from the app container,
+or an explicit sync step), not a patch. **Resolve before Phase 4.**
+
 ### Confirmed sound by the same review
 
 The security audit found the SSH forced-command boundary itself **airtight**: the
@@ -305,7 +378,7 @@ listens; 2 GB swap active; Docker log rotation in place.
 > checks passed" — and the version that ran was missing the `ufw route allow` rules, so the box as
 > it stands today would refuse all traffic to the containers the moment nginx starts. It also
 > verified one of five sshd directives. Re-run the script (it is idempotent) before Phase 4; the
-> check count is now 14. The remaining honest gap: **nothing has yet confirmed reachability from
+> check count is now 15. The remaining honest gap: **nothing has yet confirmed reachability from
 > outside the host** — no container has ever listened on it. That test belongs to Phase 4 and
 > cannot be done from the server itself.
 

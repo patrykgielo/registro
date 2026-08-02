@@ -65,8 +65,16 @@ case "${ACTION:-}" in
             || die "invalid tag '${VERSION:-}' -- expected vMAJOR.MINOR.PATCH[-suffix]"
         ;;
     status)
-        cd "$APP_DIR"
-        docker compose -f "$COMPOSE_FILE" ps
+        # Deliberately `docker ps`, not `docker compose ps`. The compose file
+        # uses the ${VAR:?} form for APP_DOMAIN, APP_KEY and REDIS_PASSWORD, and
+        # that interpolation is evaluated for EVERY subcommand -- ps and logs
+        # included, not just up. So `compose ps` returns an interpolation error
+        # instead of container state in exactly the situations where you most
+        # need to look: .env not written yet (all of Phase 4), or a password
+        # blanked by a bad edit. This action is the only diagnostic the forced
+        # command exposes, so it must not depend on .env being valid.
+        docker ps -a --filter "name=registro-" \
+            --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
         exit 0
         ;;
     *)
@@ -102,6 +110,50 @@ APP_HOST="${APP_HOST%%/*}"
 PREVIOUS="$(git -C "$APP_DIR" describe --tags --exact-match 2>/dev/null || git -C "$APP_DIR" rev-parse --short HEAD)"
 log "=== ${ACTION} ${VERSION} (currently at ${PREVIOUS}) ==="
 
+###############################################################################
+# Maintenance-mode safety net
+#
+# The maintenance flag lives in storage/framework, a named volume, so it
+# survives container recreation and reboots -- which is what makes it usable
+# across `up -d`, and also what makes a stranded flag permanent. Every failure
+# path between `artisan down` and the end of the run must clear it, or the site
+# stays 503 forever: public/index.php short-circuits EVERY request including
+# /up, and this script's grammar (deploy|rollback|status) offers no way to run
+# `artisan up`. Recovery would need the separate root key.
+#
+# `rollback` -- the operator's instinctive next move after a failed deploy --
+# would otherwise inherit the 503 and then fail its own health check because of
+# it, reporting a broken rollback that actually worked.
+###############################################################################
+
+MAINTENANCE_ON=false
+KEEP_MAINTENANCE=false
+
+clear_maintenance() {
+    [ "$MAINTENANCE_ON" = true ] || return 0
+    if [ "$KEEP_MAINTENANCE" = true ]; then
+        log "Leaving maintenance mode ON deliberately -- see the error above"
+        return 0
+    fi
+    docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null >/dev/null 2>&1 \
+        && log "Maintenance mode cleared" \
+        || log "WARNING: could not clear maintenance mode -- run 'artisan up' as root"
+    MAINTENANCE_ON=false
+}
+
+on_exit() {
+    local rc=$?
+    [ "$rc" -eq 0 ] || clear_maintenance
+    return "$rc"
+}
+trap on_exit EXIT
+
+# A rollback is a recovery action: clear any flag a previous failed deploy left
+# behind, whether or not this run sets one. Harmless when nothing is stranded.
+if [ "$ACTION" = "rollback" ]; then
+    MAINTENANCE_ON=true
+fi
+
 # Repository state comes from git, not from curl-ing raw.githubusercontent:
 # one source of truth, and it works on a private repo without a token.
 log "Fetching tags..."
@@ -119,12 +171,39 @@ git checkout --quiet --force "tags/${VERSION}" || die "git checkout failed" 3
 # that ship with a new release, and recreates the file if it went missing.
 if [ "${NGINX_CONF:-}" = "app.prod-tls.local.conf" ]; then
     TLS_DIR="docker/nginx/production"
-    [ -f "${TLS_DIR}/app.prod-tls.conf" ] \
-        || die "${TLS_DIR}/app.prod-tls.conf missing at ${VERSION}" 3
-    sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${APP_HOST}/|g" \
-        "${TLS_DIR}/app.prod-tls.conf" >"${TLS_DIR}/app.prod-tls.local.conf" \
-        || die "failed to regenerate app.prod-tls.local.conf" 3
-    log "Regenerated app.prod-tls.local.conf for ${APP_HOST}"
+    TLS_TEMPLATE="${TLS_DIR}/app.prod-tls.conf"
+    TLS_OUT="${TLS_DIR}/app.prod-tls.local.conf"
+
+    [ -f "$TLS_TEMPLATE" ] || die "${TLS_TEMPLATE} missing at ${VERSION}" 3
+
+    # NOT derived from APP_URL. certbot names the live directory after the first
+    # -d, and appends -0001 whenever the SAN set changes -- which happens the
+    # first time www.<host> starts resolving, since deploy-init.sh adds it
+    # conditionally. Rewriting the config to <host> on every deploy would then
+    # point nginx at a directory that no longer exists. CERT_DIR in .env is the
+    # authority; APP_HOST is only the initial guess.
+    CERT_DIR="${CERT_DIR:-$APP_HOST}"
+    [ -d "/etc/letsencrypt/live/${CERT_DIR}" ] \
+        || die "/etc/letsencrypt/live/${CERT_DIR} does not exist -- set CERT_DIR in .env to the certbot directory name" 3
+
+    sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${CERT_DIR}/|g" \
+        "$TLS_TEMPLATE" >"${TLS_OUT}.tmp" \
+        || die "failed to render ${TLS_OUT}" 3
+
+    # sed exits 0 when it substitutes nothing, so a template whose placeholder
+    # was renamed or whose cert paths were restructured would yield a file that
+    # still says CERT_DOMAIN and that nginx cannot start on. Check the result,
+    # not the exit status.
+    if grep -q 'CERT_DOMAIN' "${TLS_OUT}.tmp"; then
+        rm -f "${TLS_OUT}.tmp"
+        die "rendered TLS config still contains CERT_DOMAIN -- template changed shape at ${VERSION}" 3
+    fi
+
+    # Move into place only once it is complete and correct: a truncated write
+    # (disk full) would otherwise sit there until the next reboot recreated
+    # nginx on it, long after this run reported failure.
+    mv -f "${TLS_OUT}.tmp" "$TLS_OUT" || die "failed to install ${TLS_OUT}" 3
+    log "Regenerated app.prod-tls.local.conf for ${CERT_DIR}"
 fi
 
 # Pin the image tag for app, horizon and scheduler. Exported rather than written
@@ -138,14 +217,6 @@ export REGISTRO_VERSION="$VERSION"
 log "Pulling images..."
 docker compose -f "$COMPOSE_FILE" pull || die "docker pull failed" 3
 
-# Pull succeeded, so the images exist locally -- safe to make it the new default
-# for a bare `docker compose up -d` run by hand on the box.
-if grep -q '^REGISTRO_VERSION=' .env; then
-    sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=${VERSION}|" .env
-else
-    echo "REGISTRO_VERSION=${VERSION}" >> .env
-fi
-
 if [ "$ACTION" = "deploy" ]; then
     # Maintenance mode goes up BEFORE the new images do. Between `up -d` and the
     # migration below there is a wait on MySQL and Redis that can run for minutes
@@ -155,6 +226,7 @@ if [ "$ACTION" = "deploy" ]; then
     # Fails harmlessly on a first bring-up, when no app container exists yet.
     log "Enabling maintenance mode..."
     docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
+    MAINTENANCE_ON=true
 fi
 
 log "Starting containers..."
@@ -175,14 +247,23 @@ if [ "$ACTION" = "deploy" ]; then
     # Re-assert: on a first bring-up the `down` above had no container to run in.
     docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
     if ! docker compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force </dev/null; then
-        docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null || true
-        die "migrations failed -- application left up on ${VERSION}, roll back manually" 3
+        # Stay in maintenance. A failed migration leaves the schema in an
+        # unknown, possibly half-applied state, and serving the new code against
+        # it risks user-visible errors and bad writes -- worse than an honest
+        # 503. This is only a safe choice because `rollback` lifts the flag
+        # unconditionally, so recovery does not need the root key.
+        KEEP_MAINTENANCE=true
+        die "migrations failed -- site left in maintenance mode on ${VERSION}. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
     fi
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null || true
+    clear_maintenance
 else
     # Rolling back an image does not roll back schema. Additive migrations are
     # survivable, drops and renames are not -- see migrations:check-rollback.
     log "Rollback: skipping migrations (schema is NOT reverted)"
+    # Unconditional: a rollback is what an operator reaches for after a deploy
+    # died holding the maintenance flag, so it must lift it even though this run
+    # never set one.
+    clear_maintenance
 fi
 
 log "Rebuilding caches..."
@@ -210,6 +291,19 @@ until curl -fsS -o /dev/null -H "Host: ${APP_HOST}" "http://127.0.0.1/up"; do
     [ $SECONDS -lt $deadline ] || die "health check failed after ${HEALTH_TIMEOUT}s" 3
     sleep 5
 done
+
+# Only now is ${VERSION} genuinely what is deployed and serving. Writing it any
+# earlier means a failure between the write and here leaves .env naming a
+# version the running containers are not on, and the next bare
+# `docker compose up -d` -- or a reboot, via `restart: unless-stopped` -- would
+# silently promote that version, in the migration case against a schema that was
+# never migrated for it.
+log "Pinning REGISTRO_VERSION=${VERSION} in .env..."
+if grep -q '^REGISTRO_VERSION=' .env; then
+    sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=${VERSION}|" .env
+else
+    echo "REGISTRO_VERSION=${VERSION}" >> .env
+fi
 
 log "Pruning images older than 24h..."
 docker image prune -af --filter "until=24h" >/dev/null 2>&1 || true

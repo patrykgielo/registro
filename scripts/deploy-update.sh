@@ -341,8 +341,11 @@ verify_deployment() {
     docker compose -f "$DOCKER_COMPOSE_FILE" ps
 
     # Check if all services are running
-    # Same pipefail reason as the pre-flight check above.
-    if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps)" == *Exit* ]]; then
+    # Same pipefail reason as the pre-flight check above, plus `ps -a`: plain
+    # `docker compose ps` lists only RUNNING containers, so the exited container
+    # this check exists to catch is precisely the one it cannot see. The
+    # `grep -q "Exit"` form it replaced could never have fired either.
+    if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps -a)" == *Exit* ]]; then
         error "Some containers have exited!"
         docker compose -f "$DOCKER_COMPOSE_FILE" ps
         exit 1

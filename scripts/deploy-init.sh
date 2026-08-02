@@ -146,16 +146,62 @@ create_env_file() {
     # Prompt for critical configuration
     prompt "Enter your domain name (e.g., registro.com): "
     read -r domain
-    sed -i "s/APP_URL=.*/APP_URL=https:\/\/${domain}/" "$ENV_FILE"
+    sed -i "s|^APP_URL=.*|APP_URL=https://${domain}|" "$ENV_FILE"
+    # APP_DOMAIN drives tenant subdomain routing and docker-compose.prod.yml
+    # refuses to start without it.
+    sed -i "s|^APP_DOMAIN=.*|APP_DOMAIN=${domain}|" "$ENV_FILE"
 
-    # Generate APP_KEY
-    log "Generating Laravel application key..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" run --rm app php artisan key:generate --force
+    # Secrets are generated HERE, on the host, before anything touches
+    # docker compose.
+    #
+    # The previous implementation ran `docker compose run --rm app php artisan
+    # key:generate`, which could never have worked: docker-compose.prod.yml
+    # bind-mounts no .env into the app service, so artisan rewrote a copy inside
+    # an ephemeral container and the result was discarded. It failed silently.
+    #
+    # It now cannot even reach that point -- APP_KEY and REDIS_PASSWORD use the
+    # ${VAR:?} form, which compose evaluates for EVERY subcommand, so a compose
+    # call against an .env that still has them blank aborts the whole script.
+    # Generating locally fixes both problems at once.
+    log "Generating secrets..."
 
-    success "Production .env file created at: $ENV_FILE"
-    warn "IMPORTANT: Edit $ENV_FILE and update database passwords, Redis password, and SMTP credentials"
+    # Laravel's own format for the default AES-256-CBC cipher: base64: plus 32
+    # random bytes.
+    set_secret "APP_KEY" "base64:$(openssl rand -base64 32)"
+    set_secret "REDIS_PASSWORD" "$(openssl rand -base64 32 | tr -d '/+=')"
+    set_secret "DB_PASSWORD" "$(openssl rand -base64 32 | tr -d '/+=')"
+    set_secret "DB_ROOT_PASSWORD" "$(openssl rand -base64 32 | tr -d '/+=')"
+
+    chmod 600 "$ENV_FILE"
+    success "Production .env file created at: $ENV_FILE (mode 600)"
+    warn "APP_KEY, REDIS_PASSWORD, DB_PASSWORD and DB_ROOT_PASSWORD were generated."
+    warn "Still REQUIRED by hand: MAIL_USERNAME, MAIL_PASSWORD, GOOGLE_MAPS_API_KEY,"
+    warn "GOOGLE_MAPS_MAP_ID, SMSAPI_TOKEN, SMSAPI_WEBHOOK_SECRET."
+    warn "Verify with: ./scripts/validate-env.sh production"
     prompt "Press Enter to continue after editing .env file..."
     read -r
+}
+
+# Only fills a variable that is empty -- re-running deploy-init.sh must never
+# rotate a live APP_KEY (every encrypted value and every session breaks) or a
+# database password the running MySQL was initialised with.
+set_secret() {
+    local key="$1" value="$2" current
+    current="$(grep -m1 "^${key}=" "$ENV_FILE" | cut -d= -f2-)"
+
+    if [[ -n "$current" ]]; then
+        log "${key} already set -- left untouched"
+        return 0
+    fi
+
+    # `|` as the sed delimiter and a value stripped of / + = above, so base64
+    # output cannot terminate the expression.
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    else
+        echo "${key}=${value}" >>"$ENV_FILE"
+    fi
+    log "${key} generated"
 }
 
 setup_ssl_certificates() {
@@ -304,10 +350,12 @@ build_and_start_containers() {
     local timeout=60
     local elapsed=0
     while [[ $elapsed -lt $timeout ]]; do
-        # Not `ps | grep -q healthy`: under `set -o pipefail` grep -q exits on the
-        # first match and the upstream takes SIGPIPE, so a healthy stack reads as
-        # unhealthy and this loop burns its full timeout.
-        if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps)" == *healthy* ]]; then
+        # Two traps here. First, `ps | grep -q healthy` under `set -o pipefail`
+        # SIGPIPEs the upstream, so a healthy stack reads as unhealthy. Second --
+        # and this one survived the grep -q fix -- "unhealthy" CONTAINS
+        # "healthy", so a bare *healthy* match reports success for a stack that
+        # is explicitly broken. Match the parenthesised status docker renders.
+        if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps)" == *"(healthy)"* ]]; then
             success "All services are healthy"
             return 0
         fi

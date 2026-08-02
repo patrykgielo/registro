@@ -219,12 +219,10 @@ assert_sshd() {
         || die "sshd ${keyword} is '${actual:-unset}', expected '${expected}' -- another sshd_config.d file sorts before 00-registro.conf" 2
 }
 
-assert_sshd passwordauthentication no
-assert_sshd permitrootlogin prohibit-password
-assert_sshd kbdinteractiveauthentication no
-assert_sshd x11forwarding no
-assert_sshd maxauthtries 3
-log "SSH: password + keyboard-interactive auth disabled, root login key-only"
+# The assertions themselves run AFTER the firewall block, not here. They are
+# hard failures by design, and aborting at this point would leave the box with
+# no ufw at all -- trading a possible SSH misconfiguration for a guaranteed
+# absence of a firewall, which is the worse of the two.
 
 ###############################################################################
 log "Firewall"
@@ -276,6 +274,19 @@ ufw route allow proto tcp from any to any port 443 >/dev/null
 
 systemctl restart ufw
 ufw status verbose
+
+###############################################################################
+log "SSH hardening -- assertions"
+###############################################################################
+
+# Deferred from the SSH block above so that a failure here leaves a firewalled
+# machine rather than an open one. See the note there.
+assert_sshd passwordauthentication no
+assert_sshd permitrootlogin prohibit-password
+assert_sshd kbdinteractiveauthentication no
+assert_sshd x11forwarding no
+assert_sshd maxauthtries 3
+log "SSH: password + keyboard-interactive auth disabled, root login key-only"
 
 ###############################################################################
 log "Verification"
