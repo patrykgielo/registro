@@ -34,6 +34,9 @@ class EmailService
      */
     public const TYPE_TRANSACTIONAL = 'transactional';
 
+    /** A synchronous send takes seconds; anything pending this long is a crashed attempt. */
+    private const STALE_PENDING_MINUTES = 15;
+
     public const TYPE_MARKETING = 'marketing';
 
     public const TYPE_NEWSLETTER = 'newsletter';
@@ -121,13 +124,14 @@ class EmailService
         // Step 4: Generate unique message key for idempotency
         $messageKey = $this->generateMessageKey($templateKey, $recipient, $metadata);
 
-        // Step 5: Check for duplicate (idempotency check)
+        // Step 5: Idempotency -- but only against outcomes that are actually final.
         $existingSend = EmailSend::where('message_key', $messageKey)->first();
 
-        if ($existingSend) {
+        if ($existingSend !== null && ! $this->isRetryable($existingSend)) {
             Log::info('Duplicate email send detected, returning existing record', [
                 'message_key' => $messageKey,
                 'email_send_id' => $existingSend->id,
+                'status' => $existingSend->status,
             ]);
 
             return $existingSend;
@@ -136,8 +140,11 @@ class EmailService
         // Step 6: Render template
         $rendered = $this->renderTemplate($template, $data);
 
-        // Step 7: Create EmailSend record (status='pending')
-        $emailSend = EmailSend::create([
+        // Step 7: Create the record, or revive the failed one.
+        //
+        // message_key carries a UNIQUE constraint, so a retry has to reuse the
+        // existing row -- inserting a second attempt would violate it.
+        $attributes = [
             'template_key' => $templateKey,
             'language' => $language,
             'recipient_email' => $recipient,
@@ -147,7 +154,22 @@ class EmailService
             'status' => 'pending',
             'metadata' => $metadata,
             'message_key' => $messageKey,
-        ]);
+        ];
+
+        if ($existingSend !== null) {
+            Log::info('Retrying a previously failed email send', [
+                'email_send_id' => $existingSend->id,
+                'previous_status' => $existingSend->status,
+                'previous_error' => $existingSend->error_message,
+            ]);
+
+            // Re-rendered on purpose: a template fixed since the failure should
+            // take effect, and the stale error must not survive a success.
+            $existingSend->update($attributes + ['error_message' => null, 'sent_at' => null]);
+            $emailSend = $existingSend;
+        } else {
+            $emailSend = EmailSend::create($attributes);
+        }
 
         // Step 8: Try to send via EmailGateway
         try {
@@ -272,15 +294,15 @@ class EmailService
         // Generate message key
         $messageKey = $this->generateMessageKey($templateKey, $recipient, $metadata);
 
-        // Check for duplicate
+        // Check for duplicate -- same rule as sendFromTemplate(): a failed send
+        // is not a final outcome and must not block its own retry.
         $existingSend = EmailSend::where('message_key', $messageKey)->first();
 
-        if ($existingSend) {
+        if ($existingSend !== null && ! $this->isRetryable($existingSend)) {
             return $existingSend;
         }
 
-        // Create EmailSend record
-        $emailSend = EmailSend::create([
+        $attributes = [
             'template_key' => $templateKey,
             'language' => $language,
             'recipient_email' => $recipient,
@@ -290,7 +312,14 @@ class EmailService
             'status' => 'pending',
             'metadata' => $metadata,
             'message_key' => $messageKey,
-        ]);
+        ];
+
+        if ($existingSend !== null) {
+            $existingSend->update($attributes + ['error_message' => null, 'sent_at' => null]);
+            $emailSend = $existingSend;
+        } else {
+            $emailSend = EmailSend::create($attributes);
+        }
 
         // Try to send
         try {
@@ -328,6 +357,42 @@ class EmailService
      *
      * Format: md5("{template_key}:{recipient}:{metadata_json}")
      */
+    /**
+     * May this send be attempted again?
+     *
+     * The idempotency check used to return any existing record regardless of
+     * status, which meant a FAILED send blocked its own retry for ever: the
+     * message key is derived from (template, recipient, metadata), so a genuine
+     * retry reproduces it exactly and short-circuits into the failure. A brief
+     * SMTP outage therefore lost those e-mails permanently -- and the caller got
+     * an EmailSend object back, which reads as success.
+     *
+     * Confirmed on the live server: replaying a notification with byte-identical
+     * metadata returned the old failed row and created nothing.
+     *
+     * - sent    -> final. Never resend; that is what idempotency is for.
+     * - bounced -> final. The address rejected it; retrying re-bounces and
+     *              damages sender reputation.
+     * - failed  -> retryable. The transport failed, the recipient never had a say.
+     * - pending -> retryable only once clearly stale. The send is synchronous, so
+     *              a row still pending after this long belongs to a process that
+     *              died between creating it and recording the outcome; without
+     *              this it would block retries just as permanently.
+     */
+    private function isRetryable(EmailSend $send): bool
+    {
+        if ($send->status === 'failed') {
+            return true;
+        }
+
+        if ($send->status === 'pending') {
+            return $send->updated_at !== null
+                && $send->updated_at->lt(now()->subMinutes(self::STALE_PENDING_MINUTES));
+        }
+
+        return false;
+    }
+
     private function generateMessageKey(string $templateKey, string $recipient, array $metadata): string
     {
         $metadataString = json_encode($metadata, JSON_THROW_ON_ERROR);
