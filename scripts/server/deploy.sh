@@ -37,7 +37,11 @@ readonly HEALTH_TIMEOUT=180
 
 log() {
     local line="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    echo "$line"
+    # `|| true` on BOTH writes. When CI's step timeout kills the ssh client, this
+    # script is orphaned with a closed stdout and the next bare `echo` takes
+    # SIGPIPE, killing bash outright -- before any cleanup can run. That is the
+    # single most likely way this script dies, so logging must never be fatal.
+    echo "$line" 2>/dev/null || true
     echo "$line" >>"$LOG_FILE" 2>/dev/null || true
 }
 
@@ -129,29 +133,78 @@ log "=== ${ACTION} ${VERSION} (currently at ${PREVIOUS}) ==="
 MAINTENANCE_ON=false
 KEEP_MAINTENANCE=false
 
+# The volume holding storage/framework, resolved once. Needed because the
+# fallback below must work when the app container does not exist or is
+# crash-looping -- which is precisely when a stranded flag is most likely.
+STORAGE_VOL="$(docker volume ls -q --filter "name=storage-framework" 2>/dev/null || true)"
+STORAGE_VOL="${STORAGE_VOL%%$'\n'*}"
+
 clear_maintenance() {
     [ "$MAINTENANCE_ON" = true ] || return 0
     if [ "$KEEP_MAINTENANCE" = true ]; then
         log "Leaving maintenance mode ON deliberately -- see the error above"
         return 0
     fi
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null >/dev/null 2>&1 \
-        && log "Maintenance mode cleared" \
-        || log "WARNING: could not clear maintenance mode -- run 'artisan up' as root"
-    MAINTENANCE_ON=false
+
+    # Preferred: ask the framework, so this stays correct whatever driver is in
+    # use. Bounded, because a wedged PHP process would otherwise hang the trap
+    # and, under CI's step timeout, reproduce the very problem it is here to fix.
+    if timeout 60 docker compose -f "$COMPOSE_FILE" exec -T app \
+            php artisan up </dev/null >/dev/null 2>&1; then
+        log "Maintenance mode cleared"
+        MAINTENANCE_ON=false
+        return 0
+    fi
+
+    # Fallback: delete the flag from the volume directly. `artisan up` needs a
+    # working app container, and the failure paths that strand the flag -- a
+    # failed `up -d`, a MySQL that never came ready, a crash-looping image --
+    # are exactly the ones where there isn't one. Membership in the docker group
+    # is enough for this; no root key required.
+    if [ -n "$STORAGE_VOL" ] && timeout 60 docker run --rm \
+            -v "${STORAGE_VOL}:/s" alpine:3 \
+            rm -f /s/maintenance.php /s/down >/dev/null 2>&1; then
+        log "Maintenance mode cleared directly from volume ${STORAGE_VOL}"
+        MAINTENANCE_ON=false
+        return 0
+    fi
+
+    log "WARNING: could not clear maintenance mode. Try: ssh deploy@host 'rollback ${PREVIOUS}'"
+    log "         or, as root: docker run --rm -v ${STORAGE_VOL:-<vol>}:/s alpine rm -f /s/maintenance.php /s/down"
 }
 
 on_exit() {
     local rc=$?
     [ "$rc" -eq 0 ] || clear_maintenance
+    # `return` here is a no-op for the script's status -- bash preserves the
+    # pre-trap exit code unless the trap itself calls exit. Kept for clarity.
     return "$rc"
 }
-trap on_exit EXIT
 
-# A rollback is a recovery action: clear any flag a previous failed deploy left
-# behind, whether or not this run sets one. Harmless when nothing is stranded.
+# EXIT alone does NOT cover signal death, and signal death is the likely case:
+# CI wraps this in a 15-minute step timeout, and killing the ssh client orphans
+# the remote script. Each signal handler must exit explicitly, because a signal
+# trap that merely returns lets the script carry on where it was interrupted.
+on_signal() {
+    local sig="$1"
+    log "Received SIG${sig} -- cleaning up"
+    clear_maintenance
+    exit 3
+}
+trap on_exit EXIT
+for sig in HUP INT TERM PIPE; do
+    # shellcheck disable=SC2064
+    trap "on_signal ${sig}" "$sig"
+done
+
+# A rollback is a recovery action: lift any flag a previous failed deploy left
+# behind, and do it NOW rather than at the end. Deferring it to the success path
+# is useless in the case that matters -- if the rollback itself dies in the
+# MySQL wait, the operator is left with the 503 they ran this to escape.
 if [ "$ACTION" = "rollback" ]; then
     MAINTENANCE_ON=true
+    log "Rollback: lifting any stranded maintenance flag before starting"
+    clear_maintenance
 fi
 
 # Repository state comes from git, not from curl-ing raw.githubusercontent:
@@ -225,8 +278,15 @@ if [ "$ACTION" = "deploy" ]; then
     # volume, so it survives the container recreation that `up -d` performs.
     # Fails harmlessly on a first bring-up, when no app container exists yet.
     log "Enabling maintenance mode..."
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
-    MAINTENANCE_ON=true
+    # Record what actually happened, not the intent: on a first bring-up there is
+    # no app container, `down` fails, and no flag is written. Claiming otherwise
+    # makes a later error message tell the operator the site is in maintenance
+    # mode when it is not.
+    if docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null; then
+        MAINTENANCE_ON=true
+    else
+        log "No running app container -- skipping maintenance mode (first bring-up)"
+    fi
 fi
 
 log "Starting containers..."
@@ -244,26 +304,25 @@ timeout 60 bash -c "until docker compose -f '$COMPOSE_FILE' exec -T redis \
 
 if [ "$ACTION" = "deploy" ]; then
     log "Running migrations..."
-    # Re-assert: on a first bring-up the `down` above had no container to run in.
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
+    # Re-assert now that the container definitely exists: on a first bring-up the
+    # `down` above had nothing to run in.
+    if docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null; then
+        MAINTENANCE_ON=true
+    fi
     if ! docker compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force </dev/null; then
         # Stay in maintenance. A failed migration leaves the schema in an
         # unknown, possibly half-applied state, and serving the new code against
         # it risks user-visible errors and bad writes -- worse than an honest
-        # 503. This is only a safe choice because `rollback` lifts the flag
-        # unconditionally, so recovery does not need the root key.
+        # 503. Safe only because `rollback` lifts the flag before it does
+        # anything else, and because the lift falls back to deleting the flag
+        # from the volume when the app container is unusable.
         KEEP_MAINTENANCE=true
         die "migrations failed -- site left in maintenance mode on ${VERSION}. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
     fi
-    clear_maintenance
 else
     # Rolling back an image does not roll back schema. Additive migrations are
     # survivable, drops and renames are not -- see migrations:check-rollback.
     log "Rollback: skipping migrations (schema is NOT reverted)"
-    # Unconditional: a rollback is what an operator reaches for after a deploy
-    # died holding the maintenance flag, so it must lift it even though this run
-    # never set one.
-    clear_maintenance
 fi
 
 log "Rebuilding caches..."
@@ -283,6 +342,12 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link </dev/nul
 log "Restarting Horizon..."
 docker compose -f "$COMPOSE_FILE" restart horizon
 
+# Lift maintenance HERE: after the caches are warm, so the first real request
+# does not land on a container that just had optimize:clear run against it, and
+# before the health check, which goes through nginx to /up and would get the
+# maintenance 503 otherwise.
+clear_maintenance
+
 # Host header matters: nginx selects the server block by name, and without it
 # the probe can land on the default server and "pass" against the wrong vhost.
 log "Health check (Host: ${APP_HOST})..."
@@ -298,6 +363,14 @@ done
 # `docker compose up -d` -- or a reboot, via `restart: unless-stopped` -- would
 # silently promote that version, in the migration case against a schema that was
 # never migrated for it.
+#
+# The residual, stated plainly: this position has a mirror-image window. If the
+# health check fails AFTER migrations succeeded, .env still names the PREVIOUS
+# version, so a reboot brings containers up on the old image against the new
+# schema. That is the better default -- old code on a migrated schema usually
+# degrades, new code on an unmigrated one corrupts -- but it is a trade, not a
+# solution. A migration containing a drop or a rename makes it an outage either
+# way; roll forward, do not reboot and hope.
 log "Pinning REGISTRO_VERSION=${VERSION} in .env..."
 if grep -q '^REGISTRO_VERSION=' .env; then
     sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=${VERSION}|" .env
@@ -309,4 +382,9 @@ log "Pruning images older than 24h..."
 docker image prune -af --filter "until=24h" >/dev/null 2>&1 || true
 
 log "=== ${ACTION} ${VERSION} OK (was ${PREVIOUS}) ==="
-docker compose -f "$COMPOSE_FILE" ps
+
+# `|| true` and an explicit `exit 0`: this is cosmetic output, and as the last
+# command its status would otherwise become the script's. A hiccup in `ps` must
+# not report a failed deploy for a deploy that succeeded.
+docker compose -f "$COMPOSE_FILE" ps || true
+exit 0

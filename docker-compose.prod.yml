@@ -21,6 +21,9 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=production
+      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+      # a FILE in storage/framework (a named volume). See .env.production.example.
+      - APP_MAINTENANCE_DRIVER=file
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}
@@ -159,6 +162,9 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=production
+      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+      # a FILE in storage/framework (a named volume). See .env.production.example.
+      - APP_MAINTENANCE_DRIVER=file
       - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}
       - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
@@ -220,6 +226,9 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=production
+      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+      # a FILE in storage/framework (a named volume). See .env.production.example.
+      - APP_MAINTENANCE_DRIVER=file
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}

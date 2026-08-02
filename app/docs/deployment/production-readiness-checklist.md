@@ -334,6 +334,67 @@ the new compose guards introduced. Both are fixed in the same commit.
   `systemctl reload ssh` and the ufw block, trading a possible SSH misconfiguration for a
   guaranteed absence of a firewall. The assertions now run after the firewall is up.
 
+### Third review round (2026-08-02)
+
+Round 3 reviewed round 2's fixes and again found Criticals introduced by them. The pattern is the
+point: **each round of fixes to unexecuted code introduced new bugs into unexecuted code.** Three
+rounds in, the fixes are converging, but nothing here substitutes for Phase 4 actually running it.
+
+- [x] **The `EXIT` trap did not fire on signals — and signal death is the likely case.** `trap
+  on_exit EXIT` does not run on HUP, INT, TERM or PIPE. CI wraps the deploy in a step timeout, and
+  killing the ssh client orphans the remote script, which then dies at its next `log()` call
+  because `echo` to a closed stdout takes SIGPIPE. Maintenance flag set, containers healthy, site
+  serving 503 with nobody to lift it — and the two retry attempts then race the orphan for the
+  lock and return "another deploy is already running". Fixed: traps on all four signals, `log()`
+  tolerates a dead stdout, and the step timeout raised to 25 minutes to match the script's own
+  worst-case budget.
+- [x] **The rollback lift happened too late to help.** Round 2 documented an "unconditional lift at
+  the start of every rollback"; the code only set a flag there and did the actual `artisan up`
+  after the checkout, pull, `up -d` and both readiness waits. So a rollback run to escape a
+  MySQL-related failure would die in the same MySQL wait, before lifting anything. Worse,
+  `artisan up` needs a working app container — exactly what is missing in the failure paths that
+  strand the flag. Fixed twice over: the lift now happens immediately, and it falls back to
+  deleting `maintenance.php` and `down` straight out of the storage volume with a throwaway
+  container, which needs only docker-group membership. Verified end to end against a real volume.
+- [x] **`set_secret` could kill `deploy-init.sh` silently.** `current="$(grep … | cut …)"` is an
+  assignment whose status is the pipeline's; under `set -e -o pipefail` a key absent from `.env`
+  exits the script with no message, mid-write, leaving a half-built `.env`. The `else` branch that
+  appends a missing key was unreachable dead code. Fixed with a `read_env_value` helper; the same
+  latent bug in two `APP_URL` extraction sites is fixed with it.
+- [x] **The "never rotates a live APP_KEY" guarantee was defeated by the overwrite prompt.**
+  Answering `y` to "overwrite .env?" copies the example over it, blanking every secret, after which
+  `set_secret` sees them empty and generates new ones. The MySQL volume still holds the old
+  credentials, and `APP_KEY` decrypts every `encrypted` column and signs every session. Fixed:
+  secrets are read out of the old file first and carried across, the prompt spells out what is and
+  is not preserved, and the previous `.env` is backed up.
+- [x] **`deploy-init.sh`'s own TLS renderer never got round 2's hardening** — and it runs *first*.
+  It still took the domain from `APP_URL`, checked no directory, validated no output and wrote
+  non-atomically. It is also where the `-0001` problem is *created*. Now shares a hardened
+  `wire_up_tls`, and `resolve_cert_dir` finds the real directory (exact name first, then the
+  newest `-NNNN`), verified across five cases.
+- [x] **`CERT_DIR` had no writer.** Round 2 introduced the mechanism but nothing ever set it, so
+  the fallback to the hostname was the only value that could occur and the `-0001` case would
+  abort a deploy that should have worked. `wire_up_tls` now writes it; it is documented in
+  `.env.production.example`.
+- [x] **Declining certificate renewal silently dropped the server back to plain HTTP.** The
+  "certificates already exist / renew? (y/N)" early return skipped both the config render and the
+  `NGINX_CONF=` write — and on a re-run where `.env` was just recreated from the example, that
+  means `NGINX_CONF=app.prod.conf`. Declining now still wires up the existing certificate.
+- [x] **`APP_MAINTENANCE_DRIVER=cache` in the example contradicted the whole safety net.** The
+  maintenance flag is detected by `public/index.php` as a *file*; with the cache driver it stops
+  being seen and the net goes dark with no error. It was inert only because compose has no
+  `env_file:` — one reasonable-looking change away from breaking. Now `file` in the example and
+  pinned explicitly in all three compose `environment:` blocks.
+- [x] **CI retried deterministic failures.** `max_attempts: 3` re-ran failed migrations against a
+  half-applied schema, producing a different and harder-to-read error each time. Now
+  `retry_on_exit_code: 255` — ssh's own transport-error code — so only network failures retry.
+  Confirmed against the action's documentation that this retries *only* the given code.
+- [x] Smaller: maintenance state now records what happened rather than what was intended;
+  `clear_maintenance` is bounded by `timeout` so a wedged PHP process cannot hang the trap; the
+  lift moved to after the cache rebuild so the first real request does not hit a just-cleared
+  cache; the final `docker compose ps` no longer determines the script's exit status; and
+  `DB_HOST` / `REGISTRO_VERSION` in the example no longer contradict their own comments.
+
 ### Pre-existing, outside this work, but it will break Phase 4
 
 **`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds

@@ -117,12 +117,19 @@ check_prerequisites() {
 check_env_file() {
     if [[ -f "$ENV_FILE" ]]; then
         warn "Production .env file already exists at: $ENV_FILE"
+        warn "Overwriting resets it to the example. Existing APP_KEY, DB_PASSWORD,"
+        warn "DB_ROOT_PASSWORD and REDIS_PASSWORD are CARRIED OVER, not regenerated --"
+        warn "rotating them would lock the app out of the existing MySQL volume and"
+        warn "make every encrypted column and every session unreadable."
+        warn "Everything else in the file (mail, API keys, NGINX_CONF) is lost."
         prompt "Do you want to overwrite it? (y/N): "
         read -r response
         if [[ ! "$response" =~ ^[Yy]$ ]]; then
             log "Using existing .env file"
             return 0
         fi
+        cp "$ENV_FILE" "${ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
+        warn "Previous .env backed up alongside it"
     fi
     return 1
 }
@@ -139,6 +146,19 @@ create_env_file() {
         cp "${APP_DIR}/.env.example" "$ENV_FILE"
         warn "Please edit $ENV_FILE manually before proceeding"
         exit 1
+    fi
+
+    # Read the existing secrets BEFORE the example overwrites them. Regenerating
+    # these on a server that already has data is unrecoverable: the mysql_data
+    # volume was initialised with the old DB passwords, and APP_KEY decrypts
+    # every `encrypted` column and signs every session. `check_env_file` warns
+    # about this, and this is what makes the warning true.
+    local prior_app_key="" prior_db_pass="" prior_db_root="" prior_redis_pass=""
+    if [[ -f "$ENV_FILE" ]]; then
+        prior_app_key="$(read_env_value APP_KEY)"
+        prior_db_pass="$(read_env_value DB_PASSWORD)"
+        prior_db_root="$(read_env_value DB_ROOT_PASSWORD)"
+        prior_redis_pass="$(read_env_value REDIS_PASSWORD)"
     fi
 
     cp "$ENV_EXAMPLE" "$ENV_FILE"
@@ -163,18 +183,18 @@ create_env_file() {
     # ${VAR:?} form, which compose evaluates for EVERY subcommand, so a compose
     # call against an .env that still has them blank aborts the whole script.
     # Generating locally fixes both problems at once.
-    log "Generating secrets..."
+    log "Restoring carried-over secrets and generating any that are missing..."
 
-    # Laravel's own format for the default AES-256-CBC cipher: base64: plus 32
-    # random bytes.
-    set_secret "APP_KEY" "base64:$(openssl rand -base64 32)"
-    set_secret "REDIS_PASSWORD" "$(openssl rand -base64 32 | tr -d '/+=')"
-    set_secret "DB_PASSWORD" "$(openssl rand -base64 32 | tr -d '/+=')"
-    set_secret "DB_ROOT_PASSWORD" "$(openssl rand -base64 32 | tr -d '/+=')"
+    # Carried-over values win; anything still empty gets a fresh one. Laravel's
+    # own format for the default AES-256-CBC cipher is base64: plus 32 raw bytes.
+    set_secret "APP_KEY"          "${prior_app_key:-base64:$(openssl rand -base64 32)}"
+    set_secret "REDIS_PASSWORD"   "${prior_redis_pass:-$(openssl rand -base64 32 | tr -d '/+=')}"
+    set_secret "DB_PASSWORD"      "${prior_db_pass:-$(openssl rand -base64 32 | tr -d '/+=')}"
+    set_secret "DB_ROOT_PASSWORD" "${prior_db_root:-$(openssl rand -base64 32 | tr -d '/+=')}"
 
     chmod 600 "$ENV_FILE"
     success "Production .env file created at: $ENV_FILE (mode 600)"
-    warn "APP_KEY, REDIS_PASSWORD, DB_PASSWORD and DB_ROOT_PASSWORD were generated."
+    warn "APP_KEY, REDIS_PASSWORD, DB_PASSWORD and DB_ROOT_PASSWORD are set."
     warn "Still REQUIRED by hand: MAIL_USERNAME, MAIL_PASSWORD, GOOGLE_MAPS_API_KEY,"
     warn "GOOGLE_MAPS_MAP_ID, SMSAPI_TOKEN, SMSAPI_WEBHOOK_SECRET."
     warn "Verify with: ./scripts/validate-env.sh production"
@@ -182,20 +202,34 @@ create_env_file() {
     read -r
 }
 
+# Reads a single value out of $ENV_FILE, or empty if the key is absent.
+#
+# The `|| true` is load-bearing. This script runs `set -e -o pipefail`, and a
+# bare `x="$(grep ... | cut ...)"` is an assignment whose status IS the
+# pipeline's, so a missing key propagates grep's exit 1 and kills the script --
+# with no message, mid-way through writing .env, leaving a half-built file and
+# an operator with no idea what happened.
+read_env_value() {
+    grep -m1 "^${1}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true
+}
+
 # Only fills a variable that is empty -- re-running deploy-init.sh must never
 # rotate a live APP_KEY (every encrypted value and every session breaks) or a
 # database password the running MySQL was initialised with.
 set_secret() {
     local key="$1" value="$2" current
-    current="$(grep -m1 "^${key}=" "$ENV_FILE" | cut -d= -f2-)"
+    current="$(read_env_value "$key")"
 
     if [[ -n "$current" ]]; then
         log "${key} already set -- left untouched"
         return 0
     fi
 
-    # `|` as the sed delimiter and a value stripped of / + = above, so base64
-    # output cannot terminate the expression.
+    # `|` as the sed delimiter: the base64 alphabet (A-Za-z0-9+/=) contains no
+    # `|`, `&` or `\`, so no generated value can terminate the expression or be
+    # reinterpreted. Note APP_KEY is deliberately NOT stripped of / + = -- it
+    # must decode to exactly 32 bytes -- which is why the delimiter, not the
+    # stripping, is what makes this safe.
     if grep -q "^${key}=" "$ENV_FILE"; then
         sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
     else
@@ -209,7 +243,8 @@ setup_ssl_certificates() {
 
     # Extract domain from .env
     local domain
-    domain=$(grep "^APP_URL=" "$ENV_FILE" | cut -d'=' -f2 | sed 's|https\?://||' | sed 's|/.*||')
+    domain="$(read_env_value APP_URL)"
+    domain="${domain#*://}"; domain="${domain%%/*}"
 
     if [[ -z "$domain" ]]; then
         error "Domain not found in .env file (APP_URL)"
@@ -224,7 +259,12 @@ setup_ssl_certificates() {
         prompt "Do you want to renew them? (y/N): "
         read -r response
         if [[ ! "$response" =~ ^[Yy]$ ]]; then
-            log "Skipping certificate generation"
+            # NOT a bare `return 0`. Skipping renewal must still wire up the
+            # config: the caller may have just recreated .env from the example,
+            # where NGINX_CONF=app.prod.conf, and returning here would silently
+            # drop a TLS-enabled server back to plain HTTP.
+            log "Skipping certificate generation -- wiring up the existing certificate"
+            wire_up_tls "$domain"
             return 0
         fi
     fi
@@ -293,38 +333,86 @@ setup_ssl_certificates() {
 
     [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
 
-    # The certificate path placeholder lives in the TLS config, not in
-    # app.prod.conf -- that one deliberately contains no ssl_certificate at all,
-    # so nginx can start before any certificate exists.
-    #
-    # Generate into a SEPARATE, gitignored file rather than editing the tracked
-    # template in place. scripts/server/deploy.sh runs `git checkout --force` on
-    # every deploy and rollback, which would silently revert an in-place edit
-    # back to the CERT_DOMAIN placeholder. nginx keeps serving from its loaded
-    # config until something recreates the container -- a reboot, an image
-    # update -- and only then refuses to start, taking down HTTP and HTTPS
-    # together, weeks after the change that caused it.
+    wire_up_tls "$domain"
+    success "SSL certificates generated successfully"
+}
+
+# Renders the TLS config and switches nginx onto it.
+#
+# The certificate path placeholder lives in the TLS config, not in
+# app.prod.conf -- that one deliberately contains no ssl_certificate at all, so
+# nginx can start before any certificate exists.
+#
+# Renders into a SEPARATE, gitignored file rather than editing the tracked
+# template in place. scripts/server/deploy.sh runs `git checkout --force` on
+# every deploy and rollback, which would silently revert an in-place edit back
+# to the CERT_DOMAIN placeholder. nginx keeps serving from its loaded config
+# until something recreates the container -- a reboot, an image update -- and
+# only then refuses to start, taking down HTTP and HTTPS together, weeks after
+# the change that caused it.
+wire_up_tls() {
+    local domain="$1"
     local tls_template="${PROJECT_ROOT}/docker/nginx/production/app.prod-tls.conf"
     local tls_config="${PROJECT_ROOT}/docker/nginx/production/${TLS_CONF_NAME}"
-    if [[ -f "$tls_template" ]]; then
-        sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${domain}/|g" \
-            "$tls_template" >"$tls_config"
-        success "${TLS_CONF_NAME} generated, pointing at /etc/letsencrypt/live/${domain}/"
-    else
-        error "$tls_template not found -- cannot wire up the certificate"
+    local cert_dir
+
+    [[ -f "$tls_template" ]] || { error "$tls_template not found -- cannot wire up the certificate"; exit 1; }
+
+    # certbot names the live directory after the FIRST -d, and appends -0001,
+    # -0002 ... whenever the set of names changes -- which happens here the first
+    # time www.$domain starts resolving, since it is added conditionally above.
+    # Trusting $domain would point nginx at a directory that does not exist.
+    cert_dir="$(resolve_cert_dir "$domain")"
+    [[ -n "$cert_dir" ]] || { error "No certificate directory under /etc/letsencrypt/live for ${domain}"; exit 1; }
+    [[ "$cert_dir" == "$domain" ]] || warn "certbot used /etc/letsencrypt/live/${cert_dir}, not ${domain}"
+
+    # Render to a temp file, verify, then move: sed exits 0 even when it
+    # substitutes nothing, so a template whose placeholder was renamed would
+    # otherwise yield a config nginx cannot start on -- and a truncated write
+    # would sit on disk until the next reboot recreated nginx onto it.
+    sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${cert_dir}/|g" \
+        "$tls_template" >"${tls_config}.tmp"
+    if grep -q 'CERT_DOMAIN' "${tls_config}.tmp"; then
+        rm -f "${tls_config}.tmp"
+        error "Rendered TLS config still contains CERT_DOMAIN -- template changed shape"
         exit 1
     fi
+    mv -f "${tls_config}.tmp" "$tls_config"
+    success "${TLS_CONF_NAME} generated, pointing at /etc/letsencrypt/live/${cert_dir}/"
+
+    # Record which directory was used. scripts/server/deploy.sh re-renders this
+    # file after every `git checkout` and has no other way to know, so without
+    # this line every deploy after a -0001 rename would either point nginx at a
+    # missing directory or abort.
+    write_env_var "CERT_DIR" "$cert_dir"
 
     # Activate TLS by switching which config nginx mounts. Reversible: set this
     # back to app.prod.conf and re-run `up -d nginx`.
-    if grep -q '^NGINX_CONF=' "$ENV_FILE" 2>/dev/null; then
-        sed -i "s|^NGINX_CONF=.*|NGINX_CONF=${TLS_CONF_NAME}|" "$ENV_FILE"
-    else
-        echo "NGINX_CONF=${TLS_CONF_NAME}" >> "$ENV_FILE"
-    fi
+    write_env_var "NGINX_CONF" "$TLS_CONF_NAME"
     log "NGINX_CONF=${TLS_CONF_NAME} written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
+}
 
-    success "SSL certificates generated successfully"
+# Newest matching live directory: exact name first, then the -NNNN variants
+# certbot creates when the SAN set changes.
+resolve_cert_dir() {
+    local domain="$1" d
+    if [[ -d "/etc/letsencrypt/live/${domain}" ]]; then
+        echo "$domain"
+        return 0
+    fi
+    for d in $(ls -1d "/etc/letsencrypt/live/${domain}"-[0-9][0-9][0-9][0-9] 2>/dev/null | sort -r); do
+        basename "$d"
+        return 0
+    done
+}
+
+write_env_var() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    else
+        echo "${key}=${value}" >>"$ENV_FILE"
+    fi
 }
 
 ################################################################################
@@ -424,7 +512,8 @@ verify_deployment() {
 
     # Extract domain from .env
     local domain
-    domain=$(grep "^APP_URL=" "$ENV_FILE" | cut -d'=' -f2 | sed 's|https\?://||' | sed 's|/.*||')
+    domain="$(read_env_value APP_URL)"
+    domain="${domain#*://}"; domain="${domain%%/*}"
 
     # Check if application is accessible
     if curl -sSf "https://$domain" &> /dev/null; then
