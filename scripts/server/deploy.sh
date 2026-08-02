@@ -414,7 +414,18 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan route:cache </dev/null
 docker compose -f "$COMPOSE_FILE" exec -T app php artisan view:cache </dev/null
 docker compose -f "$COMPOSE_FILE" exec -T app php artisan event:cache </dev/null
 docker compose -f "$COMPOSE_FILE" exec -T app php artisan filament:optimize </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link </dev/null || true
+# Only when it is actually missing.
+#
+# docker/entrypoint.sh already creates this link on container start, so by the
+# time a deploy reaches this line it always exists -- and `storage:link` then
+# prints "ERROR  The [public/storage] link already exists." on EVERY deploy. One
+# red line in an otherwise clean log is not harmless: it sends the next person
+# reading a deploy log hunting for a problem that is not there.
+#
+# Kept as a safety net rather than deleted, for the case where the entrypoint
+# did not run, but it now stays quiet when there is nothing to do.
+docker compose -f "$COMPOSE_FILE" exec -T app \
+    sh -c '[ -L public/storage ] || php artisan storage:link' </dev/null || true
 
 # No `composer install` here. The image ships a built vendor/ directory; running
 # composer against a live container adds a packagist dependency mid-deploy and

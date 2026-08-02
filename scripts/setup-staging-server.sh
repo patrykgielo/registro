@@ -365,7 +365,12 @@ docker compose -f docker-compose.staging.yml exec -T app php artisan migrate --f
 # seeding of an empty database is deploy-init.sh's job, once, with named classes.
 
 echo "🔗 Creating storage symlink..."
-docker compose -f docker-compose.staging.yml exec -T app php artisan storage:link
+# Conditional, and here it matters more than the cosmetics: this script runs
+# under `set -e` with no `|| true`, so on a re-run -- which it is explicitly
+# meant to survive -- storage:link failing on an existing link would ABORT the
+# whole bootstrap partway through.
+docker compose -f docker-compose.staging.yml exec -T app \
+    sh -c '[ -L public/storage ] || php artisan storage:link'
 
 echo "✅ Database setup complete"
 
