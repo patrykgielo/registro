@@ -20,7 +20,7 @@
 #   3. Generates Let's Encrypt SSL certificates
 #   4. Builds and starts Docker containers
 #   5. Runs database migrations and seeds
-#   6. Creates admin user
+#   6. Creates the Registro owner (platform super-admin)
 #   7. Optimizes Laravel caches
 #   8. Verifies deployment
 #
@@ -495,19 +495,32 @@ run_migrations_and_seeds() {
 }
 
 create_admin_user() {
-    log "Creating admin user..."
+    log "Creating the Registro owner (platform super-admin)..."
 
-    prompt "Do you want to create an admin user now? (Y/n): "
+    # NOT `make:filament-user`, which this step used to call.
+    #
+    # That command builds the user around a `name` field this schema does not
+    # have -- the column was dropped in favour of first_name/last_name, and
+    # `name` is a read-only accessor -- so mass assignment silently discards it.
+    # It also assigns no role, while User::canAccessPanel() requires super-admin
+    # for /platform and one of super-admin|admin|staff for /admin. It then prints
+    # "Success! ... may now log in", which is untrue. Verified on a real server:
+    # first_name=NULL, last_name=NULL, no role, and a success message.
+    #
+    # registro:create-owner seeds the roles (without DatabaseSeeder's demo data),
+    # sets the name fields that exist, grants super-admin, and asserts
+    # canAccessPanel() before reporting success.
+    prompt "Do you want to create the owner account now? (Y/n): "
     read -r response
     if [[ "$response" =~ ^[Nn]$ ]]; then
-        warn "Skipping admin user creation. You can create one later with:"
-        warn "  docker compose -f $DOCKER_COMPOSE_FILE exec app php artisan make:filament-user"
+        warn "Skipping. NOTHING can administer this installation until you run:"
+        warn "  docker compose -f $DOCKER_COMPOSE_FILE exec app php artisan registro:create-owner"
         return 0
     fi
 
-    docker compose -f "$DOCKER_COMPOSE_FILE" exec app php artisan make:filament-user
+    docker compose -f "$DOCKER_COMPOSE_FILE" exec app php artisan registro:create-owner
 
-    success "Admin user created successfully"
+    success "Owner account created"
 }
 
 optimize_application() {

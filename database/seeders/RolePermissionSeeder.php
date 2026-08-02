@@ -129,10 +129,15 @@ class RolePermissionSeeder extends Seeder
             'bookings.cancel_own',
         ]);
 
-        // Create default admin user if doesn't exist
-        $adminUser = \App\Models\User::where('email', 'admin@example.com')->first();
-        if ($adminUser) {
-            $adminUser->assignRole('super-admin');
-        }
+        // Deliberately does NOT grant super-admin to anyone.
+        //
+        // This used to look up a hardcoded 'admin@example.com' and grant it
+        // super-admin if it happened to exist. That is a latent privilege
+        // escalation: anyone who ever registers that address -- it is a valid,
+        // claimable address on a domain that exists -- would silently become the
+        // owner of the whole installation on the next seed.
+        //
+        // Granting the owner role now belongs to `php artisan registro:create-owner`,
+        // which asks who the owner is instead of guessing.
     }
 }
