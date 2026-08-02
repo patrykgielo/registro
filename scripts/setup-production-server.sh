@@ -177,6 +177,37 @@ fi
 install -m 664 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /dev/null /var/log/registro-deploy.log 2>/dev/null || true
 install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/backups/registro
 
+# Certificate reconciliation.
+#
+# A wildcard certificate is not obtainable on a hostname inside Hostinger's own
+# hstgr.cloud zone -- Let's Encrypt issues wildcards only via DNS-01, and the
+# _acme-challenge TXT would have to be published in a zone we do not control.
+# Instead one certificate carries every tenant subdomain as a SAN, re-issued
+# over HTTP-01 whenever the tenant list changes. Root-owned because certbot
+# writes /etc/letsencrypt and nginx has to be reloaded.
+if [ -f "$(dirname "$0")/server/sync-certificate.sh" ]; then
+    install -m 755 -o root -g root "$(dirname "$0")/server/sync-certificate.sh" \
+        "${DEPLOY_SCRIPT_DIR}/sync-certificate.sh"
+    log "Installed ${DEPLOY_SCRIPT_DIR}/sync-certificate.sh"
+elif [ -f /root/sync-certificate.sh ]; then
+    install -m 755 -o root -g root /root/sync-certificate.sh "${DEPLOY_SCRIPT_DIR}/sync-certificate.sh"
+    log "Installed ${DEPLOY_SCRIPT_DIR}/sync-certificate.sh from /root/"
+else
+    warn "sync-certificate.sh not found -- tenant subdomains will show certificate warnings"
+fi
+
+install -m 644 -o root -g root /dev/null /var/log/registro-certificate.log 2>/dev/null || true
+
+# Every 15 minutes: the script exits immediately when the name set is unchanged,
+# so this costs nothing until a tenant is added or removed. It bounds the window
+# in which a brand-new tenant's subdomain still shows a browser warning.
+cat >/etc/cron.d/registro-certificate <<'CRON'
+# Reconcile the TLS certificate with the live tenant list (see /opt/registro/sync-certificate.sh)
+*/15 * * * * root /opt/registro/sync-certificate.sh >/dev/null 2>&1
+CRON
+chmod 644 /etc/cron.d/registro-certificate
+log "Installed /etc/cron.d/registro-certificate (every 15 min, no-op when unchanged)"
+
 ###############################################################################
 log "SSH hardening"
 ###############################################################################
