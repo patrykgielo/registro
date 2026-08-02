@@ -372,7 +372,9 @@ wire_up_tls() {
     # would sit on disk until the next reboot recreated nginx onto it.
     sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${cert_dir}/|g" \
         "$tls_template" >"${tls_config}.tmp"
-    if grep -q 'CERT_DOMAIN' "${tls_config}.tmp"; then
+    # The PATH, not the bare word: the template documents CERT_DOMAIN in its
+    # header, so matching the word alone fires on every successful render.
+    if grep -q '/etc/letsencrypt/live/CERT_DOMAIN/' "${tls_config}.tmp"; then
         rm -f "${tls_config}.tmp"
         error "Rendered TLS config still contains CERT_DOMAIN -- template changed shape"
         exit 1

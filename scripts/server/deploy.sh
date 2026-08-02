@@ -301,7 +301,12 @@ if [ "${NGINX_CONF:-}" = "app.prod-tls.local.conf" ]; then
     # was renamed or whose cert paths were restructured would yield a file that
     # still says CERT_DOMAIN and that nginx cannot start on. Check the result,
     # not the exit status.
-    if grep -q 'CERT_DOMAIN' "${TLS_OUT}.tmp"; then
+    #
+    # Match the PATH, not the bare word. The template explains CERT_DOMAIN in its
+    # header comments, so `grep -q CERT_DOMAIN` matches those comments on every
+    # render and this check fired unconditionally -- meaning every TLS deploy
+    # died with "template changed shape". Found by switching a real server to TLS.
+    if grep -q '/etc/letsencrypt/live/CERT_DOMAIN/' "${TLS_OUT}.tmp"; then
         rm -f "${TLS_OUT}.tmp"
         die "rendered TLS config still contains CERT_DOMAIN -- template changed shape at ${VERSION}" 3
     fi
