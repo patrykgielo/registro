@@ -1,12 +1,10 @@
 # Production Readiness Checklist — First Deploy to `srv1342834.hstgr.cloud`
 
-**Status (2026-08-02)**: §1 fixed in code, §1b found and fixed by the local dress rehearsal
-(Phase 2), §2 executed on the VPS (Phase 3), §1c found by the code review that §1–§2 skipped.
-§3–§8 remain open. **§2 must be re-run on the VPS** — it now installs firewall rules that the
-executed version lacked, without which the site is unreachable from the internet. The machine is
-bootstrapped;
-**the application has never run on it** — no clone, no `.env`, no image pulled, and
-`/opt/registro/deploy.sh` has still never been executed. That is Phase 4. Plan:
+**Status (2026-08-02, evening)**: **THE APPLICATION IS LIVE ON THE SERVER OVER HTTP.**
+`http://srv1342834.hstgr.cloud/` returns 200 from the public internet, `/admin` redirects to login,
+Vite assets serve with correct content types, 65 tables migrated. §1/§1b/§1c fixed, §2 re-run and
+now passing 15/15. Remaining: TLS (§ Phase 5), `deploy.sh` still never executed (Phase 4b), no admin
+user, and the running image predates the fixes (see Phase 4 log below). Plan:
 `~/.claude/plans/vps-bootstrap-registro-first-deploy.md`; original analysis:
 `~/.claude/plans/no-tak-z-innej-scalable-meadow.md`.
 
@@ -203,6 +201,60 @@ executed. Every *command* deploy.sh issues has now been exercised in the same or
 its own orchestration (git checkout of a tag, GHCR pull, lock handling, rollback path) has not.
 It runs for the first time in Phase 4. Nothing has been pushed to GHCR either — the image exists
 only on this laptop.
+
+## Phase 4 — first bring-up on the VPS, 2026-08-02
+
+Executed after seven rounds of code review had stopped finding inherited defects. Every step below
+is a fact from the machine, not a claim about the code.
+
+**Bootstrap re-run (§2): 15/15**, including the two `ufw route` rules that the first run predated.
+
+**The first run died silently after ~40 seconds** — and the cause is the sharpest illustration of
+why execution beats reading that this project has produced:
+
+> `assert_sshd` used `sshd -T | awk '$1 == k {print $2; exit}'`. awk's `exit` closes the pipe before
+> sshd finishes writing, sshd dies of SIGPIPE, `pipefail` propagates 141 out of the assignment, and
+> `set -e` kills the script with **no message at all**. Measured on the host: **9 of 10 runs return
+> 141.** The comment three lines above that code warns against exactly this pattern for `grep -q`.
+>
+> Earlier bootstraps survived only because there was ONE lookup instead of five — adding four
+> assertions to "verify all five directives" turned a latent race into a near-certainty.
+>
+> A second defect in the same function: it asserted `permitrootlogin prohibit-password`, but
+> `sshd -T` on Ubuntu 24.04 normalises that to the older synonym `without-password`. The setting was
+> correct all along; the assertion could never have passed.
+>
+> Four rounds of reading this file found neither. Four minutes of running it found both.
+
+**What was done and verified:**
+
+- [x] Read-only **git deploy key** generated on the VPS and registered on the repo (`id=159055118`),
+  so the server can `git fetch` without a credential that can write anything.
+- [x] Repo cloned to `/var/www/registro` at `41391dc`.
+- [x] `.env` created with `openssl`-generated `APP_KEY`, `REDIS_PASSWORD`, `DB_PASSWORD`,
+  `DB_ROOT_PASSWORD`, mode 600. `validate-env.sh production` then correctly reported exactly the
+  three secrets that are genuinely missing (Maps key, mail user/password) and nothing else.
+- [x] `docker compose config` interpolates cleanly against the real `.env` — the `${VAR:?}` guards
+  from §1c verified on the real machine.
+- [x] Image pushed to GHCR (private) and pulled by `deploy` using a **`read:packages`-only** token.
+- [x] **First bring-up: six containers, four healthy.**
+- [x] Migrations: 65 tables.
+- [x] **Reachable from the public internet over IPv4** — `/up` 200, `/` 200, `/admin` 302. Without
+  the §1c `ufw route` rules this would have timed out; it did not.
+- [x] **IPv6 works.** `curl -6` to the literal AAAA address returns the same 200 as IPv4;
+  `docker-proxy` listens on `[::]:80` and `[::]:443`. This matters because Let's Encrypt resolves
+  AAAA first and does not fall back. An earlier `curl -6` by hostname returning 000 was a resolver
+  artefact of that invocation, not a connectivity fault — worth recording so nobody re-diagnoses it.
+- [x] Assets serve: `app-B8MXWc47.css` 131 KB, `app-wSklXEGh.js` 145 KB, correct content types.
+- [x] Port exposure: only 22 and 80 reachable externally. MySQL, Redis and PHP-FPM are
+  container-internal (no host binding). 443 closed pending TLS.
+
+**Known gap, deliberately not yet closed:** the running image is `v0.13.0-rc1`, built 2026-08-01 —
+**before** PR #127. Its entrypoint has no `SYNC_PUBLIC_FROM_IMAGE` handling and printed the very
+message that fix exists to eliminate: `✅ Frontend assets already up to date`. The site works because
+a first-ever bring-up seeds the volume from the image, so the frozen copy is the current one. The
+`public/` sync therefore remains **untested on the server** until an image built from `41391dc` or
+later is deployed. Same for `deploy.sh`: still never executed.
 
 ## 1c. Found by code review of the §1/§1b/§2 diff (2026-08-02, `feature/deploy-review-fixes`)
 
