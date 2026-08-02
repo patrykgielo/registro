@@ -370,13 +370,20 @@ show_backup_summary() {
     local total_size
     total_size=$(du -sh "$BACKUP_DIR" 2>/dev/null | cut -f1)
 
-    # Oldest backup
-    local oldest_backup
-    oldest_backup=$(find "$BACKUP_DIR" -name "registro_*.sql*" -type f -printf '%T+ %p\n' | sort | head -1 | cut -d' ' -f2-)
+    # Listed once, then read twice. `find | sort | head -1` is the same
+    # SIGPIPE-under-pipefail trap as `grep -q`: `sort` buffers everything and
+    # emits at the end, `head -1` exits after the first line, and `sort` takes
+    # SIGPIPE -- so `set -o pipefail` fails the assignment and `set -e` kills the
+    # script. It would abort the summary AFTER a successful backup, reporting
+    # failure for a backup that worked. (`tail -1` is safe -- it consumes
+    # everything -- but both are written the same way here so neither invites a
+    # careless edit.)
+    local backups_by_time
+    backups_by_time=$(find "$BACKUP_DIR" -name "registro_*.sql*" -type f -printf '%T+ %p\n' | sort)
 
-    # Latest backup
-    local latest_backup
-    latest_backup=$(find "$BACKUP_DIR" -name "registro_*.sql*" -type f -printf '%T+ %p\n' | sort | tail -1 | cut -d' ' -f2-)
+    local oldest_backup latest_backup
+    oldest_backup=$(printf '%s\n' "$backups_by_time" | awk 'NR == 1 { sub(/^[^ ]+ /, ""); print }')
+    latest_backup=$(printf '%s\n' "$backups_by_time" | awk 'END { sub(/^[^ ]+ /, ""); print }')
 
     log "Total backups: $total_backups"
     log "Total size: $total_size"
