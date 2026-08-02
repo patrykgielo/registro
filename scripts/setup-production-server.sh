@@ -202,21 +202,42 @@ systemctl reload ssh
 # Assert the value actually took effect rather than trusting that writing the
 # file was enough -- that assumption is what this whole block exists to correct.
 #
-# Deliberately not `sshd -T | grep -q ...`: under `set -o pipefail`, grep -q
-# exits on first match, sshd -T then dies of SIGPIPE (141), and the pipeline
-# reports failure precisely when the check SUCCEEDS. Command substitution reads
-# the whole stream, so nothing gets a broken pipe.
-#
 # Every directive written above is verified, not just the first one. Checking
 # only PasswordAuthentication would leave the same first-wins trap open for the
 # other four -- and KbdInteractiveAuthentication in particular is the standard
 # way password logins survive `PasswordAuthentication no`, because PAM answers
 # the keyboard-interactive prompt instead.
+#
+# `sshd -T` is captured ONCE into a variable, and every lookup reads that string.
+#
+# The obvious form, `sshd -T | awk '$1 == k {print $2; exit}'`, is the exact
+# SIGPIPE-under-pipefail trap this script warns about for `grep -q` -- awk's
+# `exit` closes the pipe before sshd has finished writing, sshd dies of SIGPIPE,
+# and `set -o pipefail` propagates 141 out of the assignment. Under `set -e` the
+# script then dies SILENTLY, mid-run, with no message at all.
+#
+# That is not hypothetical: it is what killed the first real bootstrap of this
+# server on 2026-08-02, at exactly this point. Measured on that host, 9 of 10
+# runs returned 141. It survived earlier runs only because there was a single
+# lookup instead of five, so the race was rolled once rather than five times.
+SSHD_EFFECTIVE="$(sshd -T 2>/dev/null || true)"
+[ -n "$SSHD_EFFECTIVE" ] || die "sshd -T produced no output -- cannot verify SSH hardening" 2
+
+# No early `exit`: awk consumes the whole string, so nothing can take SIGPIPE.
+sshd_value() {
+    printf '%s\n' "$SSHD_EFFECTIVE" \
+        | awk -v k="$1" '$1 == k && !seen { v = $2; seen = 1 } END { print v }'
+}
+
+# Variadic: several directives have more than one accepted spelling.
 assert_sshd() {
-    local keyword="$1" expected="$2" actual
-    actual="$(sshd -T 2>/dev/null | awk -v k="$keyword" '$1 == k {print $2; exit}')"
-    [ "$actual" = "$expected" ] \
-        || die "sshd ${keyword} is '${actual:-unset}', expected '${expected}' -- another sshd_config.d file sorts before 00-registro.conf" 2
+    local keyword="$1" actual expected
+    shift
+    actual="$(sshd_value "$keyword")"
+    for expected in "$@"; do
+        [ "$actual" = "$expected" ] && return 0
+    done
+    die "sshd ${keyword} is '${actual:-unset}', expected one of: $* -- another sshd_config.d file sorts before 00-registro.conf" 2
 }
 
 # The assertions themselves run AFTER the firewall block, not here. They are
@@ -282,7 +303,11 @@ log "SSH hardening -- assertions"
 # Deferred from the SSH block above so that a failure here leaves a firewalled
 # machine rather than an open one. See the note there.
 assert_sshd passwordauthentication no
-assert_sshd permitrootlogin prohibit-password
+# `prohibit-password` is what the config file says; `sshd -T` normalises it to
+# the older synonym `without-password` on OpenSSH as shipped with Ubuntu 24.04.
+# Both mean key-only root login. Asserting only the modern spelling failed on the
+# real server even though the setting was correct.
+assert_sshd permitrootlogin prohibit-password without-password
 assert_sshd kbdinteractiveauthentication no
 assert_sshd x11forwarding no
 assert_sshd maxauthtries 3
@@ -318,9 +343,12 @@ check "ufw covers IPv6"                   "grep '^IPV6=yes' /etc/default/ufw"
 # all traffic to the published container ports.
 check "ufw routes port 80 to containers"  "ufw status | grep '^80/tcp .*ALLOW FWD'"
 check "ufw routes port 443 to containers" "ufw status | grep '^443/tcp .*ALLOW FWD'"
-check "password auth disabled"            "[ \"\$(sshd -T 2>/dev/null | awk '/^passwordauthentication/{print \$2; exit}')\" = no ]"
-check "keyboard-interactive auth disabled" "[ \"\$(sshd -T 2>/dev/null | awk '/^kbdinteractiveauthentication/{print \$2; exit}')\" = no ]"
-check "root login key-only"               "[ \"\$(sshd -T 2>/dev/null | awk '/^permitrootlogin/{print \$2; exit}')\" = prohibit-password ]"
+# Via sshd_value, not a fresh `sshd -T | awk ... exit` pipeline: see the note on
+# SSHD_EFFECTIVE above. These are the checks whose own comment block warns about
+# exactly this, so getting it wrong here twice would be its own indictment.
+check "password auth disabled"             "[ \"\$(sshd_value passwordauthentication)\" = no ]"
+check "keyboard-interactive auth disabled" "[ \"\$(sshd_value kbdinteractiveauthentication)\" = no ]"
+check "root login key-only"                "case \"\$(sshd_value permitrootlogin)\" in prohibit-password|without-password) true ;; *) false ;; esac"
 # Certbot's HTTP-01 challenge resolves AAAA first and never falls back to IPv4.
 # If this host has a global IPv6 address, the stack must be reachable over it or
 # certificate issuance fails against a site that otherwise works fine.
