@@ -97,7 +97,11 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
+      # Same reason as docker-compose.prod.yml: publishing 443 while nginx only
+      # listens on 80 makes docker-proxy accept the connection and hang, which
+      # browsers report as ERR_CONNECTION_TIMED_OUT rather than falling back to
+      # HTTP. Loopback by default -> refused instantly, browser retries on 80.
+      - "${HTTPS_PORT_V4:-127.0.0.1:443:443}"
     volumes:
       - ./docker/nginx/staging/app.staging.conf:/etc/nginx/conf.d/default.conf:ro
       - app_public:/var/www/public:ro
