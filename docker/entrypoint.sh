@@ -43,7 +43,13 @@ mkdir -p /var/www/storage/app/public/services/featured
 mkdir -p /var/www/storage/app/public/services/galleries
 mkdir -p /var/www/storage/app/public/portfolio
 mkdir -p /var/www/storage/app/public/avatars
-mkdir -p /var/www/storage/framework/{cache,sessions,views}
+# Written out rather than `framework/{cache,sessions,views}`: this script runs
+# under #!/bin/sh (dash in the image), which has no brace expansion, so that form
+# silently created one directory literally named "{cache,sessions,views}" and
+# none of the three real ones.
+mkdir -p /var/www/storage/framework/cache
+mkdir -p /var/www/storage/framework/sessions
+mkdir -p /var/www/storage/framework/views
 mkdir -p /var/www/storage/logs
 
 # Production vs Development mode
@@ -162,10 +168,29 @@ if [ "${SYNC_PUBLIC_FROM_IMAGE:-}" = "true" ] && [ -d /tmp/public ]; then
         set +e
         rc=0
 
-        # Orphans from a container killed mid-sync. Not web-accessible (nginx
-        # denies dotfiles) but they accumulate, and an entry dropped from a later
-        # release would otherwise leave its orphan forever.
-        rm -rf /var/www/public/.sync.* /var/www/public/build.new /var/www/public/build.old
+        # Recover from a container killed mid-swap BEFORE cleaning anything.
+        #
+        # `replace_public_entry` moves the live copy to <name>.old, installs the
+        # new one, then deletes the backup. A container killed between the first
+        # two steps leaves the ONLY copy at <name>.old. Deleting it here and then
+        # failing to copy from the image would destroy the entry outright -- so
+        # promote the backup first, and only remove it if the real entry is
+        # already back in place.
+        for orphan in /var/www/public/*.old; do
+            [ -e "$orphan" ] || continue
+            base="${orphan%.old}"
+            if [ -e "$base" ]; then
+                rm -rf "$orphan"
+            else
+                echo "♻️  Restoring ${base##*/} from an interrupted sync"
+                mv "$orphan" "$base" || rc=1
+            fi
+        done
+
+        # Staging leftovers are always safe to drop: they are incomplete copies
+        # by definition. Not web-accessible either (nginx denies dotfiles), but
+        # they would accumulate.
+        rm -rf /var/www/public/.sync.* /var/www/public/build.new
 
         # build/ is swapped whole rather than merged: merging keeps every past
         # release's hashed assets forever and, worse, `cp` gives no ordering
@@ -228,7 +253,14 @@ if [ "${SYNC_PUBLIC_FROM_IMAGE:-}" = "true" ] && [ -d /tmp/public ]; then
             [ -e "$dest" ] || [ -L "$dest" ] || continue
             dname="${dest##*/}"
             case "$dname" in
-                storage) continue ;;
+                # `storage` is the runtime symlink and never in the image.
+                # `build` is installed above and is legitimately absent from
+                # /tmp/public when the image ships no frontend build -- without
+                # this exemption the prune would delete the empty build/ that was
+                # just published, and still report success.
+                # *.old / .sync.* are swap state, handled above; deleting a
+                # crash orphan here would defeat the recovery.
+                storage|build|*.old) continue ;;
             esac
             if [ ! -e "/tmp/public/${dname}" ]; then
                 echo "🧹 Removing ${dname} -- no longer shipped in the image"

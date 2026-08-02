@@ -501,9 +501,9 @@ purely cosmetic — caught in review.
 old guard never fired; the new sync updates `index.php`, `.htaccess`, dotfiles, `css/` and hashed
 assets across three consecutive deploys; a planted stale asset is pruned; the `storage` symlink
 survives; rollback to an older image works; ownership stays `1000:1000` running as `laravel`; the
-sync is idempotent and leaves no `build.new`/`build.old` behind; the corrected gate **fails** the
-old entrypoint's second deploy and **passes** the new one. ("A planted stale asset is pruned"
-applies **inside `build/` only** — see the residuals below.)
+sync is idempotent and leaves no `.sync.*` or `*.old` behind; the corrected gate **fails** the old
+entrypoint's second deploy and **passes** the new one. Stale assets are pruned both inside `build/`
+(swapped wholesale) and at the top level (entries the image no longer ships).
 
 **Also fixed by the same change, and worth stating separately:** `public/css/filament/**`,
 `public/js/filament/**` and `public/vendor/livewire/**` are git-tracked and **not** content-hashed,
@@ -512,15 +512,24 @@ the first release's JS and CSS — a nastier and more confusing failure than the
 
 **Known residuals:**
 
-- Replacing a directory needs two renames, because `rename(2)` cannot replace a non-empty directory,
-  so `build/` is absent for a microsecond. Deploys run inside maintenance mode; not worth a symlink
-  indirection.
+- **Anything hand-placed in `public/` is deleted on the next app-container start.** Domain
+  verification files (`google*.html`, `ads.txt`), a static fallback page, anything dropped in by
+  hand — the volume is now a mirror of the image, so such files must be committed to the repo and
+  shipped in the image instead. This is a behaviour change from before the fix.
+- **Staging runs the sync but has no gate.** `.github/workflows/ci-staging.yml` drives compose
+  directly and never calls `scripts/server/deploy.sh`, so a failed sync there is a warning line in
+  the container log and nothing more. Only production fails the deploy on a mismatch.
+
+- Regular files are replaced by a single `rename(2)`, which is atomic — no window at all.
+  **Directories** need two renames, because `rename(2)` cannot replace a non-empty directory, so
+  `build/`, `css/`, `js/`, `fonts/`, `images/` and `vendor/` are each absent for a microsecond
+  during their swap. Deploys run inside maintenance mode; not worth a symlink indirection.
 - Pruning is **top-level only**: an entry the image no longer ships is removed, and files inside a
   synced directory are replaced wholesale, but nothing walks deeper. This is what closes the
   `public/hot` hazard — excluded by `.dockerignore`, so without pruning, once it reached the volume
   no deploy could remove it and `Vite::asset()` would resolve to a dev server application-wide.
-- The sync is **opt-in** via `SYNC_PUBLIC_FROM_IMAGE=true`, set only on the `app` service in
-  `docker-compose.prod.yml`. This is deliberate: `docker-compose.yml` and `docker-compose.dev.yml`
+- The sync is **opt-in** via `SYNC_PUBLIC_FROM_IMAGE=true`, set on the `app` service in
+  `docker-compose.prod.yml` **and** `docker-compose.staging.yml`. This is deliberate: `docker-compose.yml` and `docker-compose.dev.yml`
   bind-mount `.:/var/www` on app, horizon *and* scheduler, and the container runs as uid 1000 — the
   same as the host developer. An unconditional sync there deletes the developer's `npm run build`
   output (`public/build` is gitignored, so unrecoverably) and reverts tracked Filament and Livewire

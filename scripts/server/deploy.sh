@@ -403,6 +403,25 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link </dev/nul
 log "Restarting Horizon..."
 docker compose -f "$COMPOSE_FILE" restart horizon
 
+# Both asset gates fail through here.
+#
+# KEEP_MAINTENANCE only bites on the `deploy` path -- `rollback` never sets
+# MAINTENANCE_ON (it lifts any stranded flag at startup and adds none), so on
+# that path the site is LIVE and saying otherwise would send an operator looking
+# for a 503 that is not there.
+#
+# The advice is deliberately "re-run the same tag" rather than "roll back": the
+# sync is idempotent, so a transient copy failure clears on a second attempt,
+# whereas rolling back does NOT revert migrations and would put old code against
+# the new schema -- worse than mismatched static files.
+asset_gate_failed() {
+    KEEP_MAINTENANCE=true
+    if [ "$MAINTENANCE_ON" = true ]; then
+        die "$1 -- site left in maintenance. Re-run the same tag first (the sync is idempotent): ssh deploy@host '${ACTION} ${VERSION}'" 3
+    fi
+    die "$1 -- site is LIVE with assets that do not match ${VERSION}. Re-run the same tag first (the sync is idempotent): ssh deploy@host '${ACTION} ${VERSION}'" 3
+}
+
 # Frontend assets: the volume's build/ must be THIS image's build/.
 #
 # The health check above cannot see this. /var/www/public is a NAMED VOLUME
@@ -467,14 +486,7 @@ docker compose -f "$COMPOSE_FILE" exec -T app php -r '
     }
 
     printf("%d manifest entries, matching this image, all files present\n", count($entries));
-' </dev/null || {
-    # Keep the site DOWN. Without this the EXIT trap lifts maintenance, and the
-    # deploy ends with a failure report but the bad release live and serving --
-    # which is exactly what running this gate before clear_maintenance was meant
-    # to prevent. `rollback` lifts the flag, so recovery is one command.
-    KEEP_MAINTENANCE=true
-    die "public/ in the volume does not match this image -- site left in maintenance. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
-}
+' </dev/null || asset_gate_failed "build/ in the volume does not match this image"
 
 # The manifest check above covers build/ only. This covers the rest of public/ --
 # index.php, .htaccess, css/, js/, fonts/, images/, vendor/ -- which the same
@@ -482,15 +494,23 @@ docker compose -f "$COMPOSE_FILE" exec -T app php -r '
 # with its own failure paths. `storage` is excluded: it is a runtime symlink that
 # deliberately does not exist in the image.
 log "Verifying the rest of public/..."
+# `--exclude=storage` already removes the runtime symlink from the comparison,
+# and diff does not follow it. Measured at ~10 ms over 78 files / 11 MB.
+# `out` is captured rather than piped so diff's own exit status is not lost:
+# a diff that failed to run would otherwise produce no output and pass the gate.
 docker compose -f "$COMPOSE_FILE" exec -T app sh -c '
-    diff -rq --exclude=storage /tmp/public /var/www/public 2>&1 \
-        | grep -v "^Only in /var/www/public: storage$" \
-        | grep . && exit 1
-    exit 0
-' </dev/null || {
-    KEEP_MAINTENANCE=true
-    die "public/ differs from the image beyond build/ -- site left in maintenance. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
-}
+    out="$(diff -rq --exclude=storage /tmp/public /var/www/public 2>&1)"
+    rc=$?
+    if [ "$rc" -gt 1 ]; then
+        echo "diff failed to run: $out"
+        exit 1
+    fi
+    if [ -n "$out" ]; then
+        echo "$out"
+        exit 1
+    fi
+    echo "public/ matches the image"
+' </dev/null || asset_gate_failed "public/ differs from the image beyond build/"
 
 # Lift maintenance HERE: after the caches are warm, so the first real request
 # does not land on a container that just had optimize:clear run against it, and
