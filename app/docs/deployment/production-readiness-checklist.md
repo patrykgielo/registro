@@ -289,6 +289,44 @@ sweep handles it with no operator involvement.
 deploy. Harmless — `deploy.sh` calls it with `|| true` — but it is noise in the middle of an
 otherwise clean log and will make a future reader hunt for a problem that is not there.
 
+## Phase 5 — TLS, and three things that only a browser could find (2026-08-02)
+
+The site was answering 200 to `curl` and the operator's browser showed
+`ERR_CONNECTION_TIMED_OUT`. Three defects, found in that order.
+
+- [x] **Every check up to this point had used `curl --resolve`, which bypasses DNS.** Forcing the IP
+  meant the layer the browser actually uses was never exercised. Without it: `http://` returns 200 in
+  0.18 s and `https://` hangs.
+- [x] **443 was published with nothing behind it.** nginx listened only on 80, but
+  `docker-compose.prod.yml` mapped `0.0.0.0:443->443` unconditionally — so `docker-proxy` **accepted**
+  the TCP connection and forwarded it to a container port nobody was listening on. The connection
+  hangs rather than being refused. Browsers try HTTPS first for a typed domain, hit that, and report
+  `ERR_CONNECTION_TIMED_OUT` on a site that port 80 was serving perfectly. Fixed by binding 443 to
+  loopback until TLS is configured: measured, an outside connection is then refused in **5 ms** and
+  the browser falls back to HTTP immediately. `deploy-init.sh` flips both the port and `NGINX_CONF`
+  in one step so they cannot diverge, and `docker-compose.staging.yml` had the same defect.
+- [x] **The ACME challenge path returned 403 — certbot could never have succeeded.**
+  `location /.well-known/acme-challenge/` was a plain prefix while the deny-all for hidden files
+  below it is a **regex**, and nginx evaluates regex locations first. `/.well-known/` begins with a
+  dot, so every validation request hit `deny all`. Each failed validation counts against Let's
+  Encrypt's five-per-hour limit. Found by fetching a probe file over the public internet **before**
+  running certbot. `app.staging.conf` had `^~` all along; it was lost when the production config was
+  rewritten in #125. Verified: same probe 403 before, 200 after, while `/.env` and `/.git/config`
+  still return 403.
+- [x] **The TLS render guard fired on its own template comments.** `deploy.sh` and `deploy-init.sh`
+  checked the rendered config with `grep -q 'CERT_DOMAIN'` — but the template *explains* CERT_DOMAIN
+  in its header, so the word survives a perfectly correct render and the check fired every time.
+  **Every TLS deploy would have died** with "template changed shape". Three review rounds read this
+  line as correct. Both now match the certificate path instead.
+
+**Result:** `https://srv1342834.hstgr.cloud` serves 200, HTTP 301-redirects to HTTPS, Let's Encrypt
+certificate valid to 2026-10-31, zero mixed content, all assets 200 over TLS. `--cert-name` kept the
+lineage at the bare hostname with no `-0001` suffix.
+
+**Known gap:** the certificate covers only `srv1342834.hstgr.cloud`. Tenant subdomains will present a
+name mismatch — that needs a wildcard certificate, which Let's Encrypt issues only via DNS-01.
+Decide before onboarding the first customer.
+
 ## Phase 4c — nobody could administer the installation (2026-08-02)
 
 Found the way the rest of this was: by using it. The application was live and answering 200, and

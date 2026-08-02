@@ -134,9 +134,24 @@ services:
     # container over IPv4, so no daemon-level IPv6 is required.
     ports:
       - "0.0.0.0:80:80"
-      - "0.0.0.0:443:443"
       - "[::]:80:80"
-      - "[::]:443:443"
+      # 443 reaches the world only once TLS is actually configured.
+      #
+      # nginx listens on 443 only under app.prod-tls.local.conf. Publishing the
+      # port unconditionally means that, on an HTTP-only install, docker-proxy
+      # ACCEPTS the TCP connection and then forwards it to a container port
+      # nothing is listening on -- so the connection HANGS. Browsers try HTTPS
+      # first for a typed domain, hit that, and report ERR_CONNECTION_TIMED_OUT
+      # instead of falling back to HTTP. The site looks completely dead while
+      # port 80 serves it perfectly. Observed on this server.
+      #
+      # Binding to loopback by default closes it from outside: a connection is
+      # REFUSED in single-digit milliseconds (measured) and the browser falls
+      # back to HTTP immediately. deploy-init.sh sets these to the public
+      # addresses as part of switching NGINX_CONF to the TLS config, so the two
+      # always move together.
+      - "${HTTPS_PORT_V4:-127.0.0.1:443:443}"
+      - "${HTTPS_PORT_V6:-[::1]:443:443}"
     volumes:
       # app.prod.conf (HTTP, no certificates required) is the default so the
       # very first bring-up works on a machine with no certificate. Switch to

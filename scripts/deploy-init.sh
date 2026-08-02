@@ -391,6 +391,15 @@ wire_up_tls() {
     # Activate TLS by switching which config nginx mounts. Reversible: set this
     # back to app.prod.conf and re-run `up -d nginx`.
     write_env_var "NGINX_CONF" "$TLS_CONF_NAME"
+
+    # Publish 443 to the world in the SAME step. These two must never diverge:
+    # a published 443 with an HTTP-only nginx behind it makes docker-proxy accept
+    # the connection and hang, and browsers -- which try HTTPS first for a typed
+    # domain -- report ERR_CONNECTION_TIMED_OUT on a site that port 80 is serving
+    # perfectly. Until this point the mapping is bound to loopback, so an outside
+    # connection is refused immediately and the browser falls back to HTTP.
+    write_env_var "HTTPS_PORT_V4" "0.0.0.0:443:443"
+    write_env_var "HTTPS_PORT_V6" "[::]:443:443"
     log "NGINX_CONF=${TLS_CONF_NAME} written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
 }
 
