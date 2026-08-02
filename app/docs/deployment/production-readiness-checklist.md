@@ -348,6 +348,43 @@ credentials exist.
   a name mismatch** — `https://testowa.srv1342834.hstgr.cloud/` needs `curl -k` to load. This stopped
   being theoretical the moment the first tenant existed. A wildcard certificate needs DNS-01.
 
+## Phase 6b — tenant registration e-mails, verified on the server (2026-08-02)
+
+`v0.13.0-rc7` deployed, `platform.new_tenant_notification_email` set, and a **second tenant**
+registered over HTTPS exactly as a browser would: **Detailing Premium** (`slug=detailing`), owner
+Marek Nowak.
+
+Before this change the same action produced `jobs` 0, `failed_jobs` 0, `email_sends` 0 — silence.
+After it, two rows in `email_sends`, both rendered from real data:
+
+| template | recipient | subject |
+|---|---|---|
+| `tenant-welcome` | `szef@detailing.example` | Witamy w Registro — Detailing Premium jest gotowa |
+| `tenant-registered-operator` | `patryk3580@gmail.com` | Nowy tenant: Detailing Premium |
+
+The welcome body carries the real panel address (`https://detailing.srv1342834.hstgr.cloud/admin`),
+and that URL answers 302 to the login page — so the link a new owner receives actually works.
+
+**Both are `status=failed`, and that is the expected outcome today:**
+
+```
+error_message: Failed to send email via SMTP: Expected response code "250"
+               but got code "530" ... 530-5.7.0 Authentication Required
+```
+
+`MAIL_USERNAME` / `MAIL_PASSWORD` are still empty. Everything up to the SMTP handshake works:
+event fired, both notifications queued on `emails`, Horizon processed them, templates resolved,
+bodies rendered, recipients correct. Note that `failed_jobs` stays 0 — `EmailService` catches the
+transport error and records it against the send row rather than failing the job, so a failed
+delivery is visible in `email_sends` with its `message_key` rather than buried in a queue table.
+
+**What remains is credentials, not code.** Fill in `MAIL_USERNAME`/`MAIL_PASSWORD` — using a freshly
+generated Gmail app password, not the one recorded in the local `.env.production`, which is flagged
+for rotation — and these same rows can be retried.
+
+Both tenant subdomains serve: `detailing.` and `testowa.` return 200 (with `-k`; the certificate
+still covers only the bare host).
+
 ## Phase 5 — TLS, and three things that only a browser could find (2026-08-02)
 
 The site was answering 200 to `curl` and the operator's browser showed
