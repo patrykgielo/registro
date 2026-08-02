@@ -24,6 +24,11 @@ services:
       # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
       # a FILE in storage/framework (a named volume). See .env.production.example.
       - APP_MAINTENANCE_DRIVER=file
+      # Only the `app` service mounts app_public read-write, so it is the sole
+      # writer. Never set this where /var/www is a bind mount of the repo --
+      # docker-compose.yml does that in dev and the sync would eat the working
+      # tree. See the block in docker/entrypoint.sh.
+      - SYNC_PUBLIC_FROM_IMAGE=true
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}

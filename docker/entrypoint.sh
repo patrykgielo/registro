@@ -58,70 +58,114 @@ fi
 # ---------------------------------------------------------------------------
 # Sync public/ from the image into the shared volume
 #
-# /var/www/public is a NAMED VOLUME (app_public), shared read-only with nginx so
-# it can serve static files. Docker seeds a named volume from the image ONLY
-# when the volume is empty, so from the second deploy onward the volume keeps
-# the FIRST image's public/ forever -- index.php, .htaccess, and above all
-# build/ with its content-hashed filenames and manifest.json.
+# OPT-IN ONLY, via SYNC_PUBLIC_FROM_IMAGE. This must never run where
+# /var/www is a BIND MOUNT of the repository -- docker-compose.yml and
+# docker-compose.dev.yml mount `.:/var/www` on app, horizon AND scheduler, and
+# the container runs as uid 1000, the same as the host developer. An
+# unconditional sync there deletes the developer's `npm run build` output
+# (public/build is gitignored, so it is unrecoverable) and reverts tracked files
+# under public/css/filament, public/js/filament and public/vendor/livewire to
+# whatever was baked into the image. Opt-in rather than an APP_ENV check,
+# because the failure mode of forgetting the flag is "keeps current behaviour"
+# rather than "eats the working tree".
 #
-# Vite emits new hashes every release. A frozen volume therefore means the app
-# renders a manifest naming files the volume does not contain: every asset 404s
-# and the site is unstyled, while the deploy reports success. Verified by
-# reproduction, not inference.
+# Why it is needed in production: /var/www/public is a NAMED VOLUME (app_public),
+# shared read-only with nginx. Docker seeds a named volume from the image ONLY
+# when the volume is empty, so from the second deploy onward the volume kept the
+# FIRST image's public/ forever.
+#
+# What that actually breaks -- stated carefully, because the obvious guess is
+# wrong: the frozen build/ keeps manifest.json AND its hashed assets together,
+# so it stays internally consistent and nothing 404s. The site just serves the
+# OLD frontend indefinitely; a UI fix deploys, reports success and never
+# appears. The sharp edge is a newly added Vite entry point, which is missing
+# from the stale manifest and makes Laravel raise "Unable to locate file in Vite
+# manifest" -- a 500 on that page. The same freeze also pinned the git-tracked,
+# NON-hashed public/css/filament/**, public/js/filament/** and
+# public/vendor/livewire/** , so a Filament upgrade would have shipped new PHP
+# against first-release JS.
 #
 # The previous guard here -- `[ /tmp/public/build -nt /var/www/public/build ]` --
-# never fired even once. The volume is seeded from the same image, so both
-# directories start with identical mtimes, and `cp -r` would stamp the
-# destination with the copy time anyway. It printed "Frontend assets already up
-# to date" on the very first run and every run after it.
-#
-# Only the `app` service mounts this volume read-write (nginx has it :ro, and
-# horizon/scheduler do not mount it at all), so there is exactly one writer and
-# no need to coordinate.
+# never fired even once: the volume is seeded from the same image, so both
+# directories start with identical mtimes, and `cp -r` would restamp the
+# destination anyway. Verified by reproduction.
 # ---------------------------------------------------------------------------
-if [ -d /tmp/public ]; then
+if [ "${SYNC_PUBLIC_FROM_IMAGE:-}" = "true" ] && [ -d /tmp/public ]; then
     echo "📦 Syncing public/ from image..."
 
-    # build/ is swapped whole rather than merged. Merging would leave every past
-    # release's hashed assets in the volume forever, and -- worse -- `cp` gives
-    # no ordering guarantee, so a merge can land the new manifest.json before the
-    # files it names.
-    #
-    # Staging into build.new and renaming means nginx, which may be serving
-    # throughout and re-stats per request (no open_file_cache is configured),
-    # never reads a half-copied tree. Note the honest limit: two renames are
-    # needed, because rename(2) cannot replace a non-empty directory, so there is
-    # a microsecond between them where build/ does not exist. A request landing
-    # exactly there 404s. Deploys run inside maintenance mode, so this is not
-    # worth a symlink indirection to close.
-    rm -rf /var/www/public/build.new /var/www/public/build.old
-    if [ -d /tmp/public/build ]; then
-        cp -a /tmp/public/build /var/www/public/build.new
+    # Deliberately non-fatal despite `set -e`. A failed copy used to abort the
+    # entrypoint before `exec "$@"`, so the container never started php-fpm and
+    # crashlooped under `restart: unless-stopped` -- strictly worse than the
+    # stale frontend this replaces. deploy.sh gates the result explicitly, so a
+    # bad sync fails the DEPLOY loudly instead of killing the container.
+    sync_public() {
+        set +e
+        rc=0
+
+        # build/ is swapped whole rather than merged. Merging would leave every
+        # past release's hashed assets in the volume forever and, worse, `cp`
+        # gives no ordering guarantee, so it can land the new manifest.json
+        # before the files it names.
+        #
+        # Honest limit: replacing a directory needs two renames, because
+        # rename(2) cannot replace a non-empty directory, so build/ is absent for
+        # a microsecond between them. Deploys run inside maintenance mode.
+        rm -rf /var/www/public/build.new /var/www/public/build.old
+        if [ -d /tmp/public/build ]; then
+            cp -a /tmp/public/build /var/www/public/build.new || rc=1
+        else
+            echo "⚠️  No build assets in image -- publishing an empty build/"
+            mkdir -p /var/www/public/build.new || rc=1
+        fi
+
+        # Everything else, one entry at a time, each staged and renamed.
+        #
+        # These paths are NOT content-hashed (public/css/filament/**,
+        # public/vendor/livewire/livewire.js ...) and nginx serves them directly
+        # with `expires 1y; Cache-Control: immutable`. Copying in place is
+        # truncate-then-write, so a request landing mid-copy would receive a
+        # TRUNCATED file with HTTP 200 and have it cached for a year on a URL
+        # that never changes. Maintenance mode does not help: it gates PHP, not
+        # nginx's static serving. Rename within the volume is atomic.
+        #
+        # `-f` so a destination left non-writable by a previous release does not
+        # fail the copy. `build` is skipped: it is handled above. `storage` is
+        # absent from the image (.dockerignore) so the runtime symlink created
+        # below is never at risk.
+        for entry in /tmp/public/* /tmp/public/.[!.]*; do
+            [ -e "$entry" ] || continue
+            name="${entry##*/}"
+            [ "$name" = "build" ] && continue
+
+            rm -rf "/var/www/public/.sync.$name"
+            if cp -af "$entry" "/var/www/public/.sync.$name"; then
+                rm -rf "/var/www/public/$name"
+                mv "/var/www/public/.sync.$name" "/var/www/public/$name" || rc=1
+            else
+                rm -rf "/var/www/public/.sync.$name"
+                echo "⚠️  Could not stage $name"
+                rc=1
+            fi
+        done
+
+        if [ -d /var/www/public/build ]; then
+            mv /var/www/public/build /var/www/public/build.old || rc=1
+        fi
+        mv /var/www/public/build.new /var/www/public/build || rc=1
+        rm -rf /var/www/public/build.old
+
+        set -e
+        return $rc
+    }
+
+    if sync_public; then
+        echo "✅ public/ synced from image"
     else
-        echo "⚠️  No build assets in image -- publishing an empty build/"
-        mkdir -p /var/www/public/build.new
+        # Not fatal here on purpose -- see above. deploy.sh verifies the result.
+        echo "⚠️  public/ sync reported errors -- deploy.sh will verify and fail if stale"
     fi
-
-    # Everything else (index.php, .htaccess, robots.txt, css, js, fonts, images,
-    # vendor) overwrites in place; these are small and not content-hashed.
-    # `storage` is deliberately absent from the image (.dockerignore excludes it)
-    # and is created below, so this loop cannot clobber the symlink.
-    for entry in /tmp/public/* /tmp/public/.[!.]*; do
-        [ -e "$entry" ] || continue
-        case "$(basename "$entry")" in
-            build) continue ;;
-        esac
-        cp -a "$entry" /var/www/public/
-    done
-
-    if [ -d /var/www/public/build ]; then
-        mv /var/www/public/build /var/www/public/build.old
-    fi
-    mv /var/www/public/build.new /var/www/public/build
-    rm -rf /var/www/public/build.old
-    echo "✅ public/ synced from image"
-else
-    echo "⚠️  /tmp/public missing from image -- public/ left as-is"
+elif [ -d /tmp/public ]; then
+    echo "ℹ️  SYNC_PUBLIC_FROM_IMAGE not set -- leaving public/ untouched (dev bind mount?)"
 fi
 
 # Storage symlink AFTER the sync: the sync writes into the same directory, and

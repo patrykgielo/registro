@@ -482,22 +482,47 @@ absent from the image (`.dockerignore` excludes it), so it cannot be clobbered. 
 service mounts this volume read-write — nginx has it `:ro`, horizon and scheduler not at all — so
 there is exactly one writer.
 
-**Gate.** `scripts/server/deploy.sh` now compares the volume's `manifest.json` against the image's
-by SHA-256 and fails the deploy on a mismatch. This is deliberately *not* "check the files the
-manifest names exist" — that weaker check passes happily on a volume that is a year out of date,
-which was verified by building it, watching it pass on a stale volume, and rewriting it. The health
-check cannot see any of this: `/up` returns 200 throughout.
+**Gate.** `scripts/server/deploy.sh` compares the volume's `manifest.json` against the image's by
+SHA-256 and fails the deploy on a mismatch, *then* checks that every file the manifest names is on
+disk. The hash comparison is the part that matters: the existence check alone was written first,
+observed to pass happily on a stale volume, and kept only as a second layer because it catches a
+partial or interrupted copy that the hash cannot. The gate runs while the site is still in
+maintenance mode, before the health check — which sees none of this, since `/up` returns 200
+throughout.
 
 **Verified by reproduction, not inference:** a named volume stays frozen across image versions; the
 old guard never fired; the new sync updates `index.php`, `.htaccess`, dotfiles, `css/` and hashed
 assets across three consecutive deploys; a planted stale asset is pruned; the `storage` symlink
 survives; rollback to an older image works; ownership stays `1000:1000` running as `laravel`; the
 sync is idempotent and leaves no `build.new`/`build.old` behind; the corrected gate **fails** the
-old entrypoint's second deploy and **passes** the new one.
+old entrypoint's second deploy and **passes** the new one. ("A planted stale asset is pruned"
+applies **inside `build/` only** — see the residuals below.)
 
-**Known residual:** replacing a directory needs two renames, because `rename(2)` cannot replace a
-non-empty directory, so there is a microsecond in which `build/` does not exist. Deploys run inside
-maintenance mode, so this is not worth a symlink indirection to close.
+**Also fixed by the same change, and worth stating separately:** `public/css/filament/**`,
+`public/js/filament/**` and `public/vendor/livewire/**` are git-tracked and **not** content-hashed,
+and were frozen by the same bug. A Filament or Livewire upgrade would have shipped new PHP against
+the first release's JS and CSS — a nastier and more confusing failure than the manifest one.
+
+**Known residuals:**
+
+- Replacing a directory needs two renames, because `rename(2)` cannot replace a non-empty directory,
+  so `build/` is absent for a microsecond. Deploys run inside maintenance mode; not worth a symlink
+  indirection.
+- Nothing **outside** `build/` is ever deleted. A file removed from `public/` in a later release is
+  served forever. The one that would actually bite is `public/hot`: it is excluded by
+  `.dockerignore`, so if it ever reached the volume no deploy could remove it and `Vite::asset()`
+  would resolve to a dev server for the whole application. Worth a manual check if assets ever
+  behave strangely on the server.
+- The sync is **opt-in** via `SYNC_PUBLIC_FROM_IMAGE=true`, set only on the `app` service in
+  `docker-compose.prod.yml`. This is deliberate: `docker-compose.yml` and `docker-compose.dev.yml`
+  bind-mount `.:/var/www` on app, horizon *and* scheduler, and the container runs as uid 1000 — the
+  same as the host developer. An unconditional sync there deletes the developer's `npm run build`
+  output (`public/build` is gitignored, so unrecoverably) and reverts tracked Filament and Livewire
+  assets to the image's copies. Caught in review before merge. Opt-in beats an `APP_ENV` check
+  because forgetting the flag degrades to "no sync" rather than "working tree eaten".
+- The sync is **non-fatal**. A failed copy previously aborted the entrypoint before `exec`, so the
+  container never started php-fpm and crashlooped under `restart: unless-stopped` — worse than the
+  stale frontend it replaces. Failures now warn, and the deploy gate is what fails the deploy.
 
 ### Confirmed sound by the same review
 

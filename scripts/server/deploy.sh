@@ -403,21 +403,6 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link </dev/nul
 log "Restarting Horizon..."
 docker compose -f "$COMPOSE_FILE" restart horizon
 
-# Lift maintenance HERE: after the caches are warm, so the first real request
-# does not land on a container that just had optimize:clear run against it, and
-# before the health check, which goes through nginx to /up and would get the
-# maintenance 503 otherwise.
-clear_maintenance
-
-# Host header matters: nginx selects the server block by name, and without it
-# the probe can land on the default server and "pass" against the wrong vhost.
-log "Health check (Host: ${APP_HOST})..."
-deadline=$((SECONDS + HEALTH_TIMEOUT))
-until curl -fsS -o /dev/null -H "Host: ${APP_HOST}" "http://127.0.0.1/up"; do
-    [ $SECONDS -lt $deadline ] || die "health check failed after ${HEALTH_TIMEOUT}s" 3
-    sleep 5
-done
-
 # Frontend assets: the volume's build/ must be THIS image's build/.
 #
 # The health check above cannot see this. /var/www/public is a NAMED VOLUME
@@ -464,7 +449,7 @@ docker compose -f "$COMPOSE_FILE" exec -T app php -r '
     // would not: manifest.json can land while the files it names do not.
     $missing = [];
     foreach ($entries as $entry) {
-        foreach (["file", "css"] as $key) {
+        foreach (["file", "css", "assets"] as $key) {
             foreach ((array) ($entry[$key] ?? []) as $ref) {
                 if (!is_file("$liveDir/$ref")) {
                     $missing[] = $ref;
@@ -483,6 +468,22 @@ docker compose -f "$COMPOSE_FILE" exec -T app php -r '
 
     printf("%d manifest entries, matching this image, all files present\n", count($entries));
 ' </dev/null || die "frontend assets in the public volume do not match this image" 3
+
+# Lift maintenance HERE: after the caches are warm, so the first real request
+# does not land on a container that just had optimize:clear run against it, and
+# before the health check, which goes through nginx to /up and would get the
+# maintenance 503 otherwise.
+clear_maintenance
+
+# Host header matters: nginx selects the server block by name, and without it
+# the probe can land on the default server and "pass" against the wrong vhost.
+log "Health check (Host: ${APP_HOST})..."
+deadline=$((SECONDS + HEALTH_TIMEOUT))
+until curl -fsS -o /dev/null -H "Host: ${APP_HOST}" "http://127.0.0.1/up"; do
+    [ $SECONDS -lt $deadline ] || die "health check failed after ${HEALTH_TIMEOUT}s" 3
+    sleep 5
+done
+
 
 # Only now is ${VERSION} genuinely what is deployed and serving. Writing it any
 # earlier means a failure between the write and here leaves .env naming a
