@@ -403,6 +403,115 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link </dev/nul
 log "Restarting Horizon..."
 docker compose -f "$COMPOSE_FILE" restart horizon
 
+# Both asset gates fail through here.
+#
+# KEEP_MAINTENANCE only bites on the `deploy` path -- `rollback` never sets
+# MAINTENANCE_ON (it lifts any stranded flag at startup and adds none), so on
+# that path the site is LIVE and saying otherwise would send an operator looking
+# for a 503 that is not there.
+#
+# The advice is deliberately "re-run the same tag" rather than "roll back": the
+# sync is idempotent, so a transient copy failure clears on a second attempt,
+# whereas rolling back does NOT revert migrations and would put old code against
+# the new schema -- worse than mismatched static files.
+asset_gate_failed() {
+    KEEP_MAINTENANCE=true
+    if [ "$MAINTENANCE_ON" = true ]; then
+        die "$1 -- site left in maintenance. Re-run the same tag first (the sync is idempotent): ssh deploy@host '${ACTION} ${VERSION}'" 3
+    fi
+    die "$1 -- site is LIVE with assets that do not match ${VERSION}. Re-run the same tag first (the sync is idempotent): ssh deploy@host '${ACTION} ${VERSION}'" 3
+}
+
+# Frontend assets: the volume's build/ must be THIS image's build/.
+#
+# The health check above cannot see this. /var/www/public is a NAMED VOLUME
+# shared with nginx, and Docker seeds those from the image only when empty, so a
+# regression in the entrypoint sync leaves an older release's build/ in place.
+#
+# Note what that failure actually looks like, because it is easy to describe
+# wrongly: the frozen build/ keeps its manifest AND its assets together, so it
+# stays internally consistent and nothing 404s. The site serves the OLD frontend
+# indefinitely -- a UI fix is deployed, reported successful, and simply never
+# appears. The sharp edge is a newly added Vite entry point: it is absent from
+# the stale manifest, so Laravel raises "Unable to locate file in Vite manifest"
+# and that page 500s.
+#
+# Comparing the volume's manifest against the image's is therefore the check
+# that matters. Verifying only that referenced files exist passes happily on a
+# volume that is a year out of date -- verified by reproduction.
+log "Verifying frontend assets..."
+docker compose -f "$COMPOSE_FILE" exec -T app php -r '
+    $imageDir = "/tmp/public/build";
+    $liveDir  = "/var/www/public/build";
+
+    if (!is_file("$imageDir/manifest.json")) {
+        fwrite(STDERR, "image has no build/manifest.json -- was the frontend built?\n");
+        exit(1);
+    }
+    if (!is_file("$liveDir/manifest.json")) {
+        fwrite(STDERR, "no manifest.json in the public volume -- the entrypoint sync did not run\n");
+        exit(1);
+    }
+    if (hash_file("sha256", "$imageDir/manifest.json") !== hash_file("sha256", "$liveDir/manifest.json")) {
+        fwrite(STDERR, "the public volume holds a DIFFERENT release than this image;\n");
+        fwrite(STDERR, "the site would keep serving the old frontend. See the sync in docker/entrypoint.sh.\n");
+        exit(1);
+    }
+
+    $entries = json_decode(file_get_contents("$liveDir/manifest.json"), true);
+    if (!is_array($entries) || $entries === []) {
+        fwrite(STDERR, "manifest.json is empty or unreadable\n");
+        exit(1);
+    }
+
+    // Catches a partial or interrupted copy, which the hash comparison alone
+    // would not: manifest.json can land while the files it names do not.
+    $missing = [];
+    foreach ($entries as $entry) {
+        foreach (["file", "css", "assets"] as $key) {
+            foreach ((array) ($entry[$key] ?? []) as $ref) {
+                if (!is_file("$liveDir/$ref")) {
+                    $missing[] = $ref;
+                }
+            }
+        }
+    }
+    if ($missing !== []) {
+        fwrite(STDERR, sprintf(
+            "%d asset(s) named by the manifest are not in the volume, e.g. %s\n",
+            count($missing),
+            implode(", ", array_slice($missing, 0, 3))
+        ));
+        exit(1);
+    }
+
+    printf("%d manifest entries, matching this image, all files present\n", count($entries));
+' </dev/null || asset_gate_failed "build/ in the volume does not match this image"
+
+# The manifest check above covers build/ only. This covers the rest of public/ --
+# index.php, .htaccess, css/, js/, fonts/, images/, vendor/ -- which the same
+# freeze had pinned just as hard, and which the entrypoint syncs entry by entry
+# with its own failure paths. `storage` is excluded: it is a runtime symlink that
+# deliberately does not exist in the image.
+log "Verifying the rest of public/..."
+# `--exclude=storage` already removes the runtime symlink from the comparison,
+# and diff does not follow it. Measured at ~10 ms over 78 files / 11 MB.
+# `out` is captured rather than piped so diff's own exit status is not lost:
+# a diff that failed to run would otherwise produce no output and pass the gate.
+docker compose -f "$COMPOSE_FILE" exec -T app sh -c '
+    out="$(diff -rq --exclude=storage /tmp/public /var/www/public 2>&1)"
+    rc=$?
+    if [ "$rc" -gt 1 ]; then
+        echo "diff failed to run: $out"
+        exit 1
+    fi
+    if [ -n "$out" ]; then
+        echo "$out"
+        exit 1
+    fi
+    echo "public/ matches the image"
+' </dev/null || asset_gate_failed "public/ differs from the image beyond build/"
+
 # Lift maintenance HERE: after the caches are warm, so the first real request
 # does not land on a container that just had optimize:clear run against it, and
 # before the health check, which goes through nginx to /up and would get the
@@ -417,6 +526,7 @@ until curl -fsS -o /dev/null -H "Host: ${APP_HOST}" "http://127.0.0.1/up"; do
     [ $SECONDS -lt $deadline ] || die "health check failed after ${HEALTH_TIMEOUT}s" 3
     sleep 5
 done
+
 
 # Only now is ${VERSION} genuinely what is deployed and serving. Writing it any
 # earlier means a failure between the write and here leaves .env naming a

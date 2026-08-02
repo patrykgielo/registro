@@ -23,6 +23,10 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=staging
+      # Same named-volume freeze as production: without this, public/ stops
+      # updating from deploy #2 onward. Only the `app` service mounts
+      # app_public read-write. Never set where /var/www is a bind mount.
+      - SYNC_PUBLIC_FROM_IMAGE=true
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL:-https://srv1203357.hstgr.cloud}

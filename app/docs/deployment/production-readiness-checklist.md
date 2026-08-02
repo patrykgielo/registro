@@ -453,18 +453,91 @@ defect density is dominated by things only execution will reveal. The next step 
 dry run on the VPS (deploy a throwaway tag, kill the CI step mid-run on purpose, confirm the flag
 lifts on the following attempt), not a fifth read.
 
-### Pre-existing, outside this work, but it will break Phase 4
+### Frozen `public/` volume — FIXED 2026-08-02 (`feature/public-assets-volume`)
 
-**`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds
-a named volume from the image only when the volume is *empty*, so from the second deploy onward
-`/var/www/public` never receives the new image's contents. `docker/entrypoint.sh` tries to
-compensate for `public/build`, but its guard compares modification times and `cp -r` stamps the
-destination with the copy time, so the destination is always newer and the copy is skipped
-permanently. Vite emits content-hashed filenames each release, so `manifest.json` in the volume
-stays frozen at the first release's hashes and **every asset 404s from deploy #2 onward**. It will
-present as "the deploy succeeded and the site is unstyled". Not fixed here — it needs a decision
-about how `public/` is served (bind-mount, image-only with nginx reading from the app container,
-or an explicit sync step), not a patch. **Resolve before Phase 4.**
+**`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds a
+named volume from the image only when the volume is *empty*, so from the second deploy onward
+`/var/www/public` never received the new image's contents. `docker/entrypoint.sh` was supposed to
+compensate for `public/build`, but its guard compared modification times against a destination that
+`cp -r` restamps — and since the volume is seeded from the same image, both directories start with
+identical mtimes. **Reproduced: it printed "Frontend assets already up to date" on the very first
+run and every run after it. The copy never once executed.**
+
+> **Correction.** An earlier revision of this section — written from the review that found the
+> defect, before it was reproduced — claimed "every asset 404s from deploy #2 onward … the site is
+> unstyled". That is wrong, and testing showed why: the frozen `build/` keeps its `manifest.json`
+> **and** its hashed assets together, so it stays internally consistent and nothing 404s.
+>
+> The real behaviour is quieter and arguably worse to diagnose: **the site serves the old frontend
+> indefinitely.** A UI fix is deployed, reported successful, and simply never appears. The stale
+> `index.php` front controller is frozen too. The sharp edge is a **newly added Vite entry point**:
+> it is absent from the stale manifest, so Laravel raises `Unable to locate file in Vite manifest`
+> and that page 500s.
+
+**Fix.** `docker/entrypoint.sh` syncs `public/` from the image's `/tmp/public` snapshot when
+`SYNC_PUBLIC_FROM_IMAGE=true`, which is set only on the `app` service in `docker-compose.prod.yml`
+and `docker-compose.staging.yml`. Every entry is staged to a sibling path and moved into place:
+regular files by a single `rename(2)`, which replaces atomically with no window at all; directories
+by move-aside-then-move-in, since `rename(2)` refuses to replace a non-empty directory. Nothing is
+deleted before its replacement is known to be complete, so any failed copy leaves the previous copy
+intact. Top-level entries the image no longer ships are pruned, so the volume mirrors the image
+rather than accumulating every release. The `storage` symlink is exempt from pruning, created after
+the sync, and absent from the image, so it is never at risk. Only the `app` service mounts this
+volume read-write — nginx has it `:ro`, horizon and scheduler not at all — so there is one writer.
+
+**Gate.** `scripts/server/deploy.sh` compares the volume's `manifest.json` against the image's by
+SHA-256 and fails the deploy on a mismatch, *then* checks that every file the manifest names is on
+disk. The hash comparison is the part that matters: the existence check alone was written first,
+observed to pass happily on a stale volume, and kept only as a second layer because it catches a
+partial or interrupted copy that the hash cannot. The gate runs while the site is still in
+maintenance mode, before the health check — which sees none of this, since `/up` returns 200
+throughout. A second gate `diff -rq`s the whole tree (excluding `storage`), because the manifest
+check covers `build/` only and the same freeze had pinned `index.php`, `css/`, `js/` and `vendor/`
+just as hard. Both gates set `KEEP_MAINTENANCE=true` before failing: without it the EXIT trap lifts
+maintenance and the bad release goes live anyway, which would have made moving the gate earlier
+purely cosmetic — caught in review.
+
+**Verified by reproduction, not inference:** a named volume stays frozen across image versions; the
+old guard never fired; the new sync updates `index.php`, `.htaccess`, dotfiles, `css/` and hashed
+assets across three consecutive deploys; a planted stale asset is pruned; the `storage` symlink
+survives; rollback to an older image works; ownership stays `1000:1000` running as `laravel`; the
+sync is idempotent and leaves no `.sync.*` or `*.old` behind; the corrected gate **fails** the old
+entrypoint's second deploy and **passes** the new one. Stale assets are pruned both inside `build/`
+(swapped wholesale) and at the top level (entries the image no longer ships).
+
+**Also fixed by the same change, and worth stating separately:** `public/css/filament/**`,
+`public/js/filament/**` and `public/vendor/livewire/**` are git-tracked and **not** content-hashed,
+and were frozen by the same bug. A Filament or Livewire upgrade would have shipped new PHP against
+the first release's JS and CSS — a nastier and more confusing failure than the manifest one.
+
+**Known residuals:**
+
+- **Anything hand-placed in `public/` is deleted on the next app-container start.** Domain
+  verification files (`google*.html`, `ads.txt`), a static fallback page, anything dropped in by
+  hand — the volume is now a mirror of the image, so such files must be committed to the repo and
+  shipped in the image instead. This is a behaviour change from before the fix.
+- **Staging runs the sync but has no gate.** `.github/workflows/ci-staging.yml` drives compose
+  directly and never calls `scripts/server/deploy.sh`, so a failed sync there is a warning line in
+  the container log and nothing more. Only production fails the deploy on a mismatch.
+
+- Regular files are replaced by a single `rename(2)`, which is atomic — no window at all.
+  **Directories** need two renames, because `rename(2)` cannot replace a non-empty directory, so
+  `build/`, `css/`, `js/`, `fonts/`, `images/` and `vendor/` are each absent for a microsecond
+  during their swap. Deploys run inside maintenance mode; not worth a symlink indirection.
+- Pruning is **top-level only**: an entry the image no longer ships is removed, and files inside a
+  synced directory are replaced wholesale, but nothing walks deeper. This is what closes the
+  `public/hot` hazard — excluded by `.dockerignore`, so without pruning, once it reached the volume
+  no deploy could remove it and `Vite::asset()` would resolve to a dev server application-wide.
+- The sync is **opt-in** via `SYNC_PUBLIC_FROM_IMAGE=true`, set on the `app` service in
+  `docker-compose.prod.yml` **and** `docker-compose.staging.yml`. This is deliberate: `docker-compose.yml` and `docker-compose.dev.yml`
+  bind-mount `.:/var/www` on app, horizon *and* scheduler, and the container runs as uid 1000 — the
+  same as the host developer. An unconditional sync there deletes the developer's `npm run build`
+  output (`public/build` is gitignored, so unrecoverably) and reverts tracked Filament and Livewire
+  assets to the image's copies. Caught in review before merge. Opt-in beats an `APP_ENV` check
+  because forgetting the flag degrades to "no sync" rather than "working tree eaten".
+- The sync is **non-fatal**. A failed copy previously aborted the entrypoint before `exec`, so the
+  container never started php-fpm and crashlooped under `restart: unless-stopped` — worse than the
+  stale frontend it replaces. Failures now warn, and the deploy gate is what fails the deploy.
 
 ### Confirmed sound by the same review
 
