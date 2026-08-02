@@ -249,12 +249,45 @@ why execution beats reading that this project has produced:
 - [x] Port exposure: only 22 and 80 reachable externally. MySQL, Redis and PHP-FPM are
   container-internal (no host binding). 443 closed pending TLS.
 
-**Known gap, deliberately not yet closed:** the running image is `v0.13.0-rc1`, built 2026-08-01 —
-**before** PR #127. Its entrypoint has no `SYNC_PUBLIC_FROM_IMAGE` handling and printed the very
-message that fix exists to eliminate: `✅ Frontend assets already up to date`. The site works because
-a first-ever bring-up seeds the volume from the image, so the frozen copy is the current one. The
-`public/` sync therefore remains **untested on the server** until an image built from `41391dc` or
-later is deployed. Same for `deploy.sh`: still never executed.
+## Phase 4b — `deploy.sh` and the maintenance recovery, verified on the server 2026-08-02
+
+`v0.13.0-rc2` tagged from `43a82c7`, built, pushed, and deployed over the running `v0.13.0-rc1`
+stack. **`/opt/registro/deploy.sh` ran for the first time ever and succeeded on the first attempt.**
+
+- [x] **The `public/` sync works, proven on the case that matters.** This was the *second* deploy
+  onto the same volume — exactly where the freeze manifests. The app log now reads
+  `📦 Syncing public/ from image...` / `✅ public/ synced from image`, where the previous image had
+  printed `✅ Frontend assets already up to date`. Independently confirmed: the `sha256` of
+  `manifest.json` in the volume is identical to the one in the image.
+- [x] **Both asset gates passed on real data**: `8 manifest entries, matching this image, all files
+  present` and `public/ matches the image`.
+- [x] Site stayed correct throughout: `/up` 200, `/` 200, `/admin` 302, CSS 131 KB served.
+- [x] `.env` pinned to `REGISTRO_VERSION=v0.13.0-rc2`, working tree at the matching tag.
+
+### The maintenance-recovery test — what four review rounds could not settle
+
+A deploy was started and **SIGKILLed** the moment maintenance mode came up. SIGKILL was chosen
+deliberately: no trap can catch it, so this tests the round-4 design decision (*clear any stale flag
+at the start of every run*) rather than the trap fast path.
+
+| Step | Result |
+|---|---|
+| Deploy started, maintenance on after 6 s | ✅ |
+| `kill -9` on `deploy.sh` | processes gone, no cleanup possible |
+| Flag on disk | `down` **and** `maintenance.php` present — genuinely stranded |
+| Site | **HTTP 503** — the outage is real, not theoretical |
+| Next `deploy.sh` run | `Clearing any maintenance flag left by a previous run...` → `Maintenance mode cleared`, exit 0 |
+| Site after | **HTTP 200** |
+
+This validates the decision made in round 4, after three rounds of trap machinery had failed:
+**correctness must not depend on traps.** SIGKILL is the case no handler survives, and the startup
+sweep handles it with no operator involvement.
+
+### Residual from this run
+
+`artisan storage:link` prints `The [public/storage] link already exists.` as an ERROR line on every
+deploy. Harmless — `deploy.sh` calls it with `|| true` — but it is noise in the middle of an
+otherwise clean log and will make a future reader hunt for a problem that is not there.
 
 ## 1c. Found by code review of the §1/§1b/§2 diff (2026-08-02, `feature/deploy-review-fixes`)
 
