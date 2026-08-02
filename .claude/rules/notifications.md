@@ -172,6 +172,33 @@ Notification::assertSentTo(
 );
 ```
 
+## Idempotencja EmailService — nieudana wysyłka NIE jest stanem końcowym
+
+`EmailService::sendFromTemplate()` deduplikuje po `message_key = md5(template:recipient:metadata)`.
+Do 2026-08-03 zwracał istniejący rekord **niezależnie od statusu** — więc nieudana wysyłka blokowała
+własne ponowienie na zawsze.
+
+Najgorsze było sprzężenie z kolejką: serwis **rzuca** wyjątek po nieudanej wysyłce (celowo, żeby job
+padł i Laravel go ponowił), ale **ponowienie trafiało w dedupe i kończyło się „sukcesem"** bez
+wysłania czegokolwiek. Mechanizm odzyskiwania kolejki po cichu połykał maila — dlatego
+`failed_jobs` było 0 przy nieudanych wysyłkach na produkcji.
+
+Zasada, którą teraz egzekwuje `isRetryable()`:
+
+| status | ponawiać? | dlaczego |
+|---|---|---|
+| `sent` | nie | stan końcowy, po to jest idempotencja |
+| `bounced` | nie | werdykt odbiorcy; ponowienie psuje reputację nadawcy |
+| `failed` | **tak** | zawiódł transport, odbiorca nie miał nic do powiedzenia |
+| `pending` > 15 min | **tak** | wysyłka jest synchroniczna, więc to proces, który padł między utworzeniem wiersza a zapisem wyniku |
+
+`email_sends.message_key` ma UNIQUE, więc ponowienie **aktualizuje istniejący wiersz**, nigdy nie
+wstawia drugiego. Przy okazji czyści `error_message` i `sent_at`, żeby stary błąd nie przeżył
+udanej próby.
+
+**Pisząc nową ścieżkę wysyłki: nie kopiuj `if ($existing) return $existing;`.** Użyj
+`isRetryable()`.
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
