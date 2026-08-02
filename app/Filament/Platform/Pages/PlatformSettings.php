@@ -58,9 +58,11 @@ class PlatformSettings extends Page implements HasForms
     {
         $manager = app(SettingsManager::class);
         $raw = $manager->getGlobal('account.closure_request_email');
+        $newTenant = $manager->getGlobal('platform.new_tenant_notification_email');
 
         $this->form->fill([
             'closure_request_email' => is_string($raw) ? $raw : '',
+            'new_tenant_notification_email' => is_string($newTenant) ? $newTenant : '',
         ]);
     }
 
@@ -69,6 +71,29 @@ class PlatformSettings extends Page implements HasForms
         return $schema
             ->statePath('data')
             ->components([
+                Section::make('Powiadomienia o nowych tenantach')
+                    ->description(
+                        'Adres, na który trafia wiadomość, gdy nowa firma zarejestruje się na platformie. '
+                        .'Puste pole wyłącza powiadomienia; jeśli nie ustawisz nic, użyty zostanie adres '
+                        .'wniosków zamknięcia konta poniżej.'
+                    )
+                    ->schema([
+                        TextInput::make('new_tenant_notification_email')
+                            ->label('Adres e-mail')
+                            ->email()
+                            ->maxLength(255)
+                            ->placeholder('kontakt@registro.app')
+                            ->helperText('Zostaw puste, aby nie otrzymywać powiadomień o nowych rejestracjach.'),
+
+                        \Filament\Schemas\Components\Actions::make([
+                            \Filament\Actions\Action::make('saveNewTenantEmail')
+                                ->label('Zapisz')
+                                ->color('primary')
+                                ->icon('heroicon-o-check')
+                                ->action('saveNewTenantEmail'),
+                        ])->columnSpanFull(),
+                    ]),
+
                 Section::make('E-mail dla wniosków zamknięcia konta')
                     ->description(
                         'Adres, na który tenanci wysyłają wniosek o zamknięcie konta. '
@@ -91,6 +116,32 @@ class PlatformSettings extends Page implements HasForms
                         ])->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    /**
+     * Empty is a legitimate value here, unlike the closure address: it means the
+     * operator does not want to hear about new registrations. Only a non-empty
+     * value has to look like an address.
+     */
+    public function saveNewTenantEmail(): void
+    {
+        $email = trim($this->form->getState()['new_tenant_notification_email'] ?? '');
+
+        if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Notification::make()
+                ->title('Nieprawidłowy adres e-mail')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        app(SettingsManager::class)->setGlobal('platform.new_tenant_notification_email', $email);
+
+        Notification::make()
+            ->title($email === '' ? 'Powiadomienia o nowych tenantach wyłączone' : 'Ustawienia zapisane')
+            ->success()
+            ->send();
     }
 
     public function saveAccountSettings(): void
