@@ -289,6 +289,65 @@ sweep handles it with no operator involvement.
 deploy. Harmless — `deploy.sh` calls it with `|| true` — but it is noise in the middle of an
 otherwise clean log and will make a future reader hunt for a problem that is not there.
 
+## Phase 6 — first tenant registered end to end, and what it revealed about e-mail (2026-08-02)
+
+The full three-step business registration was walked over HTTPS as a browser would, on the live
+server. It works: organisation **Wypozyczalnia Testowa** (`slug=testowa`) created, owner Jan Kowalski
+with role `admin`, redirect to `/register/welcome`, and `testowa.srv1342834.hstgr.cloud` serves 200.
+
+Three findings, all pre-existing, all confirmed by running rather than reading.
+
+### 1. Business registration sends no e-mail at all
+
+Not "mail failed" — **no mail is attempted**. After registration: `jobs` 0, `failed_jobs` 0,
+`email_sends` 0.
+
+`BusinessRegisterController` contains zero references to `UserRegistered`, `Mail::` or `notify()`.
+The welcome-mail machinery exists and works — `UserRegistered` → `UserRegisteredNotification`, wired
+in `AppServiceProvider:275` — but it is fired only by `RegisterController`, the **customer**
+registration at `/customer/register`. The business owner who just created a tenant receives nothing:
+no welcome, no confirmation, no credentials reminder, no address verification.
+
+### 2. There is no platform-level SMTP configuration
+
+The resolution chain is per-tenant setting → global setting (`organization_id IS NULL`) → `.env` →
+hardcoded default, read at runtime by `SmtpMailer::configure()` from
+`SettingsManager::group('email')`.
+
+The **editing UI exists only per tenant**: `/admin` → `SystemSettings` has the full SMTP form
+(`smtp_host`, `smtp_username`, `from_address`, …). `/platform` → `PlatformSettings` has no SMTP form
+at all — only an address for account-closure requests.
+
+So the operator of the SaaS can configure e-mail for the platform **only by editing `.env` on the
+server**, or by inserting a `settings` row with `organization_id = NULL` by hand. Every new tenant
+either configures their own SMTP or silently inherits whatever `.env` holds.
+
+### 3. Mail is wired but has no credentials, and fails loudly when used
+
+Confirmed by an actual send attempt on the server:
+
+```
+mailer: smtp   host: smtp.gmail.com   username: (empty)   password: (empty)
+settings rows in group 'email': 0
+send -> UnexpectedResponseException: Expected response code "250" but got "530"
+        530-5.7.0 Authentication Required
+```
+
+Nothing in the registration path triggers this today, because nothing sends. But every other flow
+that does — password reset, order confirmation, appointment notification — will fail this way until
+credentials exist.
+
+### What this means before the first paying customer
+
+- A business owner registering receives **no e-mail whatsoever**. Whether that is acceptable is a
+  product decision, but right now it is an accident rather than a choice: the machinery is there and
+  simply is not called from the business flow.
+- `MAIL_USERNAME` / `MAIL_PASSWORD` must be filled in, and the Gmail app password recorded in the
+  local `.env.production` is flagged for rotation — generate a new one rather than reusing it.
+- The certificate covers only `srv1342834.hstgr.cloud`. **Tenant subdomains now demonstrably present
+  a name mismatch** — `https://testowa.srv1342834.hstgr.cloud/` needs `curl -k` to load. This stopped
+  being theoretical the moment the first tenant existed. A wildcard certificate needs DNS-01.
+
 ## Phase 5 — TLS, and three things that only a browser could find (2026-08-02)
 
 The site was answering 200 to `curl` and the operator's browser showed
