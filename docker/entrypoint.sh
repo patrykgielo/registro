@@ -55,25 +55,82 @@ else
     echo "🔓 Development mode: Files owned by host user"
 fi
 
-# Create storage symlink if it doesn't exist
+# ---------------------------------------------------------------------------
+# Sync public/ from the image into the shared volume
+#
+# /var/www/public is a NAMED VOLUME (app_public), shared read-only with nginx so
+# it can serve static files. Docker seeds a named volume from the image ONLY
+# when the volume is empty, so from the second deploy onward the volume keeps
+# the FIRST image's public/ forever -- index.php, .htaccess, and above all
+# build/ with its content-hashed filenames and manifest.json.
+#
+# Vite emits new hashes every release. A frozen volume therefore means the app
+# renders a manifest naming files the volume does not contain: every asset 404s
+# and the site is unstyled, while the deploy reports success. Verified by
+# reproduction, not inference.
+#
+# The previous guard here -- `[ /tmp/public/build -nt /var/www/public/build ]` --
+# never fired even once. The volume is seeded from the same image, so both
+# directories start with identical mtimes, and `cp -r` would stamp the
+# destination with the copy time anyway. It printed "Frontend assets already up
+# to date" on the very first run and every run after it.
+#
+# Only the `app` service mounts this volume read-write (nginx has it :ro, and
+# horizon/scheduler do not mount it at all), so there is exactly one writer and
+# no need to coordinate.
+# ---------------------------------------------------------------------------
+if [ -d /tmp/public ]; then
+    echo "📦 Syncing public/ from image..."
+
+    # build/ is swapped whole rather than merged. Merging would leave every past
+    # release's hashed assets in the volume forever, and -- worse -- `cp` gives
+    # no ordering guarantee, so a merge can land the new manifest.json before the
+    # files it names.
+    #
+    # Staging into build.new and renaming means nginx, which may be serving
+    # throughout and re-stats per request (no open_file_cache is configured),
+    # never reads a half-copied tree. Note the honest limit: two renames are
+    # needed, because rename(2) cannot replace a non-empty directory, so there is
+    # a microsecond between them where build/ does not exist. A request landing
+    # exactly there 404s. Deploys run inside maintenance mode, so this is not
+    # worth a symlink indirection to close.
+    rm -rf /var/www/public/build.new /var/www/public/build.old
+    if [ -d /tmp/public/build ]; then
+        cp -a /tmp/public/build /var/www/public/build.new
+    else
+        echo "⚠️  No build assets in image -- publishing an empty build/"
+        mkdir -p /var/www/public/build.new
+    fi
+
+    # Everything else (index.php, .htaccess, robots.txt, css, js, fonts, images,
+    # vendor) overwrites in place; these are small and not content-hashed.
+    # `storage` is deliberately absent from the image (.dockerignore excludes it)
+    # and is created below, so this loop cannot clobber the symlink.
+    for entry in /tmp/public/* /tmp/public/.[!.]*; do
+        [ -e "$entry" ] || continue
+        case "$(basename "$entry")" in
+            build) continue ;;
+        esac
+        cp -a "$entry" /var/www/public/
+    done
+
+    if [ -d /var/www/public/build ]; then
+        mv /var/www/public/build /var/www/public/build.old
+    fi
+    mv /var/www/public/build.new /var/www/public/build
+    rm -rf /var/www/public/build.old
+    echo "✅ public/ synced from image"
+else
+    echo "⚠️  /tmp/public missing from image -- public/ left as-is"
+fi
+
+# Storage symlink AFTER the sync: the sync writes into the same directory, and
+# creating the link first only to copy over it would be pointless work.
 if [ ! -L /var/www/public/storage ]; then
     echo "🔗 Creating storage symlink..."
     php artisan storage:link
 else
     echo "✅ Storage symlink already exists"
-fi
-
-# Copy fresh build assets from image to public volume (if newer)
-if [ -d /tmp/public/build ]; then
-    if [ ! -d /var/www/public/build ] || [ /tmp/public/build -nt /var/www/public/build ]; then
-        echo "📦 Updating frontend assets from image..."
-        cp -r /tmp/public/build /var/www/public/
-        echo "✅ Frontend assets updated"
-    else
-        echo "✅ Frontend assets already up to date"
-    fi
-else
-    echo "⚠️  No build assets found in image"
 fi
 
 # Production optimizations

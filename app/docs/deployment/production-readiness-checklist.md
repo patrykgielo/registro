@@ -453,18 +453,51 @@ defect density is dominated by things only execution will reveal. The next step 
 dry run on the VPS (deploy a throwaway tag, kill the CI step mid-run on purpose, confirm the flag
 lifts on the following attempt), not a fifth read.
 
-### Pre-existing, outside this work, but it will break Phase 4
+### Frozen `public/` volume — FIXED 2026-08-02 (`feature/public-assets-volume`)
 
-**`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds
-a named volume from the image only when the volume is *empty*, so from the second deploy onward
-`/var/www/public` never receives the new image's contents. `docker/entrypoint.sh` tries to
-compensate for `public/build`, but its guard compares modification times and `cp -r` stamps the
-destination with the copy time, so the destination is always newer and the copy is skipped
-permanently. Vite emits content-hashed filenames each release, so `manifest.json` in the volume
-stays frozen at the first release's hashes and **every asset 404s from deploy #2 onward**. It will
-present as "the deploy succeeded and the site is unstyled". Not fixed here — it needs a decision
-about how `public/` is served (bind-mount, image-only with nginx reading from the app container,
-or an explicit sync step), not a patch. **Resolve before Phase 4.**
+**`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds a
+named volume from the image only when the volume is *empty*, so from the second deploy onward
+`/var/www/public` never received the new image's contents. `docker/entrypoint.sh` was supposed to
+compensate for `public/build`, but its guard compared modification times against a destination that
+`cp -r` restamps — and since the volume is seeded from the same image, both directories start with
+identical mtimes. **Reproduced: it printed "Frontend assets already up to date" on the very first
+run and every run after it. The copy never once executed.**
+
+> **Correction.** An earlier revision of this section — written from the review that found the
+> defect, before it was reproduced — claimed "every asset 404s from deploy #2 onward … the site is
+> unstyled". That is wrong, and testing showed why: the frozen `build/` keeps its `manifest.json`
+> **and** its hashed assets together, so it stays internally consistent and nothing 404s.
+>
+> The real behaviour is quieter and arguably worse to diagnose: **the site serves the old frontend
+> indefinitely.** A UI fix is deployed, reported successful, and simply never appears. The stale
+> `index.php` front controller is frozen too. The sharp edge is a **newly added Vite entry point**:
+> it is absent from the stale manifest, so Laravel raises `Unable to locate file in Vite manifest`
+> and that page 500s.
+
+**Fix.** `docker/entrypoint.sh` now syncs `public/` from the image's `/tmp/public` snapshot on every
+app-container start. `build/` is staged into `build.new` and swapped by rename rather than merged,
+so past releases' hashed assets do not accumulate and nginx never reads a half-copied tree; the rest
+of `public/` is overwritten in place. The `storage` symlink is created *after* the sync and is
+absent from the image (`.dockerignore` excludes it), so it cannot be clobbered. Only the `app`
+service mounts this volume read-write — nginx has it `:ro`, horizon and scheduler not at all — so
+there is exactly one writer.
+
+**Gate.** `scripts/server/deploy.sh` now compares the volume's `manifest.json` against the image's
+by SHA-256 and fails the deploy on a mismatch. This is deliberately *not* "check the files the
+manifest names exist" — that weaker check passes happily on a volume that is a year out of date,
+which was verified by building it, watching it pass on a stale volume, and rewriting it. The health
+check cannot see any of this: `/up` returns 200 throughout.
+
+**Verified by reproduction, not inference:** a named volume stays frozen across image versions; the
+old guard never fired; the new sync updates `index.php`, `.htaccess`, dotfiles, `css/` and hashed
+assets across three consecutive deploys; a planted stale asset is pruned; the `storage` symlink
+survives; rollback to an older image works; ownership stays `1000:1000` running as `laravel`; the
+sync is idempotent and leaves no `build.new`/`build.old` behind; the corrected gate **fails** the
+old entrypoint's second deploy and **passes** the new one.
+
+**Known residual:** replacing a directory needs two renames, because `rename(2)` cannot replace a
+non-empty directory, so there is a microsecond in which `build/` does not exist. Deploys run inside
+maintenance mode, so this is not worth a symlink indirection to close.
 
 ### Confirmed sound by the same review
 

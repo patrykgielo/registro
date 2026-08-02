@@ -418,6 +418,72 @@ until curl -fsS -o /dev/null -H "Host: ${APP_HOST}" "http://127.0.0.1/up"; do
     sleep 5
 done
 
+# Frontend assets: the volume's build/ must be THIS image's build/.
+#
+# The health check above cannot see this. /var/www/public is a NAMED VOLUME
+# shared with nginx, and Docker seeds those from the image only when empty, so a
+# regression in the entrypoint sync leaves an older release's build/ in place.
+#
+# Note what that failure actually looks like, because it is easy to describe
+# wrongly: the frozen build/ keeps its manifest AND its assets together, so it
+# stays internally consistent and nothing 404s. The site serves the OLD frontend
+# indefinitely -- a UI fix is deployed, reported successful, and simply never
+# appears. The sharp edge is a newly added Vite entry point: it is absent from
+# the stale manifest, so Laravel raises "Unable to locate file in Vite manifest"
+# and that page 500s.
+#
+# Comparing the volume's manifest against the image's is therefore the check
+# that matters. Verifying only that referenced files exist passes happily on a
+# volume that is a year out of date -- verified by reproduction.
+log "Verifying frontend assets..."
+docker compose -f "$COMPOSE_FILE" exec -T app php -r '
+    $imageDir = "/tmp/public/build";
+    $liveDir  = "/var/www/public/build";
+
+    if (!is_file("$imageDir/manifest.json")) {
+        fwrite(STDERR, "image has no build/manifest.json -- was the frontend built?\n");
+        exit(1);
+    }
+    if (!is_file("$liveDir/manifest.json")) {
+        fwrite(STDERR, "no manifest.json in the public volume -- the entrypoint sync did not run\n");
+        exit(1);
+    }
+    if (hash_file("sha256", "$imageDir/manifest.json") !== hash_file("sha256", "$liveDir/manifest.json")) {
+        fwrite(STDERR, "the public volume holds a DIFFERENT release than this image;\n");
+        fwrite(STDERR, "the site would keep serving the old frontend. See the sync in docker/entrypoint.sh.\n");
+        exit(1);
+    }
+
+    $entries = json_decode(file_get_contents("$liveDir/manifest.json"), true);
+    if (!is_array($entries) || $entries === []) {
+        fwrite(STDERR, "manifest.json is empty or unreadable\n");
+        exit(1);
+    }
+
+    // Catches a partial or interrupted copy, which the hash comparison alone
+    // would not: manifest.json can land while the files it names do not.
+    $missing = [];
+    foreach ($entries as $entry) {
+        foreach (["file", "css"] as $key) {
+            foreach ((array) ($entry[$key] ?? []) as $ref) {
+                if (!is_file("$liveDir/$ref")) {
+                    $missing[] = $ref;
+                }
+            }
+        }
+    }
+    if ($missing !== []) {
+        fwrite(STDERR, sprintf(
+            "%d asset(s) named by the manifest are not in the volume, e.g. %s\n",
+            count($missing),
+            implode(", ", array_slice($missing, 0, 3))
+        ));
+        exit(1);
+    }
+
+    printf("%d manifest entries, matching this image, all files present\n", count($entries));
+' </dev/null || die "frontend assets in the public volume do not match this image" 3
+
 # Only now is ${VERSION} genuinely what is deployed and serving. Writing it any
 # earlier means a failure between the write and here leaves .env naming a
 # version the running containers are not on, and the next bare
