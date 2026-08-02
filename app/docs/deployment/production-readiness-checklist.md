@@ -289,6 +289,54 @@ sweep handles it with no operator involvement.
 deploy. Harmless — `deploy.sh` calls it with `|| true` — but it is noise in the middle of an
 otherwise clean log and will make a future reader hunt for a problem that is not there.
 
+## Phase 4c — nobody could administer the installation (2026-08-02)
+
+Found the way the rest of this was: by using it. The application was live and answering 200, and
+there was **no process that creates the owner of a Registro installation** — the super-admin who
+runs the SaaS through `/platform`, as distinct from any tenant's admin.
+
+Three separate gaps, all pre-existing, none visible from reading the deploy path:
+
+- [x] **No production path seeds roles.** `RolePermissionSeeder` is only reachable through
+  `DatabaseSeeder`, which also loads demo services, vehicle types and service areas — so it must not
+  run against production, and `db:seed` is forbidden in deploy scripts by project rule. The live
+  database had **0 roles and 0 permissions**. Registration through `/register` assigns a role, so
+  the first customer to sign up would have crashed on `assignRole` — the incident already recorded
+  in `.claude/rules/spatie-roles.md`, waiting to happen again.
+- [x] **`deploy-init.sh` step 6 reported success for an account that could not log in.** It called
+  `php artisan make:filament-user`. Run on the server:
+
+  ```
+  INFO  Success! ... may now log in at .../admin/login.
+  first_name=NULL   last_name=NULL   name=''   role: none
+  ```
+
+  Filament's command builds the user around a `name` field this schema does not have — the column
+  was dropped in favour of `first_name`/`last_name`, and `name` is a read-only accessor — so mass
+  assignment silently discards it. It assigns no role, while `User::canAccessPanel()` requires
+  `super-admin` for `/platform` and one of `super-admin|admin|staff` for `/admin`. There is no error
+  to diagnose, because the command says it worked.
+- [x] **A latent privilege escalation.** The only code granting `super-admin` was
+  `RolePermissionSeeder` looking up a hardcoded `admin@example.com` and granting it the role if it
+  happened to exist. Nothing creates that user, and it is a claimable address on a real domain — so
+  anyone who ever registered it would silently become owner of the installation on the next seed.
+  Removed.
+
+**Fix: `php artisan registro:create-owner`.** Seeds roles on its own without the demo data, writes
+the name columns that exist, grants `super-admin`, marks the e-mail verified so the panel cannot
+lock the owner out, and **asserts `canAccessPanel()` before reporting success** — which is the whole
+point, given what it replaces. Refuses to modify an existing account without `--force`, validates
+e-mail and a 12-character minimum password, idempotent, interactive or fully scriptable.
+`deploy-init.sh` step 6 now calls it.
+
+**Verified on production infrastructure**, not only in tests: the command was overlaid into the
+running container, `Database\Seeders\` confirmed present despite the `--no-dev` build, an owner
+created with all six self-checks green, then removed and the container restored from the pristine
+image. 11 unit tests assert the end state rather than the exit code.
+
+> **Mandatory first-run step.** A fresh installation cannot be administered until this command has
+> been run. It is not optional and it is not covered by migrations.
+
 ## 1c. Found by code review of the §1/§1b/§2 diff (2026-08-02, `feature/deploy-review-fixes`)
 
 The §1–§2 work was merged as PR #125 **without** the mandatory `code-reviewer` gate. Running that
