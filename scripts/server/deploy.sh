@@ -37,8 +37,13 @@ readonly HEALTH_TIMEOUT=180
 
 log() {
     local line="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    echo "$line"
+    # Durable write FIRST, stdout second, `|| true` on both. When CI's step
+    # timeout kills the ssh client this script is orphaned with a closed stdout,
+    # and writing there raises SIGPIPE -- so anything after it would be lost.
+    # Ordering it this way means the log file records what happened even when
+    # nobody is listening any more.
     echo "$line" >>"$LOG_FILE" 2>/dev/null || true
+    echo "$line" 2>/dev/null || true
 }
 
 die() {
@@ -65,8 +70,16 @@ case "${ACTION:-}" in
             || die "invalid tag '${VERSION:-}' -- expected vMAJOR.MINOR.PATCH[-suffix]"
         ;;
     status)
-        cd "$APP_DIR"
-        docker compose -f "$COMPOSE_FILE" ps
+        # Deliberately `docker ps`, not `docker compose ps`. The compose file
+        # uses the ${VAR:?} form for APP_DOMAIN, APP_KEY and REDIS_PASSWORD, and
+        # that interpolation is evaluated for EVERY subcommand -- ps and logs
+        # included, not just up. So `compose ps` returns an interpolation error
+        # instead of container state in exactly the situations where you most
+        # need to look: .env not written yet (all of Phase 4), or a password
+        # blanked by a bad edit. This action is the only diagnostic the forced
+        # command exposes, so it must not depend on .env being valid.
+        docker ps -a --filter "name=registro-" \
+            --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
         exit 0
         ;;
     *)
@@ -102,6 +115,152 @@ APP_HOST="${APP_HOST%%/*}"
 PREVIOUS="$(git -C "$APP_DIR" describe --tags --exact-match 2>/dev/null || git -C "$APP_DIR" rev-parse --short HEAD)"
 log "=== ${ACTION} ${VERSION} (currently at ${PREVIOUS}) ==="
 
+###############################################################################
+# Maintenance-mode safety net
+#
+# The maintenance flag lives in storage/framework, a named volume, so it
+# survives container recreation and reboots -- which is what makes it usable
+# across `up -d`, and also what makes a stranded flag permanent. Every failure
+# path between `artisan down` and the end of the run must clear it, or the site
+# stays 503 forever -- including /up, which is served by the application and so
+# goes through PreventRequestsDuringMaintenance like everything else. This
+# script's grammar (deploy|rollback|status) offers no way to run `artisan up`,
+# so recovery would otherwise need the separate root key.
+#
+# `rollback` -- the operator's instinctive next move after a failed deploy --
+# would otherwise inherit the 503 and then fail its own health check because of
+# it, reporting a broken rollback that actually worked.
+###############################################################################
+
+MAINTENANCE_ON=false
+KEEP_MAINTENANCE=false
+STORAGE_VOL=""
+
+# Resolved lazily and scoped to THIS compose project.
+#
+# `docker volume ls --filter name=storage-framework` is a substring match over
+# every volume on the daemon, not an exact match and not project-scoped. With a
+# second compose project on the host -- or a stale volume from the stack this
+# server previously ran -- it can return someone else's volume, and the caller
+# then deletes files from it. Match on the labels compose sets instead, and
+# refuse to guess when the answer is not exactly one.
+#
+# Lazy because on a first bring-up the volume does not exist until `up -d`
+# creates it, and resolving once at startup would leave this empty for exactly
+# the run most likely to need it.
+storage_volume() {
+    [ -z "$STORAGE_VOL" ] || { echo "$STORAGE_VOL"; return 0; }
+
+    local project vols
+    project="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null \
+        | jq -r '.name // empty' 2>/dev/null || true)"
+    [ -n "$project" ] || return 1
+
+    vols="$(docker volume ls -q \
+        --filter "label=com.docker.compose.project=${project}" \
+        --filter "label=com.docker.compose.volume=storage-framework" 2>/dev/null || true)"
+
+    # Exactly one, or nothing. Picking the first of several would be a coin flip
+    # with a destructive loser.
+    [ "$(printf '%s\n' "$vols" | grep -c .)" -eq 1 ] || return 1
+    STORAGE_VOL="$vols"
+    echo "$STORAGE_VOL"
+}
+
+# Removes the maintenance flag without needing a working app container.
+#
+# `artisan up` is tried first so this stays correct whatever maintenance driver
+# is configured, but it needs the container to be running -- and the situations
+# that strand a flag (failed `up -d`, MySQL never ready, crash-looping image)
+# are exactly the ones where it is not. The fallback deletes the flag straight
+# out of the volume, which needs only docker group membership.
+#
+# The image used is the application image, already pulled, NOT alpine:3: this
+# script prunes unreferenced images older than 24h on every successful deploy,
+# so alpine would have to be re-pulled from Docker Hub at the exact moment the
+# stack is broken.
+force_clear_flag() {
+    local vol image
+    vol="$(storage_volume)" || { log "Could not identify the storage-framework volume"; return 1; }
+    image="ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}"
+
+    timeout 60 docker run --rm --entrypoint rm -v "${vol}:/s" "$image" \
+        -f /s/maintenance.php /s/down >/dev/null 2>&1 \
+        || return 1
+    log "Maintenance flag removed from volume ${vol}"
+}
+
+clear_maintenance() {
+    [ "$MAINTENANCE_ON" = true ] || return 0
+    if [ "$KEEP_MAINTENANCE" = true ]; then
+        log "Leaving maintenance mode ON deliberately -- see the error above"
+        return 0
+    fi
+
+    # Bounded: a wedged PHP process would otherwise hang this indefinitely and,
+    # under CI's step timeout, reproduce the very problem it is here to fix.
+    if timeout 60 docker compose -f "$COMPOSE_FILE" exec -T app \
+            php artisan up </dev/null >/dev/null 2>&1; then
+        log "Maintenance mode cleared"
+        MAINTENANCE_ON=false
+        return 0
+    fi
+
+    if force_clear_flag; then
+        MAINTENANCE_ON=false
+        return 0
+    fi
+
+    log "WARNING: could not clear maintenance mode. Try: ssh deploy@host 'rollback ${PREVIOUS}'"
+}
+
+###############################################################################
+# Stale-flag recovery -- the thing that actually makes this safe
+#
+# Traps are best-effort and always will be: SIGKILL cannot be caught at all, and
+# a handler that logs to a closed stdout can die before it does any work. So
+# correctness must NOT depend on them.
+#
+# Instead, EVERY run -- deploy and rollback alike -- clears any flag left behind
+# before it does anything else. A stranded 503 therefore survives at most until
+# the next deploy attempt, including the automatic CI retry, with no signal
+# handling involved. The traps below remain as a best-effort fast path.
+###############################################################################
+
+MAINTENANCE_ON=true          # assume a flag may exist; clearing is idempotent
+log "Clearing any maintenance flag left by a previous run..."
+clear_maintenance
+MAINTENANCE_ON=false
+
+on_exit() {
+    local rc=$?
+    [ "$rc" -eq 0 ] || clear_maintenance
+    # `return` is a no-op for the script's status -- bash preserves the pre-trap
+    # exit code unless the trap itself calls exit. Kept for clarity.
+    return "$rc"
+}
+
+# Best-effort fast path only; the startup sweep above is the guarantee. Note
+# that no trap can cover SIGKILL, which is why the guarantee cannot live here.
+#
+# Disarm every trap as the FIRST action, before logging: the handler's own log
+# line goes to stdout, and when stdout is the closed pipe of a killed ssh client
+# that raises SIGPIPE inside the handler, re-entering it. PIPE is ignored
+# outright rather than handled, and log() writes to the durable file before
+# touching stdout, so a dead stdout cannot stop the cleanup.
+on_signal() {
+    trap '' HUP INT TERM PIPE EXIT
+    log "Received SIG${1} -- cleaning up"
+    clear_maintenance
+    exit 3
+}
+trap on_exit EXIT
+trap '' PIPE
+for sig in HUP INT TERM; do
+    # shellcheck disable=SC2064
+    trap "on_signal ${sig}" "$sig"
+done
+
 # Repository state comes from git, not from curl-ing raw.githubusercontent:
 # one source of truth, and it works on a private repo without a token.
 log "Fetching tags..."
@@ -112,16 +271,84 @@ git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null \
 log "Checking out ${VERSION}..."
 git checkout --quiet --force "tags/${VERSION}" || die "git checkout failed" 3
 
-# Pin the image tag for app, horizon and scheduler. Written into .env so a
-# subsequent bare `docker compose up -d` on the box stays on the same version.
-if grep -q '^REGISTRO_VERSION=' .env; then
-    sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=${VERSION}|" .env
-else
-    echo "REGISTRO_VERSION=${VERSION}" >> .env
+# The TLS config nginx mounts is generated, not tracked: the checkout above
+# would revert an in-place edit of the template back to its CERT_DOMAIN
+# placeholder, and nginx would then refuse to start the next time anything
+# recreated the container. Regenerating here also propagates template changes
+# that ship with a new release, and recreates the file if it went missing.
+if [ "${NGINX_CONF:-}" = "app.prod-tls.local.conf" ]; then
+    TLS_DIR="docker/nginx/production"
+    TLS_TEMPLATE="${TLS_DIR}/app.prod-tls.conf"
+    TLS_OUT="${TLS_DIR}/app.prod-tls.local.conf"
+
+    [ -f "$TLS_TEMPLATE" ] || die "${TLS_TEMPLATE} missing at ${VERSION}" 3
+
+    # NOT derived from APP_URL. certbot names the live directory after the first
+    # -d, and appends -0001 whenever the SAN set changes -- which happens the
+    # first time www.<host> starts resolving, since deploy-init.sh adds it
+    # conditionally. Rewriting the config to <host> on every deploy would then
+    # point nginx at a directory that no longer exists. CERT_DIR in .env is the
+    # authority; APP_HOST is only the initial guess.
+    CERT_DIR="${CERT_DIR:-$APP_HOST}"
+    [ -d "/etc/letsencrypt/live/${CERT_DIR}" ] \
+        || die "/etc/letsencrypt/live/${CERT_DIR} does not exist -- set CERT_DIR in .env to the certbot directory name" 3
+
+    sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${CERT_DIR}/|g" \
+        "$TLS_TEMPLATE" >"${TLS_OUT}.tmp" \
+        || die "failed to render ${TLS_OUT}" 3
+
+    # sed exits 0 when it substitutes nothing, so a template whose placeholder
+    # was renamed or whose cert paths were restructured would yield a file that
+    # still says CERT_DOMAIN and that nginx cannot start on. Check the result,
+    # not the exit status.
+    if grep -q 'CERT_DOMAIN' "${TLS_OUT}.tmp"; then
+        rm -f "${TLS_OUT}.tmp"
+        die "rendered TLS config still contains CERT_DOMAIN -- template changed shape at ${VERSION}" 3
+    fi
+
+    # Move into place only once it is complete and correct: a truncated write
+    # (disk full) would otherwise sit there until the next reboot recreated
+    # nginx on it, long after this run reported failure.
+    mv -f "${TLS_OUT}.tmp" "$TLS_OUT" || die "failed to install ${TLS_OUT}" 3
+    log "Regenerated app.prod-tls.local.conf for ${CERT_DIR}"
 fi
+
+# Pin the image tag for app, horizon and scheduler. Exported rather than written
+# to .env yet: a shell variable wins over the .env file in Compose interpolation,
+# so every `docker compose` call below already runs on ${VERSION} while .env
+# still names the version that is actually deployed. Persisting it before the
+# pull would leave .env pointing at images that may not exist on the host, and a
+# later bare `docker compose up -d` would fail on a missing image.
+export REGISTRO_VERSION="$VERSION"
 
 log "Pulling images..."
 docker compose -f "$COMPOSE_FILE" pull || die "docker pull failed" 3
+
+if [ "$ACTION" = "deploy" ]; then
+    # Maintenance mode goes up BEFORE the new images do. Between `up -d` and the
+    # migration below there is a wait on MySQL and Redis that can run for minutes
+    # on a cold start, and every second of it would otherwise serve new code
+    # against the old schema. The flag lives in storage/framework, a named
+    # volume, so it survives the container recreation that `up -d` performs.
+    # Fails harmlessly on a first bring-up, when no app container exists yet.
+    log "Enabling maintenance mode..."
+    # Deliberately over-approximate: MAINTENANCE_ON is set whenever an app
+    # container EXISTS, regardless of what `artisan down` returns.
+    #
+    # `down` writes storage/framework/down before it writes maintenance.php and
+    # before it prints anything, so it can fail -- disk full, or the ssh client
+    # dying mid-command -- with the flag already on disk. Trusting its exit
+    # status would leave MAINTENANCE_ON=false while the site is 503ing, and the
+    # cleanup below would skip it. The errors are not symmetric: a false positive
+    # costs one no-op `artisan up`, a false negative is a silent outage.
+    if [ -n "$(docker compose -f "$COMPOSE_FILE" ps -q app 2>/dev/null)" ]; then
+        MAINTENANCE_ON=true
+        docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null \
+            || log "artisan down reported failure -- assuming the flag may be set anyway"
+    else
+        log "No app container yet -- skipping maintenance mode (first bring-up)"
+    fi
+fi
 
 log "Starting containers..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
@@ -138,12 +365,21 @@ timeout 60 bash -c "until docker compose -f '$COMPOSE_FILE' exec -T redis \
 
 if [ "$ACTION" = "deploy" ]; then
     log "Running migrations..."
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
+    # Re-assert now that the container definitely exists: on a first bring-up the
+    # `down` above had nothing to run in. Same over-approximation as there.
+    MAINTENANCE_ON=true
+    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null \
+        || log "artisan down reported failure -- assuming the flag may be set anyway"
     if ! docker compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force </dev/null; then
-        docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null || true
-        die "migrations failed -- application left up on ${VERSION}, roll back manually" 3
+        # Stay in maintenance. A failed migration leaves the schema in an
+        # unknown, possibly half-applied state, and serving the new code against
+        # it risks user-visible errors and bad writes -- worse than an honest
+        # 503. Safe only because `rollback` lifts the flag before it does
+        # anything else, and because the lift falls back to deleting the flag
+        # from the volume when the app container is unusable.
+        KEEP_MAINTENANCE=true
+        die "migrations failed -- site left in maintenance mode on ${VERSION}. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
     fi
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null || true
 else
     # Rolling back an image does not roll back schema. Additive migrations are
     # survivable, drops and renames are not -- see migrations:check-rollback.
@@ -167,6 +403,12 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link </dev/nul
 log "Restarting Horizon..."
 docker compose -f "$COMPOSE_FILE" restart horizon
 
+# Lift maintenance HERE: after the caches are warm, so the first real request
+# does not land on a container that just had optimize:clear run against it, and
+# before the health check, which goes through nginx to /up and would get the
+# maintenance 503 otherwise.
+clear_maintenance
+
 # Host header matters: nginx selects the server block by name, and without it
 # the probe can land on the default server and "pass" against the wrong vhost.
 log "Health check (Host: ${APP_HOST})..."
@@ -176,8 +418,34 @@ until curl -fsS -o /dev/null -H "Host: ${APP_HOST}" "http://127.0.0.1/up"; do
     sleep 5
 done
 
+# Only now is ${VERSION} genuinely what is deployed and serving. Writing it any
+# earlier means a failure between the write and here leaves .env naming a
+# version the running containers are not on, and the next bare
+# `docker compose up -d` -- or a reboot, via `restart: unless-stopped` -- would
+# silently promote that version, in the migration case against a schema that was
+# never migrated for it.
+#
+# The residual, stated plainly: this position has a mirror-image window. If the
+# health check fails AFTER migrations succeeded, .env still names the PREVIOUS
+# version, so a reboot brings containers up on the old image against the new
+# schema. That is the better default -- old code on a migrated schema usually
+# degrades, new code on an unmigrated one corrupts -- but it is a trade, not a
+# solution. A migration containing a drop or a rename makes it an outage either
+# way; roll forward, do not reboot and hope.
+log "Pinning REGISTRO_VERSION=${VERSION} in .env..."
+if grep -q '^REGISTRO_VERSION=' .env; then
+    sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=${VERSION}|" .env
+else
+    echo "REGISTRO_VERSION=${VERSION}" >> .env
+fi
+
 log "Pruning images older than 24h..."
 docker image prune -af --filter "until=24h" >/dev/null 2>&1 || true
 
 log "=== ${ACTION} ${VERSION} OK (was ${PREVIOUS}) ==="
-docker compose -f "$COMPOSE_FILE" ps
+
+# `|| true` and an explicit `exit 0`: this is cosmetic output, and as the last
+# command its status would otherwise become the script's. A hiccup in `ps` must
+# not report a failed deploy for a deploy that succeeded.
+docker compose -f "$COMPOSE_FILE" ps || true
+exit 0

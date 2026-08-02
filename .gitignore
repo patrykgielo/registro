@@ -121,3 +121,16 @@ ssh_config
 docs/architecture/diagrams/*.svg
 app/docs/architecture/diagrams/*.svg
 docs-site/site/
+
+# ============================================================================
+# Generated Nginx TLS config — server-local, never committed
+# ============================================================================
+# app.prod-tls.conf is a tracked TEMPLATE carrying a CERT_DOMAIN placeholder.
+# deploy-init.sh (and deploy.sh on every release) renders it into the file below
+# with the real certificate domain. It must stay untracked: scripts/server/
+# deploy.sh runs `git checkout --force` on each deploy, which would revert a
+# tracked file back to the placeholder and stop nginx from starting.
+docker/nginx/production/app.prod-tls.local.conf
+# The renderer writes here first and moves it into place; a failure between the
+# two would otherwise leave permanent untracked junk in the working tree.
+docker/nginx/production/app.prod-tls.local.conf.tmp

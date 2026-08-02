@@ -139,6 +139,13 @@ check_var_set "APP_KEY"
 if [ "$ENV" == "production" ] || [ "$ENV" == "staging" ]; then
     check_var_equals "APP_ENV" "$ENV"
     check_var_equals "APP_DEBUG" "false"
+
+    # Tenant subdomain routing is built on this. config/app.php has a default,
+    # but env() only falls back when the variable is ABSENT -- an empty
+    # APP_DOMAIN= line in .env is present and wins, and every tenant URL the app
+    # generates comes out malformed.
+    check_var_set "APP_URL"
+    check_var_set "APP_DOMAIN"
 else
     pass "APP_ENV = $APP_ENV (local/development)"
 fi
@@ -210,6 +217,14 @@ else
 fi
 
 check_var_set "REDIS_HOST"
+
+# Blank REDIS_PASSWORD is not a soft failure. docker-compose.prod.yml passes it
+# straight through to `redis-server --requirepass ${REDIS_PASSWORD} --maxmemory
+# 256mb`; an empty value drops the token, redis reads "--maxmemory" as the
+# password argument, refuses the rest of the line and exits. Everything that
+# depends on redis -- cache, sessions, queues -- goes down with it. Checked in
+# every environment because the local stack authenticates too.
+check_var_set "REDIS_PASSWORD"
 
 echo ""
 

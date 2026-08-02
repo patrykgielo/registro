@@ -196,6 +196,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [test, build]
+    # This job never checks out code and never calls the GitHub API -- it only
+    # opens an SSH session. An empty scope means a leaked GITHUB_TOKEN from any
+    # step here can do nothing to the repository.
+    permissions: {}
     environment:
       name: production
 
@@ -212,9 +216,30 @@ jobs:
         env:
           VERSION: ${{ needs.build.outputs.version }}
         with:
-          timeout_minutes: 15
+          # Generous: deploy.sh budgets 120s for MySQL, 60s for Redis, an
+          # unbounded migration, eight artisan cache commands and a 180s health
+          # check. Exceeding the cap kills the ssh client and orphans the remote
+          # script, which is why deploy.sh traps signals and why log() tolerates
+          # a closed stdout.
+          timeout_minutes: 25
           max_attempts: 3
           retry_wait_seconds: 60
+          # Retry ONLY transport failures. ssh returns 255 for its own errors
+          # (connection refused, timeout, host unreachable) and otherwise passes
+          # through the remote command's exit code, so this retries a flaky
+          # network and nothing else. Retrying deploy.sh's own failures is
+          # actively harmful: exit 3 after a failed migration means attempt 2
+          # runs against a half-applied schema and fails differently, which is
+          # harder to diagnose than the original error, and exit 4 means another
+          # deploy holds the lock, so retrying just races it.
+          retry_on_exit_code: 255
+          # Without this the action defaults to retry_on: any, and the TIMEOUT
+          # branch is separate from the exit-code branch -- so a run that
+          # overshoots the cap would still be retried, 60s later, while the
+          # orphaned remote script still holds the deploy lock. The retry then
+          # returns exit 4 and reports "another deploy is already running",
+          # disguising a timeout as a concurrency error.
+          retry_on: error
           # The whole deploy procedure lives in /opt/registro/deploy.sh on the
           # server (source: scripts/server/deploy.sh), owned by root and pinned
           # as a forced command in the deploy user's authorized_keys. Sending a

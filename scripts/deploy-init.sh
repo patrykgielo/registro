@@ -46,6 +46,9 @@ readonly APP_DIR="$PROJECT_ROOT"
 readonly ENV_FILE="${APP_DIR}/.env"
 readonly ENV_EXAMPLE="${APP_DIR}/.env.production.example"
 readonly DOCKER_COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
+# Generated from the tracked app.prod-tls.conf template with the real certificate
+# domain substituted in. Gitignored on purpose -- see setup_ssl_certificates().
+readonly TLS_CONF_NAME="app.prod-tls.local.conf"
 
 ################################################################################
 # Helper Functions
@@ -114,12 +117,19 @@ check_prerequisites() {
 check_env_file() {
     if [[ -f "$ENV_FILE" ]]; then
         warn "Production .env file already exists at: $ENV_FILE"
+        warn "Overwriting resets it to the example. Existing APP_KEY, DB_PASSWORD,"
+        warn "DB_ROOT_PASSWORD and REDIS_PASSWORD are CARRIED OVER, not regenerated --"
+        warn "rotating them would lock the app out of the existing MySQL volume and"
+        warn "make every encrypted column and every session unreadable."
+        warn "Everything else in the file (mail, API keys, NGINX_CONF) is lost."
         prompt "Do you want to overwrite it? (y/N): "
         read -r response
         if [[ ! "$response" =~ ^[Yy]$ ]]; then
             log "Using existing .env file"
             return 0
         fi
+        cp "$ENV_FILE" "${ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
+        warn "Previous .env backed up alongside it"
     fi
     return 1
 }
@@ -138,21 +148,85 @@ create_env_file() {
         exit 1
     fi
 
+    # Read the existing secrets BEFORE the example overwrites them. Regenerating
+    # these on a server that already has data is unrecoverable: the mysql_data
+    # volume was initialised with the old DB passwords, and APP_KEY decrypts
+    # every `encrypted` column and signs every session. `check_env_file` warns
+    # about this, and this is what makes the warning true.
+    local prior_app_key="" prior_db_pass="" prior_db_root="" prior_redis_pass=""
+    if [[ -f "$ENV_FILE" ]]; then
+        prior_app_key="$(read_env_value APP_KEY)"
+        prior_db_pass="$(read_env_value DB_PASSWORD)"
+        prior_db_root="$(read_env_value DB_ROOT_PASSWORD)"
+        prior_redis_pass="$(read_env_value REDIS_PASSWORD)"
+    fi
+
     cp "$ENV_EXAMPLE" "$ENV_FILE"
 
     # Prompt for critical configuration
     prompt "Enter your domain name (e.g., registro.com): "
     read -r domain
-    sed -i "s/APP_URL=.*/APP_URL=https:\/\/${domain}/" "$ENV_FILE"
+    write_env_var "APP_URL" "https://${domain}"
+    # APP_DOMAIN drives tenant subdomain routing and docker-compose.prod.yml
+    # refuses to start without it.
+    write_env_var "APP_DOMAIN" "$domain"
 
-    # Generate APP_KEY
-    log "Generating Laravel application key..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" run --rm app php artisan key:generate --force
+    # Secrets are generated HERE, on the host, before anything touches
+    # docker compose.
+    #
+    # The previous implementation ran `docker compose run --rm app php artisan
+    # key:generate`, which could never have worked: docker-compose.prod.yml
+    # bind-mounts no .env into the app service, so artisan rewrote a copy inside
+    # an ephemeral container and the result was discarded. It failed silently.
+    #
+    # It now cannot even reach that point -- APP_KEY and REDIS_PASSWORD use the
+    # ${VAR:?} form, which compose evaluates for EVERY subcommand, so a compose
+    # call against an .env that still has them blank aborts the whole script.
+    # Generating locally fixes both problems at once.
+    log "Restoring carried-over secrets and generating any that are missing..."
 
-    success "Production .env file created at: $ENV_FILE"
-    warn "IMPORTANT: Edit $ENV_FILE and update database passwords, Redis password, and SMTP credentials"
+    # Carried-over values win; anything still empty gets a fresh one. Laravel's
+    # own format for the default AES-256-CBC cipher is base64: plus 32 raw bytes.
+    set_secret "APP_KEY"          "${prior_app_key:-base64:$(openssl rand -base64 32)}"
+    set_secret "REDIS_PASSWORD"   "${prior_redis_pass:-$(openssl rand -base64 32 | tr -d '/+=')}"
+    set_secret "DB_PASSWORD"      "${prior_db_pass:-$(openssl rand -base64 32 | tr -d '/+=')}"
+    set_secret "DB_ROOT_PASSWORD" "${prior_db_root:-$(openssl rand -base64 32 | tr -d '/+=')}"
+
+    chmod 600 "$ENV_FILE"
+    success "Production .env file created at: $ENV_FILE (mode 600)"
+    warn "APP_KEY, REDIS_PASSWORD, DB_PASSWORD and DB_ROOT_PASSWORD are set."
+    warn "Still REQUIRED by hand: MAIL_USERNAME, MAIL_PASSWORD, GOOGLE_MAPS_API_KEY,"
+    warn "GOOGLE_MAPS_MAP_ID, SMSAPI_TOKEN, SMSAPI_WEBHOOK_SECRET."
+    warn "Verify with: ./scripts/validate-env.sh production"
     prompt "Press Enter to continue after editing .env file..."
     read -r
+}
+
+# Reads a single value out of $ENV_FILE, or empty if the key is absent.
+#
+# The `|| true` is load-bearing. This script runs `set -e -o pipefail`, and a
+# bare `x="$(grep ... | cut ...)"` is an assignment whose status IS the
+# pipeline's, so a missing key propagates grep's exit 1 and kills the script --
+# with no message, mid-way through writing .env, leaving a half-built file and
+# an operator with no idea what happened.
+read_env_value() {
+    grep -m1 "^${1}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true
+}
+
+# Only fills a variable that is empty -- re-running deploy-init.sh must never
+# rotate a live APP_KEY (every encrypted value and every session breaks) or a
+# database password the running MySQL was initialised with.
+set_secret() {
+    local key="$1" value="$2" current
+    current="$(read_env_value "$key")"
+
+    if [[ -n "$current" ]]; then
+        log "${key} already set -- left untouched"
+        return 0
+    fi
+
+    write_env_var "$key" "$value"
+    log "${key} generated"
 }
 
 setup_ssl_certificates() {
@@ -160,7 +234,8 @@ setup_ssl_certificates() {
 
     # Extract domain from .env
     local domain
-    domain=$(grep "^APP_URL=" "$ENV_FILE" | cut -d'=' -f2 | sed 's|https\?://||' | sed 's|/.*||')
+    domain="$(read_env_value APP_URL)"
+    domain="${domain#*://}"; domain="${domain%%/*}"
 
     if [[ -z "$domain" ]]; then
         error "Domain not found in .env file (APP_URL)"
@@ -175,7 +250,12 @@ setup_ssl_certificates() {
         prompt "Do you want to renew them? (y/N): "
         read -r response
         if [[ ! "$response" =~ ^[Yy]$ ]]; then
-            log "Skipping certificate generation"
+            # NOT a bare `return 0`. Skipping renewal must still wire up the
+            # config: the caller may have just recreated .env from the example,
+            # where NGINX_CONF=app.prod.conf, and returning here would silently
+            # drop a TLS-enabled server back to plain HTTP.
+            log "Skipping certificate generation -- wiring up the existing certificate"
+            wire_up_tls "$domain"
             return 0
         fi
     fi
@@ -212,7 +292,11 @@ setup_ssl_certificates() {
     fi
 
     local temp_nginx_started=false
-    if ! docker ps --format '{{.Names}}' | grep -qx registro-nginx; then
+    # Not `docker ps | grep -qx`: under `set -o pipefail` a SIGPIPE'd docker ps
+    # makes this read as "nginx is not running", and the branch below then binds
+    # a temporary container to port 80 that the real nginx already holds --
+    # turning a working stack into a failed certificate request.
+    if [[ $'\n'"$(docker ps --format '{{.Names}}')"$'\n' != *$'\n'registro-nginx$'\n'* ]]; then
         log "Starting temporary Nginx container for ACME challenge..."
         docker run --rm -d --name temp-nginx -p 80:80 \
             -v "${webroot}:/usr/share/nginx/html:ro" nginx:alpine >/dev/null
@@ -225,7 +309,15 @@ setup_ssl_certificates() {
     # failed validations per hour per account; without this, one typo in nginx
     # or DNS locks certificate issuance for the next 60 minutes.
     log "Certbot dry run (ACME staging)..."
+    # --cert-name pins the lineage, and with it the directory name under
+    # /etc/letsencrypt/live/. Without it certbot names the directory after the
+    # first -d and appends -0001, -0002 ... whenever the set of names changes --
+    # which happens here the first time www.<host> starts resolving, since it is
+    # only requested when it does. nginx would then be configured for a directory
+    # that is no longer the current one. --expand allows adding that name to the
+    # existing lineage instead of starting a new one.
     if ! certbot certonly --webroot -w "$webroot" "${domains[@]}" \
+        --cert-name "$domain" --expand \
         --email "admin@$domain" --agree-tos --no-eff-email --non-interactive --dry-run; then
         [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
         error "Certbot dry run failed -- NOT requesting a real certificate."
@@ -236,32 +328,110 @@ setup_ssl_certificates() {
 
     log "Requesting the real certificate..."
     certbot certonly --webroot -w "$webroot" "${domains[@]}" \
+        --cert-name "$domain" --expand \
         --email "admin@$domain" --agree-tos --no-eff-email --non-interactive
 
     [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
 
-    # The certificate path placeholder lives in the TLS config, not in
-    # app.prod.conf -- that one deliberately contains no ssl_certificate at all,
-    # so nginx can start before any certificate exists.
-    local tls_config="${PROJECT_ROOT}/docker/nginx/production/app.prod-tls.conf"
-    if [[ -f "$tls_config" ]]; then
-        sed -i "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${domain}/|g" "$tls_config"
-        success "TLS config points at /etc/letsencrypt/live/${domain}/"
-    else
-        error "$tls_config not found -- cannot wire up the certificate"
+    wire_up_tls "$domain"
+    success "SSL certificates generated successfully"
+}
+
+# Renders the TLS config and switches nginx onto it.
+#
+# The certificate path placeholder lives in the TLS config, not in
+# app.prod.conf -- that one deliberately contains no ssl_certificate at all, so
+# nginx can start before any certificate exists.
+#
+# Renders into a SEPARATE, gitignored file rather than editing the tracked
+# template in place. scripts/server/deploy.sh runs `git checkout --force` on
+# every deploy and rollback, which would silently revert an in-place edit back
+# to the CERT_DOMAIN placeholder. nginx keeps serving from its loaded config
+# until something recreates the container -- a reboot, an image update -- and
+# only then refuses to start, taking down HTTP and HTTPS together, weeks after
+# the change that caused it.
+wire_up_tls() {
+    local domain="$1"
+    local tls_template="${PROJECT_ROOT}/docker/nginx/production/app.prod-tls.conf"
+    local tls_config="${PROJECT_ROOT}/docker/nginx/production/${TLS_CONF_NAME}"
+    local cert_dir
+
+    [[ -f "$tls_template" ]] || { error "$tls_template not found -- cannot wire up the certificate"; exit 1; }
+
+    # certbot names the live directory after the FIRST -d, and appends -0001,
+    # -0002 ... whenever the set of names changes -- which happens here the first
+    # time www.$domain starts resolving, since it is added conditionally above.
+    # Trusting $domain would point nginx at a directory that does not exist.
+    cert_dir="$(resolve_cert_dir "$domain")"
+    [[ -n "$cert_dir" ]] || { error "No certificate directory under /etc/letsencrypt/live for ${domain}"; exit 1; }
+    [[ "$cert_dir" == "$domain" ]] || warn "certbot used /etc/letsencrypt/live/${cert_dir}, not ${domain}"
+
+    # Render to a temp file, verify, then move: sed exits 0 even when it
+    # substitutes nothing, so a template whose placeholder was renamed would
+    # otherwise yield a config nginx cannot start on -- and a truncated write
+    # would sit on disk until the next reboot recreated nginx onto it.
+    sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${cert_dir}/|g" \
+        "$tls_template" >"${tls_config}.tmp"
+    if grep -q 'CERT_DOMAIN' "${tls_config}.tmp"; then
+        rm -f "${tls_config}.tmp"
+        error "Rendered TLS config still contains CERT_DOMAIN -- template changed shape"
         exit 1
     fi
+    mv -f "${tls_config}.tmp" "$tls_config"
+    success "${TLS_CONF_NAME} generated, pointing at /etc/letsencrypt/live/${cert_dir}/"
+
+    # Record which directory was used. scripts/server/deploy.sh re-renders this
+    # file after every `git checkout` and has no other way to know, so without
+    # this line every deploy after a -0001 rename would either point nginx at a
+    # missing directory or abort.
+    write_env_var "CERT_DIR" "$cert_dir"
 
     # Activate TLS by switching which config nginx mounts. Reversible: set this
     # back to app.prod.conf and re-run `up -d nginx`.
-    if grep -q '^NGINX_CONF=' "$ENV_FILE" 2>/dev/null; then
-        sed -i 's|^NGINX_CONF=.*|NGINX_CONF=app.prod-tls.conf|' "$ENV_FILE"
-    else
-        echo "NGINX_CONF=app.prod-tls.conf" >> "$ENV_FILE"
-    fi
-    log "NGINX_CONF=app.prod-tls.conf written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
+    write_env_var "NGINX_CONF" "$TLS_CONF_NAME"
+    log "NGINX_CONF=${TLS_CONF_NAME} written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
+}
 
-    success "SSL certificates generated successfully"
+# Newest matching live directory: exact name first, then the -NNNN variants
+# certbot creates when the SAN set changes.
+resolve_cert_dir() {
+    local domain="$1" d
+    if [[ -d "/etc/letsencrypt/live/${domain}" ]]; then
+        echo "$domain"
+        return 0
+    fi
+    for d in $(ls -1d "/etc/letsencrypt/live/${domain}"-[0-9][0-9][0-9][0-9] 2>/dev/null | sort -r); do
+        basename "$d"
+        return 0
+    done
+}
+
+# Sets KEY=VALUE in $ENV_FILE, replacing the first existing line or appending.
+#
+# Deliberately NOT `sed -i "s|^KEY=.*|KEY=$value|"`. A value is arbitrary text --
+# carried-over passwords especially -- and sed would interpret `|` as the
+# delimiter and `&` as "the whole match". A password of `p@ss|word&x` silently
+# becomes `p@ss`, corrupting the very credential this code exists to preserve.
+# Verified: that exact input truncates under sed.
+#
+# awk with ENVIRON, not `-v`: awk processes backslash escapes in `-v`
+# assignments, so a value containing `\n` would be mangled too. `index($0, k"=")`
+# instead of a regex means the key is never treated as a pattern.
+write_env_var() {
+    local key="$1" value="$2" tmp mode
+    tmp="$(mktemp)"
+    mode="$(stat -c %a "$ENV_FILE" 2>/dev/null || echo 600)"
+
+    ENV_WRITE_KEY="$key" ENV_WRITE_VAL="$value" awk '
+        BEGIN { k = ENVIRON["ENV_WRITE_KEY"]; v = ENVIRON["ENV_WRITE_VAL"]; done = 0 }
+        !done && index($0, k "=") == 1 { print k "=" v; done = 1; next }
+        { print }
+        END { if (!done) print k "=" v }
+    ' "$ENV_FILE" >"$tmp"
+
+    cat "$tmp" >"$ENV_FILE"   # preserve the original inode and ownership
+    rm -f "$tmp"
+    chmod "$mode" "$ENV_FILE"
 }
 
 ################################################################################
@@ -287,7 +457,12 @@ build_and_start_containers() {
     local timeout=60
     local elapsed=0
     while [[ $elapsed -lt $timeout ]]; do
-        if docker compose -f "$DOCKER_COMPOSE_FILE" ps | grep -q "healthy"; then
+        # Two traps here. First, `ps | grep -q healthy` under `set -o pipefail`
+        # SIGPIPEs the upstream, so a healthy stack reads as unhealthy. Second --
+        # and this one survived the grep -q fix -- "unhealthy" CONTAINS
+        # "healthy", so a bare *healthy* match reports success for a stack that
+        # is explicitly broken. Match the parenthesised status docker renders.
+        if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps)" == *"(healthy)"* ]]; then
             success "All services are healthy"
             return 0
         fi
@@ -356,7 +531,8 @@ verify_deployment() {
 
     # Extract domain from .env
     local domain
-    domain=$(grep "^APP_URL=" "$ENV_FILE" | cut -d'=' -f2 | sed 's|https\?://||' | sed 's|/.*||')
+    domain="$(read_env_value APP_URL)"
+    domain="${domain#*://}"; domain="${domain%%/*}"
 
     # Check if application is accessible
     if curl -sSf "https://$domain" &> /dev/null; then

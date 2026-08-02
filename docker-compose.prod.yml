@@ -21,10 +21,13 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=production
+      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+      # a FILE in storage/framework (a named volume). See .env.production.example.
+      - APP_MAINTENANCE_DRIVER=file
       - APP_DEBUG=false
-      - APP_KEY=${APP_KEY}
+      - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}
-      - APP_DOMAIN=${APP_DOMAIN}
+      - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - DB_DATABASE=${DB_DATABASE}
@@ -32,7 +35,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
       - REDIS_CLIENT=phpredis
       - CACHE_STORE=redis
       - QUEUE_CONNECTION=redis
@@ -100,7 +103,7 @@ services:
     command: >
       redis-server
       --appendonly yes
-      --requirepass ${REDIS_PASSWORD}
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
     volumes:
@@ -108,7 +111,7 @@ services:
     networks:
       - registro-prod
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -159,9 +162,12 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=production
-      - APP_KEY=${APP_KEY}
+      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+      # a FILE in storage/framework (a named volume). See .env.production.example.
+      - APP_MAINTENANCE_DRIVER=file
+      - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}
-      - APP_DOMAIN=${APP_DOMAIN}
+      - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - DB_DATABASE=${DB_DATABASE}
@@ -169,7 +175,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
       - REDIS_CLIENT=phpredis
       - CACHE_STORE=redis
       - QUEUE_CONNECTION=redis
@@ -220,10 +226,13 @@ services:
     environment:
       - APP_NAME=${APP_NAME:-Registro}
       - APP_ENV=production
+      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+      # a FILE in storage/framework (a named volume). See .env.production.example.
+      - APP_MAINTENANCE_DRIVER=file
       - APP_DEBUG=false
-      - APP_KEY=${APP_KEY}
+      - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
       - APP_URL=${APP_URL}
-      - APP_DOMAIN=${APP_DOMAIN}
+      - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - DB_DATABASE=${DB_DATABASE}
@@ -231,7 +240,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
       - REDIS_CLIENT=phpredis
       - CACHE_STORE=redis
       - QUEUE_CONNECTION=redis

@@ -1,7 +1,10 @@
 # Production Readiness Checklist — First Deploy to `srv1342834.hstgr.cloud`
 
-**Status (2026-08-01)**: §1 fixed in code, §1b found and fixed by the local dress rehearsal
-(Phase 2), §2 executed on the VPS (Phase 3). §3–§8 remain open. The machine is bootstrapped;
+**Status (2026-08-02)**: §1 fixed in code, §1b found and fixed by the local dress rehearsal
+(Phase 2), §2 executed on the VPS (Phase 3), §1c found by the code review that §1–§2 skipped.
+§3–§8 remain open. **§2 must be re-run on the VPS** — it now installs firewall rules that the
+executed version lacked, without which the site is unreachable from the internet. The machine is
+bootstrapped;
 **the application has never run on it** — no clone, no `.env`, no image pulled, and
 `/opt/registro/deploy.sh` has still never been executed. That is Phase 4. Plan:
 `~/.claude/plans/vps-bootstrap-registro-first-deploy.md`; original analysis:
@@ -134,15 +137,15 @@ diff is reviewable against what was actually claimed.
 
 ### Not fixed here, deliberately
 
-- **Migrations run against live traffic.** `up -d --force-recreate` brings new containers up
-  *before* migrations, and nothing puts the app into maintenance mode. `scripts/server/deploy.sh`
-  now wraps migrations in `artisan down`/`up`, but the ordering question (start containers, then
-  migrate) is a design decision worth revisiting once there is real traffic. With zero customers
-  it is harmless. See Phase 6 of the bootstrap plan.
 - **Four overlapping deploy scripts still exist** — `deploy.sh`, `deploy-update.sh`,
-  `deploy-with-healthcheck.sh`, and now `server/deploy.sh`. All four are individually correct
-  after this pass, but "which one do I run at 2am" is its own failure mode. Consolidating to one
-  is a follow-up decision, not a bug fix.
+  `deploy-with-healthcheck.sh`, and now `server/deploy.sh`. "Which one do I run at 2am" is its own
+  failure mode. Consolidating to one is a follow-up decision, not a bug fix.
+
+  An earlier revision of this section claimed all four were "individually correct after this pass".
+  That was wrong, and the §1c review found the counter-examples: `deploy-with-healthcheck.sh` still
+  carried two `grep -q` pipefail bugs, one of which aborted a successful deployment. Do not read
+  this list as an assurance that the other three are audited to the same depth as
+  `server/deploy.sh`; they are not.
 
 ## 1b. Found by the local dress rehearsal (Phase 2, 2026-08-01)
 
@@ -201,7 +204,287 @@ its own orchestration (git checkout of a tag, GHCR pull, lock handling, rollback
 It runs for the first time in Phase 4. Nothing has been pushed to GHCR either — the image exists
 only on this laptop.
 
-## 2. Network / firewall — DONE 2026-08-01 (executed on the VPS)
+## 1c. Found by code review of the §1/§1b/§2 diff (2026-08-02, `feature/deploy-review-fixes`)
+
+The §1–§2 work was merged as PR #125 **without** the mandatory `code-reviewer` gate. Running that
+gate afterwards, plus a security audit, found four more Critical defects — two of them introduced
+by the §1/§1b fixes themselves. Every one sits in code that had never been executed. The pattern
+from Phase 2 held exactly: executed code was sound, unexecuted code was not.
+
+- [x] **The TLS certificate config was reverted on every single deploy.** `deploy-init.sh` wrote
+  the real domain into `docker/nginx/production/app.prod-tls.conf` with `sed -i` — a **git-tracked**
+  file — while `scripts/server/deploy.sh` runs `git checkout --quiet --force "tags/$VERSION"` on
+  every deploy *and* every rollback. The edit was silently reverted to the `CERT_DOMAIN`
+  placeholder each time. Nothing broke immediately, because nginx keeps serving its loaded config;
+  the failure surfaces at the next container recreation — a reboot, an image update — when nginx
+  refuses to start on a nonexistent certificate path and takes **HTTP and HTTPS down together**,
+  potentially weeks after the change that caused it. Fixed by making `app.prod-tls.conf` an
+  explicit template and rendering it to `app.prod-tls.local.conf` (gitignored). `deploy.sh`
+  regenerates that file after each checkout, so template changes shipped in a release still land
+  and a missing file self-heals. Verified: the generated config passes `nginx -t`, and a gitignored
+  file demonstrably survives `git checkout --force`.
+- [x] **`scripts/backup-database.sh` truncated its own retention pass.** `((deleted_count++))`
+  under `set -e` returns 1 on the first increment (post-increment evaluates to the old value, 0),
+  killing the script mid-rotation with no error and no summary. The same bug class was fixed in
+  two other scripts during §1 and missed here. Invisible until backups are old enough to rotate.
+- [x] **`APP_DOMAIN` had no guard in `docker-compose.prod.yml`.** Staging used `${APP_DOMAIN:-…}`,
+  production used a bare `${APP_DOMAIN}`. `env()` in `config/app.php` falls back only when a
+  variable is **absent**; an empty `APP_DOMAIN=` line is present and wins, so tenant-subdomain
+  routing breaks with the exact defect §1b identified as the most serious finding of that pass.
+- [x] **A blank `REDIS_PASSWORD` took down the whole stack.** Compose drops the empty token, so
+  `redis-server --requirepass --maxmemory 256mb` parses `--maxmemory` as the password argument and
+  exits with `FATAL CONFIG FILE ERROR` — cache, sessions and queues with it. Reproduced directly
+  against `redis:7.2-alpine`. `validate-env.sh` did not check the variable at all.
+
+  Both of the above are now enforced twice: `validate-env.sh` checks them, and
+  `docker-compose.prod.yml` uses the `${VAR:?message}` form for `APP_DOMAIN`, `APP_KEY` and
+  `REDIS_PASSWORD`, which refuses to start on unset **or empty**. The compose guard is the real
+  one — `validate-env.sh` only runs when a human remembers to run it.
+
+- [x] **`ufw-docker install` was never paired with an allow rule.** `install` is default-deny for
+  everything Docker publishes, so the first `up -d` would have left the site unreachable from the
+  internet, looking like a broken application rather than a firewall. Fixed with the port-based
+  `ufw route allow proto tcp from any to any port 80` / `443`. Deliberately *not*
+  `ufw-docker allow registro-nginx 80`: that form pins the container's current IP, which changes
+  every time `up -d` recreates it, and repairing it needs `ufw-docker reload` as root — which the
+  deploy user cannot run. Confirmed against the ufw-docker documentation.
+- [x] **SSH hardening was verified one directive out of five.** Only `PasswordAuthentication` was
+  asserted; `PermitRootLogin`, `KbdInteractiveAuthentication`, `X11Forwarding` and `MaxAuthTries`
+  were written and trusted — the exact assumption the first-wins `00-` prefix fix exists to
+  correct. `KbdInteractiveAuthentication` matters most: it is the standard way password logins
+  survive `PasswordAuthentication no`, since PAM answers the keyboard-interactive prompt instead.
+  All five are now asserted via a helper, and three are re-checked in the verification block.
+- [x] **Maintenance mode came up after the readiness waits, not before.** `artisan down` ran
+  between the MySQL/Redis waits and the migration, leaving up to ~3 minutes of new code serving
+  against an unmigrated schema on a cold start. Moved before `up -d`; the flag lives in
+  `storage/framework`, a named volume, so it survives the container recreation.
+- [x] **`REGISTRO_VERSION` was persisted to `.env` before the image pull.** A failed pull left
+  `.env` naming a tag whose images are not on the host, so a later bare `docker compose up -d`
+  fails on a missing image. The version is now exported for the run (a shell variable beats `.env`
+  in Compose interpolation) and written to `.env` only once the pull has succeeded.
+- [x] **Seven more `grep -q`-under-`pipefail` bugs.** §1 fixed this class in
+  `setup-production-server.sh` and declared it handled; it was not. `deploy-with-healthcheck.sh`
+  had two — one of which aborted a *successful* deployment with "App container is not running" —
+  plus `backup-database.sh`, `deploy-update.sh` (×2) and `deploy-init.sh` (×2). The last is the
+  nastiest: a false "nginx is not running" makes the script bind a temporary container to port 80
+  that the real nginx already holds, turning a working stack into a failed certificate request.
+  All replaced with capture-then-match. The two survivors are safe and were verified as such:
+  `scripts/deploy.sh` sets no `pipefail`, and the Redis probe in `server/deploy.sh` runs inside
+  `timeout bash -c`, a fresh shell that does not inherit the flag.
+- [x] **The `deploy` job had no `permissions:` block.** It never checks out code and never calls
+  the GitHub API, so it is now `permissions: {}`.
+
+### Second review round — the fixes above were themselves reviewed (2026-08-02)
+
+This time the gate ran **before** the PR. It found one Critical caused by a §1c fix and one that
+the new compose guards introduced. Both are fixed in the same commit.
+
+- [x] **Moving `artisan down` before `up -d` could strand the site in permanent 503.** The
+  maintenance flag lives in a named volume — the property that makes the fix work across container
+  recreation is also what makes a stranded flag survive reboots. With `down` now running earlier,
+  a failure at `up -d`, the MySQL wait or the Redis wait left the flag set, and `public/index.php`
+  short-circuits **every** request including `/up`. Worse, `rollback` never cleared it, so the
+  operator's instinctive recovery would inherit the 503 *and then fail its own health check
+  because of it* — reporting a broken rollback that actually worked. The forced-command grammar
+  (`deploy|rollback|status`) offers no way to run `artisan up`, so recovery needed the root key.
+  Fixed with an `EXIT` trap that lifts maintenance on any non-zero exit, plus an unconditional
+  lift at the start of every rollback. Verified across all seven failure paths.
+
+  One deliberate exception: **a failed migration now stays in maintenance**. Serving new code
+  against a half-applied schema risks user-visible errors and bad writes; an honest 503 is better.
+  That is only a safe choice because `rollback` now lifts the flag, so recovery no longer requires
+  the root key. The error message names the exact rollback command.
+- [x] **The `${VAR:?}` guards deadlocked the first-ever bootstrap.** Compose evaluates
+  interpolation for *every* subcommand, not just `up`. `deploy-init.sh` copies
+  `.env.production.example` — which ships `APP_KEY=` and `REDIS_PASSWORD=` empty — and then
+  immediately ran a compose command, which now aborts the whole script under `set -e`. Phase 4
+  would have died at step 2. Secrets are now generated on the host with `openssl` before compose
+  is touched at all, and only when empty, so re-running never rotates a live `APP_KEY` (which
+  would break every encrypted value and every session) or a password MySQL was initialised with.
+
+  This also fixed a silent pre-existing bug: the old `docker compose run --rm app php artisan
+  key:generate` wrote `.env` **inside an ephemeral container** — no `.env` is bind-mounted into
+  the app service — so it had never once generated a key that survived.
+- [x] **`deploy.sh status` was collateral damage from the same guards.** It is the only diagnostic
+  the forced command exposes, and it would have returned a compose interpolation error instead of
+  container state in exactly the situations where you need it: `.env` not yet written (all of
+  Phase 4), or a password blanked by a bad edit. Switched to `docker ps --filter name=registro-`,
+  which does not read the compose file. Note the general escape hatch: `docker compose` subcommands
+  can be forced past a guard with `REDIS_PASSWORD=x docker compose down`.
+- [x] **The TLS regeneration could write a config nginx will not start on.** Three defects in the
+  §1c fix: `sed` exits 0 when it substitutes nothing, so a release whose template changed shape
+  would yield a file still containing `CERT_DOMAIN`; the write was not atomic, so a disk-full
+  truncation would sit there until the next reboot recreated nginx on it; and the domain came from
+  `APP_URL`, while certbot appends `-0001` to the live directory whenever the SAN set changes —
+  which happens the first time `www.<host>` starts resolving, since `deploy-init.sh` adds it
+  conditionally. Now: render to `.tmp`, reject any output still containing `CERT_DOMAIN`, `mv` into
+  place, and take the directory name from `CERT_DIR` in `.env` (falling back to the host) after
+  checking that `/etc/letsencrypt/live/$CERT_DIR` actually exists.
+- [x] **`REGISTRO_VERSION` was still written too early.** §1c moved it after the pull, but `up -d`
+  comes after that, so a failed `up -d` left `.env` naming a version the running containers were
+  not on — and `restart: unless-stopped` means a reboot would silently promote it, in the worst
+  case against a schema never migrated for it. Now written after the health check passes.
+- [x] **Two of the `grep -q` replacements were faithful to a check that never worked.**
+  `*healthy*` also matches `unhealthy`, so `deploy-init.sh` reported "All services are healthy"
+  for an explicitly broken stack — reproduced against a container with a failing healthcheck. And
+  `docker compose ps` lists only *running* containers, so `deploy-update.sh`'s "some containers
+  have exited" guard could never fire — also reproduced. Fixed to `*"(healthy)"*` and `ps -a`.
+  §1c listed both as fixed when only their SIGPIPE half was.
+- [x] **A failed sshd assertion left the box with no firewall.** The five hard `die`s sat between
+  `systemctl reload ssh` and the ufw block, trading a possible SSH misconfiguration for a
+  guaranteed absence of a firewall. The assertions now run after the firewall is up.
+
+### Third review round (2026-08-02)
+
+Round 3 reviewed round 2's fixes and again found Criticals introduced by them. The pattern is the
+point: **each round of fixes to unexecuted code introduced new bugs into unexecuted code.** Three
+rounds in, the fixes are converging, but nothing here substitutes for Phase 4 actually running it.
+
+- [x] **The `EXIT` trap did not fire on signals — and signal death is the likely case.** `trap
+  on_exit EXIT` does not run on HUP, INT, TERM or PIPE. CI wraps the deploy in a step timeout, and
+  killing the ssh client orphans the remote script, which then dies at its next `log()` call
+  because `echo` to a closed stdout takes SIGPIPE. Maintenance flag set, containers healthy, site
+  serving 503 with nobody to lift it — and the two retry attempts then race the orphan for the
+  lock and return "another deploy is already running". Fixed: traps on all four signals, `log()`
+  tolerates a dead stdout, and the step timeout raised to 25 minutes to match the script's own
+  worst-case budget.
+- [x] **The rollback lift happened too late to help.** Round 2 documented an "unconditional lift at
+  the start of every rollback"; the code only set a flag there and did the actual `artisan up`
+  after the checkout, pull, `up -d` and both readiness waits. So a rollback run to escape a
+  MySQL-related failure would die in the same MySQL wait, before lifting anything. Worse,
+  `artisan up` needs a working app container — exactly what is missing in the failure paths that
+  strand the flag. Fixed twice over: the lift now happens immediately, and it falls back to
+  deleting `maintenance.php` and `down` straight out of the storage volume with a throwaway
+  container, which needs only docker-group membership. Verified end to end against a real volume.
+- [x] **`set_secret` could kill `deploy-init.sh` silently.** `current="$(grep … | cut …)"` is an
+  assignment whose status is the pipeline's; under `set -e -o pipefail` a key absent from `.env`
+  exits the script with no message, mid-write, leaving a half-built `.env`. The `else` branch that
+  appends a missing key was unreachable dead code. Fixed with a `read_env_value` helper; the same
+  latent bug in two `APP_URL` extraction sites is fixed with it.
+- [x] **The "never rotates a live APP_KEY" guarantee was defeated by the overwrite prompt.**
+  Answering `y` to "overwrite .env?" copies the example over it, blanking every secret, after which
+  `set_secret` sees them empty and generates new ones. The MySQL volume still holds the old
+  credentials, and `APP_KEY` decrypts every `encrypted` column and signs every session. Fixed:
+  secrets are read out of the old file first and carried across, the prompt spells out what is and
+  is not preserved, and the previous `.env` is backed up.
+- [x] **`deploy-init.sh`'s own TLS renderer never got round 2's hardening** — and it runs *first*.
+  It still took the domain from `APP_URL`, checked no directory, validated no output and wrote
+  non-atomically. It is also where the `-0001` problem is *created*. Now shares a hardened
+  `wire_up_tls`, and `resolve_cert_dir` finds the real directory (exact name first, then the
+  newest `-NNNN`), verified across five cases.
+- [x] **`CERT_DIR` had no writer.** Round 2 introduced the mechanism but nothing ever set it, so
+  the fallback to the hostname was the only value that could occur and the `-0001` case would
+  abort a deploy that should have worked. `wire_up_tls` now writes it; it is documented in
+  `.env.production.example`.
+- [x] **Declining certificate renewal silently dropped the server back to plain HTTP.** The
+  "certificates already exist / renew? (y/N)" early return skipped both the config render and the
+  `NGINX_CONF=` write — and on a re-run where `.env` was just recreated from the example, that
+  means `NGINX_CONF=app.prod.conf`. Declining now still wires up the existing certificate.
+- [x] **`APP_MAINTENANCE_DRIVER=cache` in the example contradicted the whole safety net.** The
+  maintenance flag is detected by `public/index.php` as a *file*; with the cache driver it stops
+  being seen and the net goes dark with no error. It was inert only because compose has no
+  `env_file:` — one reasonable-looking change away from breaking. Now `file` in the example and
+  pinned explicitly in all three compose `environment:` blocks.
+- [x] **CI retried deterministic failures.** `max_attempts: 3` re-ran failed migrations against a
+  half-applied schema, producing a different and harder-to-read error each time. Now
+  `retry_on_exit_code: 255` — ssh's own transport-error code — so only network failures retry.
+  Confirmed against the action's documentation that this retries *only* the given code.
+- [x] Smaller: maintenance state now records what happened rather than what was intended;
+  `clear_maintenance` is bounded by `timeout` so a wedged PHP process cannot hang the trap; the
+  lift moved to after the cache rebuild so the first real request does not hit a just-cleared
+  cache; the final `docker compose ps` no longer determines the script's exit status; and
+  `DB_HOST` / `REGISTRO_VERSION` in the example no longer contradict their own comments.
+
+### Fourth review round (2026-08-02) — and why reviewing stopped here
+
+Round 4 found that round 3's headline fix was **worse than the bug it replaced**, which is the
+clearest possible signal that reading the same never-executed code again has stopped paying.
+
+- [x] **The signal handler prevented the cleanup it existed to perform.** `on_signal`'s first
+  action was `log()`, and `log()`'s first action was writing to stdout. When the orphaning event
+  *is* a dead stdout — CI's step timeout killing the ssh client — that write raises SIGPIPE inside
+  the PIPE handler and bash re-enters it. Reproduced directly: with a closed stdout, a SIGTERM
+  produced no cleanup at all. Fixed three ways at once: `log()` writes to the durable log file
+  before touching stdout, `on_signal` disarms every trap as its first statement, and SIGPIPE is
+  ignored outright rather than handled.
+- [x] **More importantly: correctness no longer depends on traps at all.** No trap can catch
+  SIGKILL, so a trap-based guarantee was never going to be one. **Every** run — deploy and
+  rollback alike — now clears any stranded maintenance flag before doing anything else. A stranded
+  503 therefore survives at most until the next deploy attempt, including the automatic CI retry,
+  with no signal handling involved. The traps remain a best-effort fast path.
+- [x] **`MAINTENANCE_ON` could be false while the flag was on disk.** `artisan down` writes
+  `storage/framework/down` before it writes `maintenance.php` and before it prints anything, so it
+  can fail with the flag already set — and then the cleanup skipped it. The errors are wildly
+  asymmetric: a false positive costs one no-op `artisan up`, a false negative is a silent outage.
+  Now over-approximated from container existence rather than exit status.
+- [x] **The volume lookup could have deleted another project's files.** `docker volume ls --filter
+  name=storage-framework` is an unanchored substring match across the whole daemon, and the result
+  was silently narrowed to the first line. Verified with two compose projects side by side: the
+  old filter returns *both* volumes. Now matched on `com.docker.compose.project` +
+  `com.docker.compose.volume` labels, refusing to act unless exactly one matches, and resolved
+  lazily so it works on a first bring-up where the volume does not exist until `up -d`.
+- [x] **The recovery path depended on an image the script itself prunes.** The fallback used
+  `alpine:3`, which `docker image prune -af --filter until=24h` deletes on every successful deploy
+  — so recovery would have needed a Docker Hub pull at the exact moment the stack was broken. Now
+  uses the application image, which is present by definition.
+- [x] **`sed`-based `.env` writes corrupted carried-over secrets.** With `|` as the delimiter and
+  `&` meaning "the whole match", a password of `p@ss|word&x` silently became `p@ss` — on the code
+  path whose entire purpose is preserving the credentials MySQL was initialised with. Verified,
+  then replaced with an `awk` writer using `ENVIRON` (no `-v` escape processing) and `index()` (no
+  regex). Tested against pipes, ampersands, backslashes, `$(...)`, backticks and base64.
+- [x] **The `-0001` mechanism was solving a problem it had backwards.** certbot does not delete the
+  original lineage when it creates `example.com-0001`, so preferring the exact name would always
+  return the *older, narrower* certificate. Fixed at the source instead: both certbot invocations
+  now pass `--cert-name "$domain" --expand`, which pins the lineage so the rename never happens.
+- [x] **CI's timeout path bypassed the retry restriction.** `retry_on_exit_code: 255` governs only
+  the exit-code branch; the timeout branch is separate and still defaulted to retrying. A 25-minute
+  overrun would retry 60 s later while the orphan still held the deploy lock, get exit 4, and
+  report "another deploy is already running" — disguising a timeout as a concurrency error. Added
+  `retry_on: error`.
+- [x] Several comments asserted things that were false: `/up` is not short-circuited by
+  `index.php` (it 503s via the middleware, same conclusion, wrong mechanism); the `cache`
+  maintenance driver does not stop the site entering maintenance (it stops it getting *out*, which
+  is the real reason to pin `file`); and the "never 'latest'" comment sat directly above
+  `REGISTRO_VERSION=latest`. All corrected.
+
+**Reviewing stopped here deliberately.** Four rounds, and rounds 2, 3 and 4 each found defects
+introduced by the previous round's fixes — all of it in code that has never run. The remaining
+defect density is dominated by things only execution will reveal. The next step is a deliberate
+dry run on the VPS (deploy a throwaway tag, kill the CI step mid-run on purpose, confirm the flag
+lifts on the following attempt), not a fifth read.
+
+### Pre-existing, outside this work, but it will break Phase 4
+
+**`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds
+a named volume from the image only when the volume is *empty*, so from the second deploy onward
+`/var/www/public` never receives the new image's contents. `docker/entrypoint.sh` tries to
+compensate for `public/build`, but its guard compares modification times and `cp -r` stamps the
+destination with the copy time, so the destination is always newer and the copy is skipped
+permanently. Vite emits content-hashed filenames each release, so `manifest.json` in the volume
+stays frozen at the first release's hashes and **every asset 404s from deploy #2 onward**. It will
+present as "the deploy succeeded and the site is unstyled". Not fixed here — it needs a decision
+about how `public/` is served (bind-mount, image-only with nginx reading from the app container,
+or an explicit sync step), not a patch. **Resolve before Phase 4.**
+
+### Confirmed sound by the same review
+
+The security audit found the SSH forced-command boundary itself **airtight**: the
+`SSH_ORIGINAL_COMMAND` grammar admits no injection, the tag regex is anchored at both ends, the
+extra-argument check closes the obvious bypass, and nothing reaches a shell before validation.
+`flock` handling, the workflow's single-source version flow, and `/up` reachability under both
+nginx configs all passed.
+
+### Still open, deliberately
+
+- **`StrictHostKeyChecking=accept-new` plus `ssh-keyscan` on an ephemeral runner** re-trusts the
+  host key on *every* deploy, not just the first — a recurring MITM window. The fix is pinning the
+  host key fingerprint in a secret. Not a bug in the code as written; a decision to make before
+  the first real deploy.
+- **The `deploy` user is in the `docker` group**, which is root-equivalent. The containment is the
+  forced command, not the absence of `sudo` — a docker-socket-proxy would be the stronger boundary.
+  Recorded so nobody mistakes the sudo omission for the security control.
+
+## 2. Network / firewall — executed 2026-08-01, MUST BE RE-RUN after §1c
 
 `scripts/setup-production-server.sh` ran on `76.13.76.104` and passed 11/11 self-checks on two
 consecutive runs, confirming idempotency. Verified independently afterwards, not taken from the
@@ -209,6 +492,14 @@ script's own report: `deploy` logs in by key and is in `docker` but **not** `sud
 auth is genuinely refused (`Permission denied (publickey)`); `/opt/registro/deploy.sh` is
 `root:root 755` and unwritable by `deploy`; `/var/www/registro` is `deploy:deploy`; only port 22
 listens; 2 GB swap active; Docker log rotation in place.
+
+> **This section was marked DONE prematurely.** The 11/11 result only ever meant "the script's own
+> checks passed" — and the version that ran was missing the `ufw route allow` rules, so the box as
+> it stands today would refuse all traffic to the containers the moment nginx starts. It also
+> verified one of five sshd directives. Re-run the script (it is idempotent) before Phase 4; the
+> check count is now 15. The remaining honest gap: **nothing has yet confirmed reachability from
+> outside the host** — no container has ever listened on it. That test belongs to Phase 4 and
+> cannot be done from the server itself.
 
 ### Three defects the execution exposed
 

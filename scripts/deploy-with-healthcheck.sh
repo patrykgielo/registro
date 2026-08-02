@@ -97,8 +97,12 @@ preflight_checks() {
         exit_with_error "Docker is not running" 1
     fi
 
-    # Check if old container exists
-    if ! docker compose -f "$COMPOSE_FILE" ps app | grep -q "Up"; then
+    # Check if old container exists.
+    # Not `ps app | grep -q "Up"`: this script runs under `set -o pipefail`, and
+    # grep -q exits the moment it matches, so docker compose takes SIGPIPE and
+    # the pipeline reports 141. The check then reports the exact opposite of what
+    # it found. Capture first, match on the string.
+    if [[ "$(docker compose -f "$COMPOSE_FILE" ps app)" != *Up* ]]; then
         log_warning "No running app container found. This will be a fresh deployment."
     fi
 
@@ -300,8 +304,10 @@ switch_traffic() {
 verify_deployment() {
     log_info "Verifying deployment..."
 
-    # Check if app container is running
-    if ! docker compose -f "$COMPOSE_FILE" ps app | grep -q "Up"; then
+    # Check if app container is running. Same pipefail/SIGPIPE trap as in
+    # pre-flight, but here it was worse: the false negative aborted a perfectly
+    # good deployment with "App container is not running".
+    if [[ "$(docker compose -f "$COMPOSE_FILE" ps app)" != *Up* ]]; then
         exit_with_error "App container is not running" 5
     fi
 
