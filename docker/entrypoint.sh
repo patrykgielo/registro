@@ -90,69 +90,151 @@ fi
 # directories start with identical mtimes, and `cp -r` would restamp the
 # destination anyway. Verified by reproduction.
 # ---------------------------------------------------------------------------
+# Replaces one entry of public/ with the image's copy, as atomically as the
+# filesystem allows. Returns non-zero without having destroyed anything.
+#
+# Regular files: rename(2) replaces an existing file atomically, so the
+# destination is NEVER unlinked first -- there is no window at all.
+#
+# Directories: rename(2) refuses to replace a non-empty directory, so the swap
+# needs two renames and the destination is briefly absent. That is still far
+# better than the alternatives: `rm -rf dest` first would leave the path missing
+# for the whole duration of a recursive delete, and copying in place is
+# truncate-then-write, which can hand nginx a TRUNCATED file with HTTP 200 on
+# paths served with `expires 1y; Cache-Control: immutable` -- cached for a year
+# on a URL that never changes. A transient 404 is not cached that way; a
+# truncated 200 is. That asymmetry is the whole reason for staging.
+replace_public_entry() {
+    src="$1"
+    name="$2"
+    dest="/var/www/public/${name}"
+    stage="/var/www/public/.sync.${name}"
+
+    rm -rf "$stage"
+    if ! cp -a "$src" "$stage"; then
+        rm -rf "$stage"
+        echo "⚠️  Could not stage ${name} -- leaving the existing copy in place"
+        return 1
+    fi
+
+    if [ -d "$dest" ] && [ ! -L "$dest" ]; then
+        rm -rf "${dest}.old"
+        if ! mv "$dest" "${dest}.old"; then
+            rm -rf "$stage"
+            echo "⚠️  Could not move ${name} aside -- leaving the existing copy in place"
+            return 1
+        fi
+        if ! mv "$stage" "$dest"; then
+            # Put the original back rather than leaving the path missing.
+            mv "${dest}.old" "$dest" 2>/dev/null || true
+            rm -rf "$stage"
+            echo "⚠️  Could not install ${name} -- restored the previous copy"
+            return 1
+        fi
+        rm -rf "${dest}.old"
+        return 0
+    fi
+
+    # File, symlink, or nothing there yet: a single atomic rename.
+    if ! mv "$stage" "$dest"; then
+        rm -rf "$stage"
+        echo "⚠️  Could not install ${name} -- left the existing copy alone"
+        return 1
+    fi
+    return 0
+}
+
 if [ "${SYNC_PUBLIC_FROM_IMAGE:-}" = "true" ] && [ -d /tmp/public ]; then
     echo "📦 Syncing public/ from image..."
 
-    # Deliberately non-fatal despite `set -e`. A failed copy used to abort the
-    # entrypoint before `exec "$@"`, so the container never started php-fpm and
-    # crashlooped under `restart: unless-stopped` -- strictly worse than the
-    # stale frontend this replaces. deploy.sh gates the result explicitly, so a
-    # bad sync fails the DEPLOY loudly instead of killing the container.
+    # Deliberately non-fatal. A failed copy used to abort the entrypoint before
+    # `exec "$@"`, so the container never started php-fpm and crashlooped under
+    # `restart: unless-stopped` -- strictly worse than the stale frontend this
+    # replaces. Every failure path above leaves the previous copy intact, and
+    # deploy.sh compares the whole tree afterwards and fails the DEPLOY.
+    #
+    # NOTE: this function must have exactly one exit path. `set +e` here and
+    # `set -e` at the end are not a save/restore pair -- an early `return` would
+    # leave errexit OFF for the remainder of the entrypoint, so config:cache and
+    # friends would fail silently and php-fpm would start on broken caches. Do
+    # not add a `return` above the restore.
     sync_public() {
         set +e
         rc=0
 
-        # build/ is swapped whole rather than merged. Merging would leave every
-        # past release's hashed assets in the volume forever and, worse, `cp`
-        # gives no ordering guarantee, so it can land the new manifest.json
-        # before the files it names.
-        #
-        # Honest limit: replacing a directory needs two renames, because
-        # rename(2) cannot replace a non-empty directory, so build/ is absent for
-        # a microsecond between them. Deploys run inside maintenance mode.
-        rm -rf /var/www/public/build.new /var/www/public/build.old
+        # Orphans from a container killed mid-sync. Not web-accessible (nginx
+        # denies dotfiles) but they accumulate, and an entry dropped from a later
+        # release would otherwise leave its orphan forever.
+        rm -rf /var/www/public/.sync.* /var/www/public/build.new /var/www/public/build.old
+
+        # build/ is swapped whole rather than merged: merging keeps every past
+        # release's hashed assets forever and, worse, `cp` gives no ordering
+        # guarantee, so it can land the new manifest.json before the files it
+        # names.
+        build_ok=0
         if [ -d /tmp/public/build ]; then
-            cp -a /tmp/public/build /var/www/public/build.new || rc=1
+            cp -a /tmp/public/build /var/www/public/build.new && build_ok=1
         else
             echo "⚠️  No build assets in image -- publishing an empty build/"
-            mkdir -p /var/www/public/build.new || rc=1
+            mkdir -p /var/www/public/build.new && build_ok=1
         fi
 
-        # Everything else, one entry at a time, each staged and renamed.
-        #
-        # These paths are NOT content-hashed (public/css/filament/**,
-        # public/vendor/livewire/livewire.js ...) and nginx serves them directly
-        # with `expires 1y; Cache-Control: immutable`. Copying in place is
-        # truncate-then-write, so a request landing mid-copy would receive a
-        # TRUNCATED file with HTTP 200 and have it cached for a year on a URL
-        # that never changes. Maintenance mode does not help: it gates PHP, not
-        # nginx's static serving. Rename within the volume is atomic.
-        #
-        # `-f` so a destination left non-writable by a previous release does not
-        # fail the copy. `build` is skipped: it is handled above. `storage` is
-        # absent from the image (.dockerignore) so the runtime symlink created
-        # below is never at risk.
+        if [ "$build_ok" -eq 1 ]; then
+            # Only swap once the new copy is complete. Doing this unconditionally
+            # would move the live build/ aside, fail to install the replacement,
+            # and then delete the only surviving copy -- leaving the volume with
+            # no assets at all.
+            if [ -d /var/www/public/build ]; then
+                mv /var/www/public/build /var/www/public/build.old || rc=1
+            fi
+            if mv /var/www/public/build.new /var/www/public/build; then
+                rm -rf /var/www/public/build.old
+            else
+                mv /var/www/public/build.old /var/www/public/build 2>/dev/null || true
+                echo "⚠️  Could not install build/ -- restored the previous copy"
+                rc=1
+            fi
+        else
+            rm -rf /var/www/public/build.new
+            echo "⚠️  build/ copy failed -- keeping the existing build/"
+            rc=1
+        fi
+
+        # Everything else. `build` is handled above; `storage` is absent from the
+        # image (.dockerignore excludes it) so the runtime symlink created below
+        # is never reachable from this loop.
         for entry in /tmp/public/* /tmp/public/.[!.]*; do
             [ -e "$entry" ] || continue
             name="${entry##*/}"
             [ "$name" = "build" ] && continue
-
-            rm -rf "/var/www/public/.sync.$name"
-            if cp -af "$entry" "/var/www/public/.sync.$name"; then
-                rm -rf "/var/www/public/$name"
-                mv "/var/www/public/.sync.$name" "/var/www/public/$name" || rc=1
-            else
-                rm -rf "/var/www/public/.sync.$name"
-                echo "⚠️  Could not stage $name"
-                rc=1
-            fi
+            replace_public_entry "$entry" "$name" || rc=1
         done
 
-        if [ -d /var/www/public/build ]; then
-            mv /var/www/public/build /var/www/public/build.old || rc=1
-        fi
-        mv /var/www/public/build.new /var/www/public/build || rc=1
-        rm -rf /var/www/public/build.old
+        # Prune top-level entries the image no longer ships, so the volume is a
+        # true mirror of it rather than an accumulation of every release ever
+        # deployed. Two reasons this matters beyond tidiness:
+        #
+        #   - `public/hot` is the dangerous one. It is excluded by .dockerignore,
+        #     so without pruning, if it ever reached the volume no deploy could
+        #     remove it and Vite::asset() would resolve to a dev server for the
+        #     whole application.
+        #   - deploy.sh compares the two trees, and an un-prunable leftover would
+        #     fail every subsequent deploy until someone cleaned the volume by
+        #     hand.
+        #
+        # `storage` is exempt: it is a runtime symlink that deliberately does not
+        # exist in the image.
+        for dest in /var/www/public/* /var/www/public/.[!.]*; do
+            [ -e "$dest" ] || [ -L "$dest" ] || continue
+            dname="${dest##*/}"
+            case "$dname" in
+                storage) continue ;;
+            esac
+            if [ ! -e "/tmp/public/${dname}" ]; then
+                echo "🧹 Removing ${dname} -- no longer shipped in the image"
+                rm -rf "$dest" || rc=1
+            fi
+        done
 
         set -e
         return $rc
@@ -161,10 +243,11 @@ if [ "${SYNC_PUBLIC_FROM_IMAGE:-}" = "true" ] && [ -d /tmp/public ]; then
     if sync_public; then
         echo "✅ public/ synced from image"
     else
-        # Not fatal here on purpose -- see above. deploy.sh verifies the result.
-        echo "⚠️  public/ sync reported errors -- deploy.sh will verify and fail if stale"
+        echo "⚠️  public/ sync reported errors -- deploy.sh will verify and fail the deploy"
     fi
-elif [ -d /tmp/public ]; then
+elif [ "${SYNC_PUBLIC_FROM_IMAGE:-}" = "true" ]; then
+    echo "⚠️  SYNC_PUBLIC_FROM_IMAGE is set but /tmp/public is missing from the image"
+else
     echo "ℹ️  SYNC_PUBLIC_FROM_IMAGE not set -- leaving public/ untouched (dev bind mount?)"
 fi
 

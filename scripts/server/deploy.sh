@@ -467,7 +467,30 @@ docker compose -f "$COMPOSE_FILE" exec -T app php -r '
     }
 
     printf("%d manifest entries, matching this image, all files present\n", count($entries));
-' </dev/null || die "frontend assets in the public volume do not match this image" 3
+' </dev/null || {
+    # Keep the site DOWN. Without this the EXIT trap lifts maintenance, and the
+    # deploy ends with a failure report but the bad release live and serving --
+    # which is exactly what running this gate before clear_maintenance was meant
+    # to prevent. `rollback` lifts the flag, so recovery is one command.
+    KEEP_MAINTENANCE=true
+    die "public/ in the volume does not match this image -- site left in maintenance. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
+}
+
+# The manifest check above covers build/ only. This covers the rest of public/ --
+# index.php, .htaccess, css/, js/, fonts/, images/, vendor/ -- which the same
+# freeze had pinned just as hard, and which the entrypoint syncs entry by entry
+# with its own failure paths. `storage` is excluded: it is a runtime symlink that
+# deliberately does not exist in the image.
+log "Verifying the rest of public/..."
+docker compose -f "$COMPOSE_FILE" exec -T app sh -c '
+    diff -rq --exclude=storage /tmp/public /var/www/public 2>&1 \
+        | grep -v "^Only in /var/www/public: storage$" \
+        | grep . && exit 1
+    exit 0
+' </dev/null || {
+    KEEP_MAINTENANCE=true
+    die "public/ differs from the image beyond build/ -- site left in maintenance. Recover with: ssh deploy@host 'rollback ${PREVIOUS}'" 3
+}
 
 # Lift maintenance HERE: after the caches are warm, so the first real request
 # does not land on a container that just had optimize:clear run against it, and

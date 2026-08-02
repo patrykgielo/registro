@@ -474,13 +474,16 @@ run and every run after it. The copy never once executed.**
 > it is absent from the stale manifest, so Laravel raises `Unable to locate file in Vite manifest`
 > and that page 500s.
 
-**Fix.** `docker/entrypoint.sh` now syncs `public/` from the image's `/tmp/public` snapshot on every
-app-container start. `build/` is staged into `build.new` and swapped by rename rather than merged,
-so past releases' hashed assets do not accumulate and nginx never reads a half-copied tree; the rest
-of `public/` is overwritten in place. The `storage` symlink is created *after* the sync and is
-absent from the image (`.dockerignore` excludes it), so it cannot be clobbered. Only the `app`
-service mounts this volume read-write — nginx has it `:ro`, horizon and scheduler not at all — so
-there is exactly one writer.
+**Fix.** `docker/entrypoint.sh` syncs `public/` from the image's `/tmp/public` snapshot when
+`SYNC_PUBLIC_FROM_IMAGE=true`, which is set only on the `app` service in `docker-compose.prod.yml`
+and `docker-compose.staging.yml`. Every entry is staged to a sibling path and moved into place:
+regular files by a single `rename(2)`, which replaces atomically with no window at all; directories
+by move-aside-then-move-in, since `rename(2)` refuses to replace a non-empty directory. Nothing is
+deleted before its replacement is known to be complete, so any failed copy leaves the previous copy
+intact. Top-level entries the image no longer ships are pruned, so the volume mirrors the image
+rather than accumulating every release. The `storage` symlink is exempt from pruning, created after
+the sync, and absent from the image, so it is never at risk. Only the `app` service mounts this
+volume read-write — nginx has it `:ro`, horizon and scheduler not at all — so there is one writer.
 
 **Gate.** `scripts/server/deploy.sh` compares the volume's `manifest.json` against the image's by
 SHA-256 and fails the deploy on a mismatch, *then* checks that every file the manifest names is on
@@ -488,7 +491,11 @@ disk. The hash comparison is the part that matters: the existence check alone wa
 observed to pass happily on a stale volume, and kept only as a second layer because it catches a
 partial or interrupted copy that the hash cannot. The gate runs while the site is still in
 maintenance mode, before the health check — which sees none of this, since `/up` returns 200
-throughout.
+throughout. A second gate `diff -rq`s the whole tree (excluding `storage`), because the manifest
+check covers `build/` only and the same freeze had pinned `index.php`, `css/`, `js/` and `vendor/`
+just as hard. Both gates set `KEEP_MAINTENANCE=true` before failing: without it the EXIT trap lifts
+maintenance and the bad release goes live anyway, which would have made moving the gate earlier
+purely cosmetic — caught in review.
 
 **Verified by reproduction, not inference:** a named volume stays frozen across image versions; the
 old guard never fired; the new sync updates `index.php`, `.htaccess`, dotfiles, `css/` and hashed
@@ -508,11 +515,10 @@ the first release's JS and CSS — a nastier and more confusing failure than the
 - Replacing a directory needs two renames, because `rename(2)` cannot replace a non-empty directory,
   so `build/` is absent for a microsecond. Deploys run inside maintenance mode; not worth a symlink
   indirection.
-- Nothing **outside** `build/` is ever deleted. A file removed from `public/` in a later release is
-  served forever. The one that would actually bite is `public/hot`: it is excluded by
-  `.dockerignore`, so if it ever reached the volume no deploy could remove it and `Vite::asset()`
-  would resolve to a dev server for the whole application. Worth a manual check if assets ever
-  behave strangely on the server.
+- Pruning is **top-level only**: an entry the image no longer ships is removed, and files inside a
+  synced directory are replaced wholesale, but nothing walks deeper. This is what closes the
+  `public/hot` hazard — excluded by `.dockerignore`, so without pruning, once it reached the volume
+  no deploy could remove it and `Vite::asset()` would resolve to a dev server application-wide.
 - The sync is **opt-in** via `SYNC_PUBLIC_FROM_IMAGE=true`, set only on the `app` service in
   `docker-compose.prod.yml`. This is deliberate: `docker-compose.yml` and `docker-compose.dev.yml`
   bind-mount `.:/var/www` on app, horizon *and* scheduler, and the container runs as uid 1000 — the
