@@ -8,6 +8,7 @@ use App\Actions\Onboarding\CreateOrganizationWithOwner;
 use App\Actions\Onboarding\GenerateUniqueSlug;
 use App\Actions\Onboarding\OnboardingData;
 use App\Enums\Industry;
+use App\Events\TenantRegistered;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Rules\ValidOrganizationSlug;
@@ -100,6 +101,13 @@ class BusinessRegisterController extends Controller
         );
 
         $result = $createAction->execute($data);
+
+        // Fires the mails that this flow never sent: a welcome to the owner --
+        // who otherwise leaves with no record of their panel address -- and a
+        // heads-up to the operator, who otherwise learns about new tenants only
+        // by looking. Dispatched AFTER the organisation and owner both exist so
+        // the queued notifications cannot race their own subjects.
+        TenantRegistered::dispatch($result['organization'], $result['user']);
 
         Auth::login($result['user']);
         $request->session()->regenerate();

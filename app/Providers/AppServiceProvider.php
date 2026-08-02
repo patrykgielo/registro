@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Channels\EmailServiceChannel;
 use App\Enums\TemplateKey;
 use App\Events\AdminCreatedUser;
 use App\Events\AppointmentCancelled;
@@ -15,6 +16,7 @@ use App\Events\OrderConfirmed;
 use App\Events\OrderPaid;
 use App\Events\PasswordResetRequested;
 use App\Events\RentalCancelled;
+use App\Events\TenantRegistered;
 use App\Events\UserRegistered;
 use App\Listeners\LogAuthenticationEvents;
 use App\Listeners\RecordAnalyticsOnOrderPaid;
@@ -29,10 +31,12 @@ use App\Notifications\AdminCreatedUserNotification;
 use App\Notifications\AppointmentCancelledNotification;
 use App\Notifications\AppointmentCreatedNotification;
 use App\Notifications\AppointmentRescheduledNotification;
+use App\Notifications\NewTenantRegisteredNotification;
 use App\Notifications\OrderCancelledNotification;
 use App\Notifications\OrderConfirmedNotification;
 use App\Notifications\OrderPaidNotification;
 use App\Notifications\PasswordResetNotification;
+use App\Notifications\TenantWelcomeNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
 use App\Observers\OrganizationObserver;
@@ -52,6 +56,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -271,9 +276,33 @@ class AppServiceProvider extends ServiceProvider
      */
     private function registerEventListeners(): void
     {
-        // User Registration
+        // User Registration (end CUSTOMER creating an account on a tenant's site)
         Event::listen(UserRegistered::class, function (UserRegistered $event) {
             $event->user->notify(new UserRegisteredNotification($event->user));
+        });
+
+        // Tenant Registration (a BUSINESS signing up for this installation).
+        //
+        // Two recipients, deliberately: the owner needs their panel address --
+        // without it, closing the browser loses the only route back -- and the
+        // operator needs to know a tenant appeared at all, since nothing else
+        // tells them.
+        Event::listen(TenantRegistered::class, function (TenantRegistered $event) {
+            $event->owner->notify(new TenantWelcomeNotification($event->organization));
+
+            $operatorEmail = app(SettingsManager::class)->getGlobal('platform.new_tenant_notification_email');
+
+            // Falls back to the closure-request address so a fresh install is
+            // not silently unmonitored; empty means the operator opted out.
+            if (! is_string($operatorEmail) || trim($operatorEmail) === '') {
+                $fallback = app(SettingsManager::class)->getGlobal('account.closure_request_email');
+                $operatorEmail = is_string($fallback) ? $fallback : '';
+            }
+
+            if (trim((string) $operatorEmail) !== '') {
+                Notification::route(EmailServiceChannel::class, trim((string) $operatorEmail))
+                    ->notify(new NewTenantRegisteredNotification($event->organization, $event->owner));
+            }
         });
 
         // Password Reset

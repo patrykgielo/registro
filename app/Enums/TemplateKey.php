@@ -32,6 +32,12 @@ enum TemplateKey: string
     case USER_REGISTERED = 'user-registered';
     case PASSWORD_RESET = 'password-reset';
 
+    // ── Tenant onboarding (Email only) ───────────────────────────
+    // TENANT_WELCOME goes to the person who just registered a business.
+    // TENANT_REGISTERED_OPERATOR goes to whoever runs this Registro installation.
+    case TENANT_WELCOME = 'tenant-welcome';
+    case TENANT_REGISTERED_OPERATOR = 'tenant-registered-operator';
+
     // ── Email change flow (Email only) ───────────────────────────
     case EMAIL_CHANGE_REQUESTED = 'email-change-requested';
     case EMAIL_CHANGE_VERIFICATION = 'email-change-verification';
