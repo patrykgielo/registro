@@ -196,6 +196,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [test, build]
+    # This job never checks out code and never calls the GitHub API -- it only
+    # opens an SSH session. An empty scope means a leaked GITHUB_TOKEN from any
+    # step here can do nothing to the repository.
+    permissions: {}
     environment:
       name: production
 

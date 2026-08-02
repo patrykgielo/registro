@@ -46,6 +46,9 @@ readonly APP_DIR="$PROJECT_ROOT"
 readonly ENV_FILE="${APP_DIR}/.env"
 readonly ENV_EXAMPLE="${APP_DIR}/.env.production.example"
 readonly DOCKER_COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
+# Generated from the tracked app.prod-tls.conf template with the real certificate
+# domain substituted in. Gitignored on purpose -- see setup_ssl_certificates().
+readonly TLS_CONF_NAME="app.prod-tls.local.conf"
 
 ################################################################################
 # Helper Functions
@@ -212,7 +215,11 @@ setup_ssl_certificates() {
     fi
 
     local temp_nginx_started=false
-    if ! docker ps --format '{{.Names}}' | grep -qx registro-nginx; then
+    # Not `docker ps | grep -qx`: under `set -o pipefail` a SIGPIPE'd docker ps
+    # makes this read as "nginx is not running", and the branch below then binds
+    # a temporary container to port 80 that the real nginx already holds --
+    # turning a working stack into a failed certificate request.
+    if [[ $'\n'"$(docker ps --format '{{.Names}}')"$'\n' != *$'\n'registro-nginx$'\n'* ]]; then
         log "Starting temporary Nginx container for ACME challenge..."
         docker run --rm -d --name temp-nginx -p 80:80 \
             -v "${webroot}:/usr/share/nginx/html:ro" nginx:alpine >/dev/null
@@ -243,23 +250,33 @@ setup_ssl_certificates() {
     # The certificate path placeholder lives in the TLS config, not in
     # app.prod.conf -- that one deliberately contains no ssl_certificate at all,
     # so nginx can start before any certificate exists.
-    local tls_config="${PROJECT_ROOT}/docker/nginx/production/app.prod-tls.conf"
-    if [[ -f "$tls_config" ]]; then
-        sed -i "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${domain}/|g" "$tls_config"
-        success "TLS config points at /etc/letsencrypt/live/${domain}/"
+    #
+    # Generate into a SEPARATE, gitignored file rather than editing the tracked
+    # template in place. scripts/server/deploy.sh runs `git checkout --force` on
+    # every deploy and rollback, which would silently revert an in-place edit
+    # back to the CERT_DOMAIN placeholder. nginx keeps serving from its loaded
+    # config until something recreates the container -- a reboot, an image
+    # update -- and only then refuses to start, taking down HTTP and HTTPS
+    # together, weeks after the change that caused it.
+    local tls_template="${PROJECT_ROOT}/docker/nginx/production/app.prod-tls.conf"
+    local tls_config="${PROJECT_ROOT}/docker/nginx/production/${TLS_CONF_NAME}"
+    if [[ -f "$tls_template" ]]; then
+        sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${domain}/|g" \
+            "$tls_template" >"$tls_config"
+        success "${TLS_CONF_NAME} generated, pointing at /etc/letsencrypt/live/${domain}/"
     else
-        error "$tls_config not found -- cannot wire up the certificate"
+        error "$tls_template not found -- cannot wire up the certificate"
         exit 1
     fi
 
     # Activate TLS by switching which config nginx mounts. Reversible: set this
     # back to app.prod.conf and re-run `up -d nginx`.
     if grep -q '^NGINX_CONF=' "$ENV_FILE" 2>/dev/null; then
-        sed -i 's|^NGINX_CONF=.*|NGINX_CONF=app.prod-tls.conf|' "$ENV_FILE"
+        sed -i "s|^NGINX_CONF=.*|NGINX_CONF=${TLS_CONF_NAME}|" "$ENV_FILE"
     else
-        echo "NGINX_CONF=app.prod-tls.conf" >> "$ENV_FILE"
+        echo "NGINX_CONF=${TLS_CONF_NAME}" >> "$ENV_FILE"
     fi
-    log "NGINX_CONF=app.prod-tls.conf written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
+    log "NGINX_CONF=${TLS_CONF_NAME} written to .env -- run: docker compose -f $DOCKER_COMPOSE_FILE up -d nginx"
 
     success "SSL certificates generated successfully"
 }
@@ -287,7 +304,10 @@ build_and_start_containers() {
     local timeout=60
     local elapsed=0
     while [[ $elapsed -lt $timeout ]]; do
-        if docker compose -f "$DOCKER_COMPOSE_FILE" ps | grep -q "healthy"; then
+        # Not `ps | grep -q healthy`: under `set -o pipefail` grep -q exits on the
+        # first match and the upstream takes SIGPIPE, so a healthy stack reads as
+        # unhealthy and this loop burns its full timeout.
+        if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps)" == *healthy* ]]; then
             success "All services are healthy"
             return 0
         fi

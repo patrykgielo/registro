@@ -65,7 +65,12 @@ log "Swap (${SWAP_SIZE_MB} MB)"
 
 # A small VPS running MySQL + Redis + PHP-FPM + Horizon has no headroom.
 # Migrations and queue bursts are where the OOM killer usually shows up.
-if swapon --show --noheadings | grep -q .; then
+# `swapon --show | grep -q .` would be the obvious form and is the exact
+# pipefail trap this script warns about further down: grep -q exits on the first
+# line, the writer takes SIGPIPE, and the pipeline reports failure even though
+# the match succeeded. It happens to survive today only because the output is
+# small enough that swapon usually finishes writing first.
+if [ -n "$(swapon --show --noheadings)" ]; then
     log "Swap already active: $(swapon --show=NAME,SIZE --noheadings | tr '\n' ' ')"
 else
     fallocate -l "${SWAP_SIZE_MB}M" "$SWAP_FILE" || dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$SWAP_SIZE_MB"
@@ -132,7 +137,9 @@ usermod -aG docker "$DEPLOY_USER"
 # Deliberately NOT in sudo. Membership in `docker` is already root-equivalent
 # (docker run -v /:/host), so adding sudo buys nothing and widens what a
 # compromised CI key reaches. Administration happens as root over a separate key.
-if id -nG "$DEPLOY_USER" | tr ' ' '\n' | grep -qx sudo; then
+# Same pipefail reason as the swap check above: match on a captured string, not
+# through a pipe into grep -q.
+if [[ " $(id -nG "$DEPLOY_USER") " == *" sudo "* ]]; then
     warn "${DEPLOY_USER} is in the sudo group -- remove it: deluser ${DEPLOY_USER} sudo"
 fi
 
@@ -199,10 +206,25 @@ systemctl reload ssh
 # exits on first match, sshd -T then dies of SIGPIPE (141), and the pipeline
 # reports failure precisely when the check SUCCEEDS. Command substitution reads
 # the whole stream, so nothing gets a broken pipe.
-effective_pwauth="$(sshd -T 2>/dev/null | awk '/^passwordauthentication/{print $2; exit}')"
-[ "$effective_pwauth" = "no" ] \
-    || die "PasswordAuthentication is '${effective_pwauth:-unknown}' -- another sshd_config.d file sorts before 00-registro.conf" 2
-log "SSH: password auth disabled, root login key-only"
+#
+# Every directive written above is verified, not just the first one. Checking
+# only PasswordAuthentication would leave the same first-wins trap open for the
+# other four -- and KbdInteractiveAuthentication in particular is the standard
+# way password logins survive `PasswordAuthentication no`, because PAM answers
+# the keyboard-interactive prompt instead.
+assert_sshd() {
+    local keyword="$1" expected="$2" actual
+    actual="$(sshd -T 2>/dev/null | awk -v k="$keyword" '$1 == k {print $2; exit}')"
+    [ "$actual" = "$expected" ] \
+        || die "sshd ${keyword} is '${actual:-unset}', expected '${expected}' -- another sshd_config.d file sorts before 00-registro.conf" 2
+}
+
+assert_sshd passwordauthentication no
+assert_sshd permitrootlogin prohibit-password
+assert_sshd kbdinteractiveauthentication no
+assert_sshd x11forwarding no
+assert_sshd maxauthtries 3
+log "SSH: password + keyboard-interactive auth disabled, root login key-only"
 
 ###############################################################################
 log "Firewall"
@@ -233,6 +255,25 @@ if [ ! -x /usr/local/bin/ufw-docker ]; then
     chmod +x /usr/local/bin/ufw-docker
 fi
 /usr/local/bin/ufw-docker install >/dev/null
+
+# `ufw-docker install` is DEFAULT-DENY for everything Docker publishes. Without
+# the two rules below the site is unreachable from the internet the moment nginx
+# comes up -- fails closed, but it looks like a broken application, not a
+# firewall. The `ufw allow 80/443` rules above do NOT cover this: they apply to
+# the INPUT chain, while container traffic is routed through DOCKER-USER.
+#
+# Deliberately the port-based `ufw route` form rather than
+# `ufw-docker allow registro-nginx 80`. The latter resolves and pins the
+# container's current IP, which changes every time `up -d` recreates it, and
+# repairing that needs `ufw-docker reload` as root -- something the deploy user
+# cannot run. Port-based rules survive container recreation untouched.
+ufw route allow proto tcp from any to any port 80 >/dev/null
+ufw route allow proto tcp from any to any port 443 >/dev/null
+
+# MySQL and Redis are deliberately absent: they are reachable only on the
+# compose network. If a published 3306 ever appears, this default-deny is what
+# keeps it off the internet.
+
 systemctl restart ufw
 ufw status verbose
 
@@ -262,7 +303,13 @@ check "deploy.sh not writable by ${DEPLOY_USER}" "! su - ${DEPLOY_USER} -c 'test
 check "swap active"                       "swapon --show --noheadings | grep ."
 check "ufw active"                        "ufw status | grep 'Status: active'"
 check "ufw covers IPv6"                   "grep '^IPV6=yes' /etc/default/ufw"
+# Without these two the DOCKER-USER default-deny installed above silently drops
+# all traffic to the published container ports.
+check "ufw routes port 80 to containers"  "ufw status | grep '^80/tcp .*ALLOW FWD'"
+check "ufw routes port 443 to containers" "ufw status | grep '^443/tcp .*ALLOW FWD'"
 check "password auth disabled"            "[ \"\$(sshd -T 2>/dev/null | awk '/^passwordauthentication/{print \$2; exit}')\" = no ]"
+check "keyboard-interactive auth disabled" "[ \"\$(sshd -T 2>/dev/null | awk '/^kbdinteractiveauthentication/{print \$2; exit}')\" = no ]"
+check "root login key-only"               "[ \"\$(sshd -T 2>/dev/null | awk '/^permitrootlogin/{print \$2; exit}')\" = prohibit-password ]"
 # Certbot's HTTP-01 challenge resolves AAAA first and never falls back to IPv4.
 # If this host has a global IPv6 address, the stack must be reachable over it or
 # certificate issuance fails against a site that otherwise works fine.

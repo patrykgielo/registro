@@ -161,8 +161,11 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check if MySQL container is running
-    if ! docker compose -f "$DOCKER_COMPOSE_FILE" ps mysql | grep -q "Up"; then
+    # Check if MySQL container is running.
+    # Not `ps mysql | grep -q "Up"`: under `set -o pipefail` grep -q exits on the
+    # first match, docker compose takes SIGPIPE, and the pipeline reports failure
+    # exactly when the container IS up -- refusing to back up a healthy database.
+    if [[ "$(docker compose -f "$DOCKER_COMPOSE_FILE" ps mysql)" != *Up* ]]; then
         error "MySQL container is not running"
         exit 1
     fi
@@ -304,7 +307,11 @@ rotate_backups() {
     while IFS= read -r -d '' backup_file; do
         log "Deleting old backup: $backup_file"
         rm -f "$backup_file"
-        ((deleted_count++))
+        # Not ((deleted_count++)): post-increment evaluates to the OLD value, so
+        # the first deletion returns 1 and `set -e` kills the script silently --
+        # mid-rotation, with no summary and no error. Rotation only ever runs
+        # once files are old enough, so this stays invisible until it matters.
+        deleted_count=$((deleted_count + 1))
     done < <(find "$BACKUP_DIR" -name "registro_*.sql*" -type f -mtime "+$RETENTION_DAYS" -print0)
 
     if [[ $deleted_count -gt 0 ]]; then

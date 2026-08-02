@@ -112,16 +112,50 @@ git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null \
 log "Checking out ${VERSION}..."
 git checkout --quiet --force "tags/${VERSION}" || die "git checkout failed" 3
 
-# Pin the image tag for app, horizon and scheduler. Written into .env so a
-# subsequent bare `docker compose up -d` on the box stays on the same version.
+# The TLS config nginx mounts is generated, not tracked: the checkout above
+# would revert an in-place edit of the template back to its CERT_DOMAIN
+# placeholder, and nginx would then refuse to start the next time anything
+# recreated the container. Regenerating here also propagates template changes
+# that ship with a new release, and recreates the file if it went missing.
+if [ "${NGINX_CONF:-}" = "app.prod-tls.local.conf" ]; then
+    TLS_DIR="docker/nginx/production"
+    [ -f "${TLS_DIR}/app.prod-tls.conf" ] \
+        || die "${TLS_DIR}/app.prod-tls.conf missing at ${VERSION}" 3
+    sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${APP_HOST}/|g" \
+        "${TLS_DIR}/app.prod-tls.conf" >"${TLS_DIR}/app.prod-tls.local.conf" \
+        || die "failed to regenerate app.prod-tls.local.conf" 3
+    log "Regenerated app.prod-tls.local.conf for ${APP_HOST}"
+fi
+
+# Pin the image tag for app, horizon and scheduler. Exported rather than written
+# to .env yet: a shell variable wins over the .env file in Compose interpolation,
+# so every `docker compose` call below already runs on ${VERSION} while .env
+# still names the version that is actually deployed. Persisting it before the
+# pull would leave .env pointing at images that may not exist on the host, and a
+# later bare `docker compose up -d` would fail on a missing image.
+export REGISTRO_VERSION="$VERSION"
+
+log "Pulling images..."
+docker compose -f "$COMPOSE_FILE" pull || die "docker pull failed" 3
+
+# Pull succeeded, so the images exist locally -- safe to make it the new default
+# for a bare `docker compose up -d` run by hand on the box.
 if grep -q '^REGISTRO_VERSION=' .env; then
     sed -i "s|^REGISTRO_VERSION=.*|REGISTRO_VERSION=${VERSION}|" .env
 else
     echo "REGISTRO_VERSION=${VERSION}" >> .env
 fi
 
-log "Pulling images..."
-docker compose -f "$COMPOSE_FILE" pull || die "docker pull failed" 3
+if [ "$ACTION" = "deploy" ]; then
+    # Maintenance mode goes up BEFORE the new images do. Between `up -d` and the
+    # migration below there is a wait on MySQL and Redis that can run for minutes
+    # on a cold start, and every second of it would otherwise serve new code
+    # against the old schema. The flag lives in storage/framework, a named
+    # volume, so it survives the container recreation that `up -d` performs.
+    # Fails harmlessly on a first bring-up, when no app container exists yet.
+    log "Enabling maintenance mode..."
+    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
+fi
 
 log "Starting containers..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
@@ -138,6 +172,7 @@ timeout 60 bash -c "until docker compose -f '$COMPOSE_FILE' exec -T redis \
 
 if [ "$ACTION" = "deploy" ]; then
     log "Running migrations..."
+    # Re-assert: on a first bring-up the `down` above had no container to run in.
     docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null || true
     if ! docker compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force </dev/null; then
         docker compose -f "$COMPOSE_FILE" exec -T app php artisan up </dev/null || true

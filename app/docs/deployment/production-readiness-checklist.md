@@ -1,7 +1,10 @@
 # Production Readiness Checklist — First Deploy to `srv1342834.hstgr.cloud`
 
-**Status (2026-08-01)**: §1 fixed in code, §1b found and fixed by the local dress rehearsal
-(Phase 2), §2 executed on the VPS (Phase 3). §3–§8 remain open. The machine is bootstrapped;
+**Status (2026-08-02)**: §1 fixed in code, §1b found and fixed by the local dress rehearsal
+(Phase 2), §2 executed on the VPS (Phase 3), §1c found by the code review that §1–§2 skipped.
+§3–§8 remain open. **§2 must be re-run on the VPS** — it now installs firewall rules that the
+executed version lacked, without which the site is unreachable from the internet. The machine is
+bootstrapped;
 **the application has never run on it** — no clone, no `.env`, no image pulled, and
 `/opt/registro/deploy.sh` has still never been executed. That is Phase 4. Plan:
 `~/.claude/plans/vps-bootstrap-registro-first-deploy.md`; original analysis:
@@ -134,15 +137,15 @@ diff is reviewable against what was actually claimed.
 
 ### Not fixed here, deliberately
 
-- **Migrations run against live traffic.** `up -d --force-recreate` brings new containers up
-  *before* migrations, and nothing puts the app into maintenance mode. `scripts/server/deploy.sh`
-  now wraps migrations in `artisan down`/`up`, but the ordering question (start containers, then
-  migrate) is a design decision worth revisiting once there is real traffic. With zero customers
-  it is harmless. See Phase 6 of the bootstrap plan.
 - **Four overlapping deploy scripts still exist** — `deploy.sh`, `deploy-update.sh`,
-  `deploy-with-healthcheck.sh`, and now `server/deploy.sh`. All four are individually correct
-  after this pass, but "which one do I run at 2am" is its own failure mode. Consolidating to one
-  is a follow-up decision, not a bug fix.
+  `deploy-with-healthcheck.sh`, and now `server/deploy.sh`. "Which one do I run at 2am" is its own
+  failure mode. Consolidating to one is a follow-up decision, not a bug fix.
+
+  An earlier revision of this section claimed all four were "individually correct after this pass".
+  That was wrong, and the §1c review found the counter-examples: `deploy-with-healthcheck.sh` still
+  carried two `grep -q` pipefail bugs, one of which aborted a successful deployment. Do not read
+  this list as an assurance that the other three are audited to the same depth as
+  `server/deploy.sh`; they are not.
 
 ## 1b. Found by the local dress rehearsal (Phase 2, 2026-08-01)
 
@@ -201,7 +204,95 @@ its own orchestration (git checkout of a tag, GHCR pull, lock handling, rollback
 It runs for the first time in Phase 4. Nothing has been pushed to GHCR either — the image exists
 only on this laptop.
 
-## 2. Network / firewall — DONE 2026-08-01 (executed on the VPS)
+## 1c. Found by code review of the §1/§1b/§2 diff (2026-08-02, `feature/deploy-review-fixes`)
+
+The §1–§2 work was merged as PR #125 **without** the mandatory `code-reviewer` gate. Running that
+gate afterwards, plus a security audit, found four more Critical defects — two of them introduced
+by the §1/§1b fixes themselves. Every one sits in code that had never been executed. The pattern
+from Phase 2 held exactly: executed code was sound, unexecuted code was not.
+
+- [x] **The TLS certificate config was reverted on every single deploy.** `deploy-init.sh` wrote
+  the real domain into `docker/nginx/production/app.prod-tls.conf` with `sed -i` — a **git-tracked**
+  file — while `scripts/server/deploy.sh` runs `git checkout --quiet --force "tags/$VERSION"` on
+  every deploy *and* every rollback. The edit was silently reverted to the `CERT_DOMAIN`
+  placeholder each time. Nothing broke immediately, because nginx keeps serving its loaded config;
+  the failure surfaces at the next container recreation — a reboot, an image update — when nginx
+  refuses to start on a nonexistent certificate path and takes **HTTP and HTTPS down together**,
+  potentially weeks after the change that caused it. Fixed by making `app.prod-tls.conf` an
+  explicit template and rendering it to `app.prod-tls.local.conf` (gitignored). `deploy.sh`
+  regenerates that file after each checkout, so template changes shipped in a release still land
+  and a missing file self-heals. Verified: the generated config passes `nginx -t`, and a gitignored
+  file demonstrably survives `git checkout --force`.
+- [x] **`scripts/backup-database.sh` truncated its own retention pass.** `((deleted_count++))`
+  under `set -e` returns 1 on the first increment (post-increment evaluates to the old value, 0),
+  killing the script mid-rotation with no error and no summary. The same bug class was fixed in
+  two other scripts during §1 and missed here. Invisible until backups are old enough to rotate.
+- [x] **`APP_DOMAIN` had no guard in `docker-compose.prod.yml`.** Staging used `${APP_DOMAIN:-…}`,
+  production used a bare `${APP_DOMAIN}`. `env()` in `config/app.php` falls back only when a
+  variable is **absent**; an empty `APP_DOMAIN=` line is present and wins, so tenant-subdomain
+  routing breaks with the exact defect §1b identified as the most serious finding of that pass.
+- [x] **A blank `REDIS_PASSWORD` took down the whole stack.** Compose drops the empty token, so
+  `redis-server --requirepass --maxmemory 256mb` parses `--maxmemory` as the password argument and
+  exits with `FATAL CONFIG FILE ERROR` — cache, sessions and queues with it. Reproduced directly
+  against `redis:7.2-alpine`. `validate-env.sh` did not check the variable at all.
+
+  Both of the above are now enforced twice: `validate-env.sh` checks them, and
+  `docker-compose.prod.yml` uses the `${VAR:?message}` form for `APP_DOMAIN`, `APP_KEY` and
+  `REDIS_PASSWORD`, which refuses to start on unset **or empty**. The compose guard is the real
+  one — `validate-env.sh` only runs when a human remembers to run it.
+
+- [x] **`ufw-docker install` was never paired with an allow rule.** `install` is default-deny for
+  everything Docker publishes, so the first `up -d` would have left the site unreachable from the
+  internet, looking like a broken application rather than a firewall. Fixed with the port-based
+  `ufw route allow proto tcp from any to any port 80` / `443`. Deliberately *not*
+  `ufw-docker allow registro-nginx 80`: that form pins the container's current IP, which changes
+  every time `up -d` recreates it, and repairing it needs `ufw-docker reload` as root — which the
+  deploy user cannot run. Confirmed against the ufw-docker documentation.
+- [x] **SSH hardening was verified one directive out of five.** Only `PasswordAuthentication` was
+  asserted; `PermitRootLogin`, `KbdInteractiveAuthentication`, `X11Forwarding` and `MaxAuthTries`
+  were written and trusted — the exact assumption the first-wins `00-` prefix fix exists to
+  correct. `KbdInteractiveAuthentication` matters most: it is the standard way password logins
+  survive `PasswordAuthentication no`, since PAM answers the keyboard-interactive prompt instead.
+  All five are now asserted via a helper, and three are re-checked in the verification block.
+- [x] **Maintenance mode came up after the readiness waits, not before.** `artisan down` ran
+  between the MySQL/Redis waits and the migration, leaving up to ~3 minutes of new code serving
+  against an unmigrated schema on a cold start. Moved before `up -d`; the flag lives in
+  `storage/framework`, a named volume, so it survives the container recreation.
+- [x] **`REGISTRO_VERSION` was persisted to `.env` before the image pull.** A failed pull left
+  `.env` naming a tag whose images are not on the host, so a later bare `docker compose up -d`
+  fails on a missing image. The version is now exported for the run (a shell variable beats `.env`
+  in Compose interpolation) and written to `.env` only once the pull has succeeded.
+- [x] **Seven more `grep -q`-under-`pipefail` bugs.** §1 fixed this class in
+  `setup-production-server.sh` and declared it handled; it was not. `deploy-with-healthcheck.sh`
+  had two — one of which aborted a *successful* deployment with "App container is not running" —
+  plus `backup-database.sh`, `deploy-update.sh` (×2) and `deploy-init.sh` (×2). The last is the
+  nastiest: a false "nginx is not running" makes the script bind a temporary container to port 80
+  that the real nginx already holds, turning a working stack into a failed certificate request.
+  All replaced with capture-then-match. The two survivors are safe and were verified as such:
+  `scripts/deploy.sh` sets no `pipefail`, and the Redis probe in `server/deploy.sh` runs inside
+  `timeout bash -c`, a fresh shell that does not inherit the flag.
+- [x] **The `deploy` job had no `permissions:` block.** It never checks out code and never calls
+  the GitHub API, so it is now `permissions: {}`.
+
+### Confirmed sound by the same review
+
+The security audit found the SSH forced-command boundary itself **airtight**: the
+`SSH_ORIGINAL_COMMAND` grammar admits no injection, the tag regex is anchored at both ends, the
+extra-argument check closes the obvious bypass, and nothing reaches a shell before validation.
+`flock` handling, the workflow's single-source version flow, and `/up` reachability under both
+nginx configs all passed.
+
+### Still open, deliberately
+
+- **`StrictHostKeyChecking=accept-new` plus `ssh-keyscan` on an ephemeral runner** re-trusts the
+  host key on *every* deploy, not just the first — a recurring MITM window. The fix is pinning the
+  host key fingerprint in a secret. Not a bug in the code as written; a decision to make before
+  the first real deploy.
+- **The `deploy` user is in the `docker` group**, which is root-equivalent. The containment is the
+  forced command, not the absence of `sudo` — a docker-socket-proxy would be the stronger boundary.
+  Recorded so nobody mistakes the sudo omission for the security control.
+
+## 2. Network / firewall — executed 2026-08-01, MUST BE RE-RUN after §1c
 
 `scripts/setup-production-server.sh` ran on `76.13.76.104` and passed 11/11 self-checks on two
 consecutive runs, confirming idempotency. Verified independently afterwards, not taken from the
@@ -209,6 +300,14 @@ script's own report: `deploy` logs in by key and is in `docker` but **not** `sud
 auth is genuinely refused (`Permission denied (publickey)`); `/opt/registro/deploy.sh` is
 `root:root 755` and unwritable by `deploy`; `/var/www/registro` is `deploy:deploy`; only port 22
 listens; 2 GB swap active; Docker log rotation in place.
+
+> **This section was marked DONE prematurely.** The 11/11 result only ever meant "the script's own
+> checks passed" — and the version that ran was missing the `ufw route allow` rules, so the box as
+> it stands today would refuse all traffic to the containers the moment nginx starts. It also
+> verified one of five sshd directives. Re-run the script (it is idempotent) before Phase 4; the
+> check count is now 14. The remaining honest gap: **nothing has yet confirmed reachability from
+> outside the host** — no container has ever listened on it. That test belongs to Phase 4 and
+> cannot be done from the server itself.
 
 ### Three defects the execution exposed
 
