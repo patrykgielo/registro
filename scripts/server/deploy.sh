@@ -290,8 +290,23 @@ if [ "${NGINX_CONF:-}" = "app.prod-tls.local.conf" ]; then
     # point nginx at a directory that no longer exists. CERT_DIR in .env is the
     # authority; APP_HOST is only the initial guess.
     CERT_DIR="${CERT_DIR:-$APP_HOST}"
-    [ -d "/etc/letsencrypt/live/${CERT_DIR}" ] \
-        || die "/etc/letsencrypt/live/${CERT_DIR} does not exist -- set CERT_DIR in .env to the certbot directory name" 3
+
+    # certbot creates /etc/letsencrypt/live as 0700 root:root, and this script
+    # runs as the deploy user. `[ -d ... ]` is therefore FALSE for a certificate
+    # that exists perfectly well -- which is exactly how the first TLS deploy on
+    # this server died, with a message telling the operator to set a variable
+    # that was already correct.
+    #
+    # Only treat absence as fatal when the parent is actually readable. When it
+    # is not, trust CERT_DIR: nginx runs as root inside its container, reads the
+    # certificate directly, and refuses to start on a bad path -- so a wrong
+    # value still fails the deploy, one step later and for the real reason.
+    if [ -r /etc/letsencrypt/live ]; then
+        [ -d "/etc/letsencrypt/live/${CERT_DIR}" ] \
+            || die "/etc/letsencrypt/live/${CERT_DIR} does not exist -- set CERT_DIR in .env to the certbot directory name" 3
+    else
+        log "Cannot read /etc/letsencrypt/live as $(id -un); trusting CERT_DIR=${CERT_DIR}"
+    fi
 
     sed "s|/etc/letsencrypt/live/CERT_DOMAIN/|/etc/letsencrypt/live/${CERT_DIR}/|g" \
         "$TLS_TEMPLATE" >"${TLS_OUT}.tmp" \
