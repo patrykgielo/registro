@@ -37,12 +37,13 @@ readonly HEALTH_TIMEOUT=180
 
 log() {
     local line="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    # `|| true` on BOTH writes. When CI's step timeout kills the ssh client, this
-    # script is orphaned with a closed stdout and the next bare `echo` takes
-    # SIGPIPE, killing bash outright -- before any cleanup can run. That is the
-    # single most likely way this script dies, so logging must never be fatal.
-    echo "$line" 2>/dev/null || true
+    # Durable write FIRST, stdout second, `|| true` on both. When CI's step
+    # timeout kills the ssh client this script is orphaned with a closed stdout,
+    # and writing there raises SIGPIPE -- so anything after it would be lost.
+    # Ordering it this way means the log file records what happened even when
+    # nobody is listening any more.
     echo "$line" >>"$LOG_FILE" 2>/dev/null || true
+    echo "$line" 2>/dev/null || true
 }
 
 die() {
@@ -121,9 +122,10 @@ log "=== ${ACTION} ${VERSION} (currently at ${PREVIOUS}) ==="
 # survives container recreation and reboots -- which is what makes it usable
 # across `up -d`, and also what makes a stranded flag permanent. Every failure
 # path between `artisan down` and the end of the run must clear it, or the site
-# stays 503 forever: public/index.php short-circuits EVERY request including
-# /up, and this script's grammar (deploy|rollback|status) offers no way to run
-# `artisan up`. Recovery would need the separate root key.
+# stays 503 forever -- including /up, which is served by the application and so
+# goes through PreventRequestsDuringMaintenance like everything else. This
+# script's grammar (deploy|rollback|status) offers no way to run `artisan up`,
+# so recovery would otherwise need the separate root key.
 #
 # `rollback` -- the operator's instinctive next move after a failed deploy --
 # would otherwise inherit the 503 and then fail its own health check because of
@@ -132,12 +134,61 @@ log "=== ${ACTION} ${VERSION} (currently at ${PREVIOUS}) ==="
 
 MAINTENANCE_ON=false
 KEEP_MAINTENANCE=false
+STORAGE_VOL=""
 
-# The volume holding storage/framework, resolved once. Needed because the
-# fallback below must work when the app container does not exist or is
-# crash-looping -- which is precisely when a stranded flag is most likely.
-STORAGE_VOL="$(docker volume ls -q --filter "name=storage-framework" 2>/dev/null || true)"
-STORAGE_VOL="${STORAGE_VOL%%$'\n'*}"
+# Resolved lazily and scoped to THIS compose project.
+#
+# `docker volume ls --filter name=storage-framework` is a substring match over
+# every volume on the daemon, not an exact match and not project-scoped. With a
+# second compose project on the host -- or a stale volume from the stack this
+# server previously ran -- it can return someone else's volume, and the caller
+# then deletes files from it. Match on the labels compose sets instead, and
+# refuse to guess when the answer is not exactly one.
+#
+# Lazy because on a first bring-up the volume does not exist until `up -d`
+# creates it, and resolving once at startup would leave this empty for exactly
+# the run most likely to need it.
+storage_volume() {
+    [ -z "$STORAGE_VOL" ] || { echo "$STORAGE_VOL"; return 0; }
+
+    local project vols
+    project="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null \
+        | jq -r '.name // empty' 2>/dev/null || true)"
+    [ -n "$project" ] || return 1
+
+    vols="$(docker volume ls -q \
+        --filter "label=com.docker.compose.project=${project}" \
+        --filter "label=com.docker.compose.volume=storage-framework" 2>/dev/null || true)"
+
+    # Exactly one, or nothing. Picking the first of several would be a coin flip
+    # with a destructive loser.
+    [ "$(printf '%s\n' "$vols" | grep -c .)" -eq 1 ] || return 1
+    STORAGE_VOL="$vols"
+    echo "$STORAGE_VOL"
+}
+
+# Removes the maintenance flag without needing a working app container.
+#
+# `artisan up` is tried first so this stays correct whatever maintenance driver
+# is configured, but it needs the container to be running -- and the situations
+# that strand a flag (failed `up -d`, MySQL never ready, crash-looping image)
+# are exactly the ones where it is not. The fallback deletes the flag straight
+# out of the volume, which needs only docker group membership.
+#
+# The image used is the application image, already pulled, NOT alpine:3: this
+# script prunes unreferenced images older than 24h on every successful deploy,
+# so alpine would have to be re-pulled from Docker Hub at the exact moment the
+# stack is broken.
+force_clear_flag() {
+    local vol image
+    vol="$(storage_volume)" || { log "Could not identify the storage-framework volume"; return 1; }
+    image="ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}"
+
+    timeout 60 docker run --rm --entrypoint rm -v "${vol}:/s" "$image" \
+        -f /s/maintenance.php /s/down >/dev/null 2>&1 \
+        || return 1
+    log "Maintenance flag removed from volume ${vol}"
+}
 
 clear_maintenance() {
     [ "$MAINTENANCE_ON" = true ] || return 0
@@ -146,9 +197,8 @@ clear_maintenance() {
         return 0
     fi
 
-    # Preferred: ask the framework, so this stays correct whatever driver is in
-    # use. Bounded, because a wedged PHP process would otherwise hang the trap
-    # and, under CI's step timeout, reproduce the very problem it is here to fix.
+    # Bounded: a wedged PHP process would otherwise hang this indefinitely and,
+    # under CI's step timeout, reproduce the very problem it is here to fix.
     if timeout 60 docker compose -f "$COMPOSE_FILE" exec -T app \
             php artisan up </dev/null >/dev/null 2>&1; then
         log "Maintenance mode cleared"
@@ -156,56 +206,60 @@ clear_maintenance() {
         return 0
     fi
 
-    # Fallback: delete the flag from the volume directly. `artisan up` needs a
-    # working app container, and the failure paths that strand the flag -- a
-    # failed `up -d`, a MySQL that never came ready, a crash-looping image --
-    # are exactly the ones where there isn't one. Membership in the docker group
-    # is enough for this; no root key required.
-    if [ -n "$STORAGE_VOL" ] && timeout 60 docker run --rm \
-            -v "${STORAGE_VOL}:/s" alpine:3 \
-            rm -f /s/maintenance.php /s/down >/dev/null 2>&1; then
-        log "Maintenance mode cleared directly from volume ${STORAGE_VOL}"
+    if force_clear_flag; then
         MAINTENANCE_ON=false
         return 0
     fi
 
     log "WARNING: could not clear maintenance mode. Try: ssh deploy@host 'rollback ${PREVIOUS}'"
-    log "         or, as root: docker run --rm -v ${STORAGE_VOL:-<vol>}:/s alpine rm -f /s/maintenance.php /s/down"
 }
+
+###############################################################################
+# Stale-flag recovery -- the thing that actually makes this safe
+#
+# Traps are best-effort and always will be: SIGKILL cannot be caught at all, and
+# a handler that logs to a closed stdout can die before it does any work. So
+# correctness must NOT depend on them.
+#
+# Instead, EVERY run -- deploy and rollback alike -- clears any flag left behind
+# before it does anything else. A stranded 503 therefore survives at most until
+# the next deploy attempt, including the automatic CI retry, with no signal
+# handling involved. The traps below remain as a best-effort fast path.
+###############################################################################
+
+MAINTENANCE_ON=true          # assume a flag may exist; clearing is idempotent
+log "Clearing any maintenance flag left by a previous run..."
+clear_maintenance
+MAINTENANCE_ON=false
 
 on_exit() {
     local rc=$?
     [ "$rc" -eq 0 ] || clear_maintenance
-    # `return` here is a no-op for the script's status -- bash preserves the
-    # pre-trap exit code unless the trap itself calls exit. Kept for clarity.
+    # `return` is a no-op for the script's status -- bash preserves the pre-trap
+    # exit code unless the trap itself calls exit. Kept for clarity.
     return "$rc"
 }
 
-# EXIT alone does NOT cover signal death, and signal death is the likely case:
-# CI wraps this in a 15-minute step timeout, and killing the ssh client orphans
-# the remote script. Each signal handler must exit explicitly, because a signal
-# trap that merely returns lets the script carry on where it was interrupted.
+# Best-effort fast path only; the startup sweep above is the guarantee. Note
+# that no trap can cover SIGKILL, which is why the guarantee cannot live here.
+#
+# Disarm every trap as the FIRST action, before logging: the handler's own log
+# line goes to stdout, and when stdout is the closed pipe of a killed ssh client
+# that raises SIGPIPE inside the handler, re-entering it. PIPE is ignored
+# outright rather than handled, and log() writes to the durable file before
+# touching stdout, so a dead stdout cannot stop the cleanup.
 on_signal() {
-    local sig="$1"
-    log "Received SIG${sig} -- cleaning up"
+    trap '' HUP INT TERM PIPE EXIT
+    log "Received SIG${1} -- cleaning up"
     clear_maintenance
     exit 3
 }
 trap on_exit EXIT
-for sig in HUP INT TERM PIPE; do
+trap '' PIPE
+for sig in HUP INT TERM; do
     # shellcheck disable=SC2064
     trap "on_signal ${sig}" "$sig"
 done
-
-# A rollback is a recovery action: lift any flag a previous failed deploy left
-# behind, and do it NOW rather than at the end. Deferring it to the success path
-# is useless in the case that matters -- if the rollback itself dies in the
-# MySQL wait, the operator is left with the 503 they ran this to escape.
-if [ "$ACTION" = "rollback" ]; then
-    MAINTENANCE_ON=true
-    log "Rollback: lifting any stranded maintenance flag before starting"
-    clear_maintenance
-fi
 
 # Repository state comes from git, not from curl-ing raw.githubusercontent:
 # one source of truth, and it works on a private repo without a token.
@@ -278,14 +332,21 @@ if [ "$ACTION" = "deploy" ]; then
     # volume, so it survives the container recreation that `up -d` performs.
     # Fails harmlessly on a first bring-up, when no app container exists yet.
     log "Enabling maintenance mode..."
-    # Record what actually happened, not the intent: on a first bring-up there is
-    # no app container, `down` fails, and no flag is written. Claiming otherwise
-    # makes a later error message tell the operator the site is in maintenance
-    # mode when it is not.
-    if docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null; then
+    # Deliberately over-approximate: MAINTENANCE_ON is set whenever an app
+    # container EXISTS, regardless of what `artisan down` returns.
+    #
+    # `down` writes storage/framework/down before it writes maintenance.php and
+    # before it prints anything, so it can fail -- disk full, or the ssh client
+    # dying mid-command -- with the flag already on disk. Trusting its exit
+    # status would leave MAINTENANCE_ON=false while the site is 503ing, and the
+    # cleanup below would skip it. The errors are not symmetric: a false positive
+    # costs one no-op `artisan up`, a false negative is a silent outage.
+    if [ -n "$(docker compose -f "$COMPOSE_FILE" ps -q app 2>/dev/null)" ]; then
         MAINTENANCE_ON=true
+        docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null \
+            || log "artisan down reported failure -- assuming the flag may be set anyway"
     else
-        log "No running app container -- skipping maintenance mode (first bring-up)"
+        log "No app container yet -- skipping maintenance mode (first bring-up)"
     fi
 fi
 
@@ -305,10 +366,10 @@ timeout 60 bash -c "until docker compose -f '$COMPOSE_FILE' exec -T redis \
 if [ "$ACTION" = "deploy" ]; then
     log "Running migrations..."
     # Re-assert now that the container definitely exists: on a first bring-up the
-    # `down` above had nothing to run in.
-    if docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null; then
-        MAINTENANCE_ON=true
-    fi
+    # `down` above had nothing to run in. Same over-approximation as there.
+    MAINTENANCE_ON=true
+    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null \
+        || log "artisan down reported failure -- assuming the flag may be set anyway"
     if ! docker compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force </dev/null; then
         # Stay in maintenance. A failed migration leaves the schema in an
         # unknown, possibly half-applied state, and serving the new code against

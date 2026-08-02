@@ -395,6 +395,64 @@ rounds in, the fixes are converging, but nothing here substitutes for Phase 4 ac
   cache; the final `docker compose ps` no longer determines the script's exit status; and
   `DB_HOST` / `REGISTRO_VERSION` in the example no longer contradict their own comments.
 
+### Fourth review round (2026-08-02) — and why reviewing stopped here
+
+Round 4 found that round 3's headline fix was **worse than the bug it replaced**, which is the
+clearest possible signal that reading the same never-executed code again has stopped paying.
+
+- [x] **The signal handler prevented the cleanup it existed to perform.** `on_signal`'s first
+  action was `log()`, and `log()`'s first action was writing to stdout. When the orphaning event
+  *is* a dead stdout — CI's step timeout killing the ssh client — that write raises SIGPIPE inside
+  the PIPE handler and bash re-enters it. Reproduced directly: with a closed stdout, a SIGTERM
+  produced no cleanup at all. Fixed three ways at once: `log()` writes to the durable log file
+  before touching stdout, `on_signal` disarms every trap as its first statement, and SIGPIPE is
+  ignored outright rather than handled.
+- [x] **More importantly: correctness no longer depends on traps at all.** No trap can catch
+  SIGKILL, so a trap-based guarantee was never going to be one. **Every** run — deploy and
+  rollback alike — now clears any stranded maintenance flag before doing anything else. A stranded
+  503 therefore survives at most until the next deploy attempt, including the automatic CI retry,
+  with no signal handling involved. The traps remain a best-effort fast path.
+- [x] **`MAINTENANCE_ON` could be false while the flag was on disk.** `artisan down` writes
+  `storage/framework/down` before it writes `maintenance.php` and before it prints anything, so it
+  can fail with the flag already set — and then the cleanup skipped it. The errors are wildly
+  asymmetric: a false positive costs one no-op `artisan up`, a false negative is a silent outage.
+  Now over-approximated from container existence rather than exit status.
+- [x] **The volume lookup could have deleted another project's files.** `docker volume ls --filter
+  name=storage-framework` is an unanchored substring match across the whole daemon, and the result
+  was silently narrowed to the first line. Verified with two compose projects side by side: the
+  old filter returns *both* volumes. Now matched on `com.docker.compose.project` +
+  `com.docker.compose.volume` labels, refusing to act unless exactly one matches, and resolved
+  lazily so it works on a first bring-up where the volume does not exist until `up -d`.
+- [x] **The recovery path depended on an image the script itself prunes.** The fallback used
+  `alpine:3`, which `docker image prune -af --filter until=24h` deletes on every successful deploy
+  — so recovery would have needed a Docker Hub pull at the exact moment the stack was broken. Now
+  uses the application image, which is present by definition.
+- [x] **`sed`-based `.env` writes corrupted carried-over secrets.** With `|` as the delimiter and
+  `&` meaning "the whole match", a password of `p@ss|word&x` silently became `p@ss` — on the code
+  path whose entire purpose is preserving the credentials MySQL was initialised with. Verified,
+  then replaced with an `awk` writer using `ENVIRON` (no `-v` escape processing) and `index()` (no
+  regex). Tested against pipes, ampersands, backslashes, `$(...)`, backticks and base64.
+- [x] **The `-0001` mechanism was solving a problem it had backwards.** certbot does not delete the
+  original lineage when it creates `example.com-0001`, so preferring the exact name would always
+  return the *older, narrower* certificate. Fixed at the source instead: both certbot invocations
+  now pass `--cert-name "$domain" --expand`, which pins the lineage so the rename never happens.
+- [x] **CI's timeout path bypassed the retry restriction.** `retry_on_exit_code: 255` governs only
+  the exit-code branch; the timeout branch is separate and still defaulted to retrying. A 25-minute
+  overrun would retry 60 s later while the orphan still held the deploy lock, get exit 4, and
+  report "another deploy is already running" — disguising a timeout as a concurrency error. Added
+  `retry_on: error`.
+- [x] Several comments asserted things that were false: `/up` is not short-circuited by
+  `index.php` (it 503s via the middleware, same conclusion, wrong mechanism); the `cache`
+  maintenance driver does not stop the site entering maintenance (it stops it getting *out*, which
+  is the real reason to pin `file`); and the "never 'latest'" comment sat directly above
+  `REGISTRO_VERSION=latest`. All corrected.
+
+**Reviewing stopped here deliberately.** Four rounds, and rounds 2, 3 and 4 each found defects
+introduced by the previous round's fixes — all of it in code that has never run. The remaining
+defect density is dominated by things only execution will reveal. The next step is a deliberate
+dry run on the VPS (deploy a throwaway tag, kill the CI step mid-run on purpose, confirm the flag
+lifts on the following attempt), not a fifth read.
+
 ### Pre-existing, outside this work, but it will break Phase 4
 
 **`docker-compose.prod.yml` mounts `app_public:/var/www/public` as a named volume.** Docker seeds

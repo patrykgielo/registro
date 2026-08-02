@@ -166,10 +166,10 @@ create_env_file() {
     # Prompt for critical configuration
     prompt "Enter your domain name (e.g., registro.com): "
     read -r domain
-    sed -i "s|^APP_URL=.*|APP_URL=https://${domain}|" "$ENV_FILE"
+    write_env_var "APP_URL" "https://${domain}"
     # APP_DOMAIN drives tenant subdomain routing and docker-compose.prod.yml
     # refuses to start without it.
-    sed -i "s|^APP_DOMAIN=.*|APP_DOMAIN=${domain}|" "$ENV_FILE"
+    write_env_var "APP_DOMAIN" "$domain"
 
     # Secrets are generated HERE, on the host, before anything touches
     # docker compose.
@@ -225,16 +225,7 @@ set_secret() {
         return 0
     fi
 
-    # `|` as the sed delimiter: the base64 alphabet (A-Za-z0-9+/=) contains no
-    # `|`, `&` or `\`, so no generated value can terminate the expression or be
-    # reinterpreted. Note APP_KEY is deliberately NOT stripped of / + = -- it
-    # must decode to exactly 32 bytes -- which is why the delimiter, not the
-    # stripping, is what makes this safe.
-    if grep -q "^${key}=" "$ENV_FILE"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
-    else
-        echo "${key}=${value}" >>"$ENV_FILE"
-    fi
+    write_env_var "$key" "$value"
     log "${key} generated"
 }
 
@@ -318,7 +309,15 @@ setup_ssl_certificates() {
     # failed validations per hour per account; without this, one typo in nginx
     # or DNS locks certificate issuance for the next 60 minutes.
     log "Certbot dry run (ACME staging)..."
+    # --cert-name pins the lineage, and with it the directory name under
+    # /etc/letsencrypt/live/. Without it certbot names the directory after the
+    # first -d and appends -0001, -0002 ... whenever the set of names changes --
+    # which happens here the first time www.<host> starts resolving, since it is
+    # only requested when it does. nginx would then be configured for a directory
+    # that is no longer the current one. --expand allows adding that name to the
+    # existing lineage instead of starting a new one.
     if ! certbot certonly --webroot -w "$webroot" "${domains[@]}" \
+        --cert-name "$domain" --expand \
         --email "admin@$domain" --agree-tos --no-eff-email --non-interactive --dry-run; then
         [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
         error "Certbot dry run failed -- NOT requesting a real certificate."
@@ -329,6 +328,7 @@ setup_ssl_certificates() {
 
     log "Requesting the real certificate..."
     certbot certonly --webroot -w "$webroot" "${domains[@]}" \
+        --cert-name "$domain" --expand \
         --email "admin@$domain" --agree-tos --no-eff-email --non-interactive
 
     [[ "$temp_nginx_started" == true ]] && docker stop temp-nginx >/dev/null 2>&1
@@ -406,13 +406,32 @@ resolve_cert_dir() {
     done
 }
 
+# Sets KEY=VALUE in $ENV_FILE, replacing the first existing line or appending.
+#
+# Deliberately NOT `sed -i "s|^KEY=.*|KEY=$value|"`. A value is arbitrary text --
+# carried-over passwords especially -- and sed would interpret `|` as the
+# delimiter and `&` as "the whole match". A password of `p@ss|word&x` silently
+# becomes `p@ss`, corrupting the very credential this code exists to preserve.
+# Verified: that exact input truncates under sed.
+#
+# awk with ENVIRON, not `-v`: awk processes backslash escapes in `-v`
+# assignments, so a value containing `\n` would be mangled too. `index($0, k"=")`
+# instead of a regex means the key is never treated as a pattern.
 write_env_var() {
-    local key="$1" value="$2"
-    if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
-    else
-        echo "${key}=${value}" >>"$ENV_FILE"
-    fi
+    local key="$1" value="$2" tmp mode
+    tmp="$(mktemp)"
+    mode="$(stat -c %a "$ENV_FILE" 2>/dev/null || echo 600)"
+
+    ENV_WRITE_KEY="$key" ENV_WRITE_VAL="$value" awk '
+        BEGIN { k = ENVIRON["ENV_WRITE_KEY"]; v = ENVIRON["ENV_WRITE_VAL"]; done = 0 }
+        !done && index($0, k "=") == 1 { print k "=" v; done = 1; next }
+        { print }
+        END { if (!done) print k "=" v }
+    ' "$ENV_FILE" >"$tmp"
+
+    cat "$tmp" >"$ENV_FILE"   # preserve the original inode and ownership
+    rm -f "$tmp"
+    chmod "$mode" "$ENV_FILE"
 }
 
 ################################################################################

@@ -131,3 +131,6 @@ docs-site/site/
 # deploy.sh runs `git checkout --force` on each deploy, which would revert a
 # tracked file back to the placeholder and stop nginx from starting.
 docker/nginx/production/app.prod-tls.local.conf
+# The renderer writes here first and moves it into place; a failure between the
+# two would otherwise leave permanent untracked junk in the working tree.
+docker/nginx/production/app.prod-tls.local.conf.tmp

@@ -233,6 +233,13 @@ jobs:
           # harder to diagnose than the original error, and exit 4 means another
           # deploy holds the lock, so retrying just races it.
           retry_on_exit_code: 255
+          # Without this the action defaults to retry_on: any, and the TIMEOUT
+          # branch is separate from the exit-code branch -- so a run that
+          # overshoots the cap would still be retried, 60s later, while the
+          # orphaned remote script still holds the deploy lock. The retry then
+          # returns exit 4 and reports "another deploy is already running",
+          # disguising a timeout as a concurrency error.
+          retry_on: error
           # The whole deploy procedure lives in /opt/registro/deploy.sh on the
           # server (source: scripts/server/deploy.sh), owned by root and pinned
           # as a forced command in the deploy user's authorized_keys. Sending a
