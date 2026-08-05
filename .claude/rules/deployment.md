@@ -15,6 +15,14 @@
 ### Incident 2026-03-17: RefreshDatabase wyczyściła dev MySQL
 Docker OS-level env (`DB_HOST=mysql`, priorytet 3) wygrywa z phpunit.xml `<env>` (priorytet 4) i Dotenv (priorytet 5). Testy trafiły w MySQL → `migrate:fresh` → utrata danych. Fix: `.env.testing` committed w repo (Laravel ładuje zamiast `.env` gdy `APP_ENV=testing`) → SQLite `:memory:`.
 
+## Docker: plik ≠ rzeczywistość
+
+**Edycja `docker-compose*.yml` NIE zmienia działających kontenerów.** Kontener z własnym restart policy przeżyje usunięcie service'u z pliku w nieskończoność. Po każdym usunięciu service'u: `docker stop <nazwa> && docker rm <nazwa>` albo `docker compose down && up -d`. Potem porównaj `docker ps -a` z `docker compose config --services` — cokolwiek działa, a nie jest na liście, to orphan.
+
+**NIGDY service `queue` (`queue:work`) gdy działa Horizon** — Horizon musi być jedynym konsumentem kolejek, inaczej joby są niewidoczne w dashboardzie, a failed list i metryki martwe.
+
+Pełne kroniki obu incydentów (2026-06-29, 2026-07-07): `ci-cd-troubleshooting.md`.
+
 ## Critical Variables
 
 ```bash

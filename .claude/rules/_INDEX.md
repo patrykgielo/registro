@@ -9,13 +9,15 @@
 | `git-workflow.md` | feature/* → develop → main, hook blokuje direct commits |
 | `deployment.md` | FILESYSTEM_DISK=public, NIGDY migrate:fresh, .env.testing, zakaz /goal+/loop na destrukcyjnych op. |
 | `planning.md` | Nowe zadanie = nowy plik planu |
-| `ci-cd-troubleshooting.md` | Docker API v1.44+, użyj services: block |
-| `claude-code-config.md` | CC v2.1.84+ subagent bugs, worktree.baseRef, agent model config |
+
+TIER 1 ma budżet **12 000 znaków łącznie**. Nowa reguła zawsze-ładowana = wytnij tyle samo gdzie indziej albo zawęź `paths`.
 
 ## TIER 2 — NA ŻĄDANIE (paths frontmatter, load when editing matching files)
 
 | File | Paths | Key Rules |
 |------|-------|-----------|
+| `claude-code-config.md` | `.claude/**`, `CLAUDE.md` | MCP tylko przez `claude mcp add`, znane bugi subagentów, worktree.baseRef |
+| `ci-cd-troubleshooting.md` | `docker-compose*.yml`, `.github/workflows/**`, `scripts/**` | Kroniki incydentów: Docker API, dual queue worker ×2 |
 | `models.md` | `app/Models/**` | first_name/last_name, BelongsToOrganization, Module System |
 | `filament.md` | `app/Filament/**` | v4 namespace changes (BREAKING!) |
 | `filament-resources.md` | `app/Filament/Resources/**` | StaysOnPageAfterSave, $module gating |

@@ -17,7 +17,7 @@ description: |
   - "Jak odpowiedzieć na obiekcję 'za drogo'?"
   - "Stwórz 5-emailową sekwencję follow-up dla segmentu budowlanego"
 
-model: claude-sonnet-4-6
+model: sonnet
 tools:
   - Read
   - Write
