@@ -83,13 +83,11 @@ Wpięcie żyje w `.claude/settings.local.json`, który **jest gitignorowany** �
 ]
 ```
 
-Sprawdza tylko rzeczy rozstrzygalne: aliasy modeli u agentów, brak klucza `mcpServers` w settings, czy serwery MCP używane przez agentów są skonfigurowane i czy odpowiadają, czy skrypty hooków istnieją i są wykonywalne, czy pliki testowane przez hooki istnieją, oraz budżet TIER 1.
+Sprawdza rzeczy rozstrzygalne: aliasy modeli, brak `mcpServers` w settings, czy serwery MCP używane przez agentów są skonfigurowane i odpowiadają, czy skrypty hooków istnieją i są wykonywalne, czy pliki testowane przez hooki istnieją, budżet TIER 1. Nie ocenia, czy nową funkcję warto wdrożyć.
 
-**Powstał, bo każda awaria konfiguracji w tym projekcie była cicha** — firecrawl w nieistniejącym kluczu, agenci zamrożeni na starych modelach, hook testujący plik, którego nic nie tworzy. Stąd zasada, którą wymusza: **brak artefaktu to porażka, nie pominięcie.**
+**Powstał, bo każda awaria konfiguracji tutaj była cicha** — firecrawl w nieistniejącym kluczu, agenci zamrożeni na starych modelach, hook testujący plik, którego nic nie tworzy. Stąd jego zasada: **brak artefaktu to porażka, nie pominięcie.**
 
-Nie ocenia, czy nową funkcję CC warto wdrożyć — tego nie da się zmechanizować i nie próbuje.
-
-Sprawdzenie MCP kosztuje ~3,5 s, więc biegnie najwyżej raz na tydzień (znacznik `.claude/.cc-doctor-mcp-stamp`, gitignorowany). Brak znacznika = nigdy nie sprawdzano = do zrobienia teraz.
+Sprawdzenie MCP kosztuje ~3,5 s, więc biegnie najwyżej raz na tydzień (znacznik `.claude/.cc-doctor-mcp-stamp`). Brak znacznika = nigdy nie sprawdzano = do zrobienia teraz.
 
 ---
 
