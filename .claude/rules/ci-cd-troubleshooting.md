@@ -1,4 +1,14 @@
+---
+paths:
+  - "docker-compose*.yml"
+  - ".github/workflows/**"
+  - "config/horizon.php"
+  - "scripts/**"
+---
+
 # CI/CD Troubleshooting
+
+Kroniki incydentów. Zasady zawsze-obowiązujące: `deployment.md`.
 
 ## Incydent 2026-02-15: Docker API version incompatibility
 
@@ -38,14 +48,7 @@ services:
 - Zawsze uzywaj natywnych `services:` block dla baz danych w GitHub Actions
 - Monitoruj github.com/actions/runner-images/issues dla breaking changes
 
-### Pliki zmienione
-- `.github/workflows/ci-staging.yml`
-- `.github/workflows/test.yml`
-- `.github/workflows/deploy-production.yml`
-
-### Zrodla
-- github.com/actions/runner-images/issues/13474
-- docker.com/blog/docker-engine-version-29/
+Naprawione we wszystkich workflow files. Źródła: `actions/runner-images` issue 13474, blog Dockera o wersji 29.
 
 ---
 

@@ -1,4 +1,12 @@
+---
+paths:
+  - ".claude/**"
+  - "CLAUDE.md"
+---
+
 # Claude Code Configuration Rules
+
+Ładowane przy pracy nad konfiguracją Claude'a. Zasady obowiązujące zawsze (aliasy modeli, `/code-review` bez auto-wywołania) są w `agent-usage.md`.
 
 ## Znane Bugi (v2.1.84+)
 
@@ -36,53 +44,21 @@ Od v2.1.133 default = `fresh` (gubi niepushed commits). Ustawione w `.claude/set
 
 ---
 
-## Nowe funkcje CC (v2.1.146–147, maj 2026)
+## Workflow tool
 
-### Workflow tool — deterministyczna orkiestracja agentów
+**GA od v2.1.154** — `CLAUDE_CODE_WORKFLOWS=1` nie jest już potrzebne. Deterministyczna orkiestracja wielu agentów. Domyślny rozmiar: medium (<15 agentów), zmiana przez `workflowSizeGuideline` w settings lub `/config`.
 
-```bash
-CLAUDE_CODE_WORKFLOWS=1   # OFF by default — włącz aby używać
-```
+### /code-review — effort levels
 
-Workflow tool = deterministic multi-agent orchestration. Alternatywa dla "let the agent figure it out" która zawodzi w production scale. Sandbox hardened przeciw prototype-pollution.
+`low` / `medium` / `high` / `xhigh` / `max`. Od v2.1.218 działa jako background subagent (nie zapycha rozmowy).
 
-### /code-review (dawniej /simplify) — z effort levels
-
-```
-/code-review low     # szybki, latency-sensitive
-/code-review medium  # cost-sensitive, mniej tokenów
-/code-review high    # balans tokenów i jakości
-/code-review xhigh   # recommended default na Opus 4.7
-/code-review max     # demanding tasks, diminishing returns — test before adopting
-```
-
-Może postować inline GitHub PR comments.
-
-### Background sessions — permission persistence
-
-```
-CLAUDE_BG_SESSION_PERMISSION_RULES   # nowa env var
-```
-
-Backgrounded sessions nie re-promptują o tool permissions oznaczone "don't ask again".
-**Kluczowe dla Routines/cron agentów** — jeden re-prompt zabija całą pętlę.
-
-### Nowe modele w CLI surface (v2.1.146)
-
-- `claude-for-financial-services`
-- `claude-for-legal`
+**Od v2.1.215 Claude NIE uruchamia `/code-review` ani `/verify` sam** — trzeba wywołać jawnie. Oba mają `disable-model-invocation`, więc **nie wykonają się też w zaplanowanym odpaleniu `/loop`** (trafiają jako zwykły tekst).
 
 ---
 
-## Context Management — Kluczowe Komendy
+## Context Management
 
-```
-/context     # Zawsze uruchamiaj na początku sesji — sprawdź baseline tokenów
-             # Baseline >30k PRZED pierwszym promptem = problem strukturalny
-/compact     # Uruchamiaj co 20-30 min podczas długich sesji
-             # /compact [zachowaj: schemat DB, aktualny branch, ostatnie błędy]
-/clear       # Full reset przy przejściu na inny task
-```
+Progi dla tego projektu: baseline `/context` **>30k przed pierwszym promptem = problem strukturalny**. `/compact` co 20–30 min w długich sesjach, z listą tego, co zachować.
 
 ### Rule file limits
 
@@ -107,21 +83,16 @@ Backgrounded sessions nie re-promptują o tool permissions oznaczone "don't ask 
 
 **Model discipline (regent0x zasada):** Opus = architektura + deep debug. Sonnet = 80% codziennej pracy. Nie używaj Opus do formatowania plików i rename.
 
----
-
-## Firecrawl limity (2026)
-
-| Plan | Kredyty |
-|------|---------|
-| Free | 500 jednorazowo |
-| Hobby | 3,000/miesiąc (~$9) |
-
-Scrape = 1 kredyt/strona. Jeśli Free i kredyty skończyły się — brak błędu, agenci po prostu nie działają.
+**ZAWSZE alias (`sonnet`/`opus`/`haiku`), NIGDY przypięta wersja** (`claude-sonnet-4-6`). Przypięcie zamraża agenta na modelu sprzed miesięcy i nikt tego nie zauważa. Incydent 2026-08-05: trzej agenci siedzieli na `claude-sonnet-4-6` i `haiku-4-5-20251001` długo po wydaniu nowszych.
 
 ---
 
-## Nowe funkcje do rozważenia
+## MCP: `mcpServers` NIE działa w settings.json
 
-- **`CLAUDE_CODE_WORKFLOWS=1`** — deterministyczna orkiestracja (v2.1.147, warto przetestować)
-- **Routines** + `CLAUDE_BG_SESSION_PERMISSION_RULES` — cron agenci bez permission blocków
-- **`/ultrareview`** — parallel multi-agent code review (user-triggered)
+**Incydent 2026-08-05.** Firecrawl był wpisany jako `mcpServers` w `~/.claude/settings.json`. Klucz API ważny, pakiet sprawny — a serwer nie działał, bo **`mcpServers` nie jest prawidłowym kluczem `settings.json`** (schemat ma 142 właściwości, tej wśród nich nie ma). Blok był po cichu ignorowany, ośmiu agentów wskazywało na nierozwiązywalne narzędzia, a reguła twierdziła „Firecrawl = domyślne".
+
+**Zapobieganie:** serwery MCP dodawaj **wyłącznie** przez `claude mcp add` (zapisuje do `~/.claude.json` albo `.mcp.json`). Po dodaniu zweryfikuj `claude mcp list` — status musi brzmieć `✔ Connected`. Konfiguracja wklejona ręcznie do złego pliku nie zgłasza błędu.
+
+**Zasada ogólna:** żadna konfiguracja nie jest sprawna, dopóki nie została uruchomiona. To ta sama klasa błędu co osierocony kontener `registro-queue` — plik mówił jedno, rzeczywistość drugie.
+
+Firecrawl: Free = 500 kredytów jednorazowo, Hobby = 3 000/mies. Scrape = 1 kredyt/strona. Wyczerpane kredyty też nie dają błędu — agenci po prostu nie działają.

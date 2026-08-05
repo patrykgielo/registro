@@ -25,6 +25,10 @@ STOP → agent → implementuj
 
 **Research:** Firecrawl = domyślne (statyczne strony). Browser-use = loginy, SPA, multi-step.
 
+**Modele:** wszyscy agenci na aliasach (`sonnet`/`opus`/`haiku`), nigdy przypięta wersja. Opus = architektura i deep debug, Sonnet = 80% pracy.
+
+**Od v2.1.215 Claude sam NIE uruchamia `/code-review` ani `/verify`** — wywołuj jawnie. Oba mają `disable-model-invocation`, więc nie wykonają się też w zaplanowanym odpaleniu `/loop`.
+
 ## Minimalny agent per zadanie
 
 | Akcja | Minimum |
