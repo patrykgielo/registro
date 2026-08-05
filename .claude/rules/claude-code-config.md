@@ -63,8 +63,33 @@ Progi dla tego projektu: baseline `/context` **>30k przed pierwszym promptem = p
 ### Rule file limits
 
 - Max **6,000 znaków** na jeden plik reguł
-- Max **12,000 znaków łącznie** wszystkich załadowanych reguł
+- Max **12,000 znaków łącznie** wszystkich załadowanych reguł (TIER 1) — mierzy to `cc-doctor`
 - "for each line: would removing this cause mistakes? If not — cut it" (Anthropic)
+
+Limit **łączny** jest ostry: ponad nim reguły konkurują o uwagę i te niżej są stosowane rzadziej, bez żadnego sygnału. Limit **per plik** jest miękki dla plików zawężonych przez `paths` — gdy edytujesz `app/Models/**`, reguły modeli mają być w kontekście. Nie tnij ich mechanicznie do liczby; jeśli plik jest za duży, rozbij go na lekki główny + pliki zasobów.
+
+---
+
+## `scripts/cc-doctor.sh` — weryfikacja konfiguracji
+
+Uruchamiany automatycznie przy starcie sesji (hook `SessionStart`, tryb `--hook`, milczy gdy czysto). Ręcznie: `./scripts/cc-doctor.sh` albo `--full` żeby wymusić sprawdzenie MCP.
+
+Wpięcie żyje w `.claude/settings.local.json`, który **jest gitignorowany** — skrypt jedzie w repo, wpięcie nie. Po świeżym klonie albo utracie tego pliku odtwórz:
+
+```json
+"SessionStart": [
+  { "hooks": [{ "type": "command",
+      "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/cc-doctor.sh --hook" }] }
+]
+```
+
+Sprawdza tylko rzeczy rozstrzygalne: aliasy modeli u agentów, brak klucza `mcpServers` w settings, czy serwery MCP używane przez agentów są skonfigurowane i czy odpowiadają, czy skrypty hooków istnieją i są wykonywalne, czy pliki testowane przez hooki istnieją, oraz budżet TIER 1.
+
+**Powstał, bo każda awaria konfiguracji w tym projekcie była cicha** — firecrawl w nieistniejącym kluczu, agenci zamrożeni na starych modelach, hook testujący plik, którego nic nie tworzy. Stąd zasada, którą wymusza: **brak artefaktu to porażka, nie pominięcie.**
+
+Nie ocenia, czy nową funkcję CC warto wdrożyć — tego nie da się zmechanizować i nie próbuje.
+
+Sprawdzenie MCP kosztuje ~3,5 s, więc biegnie najwyżej raz na tydzień (znacznik `.claude/.cc-doctor-mcp-stamp`, gitignorowany). Brak znacznika = nigdy nie sprawdzano = do zrobienia teraz.
 
 ---
 
