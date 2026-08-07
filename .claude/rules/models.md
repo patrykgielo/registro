@@ -362,9 +362,14 @@ protected static ?string $module = null;          // zawsze widoczny (core)
        ->orWhereHas('rentalsAsCustomer', fn ($q3) => $q3->where('organization_id', $tenant->id));
 }))
 
-// UserResource, RoleResource → super-admin only
-// SmsEvent, EmailEvent, Suppressions, MaintenanceEvent → super-admin only
-// VehicleType/CarBrand/CarModel → read-only dla non-super-admin
+// UserResource — scoped via organizations pivot (2026-08-07), open to admin (view/edit only, no create/delete)
+->when($tenant, fn ($q) => $q->whereHas('organizations', fn ($q2) => $q2->where('organizations.id', $tenant->id)))
+
+// AuditLogResource, EmailEventResource, SmsEventResource — BelongsToOrganization, open to admin (2026-08-07)
+// EmailEvent/SmsEvent: organization_id copied from EmailSend/SmsSend at creation — NOT auto from ambient tenant context
+
+// RoleResource, MaintenanceEvent, EmailSuppression, SmsSuppression, ServiceAreaWaitlist → super-admin only (no safe scoping — see role-escalation-guard.md)
+// VehicleType/CarBrand/CarModel → read-only dla non-super-admin (subsystem being removed, do not promote)
 ```
 
 ## Industry Enum (`app/Enums/Industry.php`)

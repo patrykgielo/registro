@@ -53,9 +53,14 @@ class AuditLogsRelationManager extends RelationManager
         'completed' => 'Zakończona',
     ];
 
+    /**
+     * AuditLog is BelongsToOrganization-scoped and reached only through an already
+     * tenant-scoped Appointment ($ownerRecord), so opening this to tenant admins
+     * carries no cross-tenant exposure — mirrors AuditLogResource's own reasoning.
+     */
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public function table(Table $table): Table

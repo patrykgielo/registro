@@ -156,11 +156,19 @@ class EmailEventResource extends BaseResource
                     )
                     ->openUrlInNewTab(false),
 
+                // Stays super-admin-only even though the resource itself is now open
+                // to tenant admins. email_suppressions is keyed by address and has no
+                // organization_id: suppressing one blocks delivery for EVERY tenant
+                // that shares that contact, and the resource's own tenant scoping
+                // does not extend to the row being written. Existed before this
+                // change but was unreachable while canViewAny() required super-admin.
                 Actions\Action::make('addToSuppression')
                     ->label('Wyklucz')
                     ->icon('heroicon-o-no-symbol')
                     ->color('danger')
-                    ->visible(fn (EmailEvent $record): bool => in_array($record->event_type, ['bounced', 'complained'])
+                    ->visible(fn (EmailEvent $record): bool => (auth()->user()?->hasRole('super-admin') ?? false)
+                        && in_array($record->event_type, ['bounced', 'complained'])
+                        && ! EmailSuppression::isSuppressed($record->emailSend->recipient_email)
                     )
                     ->requiresConfirmation()
                     ->modalHeading('Dodaj e-mail do listy wykluczeń')
@@ -200,6 +208,7 @@ class EmailEventResource extends BaseResource
                                 ->send();
                         }
                     }),
+
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
@@ -254,16 +263,19 @@ class EmailEventResource extends BaseResource
     }
 
     /**
-     * Restrict access to super-admins only (global model, not tenant-scoped).
+     * EmailEvent now carries BelongsToOrganization (organization_id copied from the
+     * owning EmailSend at creation time — see EmailService) and is scoped by the
+     * model's own global scope, so opening this to tenant admins is safe: they only
+     * ever see delivery events for their own org's outbound emails.
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public static function canCreate(): bool

@@ -21,25 +21,25 @@ use Tests\TestCase;
  * App\Support\RoleAssignmentGuard + App\Rules\AssignableRole, attached
  * directly to the 'roles' Select field.
  *
- * Why the negative cases below call AssignableRole::validate() directly
- * instead of driving CreateUser/EditUser through Livewire::test(): Filament
- * gates EVERY resource page mount — not just canCreate()/canEdit() — behind
- * the resource's canViewAny(), via Concerns\CanAuthorizeResourceAccess's
- * mountCanAuthorizeResourceAccess() hook (abort_unless(Resource::canAccess(),
- * 403), where canAccess() === canViewAny()). This runs during component
- * mount itself (not HTTP middleware), so it fires under Livewire::test() too.
- * UserResource::canViewAny() is super-admin-only today, so there is no live
- * request path — Livewire or otherwise — a non-super-admin can drive against
- * these pages until the follow-up PR opens canViewAny() to 'admin'.
- *
- * AssignableRole is the exact object Filament attaches to the 'roles' field
- * and that $this->form->getState() invokes on every create()/save() call
- * (Filament's relationship Select is dehydrated(false) when multiple(), so
- * mutateFormDataBeforeSave() never even sees the submitted role IDs — this
- * rule is the only thing that actually runs). Calling it directly, with the
- * real authenticated non-super-admin session, exercises the identical
- * server-side check a raw Livewire payload would hit once canViewAny() opens
- * — so these tests need no rewrite when that happens.
+ * UserResource::canViewAny() and canCreate() opened to 'admin' in
+ * feature/tenant-admin-access (2026-08-07) — see
+ * app/docs/security/patterns/role-escalation-guard.md. Creating a second admin
+ * is the point of unlocking this resource, since CreateEmployee only ever mints
+ * `staff`; the missing organization_user attach that briefly argued for keeping
+ * creation closed was fixed instead, in both create pages.
+ * The ValidationRule-direct cases below predate the canViewAny() change
+ * and were kept: AssignableRole is the exact object Filament attaches to the
+ * 'roles' field and that $this->form->getState() invokes on every
+ * create()/save() call (Filament's relationship Select is dehydrated(false)
+ * when multiple(), so mutateFormDataBeforeSave() never even sees the
+ * submitted role IDs — this rule is the only thing that actually runs), so
+ * they remain a valid, fast unit-level check of the rule itself. The
+ * full-Livewire-path test below additionally exercises the real EditUser
+ * component end to end now that the page is actually reachable by a tenant
+ * admin — this was previously impossible: Filament gates EVERY resource page
+ * mount behind canViewAny() via Concerns\CanAuthorizeResourceAccess's
+ * mountCanAuthorizeResourceAccess() hook, which fires during component mount
+ * itself, so Livewire::test() 403'd before canViewAny() opened.
  */
 class UserRoleEscalationGuardTest extends TestCase
 {
@@ -145,5 +145,63 @@ class UserRoleEscalationGuardTest extends TestCase
             ->assertHasNoFormErrors();
 
         $this->assertTrue($target->fresh()->hasRole('super-admin'));
+    }
+
+    /**
+     * Creating a user IS open to tenant admins — that is the point of unlocking
+     * this resource, since EmployeeResource only ever mints `staff`.
+     *
+     * An earlier pass closed it because the generic create form never attached
+     * organization_user. That reasoning was right about the defect and wrong
+     * about the remedy: CreateUser::afterCreate() now writes the pivot (and so
+     * does CreateEmployee, which had shipped the same gap while already open to
+     * tenant admins, quietly producing employees who could not log in).
+     *
+     * Reaching the page is not the same as being able to escalate on it — the
+     * roles field still carries AssignableRole, pinned by the tests above.
+     */
+    public function test_tenant_admin_can_reach_the_create_user_page(): void
+    {
+        config(['app.domain' => 'registro.local']);
+
+        $org = \App\Models\Organization::factory()->create(['slug' => 'org-can-create-user']);
+        $tenantAdmin = User::factory()->create();
+        $tenantAdmin->assignRole('admin');
+        $tenantAdmin->organizations()->attach($org->id);
+
+        $response = $this->actingAs($tenantAdmin)
+            ->get("http://{$org->slug}.registro.local/admin/users/create");
+
+        $response->assertOk();
+    }
+
+    /**
+     * Mirror of the create-flow test on EditUser: a tenant admin editing a
+     * colleague within their own scoped query must not be able to grant
+     * super-admin through the real component either.
+     */
+    public function test_tenant_admin_cannot_self_escalate_via_the_full_livewire_edit_flow(): void
+    {
+        $tenantAdmin = User::factory()->create();
+        $tenantAdmin->assignRole('admin');
+        $this->actingAs($tenantAdmin);
+
+        $target = User::factory()->create();
+        $target->assignRole('staff');
+
+        $superAdminRoleId = Role::where('name', 'super-admin')->value('id');
+
+        Livewire::test(EditUser::class, ['record' => $target->getRouteKey()])
+            ->fillForm([
+                'first_name' => $target->first_name,
+                'last_name' => $target->last_name,
+                'email' => $target->email,
+                'send_setup_email' => true,
+                'roles' => [$superAdminRoleId],
+            ])
+            ->call('save')
+            ->assertHasFormErrors(['roles']);
+
+        $this->assertFalse($target->fresh()->hasRole('super-admin'));
     }
 }

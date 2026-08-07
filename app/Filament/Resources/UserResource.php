@@ -7,6 +7,7 @@ use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use App\Rules\AssignableRole;
 use App\Support\RoleAssignmentGuard;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -15,7 +16,9 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 use UnitEnum;
 
@@ -34,7 +37,8 @@ class UserResource extends BaseResource
     protected static ?int $navigationSort = 1;
 
     /**
-     * Hide accounts holding the protected role from anyone who cannot grant it.
+     * Hide accounts holding the protected role from anyone who cannot grant it, and
+     * (for the same non-super-admin population) scope the list to the current tenant.
      *
      * Filtering the role picker guards one direction only. The mirror gap bites
      * without any attack: because ->options() omits super-admin, opening such an
@@ -43,16 +47,32 @@ class UserResource extends BaseResource
      * operator loses /platform with recovery only through registro:create-owner
      * on the CLI. Removing the record from the query closes granting, stripping
      * and accidental edits in one move.
+     *
+     * User carries no BelongsToOrganization (no organization_id column at all — only
+     * the organization_user pivot), so nothing scopes it automatically the way the
+     * global scope does for other models. Mirrors EmployeeResource/CustomerResource's
+     * manual `whereHas('organizations', ...)` pattern. Scoped on the actor's own
+     * privilege (same check the protected-role filter already uses), not merely on
+     * tenant presence, so a super-admin browsing via any tenant's /admin subdomain
+     * keeps today's platform-wide reach — the only interface that offers it.
      */
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
+        $actor = auth()->user();
 
-        if (! RoleAssignmentGuard::canGrant(RoleAssignmentGuard::PROTECTED_ROLE)) {
+        if (! RoleAssignmentGuard::canGrant(RoleAssignmentGuard::PROTECTED_ROLE, $actor)) {
             $query->whereDoesntHave(
                 'roles',
                 fn (Builder $roles) => $roles->where('name', RoleAssignmentGuard::PROTECTED_ROLE)
             );
+
+            $tenant = TenantFeature::currentTenant();
+
+            $query->when($tenant, fn (Builder $q) => $q->whereHas(
+                'organizations',
+                fn (Builder $q2) => $q2->where('organizations.id', $tenant->id)
+            ));
         }
 
         return $query;
@@ -297,13 +317,22 @@ class UserResource extends BaseResource
                 Actions\EditAction::make()
                     ->label('Edytuj'),
 
+                // ->visible() is what actually closes deletion here. Filament
+                // resolves DeleteAction through getDeleteAuthorizationResponse(),
+                // NOT through canDelete() — and with no UserPolicy and strict
+                // authorization off, that path returns allow() for everyone. The
+                // canDelete() overrides below read as a guard and enforce nothing;
+                // without this line a tenant admin deletes co-admins from the row
+                // action, which is the opposite of what this resource claims.
                 Actions\DeleteAction::make()
-                    ->label('Usuń'),
+                    ->label('Usuń')
+                    ->visible(fn (User $record): bool => static::canDelete($record)),
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make()
-                        ->label('Usuń zaznaczone'),
+                        ->label('Usuń zaznaczone')
+                        ->visible(fn (): bool => static::canDeleteAny()),
                 ]),
             ])
             ->emptyStateHeading('Brak użytkowników')
@@ -327,17 +356,89 @@ class UserResource extends BaseResource
         ];
     }
 
+    /**
+     * Counts through getEloquentQuery(), not the bare model.
+     *
+     * `getModel()::count()` was harmless while this resource was super-admin-only
+     * — the badge never rendered for anyone else. Opening canViewAny() to `admin`
+     * would have put a platform-wide headcount, every tenant plus the operator
+     * account, in each client's own sidebar.
+     */
     public static function getNavigationBadge(): ?string
     {
-        return static::getModel()::count();
+        return (string) static::getEloquentQuery()->count();
     }
 
     /**
-     * Restrict access to super-admins only.
-     * Tenant admins should use CustomerResource and EmployeeResource.
+     * Open to tenant admins for view/edit of their own org's accounts (co-admins,
+     * staff, customers) — the "admin"/"staff"/"customer" role split lives entirely
+     * in CustomerResource/EmployeeResource; this is the only place an admin can see
+     * a fellow *admin* account. getEloquentQuery() does the actual tenant scoping.
      */
     public static function canViewAny(): bool
     {
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
+    }
+
+    /**
+     * Open to tenant admins, because creating a second admin is the headline
+     * reason this resource is being unlocked at all — EmployeeResource only ever
+     * mints `staff` (its afterCreate() hardcodes the role), so without this there
+     * is no way for a client to give anyone else admin rights.
+     *
+     * This was closed in an earlier pass on the grounds that the generic create
+     * form never attaches organization_user, leaving the account invisible to the
+     * creator's own scoped query. That was accurate, but it was the reason to fix
+     * the attach rather than to withhold the feature: CreateUser::afterCreate()
+     * now writes the pivot, and CreateEmployee — which had the same gap and was
+     * already open to tenant admins, silently producing employees who could not
+     * log in — was fixed alongside it.
+     */
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
+    }
+
+    /**
+     * Deletion is intentionally NOT opened to tenant admins.
+     *
+     * A User can belong to more than one organization (organization_user is a
+     * pivot, not a single FK) — unlike EmployeeResource's DeleteAction, this
+     * generic resource has no future-appointment guard and no check for whether
+     * the record is shared with another tenant. Removing a fellow admin/staff
+     * account they don't fully own is a support-mediated action for now.
+     */
+    public static function canDelete($record): bool
+    {
         return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    /**
+     * canDelete()/canDeleteAny() alone enforce nothing.
+     *
+     * Filament asks these two methods, not those, when a DeleteAction runs — and
+     * with no UserPolicy and strict authorization off, the default implementation
+     * returns allow() for everybody. Verified by review: a tenant admin driving
+     * `callAction('delete')` against a co-admin actually removed the record while
+     * canDelete() was returning false. Hiding the buttons is not enough on its
+     * own either, because the action can be called without rendering it.
+     */
+    public static function getDeleteAuthorizationResponse(Model $record): Response
+    {
+        return static::canDelete($record)
+            ? Response::allow()
+            : Response::deny();
+    }
+
+    public static function getDeleteAnyAuthorizationResponse(): Response
+    {
+        return static::canDeleteAny()
+            ? Response::allow()
+            : Response::deny();
     }
 }

@@ -107,36 +107,120 @@ null → cannot grant → protected accounts hidden).
 
 Covered by `tests/Feature/Filament/UserResourceProtectedAccountScopeTest.php`.
 
-## Still open — the follow-up PR must not merge without these
+## Resolved in feature/tenant-admin-access (2026-08-07)
 
-This change closes escalation through the role picker and the role name. It does
-**not** make `UserResource`/`RoleResource` safe to open. Both gaps below are
-harmless today only because `canViewAny()` still requires `super-admin`.
+The three gaps below were closed (or deliberately left closed) in the follow-up
+PR that opened access to tenant admins. Kept here as the historical record of
+what the original "still open" list meant and how each item was actually
+resolved — see also `app/docs/security/vulnerabilities/` style write-ups and
+the per-resource docblocks referenced below for the live source of truth.
 
-**1. `UserResource` has no organization scoping.** `User` carries no
-`BelongsToOrganization` (`BaseResource::isScopedToTenant()` says so explicitly),
-so nothing scopes it automatically — each resource querying `User` must do it
-itself. `EmployeeResource:40-50` and `CustomerResource:36-54` both do;
-`UserResource::getEloquentQuery()` filters only the protected role. The moment
-`canViewAny()` opens to `admin`, every tenant admin sees, edits and deletes every
-non-super-admin account on the platform — other tenants' owners and staff
-included. Straight cross-tenant leak.
+**1. `UserResource` organization scoping — FIXED.** `UserResource::getEloquentQuery()`
+now mirrors `EmployeeResource`/`CustomerResource`'s manual
+`whereHas('organizations', ...)` pattern, nested inside the same
+`RoleAssignmentGuard::canGrant()` check the protected-role filter already used
+(scoped on the *actor's* privilege, not merely tenant presence, so a
+super-admin browsing via any tenant's `/admin` subdomain keeps today's
+platform-wide reach — the only interface that offers it). `canViewAny()` and
+`canCreate()` opened to `['super-admin', 'admin']`; `canDelete()`/`canDeleteAny()`
+stay closed, because deletion has no future-appointment or multi-org guard the
+way `EmployeeResource` does.
 
-**2. `RoleResource`'s `permissions` CheckboxList is unguarded, and roles are
-global** (`config/permission.php:134` → `'teams' => false`): one `admin` row, one
-`staff` row, shared by every organization. A tenant admin ticking permissions on
-the shared `admin` role changes them for every admin on every tenant. This is
-**not** a path to `/platform` — `User::canAccessPanel()` checks the role name, never
-a permission, and that was verified — so it is shared-state mutation rather than
-privilege escalation. Its practical reach today is the three permissions actually
-checked in code (`communication.manage_templates`, `.view_logs`,
-`.manage_suppressions`).
+Creation was closed in an earlier pass of this PR on the grounds that the
+generic form never attaches `organization_user`. That was accurate about the
+defect and wrong about the remedy — closing it would have left the client unable
+to create a second admin at all, which is the headline reason this resource is
+being unlocked (`CreateEmployee::afterCreate()` hardcodes `assignRole('staff')`,
+so it can never mint an admin). The attach is now written by
+`CreateUser::afterCreate()`.
 
-**3. Neither resource overrides `canCreate()`/`canEdit()`/`canDelete()`, and there
-are no policies.** Filament defaults to allow when no policy exists and strict
-mode is off, so `DeleteBulkAction` on `RoleResource` would let a tenant admin
-delete the shared `admin`/`staff` rows outright — `model_has_roles` cascades, so
-every tenant's role checks break at once.
+**`canDelete()` alone enforces nothing — this bit us in review.** Filament asks
+`getDeleteAuthorizationResponse()`/`getDeleteAnyAuthorizationResponse()` when a
+`DeleteAction` runs, not `canDelete()`; with no `UserPolicy` and strict
+authorization off, the default returns `allow()` for everybody. Review proved it
+by actually deleting a co-admin as a tenant admin while `canDelete()` returned
+`false` — the guard read correctly and did nothing. Both response methods are now
+overridden, the actions carry `->visible()`, and
+`tests/Feature/Filament/UserResourceDeleteGuardTest.php` fails if either is
+reverted (verified by mutation, not assumed). **Any resource that opens
+`canViewAny()` while keeping deletion closed needs the same treatment.**
+
+**The navigation badge counted every tenant.** `getNavigationBadge()` used
+`getModel()::count()` — harmless while the resource was super-admin-only, a
+platform-wide headcount in each client's sidebar once opened. It now counts
+through `getEloquentQuery()`.
+
+**The same audit turned up a live bug, fixed here.** `CreateEmployee` had the
+identical gap while *already* being open to tenant admins: it assigned the Spatie
+role and never wrote the pivot, and `canAccessTenant()` reads the pivot and
+nothing else — so `ResolveTenant` bounced every employee a client created straight
+back off `/admin`. The "add an employee" flow was broken end to end for anyone
+who tried it. Covered by
+`tests/Feature/Filament/TenantMemberCreationPivotTest.php`.
+
+**2 & 3. `RoleResource` — deliberately left closed, not fixed.** Unlike
+`UserResource`, roles have no scoping fix available: they are global by design
+(`config/permission.php:134` → `'teams' => false`), so `canViewAny()` stays
+`super-admin`-only. The actual self-service need ("assign an existing role to
+my own user") was already solved by `UserResource`'s `AssignableRole`-guarded
+picker; editing what a role *means* platform-wide is a genuinely platform-level
+concern, not a tenant one. The unguarded `permissions` CheckboxList (gap #2)
+and the missing `canCreate()`/`canEdit()`/`canDelete()`/`canDeleteAny()`
+overrides (gap #3) are therefore still moot in practice — but #3 was added
+anyway as explicit belt-and-suspenders (matching the pattern already used by
+`AuditLogResource`/`EmailEventResource`/`ServiceAreaWaitlistResource`), so a
+future change to `canViewAny()` can't silently inherit Filament's
+allow-by-default and reopen gap #2/#3 without a reviewer noticing. See
+`app/Filament/Resources/RoleResource.php` and
+`tests/Feature/Filament/RoleResourceEscalationGuardTest.php`.
+
+## Wider resource audit (feature/tenant-admin-access, 2026-08-07)
+
+The same PR promoted several other `super-admin`-only resources to `admin`,
+using the same "does the model scope safely?" test applied above. Full
+per-resource reasoning lives in the PR description; summary:
+
+- **Promoted** (all gained real tenant scoping as part of this change, not
+  just a flipped `canViewAny()`): `AuditLogResource` + its
+  `AuditLogsRelationManager` (already `BelongsToOrganization` — no code
+  change needed beyond the gate), `EmailEventResource`, `SmsEventResource`
+  (both models gained `BelongsToOrganization`; `organization_id` is copied
+  from the owning `EmailSend`/`SmsSend` at creation time in `EmailService`/
+  `SmsService`/`SmsApiWebhookController` — NOT auto-populated from ambient
+  tenant context, because most rows are created from webhook/queue paths
+  with no tenant HTTP request in flight).
+- **Left `super-admin`-only, with reasoning recorded in each resource's own
+  docblock:** `MaintenanceEventResource` (platform-wide operational log, no
+  natural tenant owner), `EmailSuppressionResource` / `SmsSuppressionResource`
+  (the full list is every tenant's bounced/opted-out customer contacts —
+  intentionally global because suppression protects the platform's shared
+  send reputation, not a per-tenant concern). **Suppression stays entirely out
+  of tenant hands, including through the event resources.** An earlier pass of
+  this PR added a `removeFromSuppression` action there, arguing that reaching an
+  address through your own org-scoped event row made unsuppressing it safe
+  self-service. That conflated *seeing an event* with *owning the suppression*:
+  `email_suppressions`/`sms_suppressions` are keyed by address with no
+  `organization_id`, so tenant B — who merely shares a customer contact with
+  tenant A — could undo A's bounce suppression platform-wide and resume delivery
+  to a complaint-flagged address on A's behalf. The action was removed, and the
+  pre-existing `addToSuppression` (which this PR made reachable for the first
+  time by opening `canViewAny()`) was gated to `super-admin` for the mirror
+  reason: suppressing an address silences it for every tenant sharing it.
+  Restoring tenant self-service here needs a tenant-scoped suppression model,
+  not a narrower button),
+  `ServiceAreaWaitlistResource` (unchanged — one submission can belong to
+  several nearby tenants at once, no clean single-tenant scoping possible,
+  see its own docblock and `VULN-003-root-domain-tenant-bypass.md`), and the
+  `custom_html` `Forms\Components\Builder\Block` in
+  `app/Filament/Support/BuilderBlocks.php` (unchanged — raw, unescaped
+  HTML/JS in tenant-facing CMS pages is a stored-XSS primitive; opening it
+  was judged disproportionate to the benefit and was not part of any
+  explicit ask).
+
+Vehicle-related resources (`VehicleTypeResource`, `CarBrandResource`,
+`CarModelResource`) were explicitly NOT touched — a separate, already-planned
+PR removes the vehicle subsystem entirely, so promoting them now would be
+work to throw away.
 
 ## Other role-granting call sites (checked, not in scope)
 

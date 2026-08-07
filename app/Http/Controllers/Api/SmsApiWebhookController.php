@@ -89,6 +89,7 @@ class SmsApiWebhookController extends Controller
 
             // Create event record
             SmsEvent::create([
+                'organization_id' => $smsSend->organization_id,
                 'sms_send_id' => $smsSend->id,
                 'event_type' => $eventType,
                 'occurred_at' => now(),

@@ -161,8 +161,46 @@ class RoleResource extends BaseResource
 
     /**
      * Restrict access to super-admins only.
+     *
+     * Deliberately NOT promoted alongside UserResource/AuditLogResource in this PR.
+     * Roles are global (config/permission.php: 'teams' => false — one `admin` row,
+     * one `staff` row, shared by every organization), so there is no scoping fix
+     * that makes this resource tenant-safe the way EmailEvent/AuditLog were. The
+     * `permissions` CheckboxList (line 54) is also unguarded — a tenant admin
+     * ticking a box would change what every tenant's admins can do. The actual
+     * self-service need ("assign an existing role to my own user") is already
+     * solved via UserResource's guarded role picker; editing what a role definition
+     * *means*, platform-wide, is a genuinely platform-level concern. See
+     * app/docs/security/patterns/role-escalation-guard.md.
      */
     public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    /**
+     * Explicit, belt-and-suspenders overrides — canViewAny() already gates every
+     * page (Filament's CanAuthorizeResourceAccess::mountCanAuthorizeResourceAccess()
+     * aborts on canAccess() before mount), but Filament defaults to ALLOW when a
+     * resource has no policy, so a future canViewAny() change must not silently
+     * inherit unrestricted create/edit/delete on rows shared by every tenant.
+     */
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canDeleteAny(): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
     }

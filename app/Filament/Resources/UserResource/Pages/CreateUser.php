@@ -4,6 +4,7 @@ namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Events\AdminCreatedUser;
 use App\Filament\Resources\UserResource;
+use App\Support\TenantFeature;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateUser extends CreateRecord
@@ -17,6 +18,21 @@ class CreateUser extends CreateRecord
 
     protected function afterCreate(): void
     {
+        // Same pivot requirement as CreateEmployee: canAccessTenant() reads
+        // organization_user only, so an account created without it cannot reach
+        // /admin and is invisible to this resource's own tenant-scoped query on
+        // the next page load. Skipped when there is no tenant context, which is
+        // the operator creating a platform account on the root domain.
+        if ($tenant = TenantFeature::currentTenant()) {
+            // The pivot role is display-only (Platform → Members reads it; nothing
+            // authorizes on it), but hardcoding 'staff' would label a freshly
+            // created co-admin as staff to whoever looks there — and minting a
+            // co-admin is the whole reason this page is open to tenant admins.
+            $pivotRole = $this->record->hasRole('admin') ? 'admin' : 'staff';
+
+            $this->record->organizations()->syncWithoutDetaching([$tenant->id => ['role' => $pivotRole]]);
+        }
+
         // Check checkbox instead of empty password
         if ($this->data['send_setup_email'] ?? false) {
             try {
