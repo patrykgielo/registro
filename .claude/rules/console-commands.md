@@ -203,3 +203,5 @@ Reference implementation: `onboarding:seed-vertical` (`app/Console/Commands/Seed
 - `TestEmailFlowCommand` - testuj flow emaili
 - `Reset*BookingStats` - resetuj statystyki
 - `SeedVerticalDataCommand` - ręczne seedowanie danych branżowych (dry-run + confirm + audit log)
+- `ProvisionTenantCommand` (`registro:tenant-provision`) - provisionuje org+ownera dla dedykowanego tenant-stacka; global seedery (role/settings/e-mail templates) tylko raz per stack, gated przez `TenantProvisioningState` — patrz `app/docs/features/tenant-stack-provisioning.md`
+- `TenantProvisioningStatusCommand` (`registro:tenant-provisioned`) - bezstanowy check dla shell tooling, exit code only

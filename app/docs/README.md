@@ -79,6 +79,7 @@ for the conceptual overview these deep-dive.
 | Feature | Plik | Status |
 |---------|------|--------|
 | Onboarding & Registration | `features/onboarding-and-registration.md` | Phase 5 complete |
+| Tenant-Stack Provisioning | `features/tenant-stack-provisioning.md` | CLI provisioning + singleton lock for dedicated per-client stacks |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
 | SMS System | `features/sms-system/` | Stable |
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |

@@ -7,11 +7,18 @@ seed step fits (or doesn't) into that pipeline.
 `app/Actions/Onboarding/CreateOrganizationWithOwner.php`, `app/Actions/Onboarding/SeedOrganizationDefaults.php`,
 `app/Enums/Industry.php`, `app/Models/Organization.php:292-305`, `app/Console/Commands/SeedVerticalDataCommand.php`).
 **Related:** [Data Isolation](data-isolation.md), [Panel Isolation](panel-isolation.md),
-`.claude/rules/onboarding.md`, `.claude/rules/spatie-roles.md`
+`.claude/rules/onboarding.md`, `.claude/rules/spatie-roles.md`,
+[Tenant-Stack Provisioning](../features/tenant-stack-provisioning.md) (2nd path, below)
 
 ---
 
 ## Overview
+
+This document covers the self-serve wizard path only — the shared legacy stack, where one database
+holds many organizations. Dedicated tenant-stack containers (`TENANT_SLUG` set, one organization
+per database) are provisioned by an operator-run CLI command instead, which deliberately does NOT
+reuse `CreateOrganizationWithOwner` (different idempotency and no-password requirements) — see
+[Tenant-Stack Provisioning](../features/tenant-stack-provisioning.md).
 
 Business registration is a 3-step guest/auth flow served by `BusinessRegisterController`, backed
 by one transactional Action (`CreateOrganizationWithOwner`) that creates the `User` + `Organization`

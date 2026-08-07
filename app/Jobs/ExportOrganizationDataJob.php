@@ -58,6 +58,27 @@ class ExportOrganizationDataJob implements ShouldQueue
             throw $e;
         }
 
+        // On a dedicated tenant stack the download route is not registered (see
+        // routes/web.php — it is the one /platform route not owned by
+        // PlatformPanelProvider, and an unauthenticated full-PII endpoint has no
+        // place in a client container). The export itself still has to work there,
+        // because `organizations:export-data` is reachable over `compose exec`;
+        // whoever runs it already has shell access, so the path on disk is more
+        // useful to them than a signed URL would be.
+        // Keyed on the cause (this is a tenant stack), not on Route::has() — the
+        // symptom. Gating on the missing route would also swallow a stale route
+        // cache or a provider bug on the shared stack, turning a loud failure
+        // into a silent "export done, owner never notified". Same failure class
+        // as the dedupe bug in PR #141.
+        if (filled(config('app.tenant_slug'))) {
+            Log::info('ExportOrganizationDataJob: completed without a download link (tenant stack)', [
+                'org_id' => $org->id,
+                'path' => $relativePath,
+            ]);
+
+            return;
+        }
+
         $signedUrl = URL::temporarySignedRoute(
             'platform.organization.data-export',
             now()->addDays(7),
