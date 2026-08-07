@@ -186,6 +186,7 @@ class EmailService
 
             // Create 'sent' event
             EmailEvent::create([
+                'organization_id' => $emailSend->organization_id,
                 'email_send_id' => $emailSend->id,
                 'event_type' => 'sent',
                 'occurred_at' => now(),
@@ -328,6 +329,7 @@ class EmailService
             $emailSend->markAsSent();
 
             EmailEvent::create([
+                'organization_id' => $emailSend->organization_id,
                 'email_send_id' => $emailSend->id,
                 'event_type' => 'sent',
                 'occurred_at' => now(),

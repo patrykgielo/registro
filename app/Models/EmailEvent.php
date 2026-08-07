@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -12,7 +13,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * Tracks delivery events for sent emails (sent, delivered, bounced, opened, clicked, etc.).
  *
+ * organization_id is deliberately NOT auto-populated from ambient tenant context here — most
+ * rows are created from webhook/queue paths with no tenant HTTP context (ResolveTenant never
+ * ran). Callers must pass it explicitly, copied from the owning EmailSend (see EmailService).
+ *
  * @property int $id
+ * @property int|null $organization_id
  * @property int $email_send_id FK to email_sends.id
  * @property string $event_type Type of event: sent, delivered, bounced, complained, opened, clicked
  * @property array|null $event_data Provider-specific data
@@ -22,12 +28,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class EmailEvent extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
     protected $fillable = [
+        'organization_id',
         'email_send_id',
         'event_type',
         'event_data',

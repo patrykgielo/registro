@@ -14,23 +14,32 @@ use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
- * Neighboring vector to the UserResource escalation guard: RoleResource is
- * super-admin-only today, but is expected to open to 'admin' in the same
- * follow-up PR as UserResource. Without this, a tenant admin could bypass
- * AssignableRole entirely — rename any role they already hold to
- * "super-admin" (Spatie resolves roles purely by name, so the rename alone
- * grants it to every user already holding that role), or create a fresh
- * role with that name. Fixed by App\Rules\ProtectedRoleName on RoleResource's
+ * Neighboring vector to the UserResource escalation guard. This class documents
+ * a bypass that would exist IF RoleResource ever opened to 'admin': a tenant
+ * admin could rename any role they already hold to "super-admin" (Spatie
+ * resolves roles purely by name, so the rename alone grants it to every user
+ * already holding that role), or create a fresh role with that name — bypassing
+ * AssignableRole entirely. Fixed by App\Rules\ProtectedRoleName on RoleResource's
  * 'name' field, reusing the same RoleAssignmentGuard used by UserResource.
+ *
+ * The follow-up PR (feature/tenant-admin-access) deliberately did NOT open
+ * RoleResource::canViewAny() to 'admin' — unlike UserResource/AuditLogResource/
+ * EmailEventResource, roles are global (config/permission.php: 'teams' => false)
+ * with no scoping fix available; opening it would let one tenant mutate what
+ * "admin"/"staff" mean for every other tenant. See
+ * app/docs/security/patterns/role-escalation-guard.md. ProtectedRoleName stays
+ * in place as defense-in-depth regardless (belt-and-suspenders, same reasoning
+ * as RoleResource's explicit canCreate()/canEdit()/canDelete() overrides), and
+ * these tests keep proving it holds even though there is currently no live
+ * request path that reaches it.
  *
  * Same constraint as UserRoleEscalationGuardTest: RoleResource::canViewAny()
  * gates ALL of its pages (including Create/Edit) via Filament's
  * mountCanAuthorizeResourceAccess() hook, which fires during component mount
  * itself — so a non-super-admin cannot drive CreateRole/EditRole through
- * Livewire::test() (or any other request) until canViewAny() opens up. The
- * negative cases call ProtectedRoleName::validate() directly — the exact
- * object attached to the 'name' field — so they need no rewrite once that
- * gate opens.
+ * Livewire::test() (or any other request). The negative cases call
+ * ProtectedRoleName::validate() directly — the exact object attached to the
+ * 'name' field.
  */
 class RoleResourceEscalationGuardTest extends TestCase
 {
@@ -87,5 +96,28 @@ class RoleResourceEscalationGuardTest extends TestCase
             ->assertHasNoFormErrors();
 
         $this->assertDatabaseHas('roles', ['name' => 'super-admin-2']);
+    }
+
+    /**
+     * Positive control for the "deliberately not opened" decision documented
+     * above — pins RoleResource::canViewAny() closed so a future change can't
+     * silently flip it without a reviewer noticing.
+     */
+    public function test_tenant_admin_cannot_view_any_roles(): void
+    {
+        $tenantAdmin = User::factory()->create();
+        $tenantAdmin->assignRole('admin');
+        $this->actingAs($tenantAdmin);
+
+        $this->assertFalse(\App\Filament\Resources\RoleResource::canViewAny());
+    }
+
+    public function test_super_admin_can_view_any_roles(): void
+    {
+        $superAdmin = User::factory()->create();
+        $superAdmin->assignRole('super-admin');
+        $this->actingAs($superAdmin);
+
+        $this->assertTrue(\App\Filament\Resources\RoleResource::canViewAny());
     }
 }

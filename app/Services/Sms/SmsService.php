@@ -178,6 +178,7 @@ class SmsService
 
             // Create 'sent' event
             SmsEvent::create([
+                'organization_id' => $smsSend->organization_id,
                 'sms_send_id' => $smsSend->id,
                 'event_type' => 'sent',
                 'occurred_at' => now(),
@@ -203,6 +204,7 @@ class SmsService
 
             // Create 'failed' event
             SmsEvent::create([
+                'organization_id' => $smsSend->organization_id,
                 'sms_send_id' => $smsSend->id,
                 'event_type' => 'failed',
                 'occurred_at' => now(),
@@ -298,6 +300,7 @@ class SmsService
             ]);
 
             SmsEvent::create([
+                'organization_id' => $smsSend->organization_id,
                 'sms_send_id' => $smsSend->id,
                 'event_type' => 'sent',
                 'occurred_at' => now(),

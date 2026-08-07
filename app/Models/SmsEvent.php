@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,7 +14,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Tracks delivery events for sent SMS (sent, delivered, failed, invalid_number, expired).
  * Events typically come from SMSAPI webhook callbacks.
  *
+ * organization_id is deliberately NOT auto-populated from ambient tenant context here — the
+ * SMSAPI webhook that creates most rows has no tenant HTTP context (ResolveTenant never ran).
+ * Callers must pass it explicitly, copied from the owning SmsSend (see SmsService,
+ * SmsApiWebhookController).
+ *
  * @property int $id
+ * @property int|null $organization_id
  * @property int $sms_send_id FK to sms_sends.id
  * @property string $event_type Type of event: sent, delivered, failed, invalid_number, expired
  * @property array|null $event_data SMSAPI-specific data from webhook
@@ -23,6 +30,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class SmsEvent extends Model
 {
+    use BelongsToOrganization;
+
     /**
      * The table associated with the model.
      *
@@ -36,6 +45,7 @@ class SmsEvent extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'organization_id',
         'sms_send_id',
         'event_type',
         'event_data',

@@ -274,17 +274,20 @@ class AuditLogResource extends BaseResource
     /**
      * Check if user can access this resource
      *
-     * SECURITY: Only super-admin should see audit logs
-     * Staff members should NOT see admin activities
+     * AuditLog carries BelongsToOrganization and is scoped by the model's own
+     * global scope — a tenant admin querying this resource only ever sees rows
+     * belonging to their own org, so opening it here is safe. Staff members
+     * still should NOT see admin activities — deliberately not added to the
+     * role list below.
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public static function canCreate(): bool

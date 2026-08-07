@@ -122,11 +122,17 @@ class SmsEventResource extends BaseResource
                     ->url(fn (SmsEvent $record): string => route('filament.admin.resources.sms-sends.view', ['record' => $record->sms_send_id]))
                     ->openUrlInNewTab(false),
 
+                // Super-admin-only for the same reason as the e-mail twin:
+                // sms_suppressions is keyed by phone number with no organization_id,
+                // so one tenant's suppression silences that number for all of them.
                 Actions\Action::make('addToSuppression')
                     ->label('Wyklucz')
                     ->icon('heroicon-o-no-symbol')
                     ->color('danger')
-                    ->visible(fn (SmsEvent $record): bool => in_array($record->event_type, ['failed', 'invalid_number']))
+                    ->visible(fn (SmsEvent $record): bool => (auth()->user()?->hasRole('super-admin') ?? false)
+                        && in_array($record->event_type, ['failed', 'invalid_number'])
+                        && ! SmsSuppression::isSuppressed($record->smsSend->phone_to)
+                    )
                     ->requiresConfirmation()
                     ->modalHeading('Dodaj numer do listy wykluczeń')
                     ->modalDescription(fn (SmsEvent $record): string => "Zablokuje to wysyłkę przyszłych SMS na numer {$record->smsSend->phone_to}. ".
@@ -163,6 +169,7 @@ class SmsEventResource extends BaseResource
                                 ->send();
                         }
                     }),
+
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
@@ -214,16 +221,19 @@ class SmsEventResource extends BaseResource
     }
 
     /**
-     * Restrict access to super-admins only (global model, not tenant-scoped).
+     * SmsEvent now carries BelongsToOrganization (organization_id copied from the
+     * owning SmsSend at creation time — see SmsService/SmsApiWebhookController) and
+     * is scoped by the model's own global scope, so opening this to tenant admins
+     * is safe: they only ever see delivery events for their own org's outbound SMS.
      */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public static function canView($record): bool
     {
-        return auth()->user()?->hasRole('super-admin') ?? false;
+        return auth()->user()?->hasRole(['super-admin', 'admin']) ?? false;
     }
 
     public static function canEdit($record): bool
