@@ -134,6 +134,10 @@ class User extends Authenticatable implements FilamentUser, HasName
     protected $hidden = [
         'password',
         'remember_token',
+        // Stored in plaintext and enough on its own to set this account's
+        // password until it expires, so it must never ride along in a
+        // serialized model — an API response, a Livewire payload, a dump.
+        'password_setup_token',
     ];
 
     /**
@@ -801,10 +805,16 @@ class User extends Authenticatable implements FilamentUser, HasName
             // Verify token was actually saved
             $this->refresh();
             if ($this->password_setup_token !== $token) {
+                // Never log either token verbatim. This is a live, unexpired
+                // bearer credential for taking over the account, and `critical`
+                // is precisely the level most likely to be forwarded on to
+                // aggregation and paging systems with a wider readership than
+                // whoever holds shell on this container. The lengths are enough
+                // to tell "wrote nothing" apart from "wrote something else".
                 \Log::critical('[PASSWORD_SETUP] Token mismatch after save!', [
                     'user_id' => $this->id,
-                    'expected' => $token,
-                    'actual' => $this->password_setup_token,
+                    'expected_length' => strlen($token),
+                    'actual_length' => strlen((string) $this->password_setup_token),
                 ]);
                 throw new \RuntimeException('Token verification failed after save');
             }
@@ -812,7 +822,6 @@ class User extends Authenticatable implements FilamentUser, HasName
             \Log::info('[PASSWORD_SETUP] Token saved successfully', [
                 'user_id' => $this->id,
                 'email' => $this->email,
-                'token_preview' => substr($token, 0, 8).'...',
             ]);
 
             return $token;

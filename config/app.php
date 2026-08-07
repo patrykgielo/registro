@@ -69,6 +69,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tenant Slug (dedicated tenant-stack containers only)
+    |--------------------------------------------------------------------------
+    |
+    | Set on a per-client Docker stack where this container's database holds
+    | exactly one Organization. Empty on the shared legacy stack and in dev/
+    | tests, which still host many organizations in one database. Gates:
+    | registro:tenant-provision (safety check against the wrong slug), the
+    | organizations.singleton DB lock (see its migration), the public
+    | registration routes, and the /platform panel registration.
+    |
+    */
+
+    'tenant_slug' => env('TENANT_SLUG'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

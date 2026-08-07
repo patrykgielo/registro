@@ -198,38 +198,52 @@ Route::middleware([ResolveTenant::class, 'throttle:5,1'])->group(function () {
     Route::post('/login', [\App\Http\Controllers\Auth\LoginController::class, 'login']);
 });
 
-// Business registration (root domain: /register → 2-step wizard)
-Route::middleware(['guest'])->group(function () {
-    Route::get('/register', [BusinessRegisterController::class, 'showStep1'])
-        ->name('register');
-    Route::post('/register/step/1', [BusinessRegisterController::class, 'storeStep1'])
-        ->middleware('throttle:10,1')
-        ->name('register.step1.store');
-    Route::get('/register/step/2', [BusinessRegisterController::class, 'showStep2'])
-        ->name('register.step2');
-    Route::post('/register/step/2', [BusinessRegisterController::class, 'storeStep2'])
-        ->middleware('throttle:5,1')
-        ->name('register.step2.store');
-});
+// Business registration (root domain: /register → 2-step self-serve wizard).
+// Registered ONLY on the shared legacy stack (TENANT_SLUG unset). A dedicated
+// tenant-stack container already gets its one organization from
+// `registro:tenant-provision` at boot, and organizations.singleton (see its
+// migration) would reject a 2nd one at the DB level regardless — but gating at
+// route-registration time means the endpoint does not exist here at all: no
+// middleware to forget, nothing to bypass. Visible by reading this file, unlike
+// a middleware attached elsewhere.
+if (! config('app.tenant_slug')) {
+    Route::middleware(['guest'])->group(function () {
+        Route::get('/register', [BusinessRegisterController::class, 'showStep1'])
+            ->name('register');
+        Route::post('/register/step/1', [BusinessRegisterController::class, 'storeStep1'])
+            ->middleware('throttle:10,1')
+            ->name('register.step1.store');
+        Route::get('/register/step/2', [BusinessRegisterController::class, 'showStep2'])
+            ->name('register.step2');
+        Route::post('/register/step/2', [BusinessRegisterController::class, 'storeStep2'])
+            ->middleware('throttle:5,1')
+            ->name('register.step2.store');
+    });
 
-// Business registration step 3 + welcome (auth required)
-Route::middleware(['auth'])->group(function () {
-    Route::get('/register/step/3', [BusinessRegisterController::class, 'showStep3'])
-        ->name('register.step3');
-    Route::post('/register/step/3', [BusinessRegisterController::class, 'storeStep3'])
-        ->middleware('throttle:10,1')
-        ->name('register.step3.store');
-    Route::get('/register/welcome', [BusinessRegisterController::class, 'welcome'])
-        ->name('register.welcome');
-});
+    // Business registration step 3 + welcome (auth required)
+    Route::middleware(['auth'])->group(function () {
+        Route::get('/register/step/3', [BusinessRegisterController::class, 'showStep3'])
+            ->name('register.step3');
+        Route::post('/register/step/3', [BusinessRegisterController::class, 'storeStep3'])
+            ->middleware('throttle:10,1')
+            ->name('register.step3.store');
+        Route::get('/register/welcome', [BusinessRegisterController::class, 'welcome'])
+            ->name('register.welcome');
+    });
 
-// Business registration AJAX (throttled)
-Route::middleware('throttle:30,1')->group(function () {
-    Route::get('/register/check-slug', [BusinessRegisterController::class, 'checkSlug'])
-        ->name('register.check-slug');
-    Route::get('/register/generate-slug', [BusinessRegisterController::class, 'generateSlug'])
-        ->name('register.generate-slug');
-});
+    // Business registration AJAX (throttled)
+    Route::middleware('throttle:30,1')->group(function () {
+        Route::get('/register/check-slug', [BusinessRegisterController::class, 'checkSlug'])
+            ->name('register.check-slug');
+        Route::get('/register/generate-slug', [BusinessRegisterController::class, 'generateSlug'])
+            ->name('register.generate-slug');
+    });
+
+    // Backwards compatibility: /get-started → /register
+    Route::redirect('/get-started', '/register', 301);
+    Route::redirect('/get-started/step/2', '/register/step/2', 301);
+    Route::redirect('/get-started/welcome', '/register/welcome', 301);
+}
 
 // Customer registration (tenant subdomain: /register → single-step)
 // ResolveTenant needed to attach user to organization on subdomain registration
@@ -238,11 +252,6 @@ Route::get('/customer/register', [RegisterController::class, 'showRegistrationFo
     ->name('customer.register');
 Route::post('/customer/register', [RegisterController::class, 'register'])
     ->middleware(['guest', ResolveTenant::class, CheckRegistrationEnabled::class]);
-
-// Backwards compatibility: /get-started → /register
-Route::redirect('/get-started', '/register', 301);
-Route::redirect('/get-started/step/2', '/register/step/2', 301);
-Route::redirect('/get-started/welcome', '/register/welcome', 301);
 
 // Password Setup Routes (for admin-created users)
 Route::get('/password/setup/{token}', [App\Http\Controllers\Auth\SetPasswordController::class, 'show'])
@@ -382,10 +391,19 @@ if (! app()->isProduction()) {
 // Authorization is handled in the controller — no auth middleware here,
 // because the org owner may not have a Registro account / be logged in.
 // Throttled: the signed URL streams a ZIP with full org PII.
+//
+// Gated on TENANT_SLUG like the rest of /platform: this is the one platform
+// route defined here rather than by PlatformPanelProvider, so skipping that
+// provider does not remove it. It carries no auth middleware by design, and a
+// dedicated tenant stack has no super-admin and its own APP_KEY (so a signed URL
+// minted elsewhere will not validate) — but an unauthenticated endpoint that
+// streams full-PII exports has no reason to exist in a client's container.
 // =============================================================================
-Route::get('/platform/organizations/{organization}/data-export', [\App\Http\Controllers\Platform\OrganizationDataExportController::class, 'download'])
-    ->name('platform.organization.data-export')
-    ->middleware('throttle:10,1440');
+if (! config('app.tenant_slug')) {
+    Route::get('/platform/organizations/{organization}/data-export', [\App\Http\Controllers\Platform\OrganizationDataExportController::class, 'download'])
+        ->name('platform.organization.data-export')
+        ->middleware('throttle:10,1440');
+}
 
 // =============================================================================
 // CMS Pages - Catch-all Route (MUST BE LAST!)
