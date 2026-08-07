@@ -57,4 +57,16 @@ class ServiceAreaResource extends BaseResource
             'edit' => EditServiceArea::route('/{record}/edit'),
         ];
     }
+
+    /**
+     * Had no can*() overrides at all before this fix — BaseResource's
+     * canViewAny() defaults to deny, which would have locked everyone
+     * including super-admin out. Same admin/super-admin gate as its settings
+     * group siblings (CategoryResource, RentalCategoryResource); create/edit/
+     * delete/deleteAny fall through to BaseResource's matching default.
+     */
+    public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
+    }
 }

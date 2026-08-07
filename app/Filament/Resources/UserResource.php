@@ -16,9 +16,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 use UnitEnum;
 
@@ -317,13 +315,10 @@ class UserResource extends BaseResource
                 Actions\EditAction::make()
                     ->label('Edytuj'),
 
-                // ->visible() is what actually closes deletion here. Filament
-                // resolves DeleteAction through getDeleteAuthorizationResponse(),
-                // NOT through canDelete() — and with no UserPolicy and strict
-                // authorization off, that path returns allow() for everyone. The
-                // canDelete() overrides below read as a guard and enforce nothing;
-                // without this line a tenant admin deletes co-admins from the row
-                // action, which is the opposite of what this resource claims.
+                // BaseResource::getDeleteAuthorizationResponse() enforces canDelete()
+                // below — Filament also refuses callAction('delete') outright now,
+                // not just the button render. ->visible() stays for UX (hide what's
+                // forbidden) but is no longer the only thing standing in the way.
                 Actions\DeleteAction::make()
                     ->label('Usuń')
                     ->visible(fn (User $record): bool => static::canDelete($record)),
@@ -413,32 +408,18 @@ class UserResource extends BaseResource
         return auth()->user()?->hasRole('super-admin') ?? false;
     }
 
+    /**
+     * canDelete()/canDeleteAny() are now genuinely enforced — BaseResource wires
+     * getDeleteAuthorizationResponse()/getDeleteAnyAuthorizationResponse() (what
+     * DeleteAction/DeleteBulkAction actually call) straight through to these two
+     * methods, so no local override is needed here any more. See
+     * .claude/rules/filament-resources.md "Autoryzacja" for why that distinction
+     * used to matter: a tenant admin driving `callAction('delete')` against a
+     * co-admin actually removed the record while this canDelete() correctly
+     * returned false, because nothing upstream was asking it.
+     */
     public static function canDeleteAny(): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
-    }
-
-    /**
-     * canDelete()/canDeleteAny() alone enforce nothing.
-     *
-     * Filament asks these two methods, not those, when a DeleteAction runs — and
-     * with no UserPolicy and strict authorization off, the default implementation
-     * returns allow() for everybody. Verified by review: a tenant admin driving
-     * `callAction('delete')` against a co-admin actually removed the record while
-     * canDelete() was returning false. Hiding the buttons is not enough on its
-     * own either, because the action can be called without rendering it.
-     */
-    public static function getDeleteAuthorizationResponse(Model $record): Response
-    {
-        return static::canDelete($record)
-            ? Response::allow()
-            : Response::deny();
-    }
-
-    public static function getDeleteAnyAuthorizationResponse(): Response
-    {
-        return static::canDeleteAny()
-            ? Response::allow()
-            : Response::deny();
     }
 }

@@ -247,7 +247,15 @@ class StaffVacationPeriodResource extends BaseResource
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
+                    // authorizeIndividualRecords() is NOT the default — without it
+                    // Filament deletes every selected row after a single
+                    // canDeleteAny() check (getIndividuallyAuthorizedSelectedRecords()
+                    // returns the selection unfiltered unless opted in). Since
+                    // canDeleteAny() allows staff, a staff member could bulk-delete
+                    // their own APPROVED leave, which canDelete() forbids per record.
+                    // The row action was guarded; this path was not.
+                    Actions\DeleteBulkAction::make()
+                        ->authorizeIndividualRecords(),
                     Actions\BulkAction::make('approve')
                         ->label('Zatwierdź zaznaczone')
                         ->icon('heroicon-o-check-circle')
@@ -344,6 +352,21 @@ class StaffVacationPeriodResource extends BaseResource
 
         // Staff can only delete their own pending vacations
         return $record->user_id === $user->id && ! $record->is_approved;
+    }
+
+    /**
+     * Gates whether the bulk-delete button is offered at all. The per-record
+     * filtering it relies on happens only because the action itself carries
+     * ->authorizeIndividualRecords() — that is opt-in, not Filament's default,
+     * and an earlier version of this docblock claimed the opposite. Removing
+     * that call re-opens staff bulk-deleting their own approved leave.
+     * Without this override, BaseResource's
+     * admin/super-admin-only default would hide bulk delete from staff even
+     * though every record they could legally select is still enforced.
+     */
+    public static function canDeleteAny(): bool
+    {
+        return auth()->user()?->hasAnyRole(['admin', 'super-admin', 'staff']) ?? false;
     }
 
     /**
