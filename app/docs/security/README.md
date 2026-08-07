@@ -32,6 +32,7 @@ Complete security documentation for the Registro application.
 - [Booking Wizard Security](patterns/booking-wizard-security.md)
 - [Calendar Generation Security](patterns/calendar-generation-security.md)
 - [Service Layer Security](patterns/service-layer-security.md)
+- [Role Escalation Guard (UserResource/RoleResource)](patterns/role-escalation-guard.md)
 
 ---
 

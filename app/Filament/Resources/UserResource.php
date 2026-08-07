@@ -5,6 +5,8 @@ namespace App\Filament\Resources;
 use App\Events\AdminCreatedUser;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
+use App\Rules\AssignableRole;
+use App\Support\RoleAssignmentGuard;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -13,8 +15,8 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\Models\Role;
 use UnitEnum;
 
 class UserResource extends BaseResource
@@ -30,6 +32,31 @@ class UserResource extends BaseResource
     protected static ?string $pluralModelLabel = 'Użytkownicy';
 
     protected static ?int $navigationSort = 1;
+
+    /**
+     * Hide accounts holding the protected role from anyone who cannot grant it.
+     *
+     * Filtering the role picker guards one direction only. The mirror gap bites
+     * without any attack: because ->options() omits super-admin, opening such an
+     * account as a tenant admin leaves that role out of the form state, so saving
+     * ANY unrelated change — a corrected phone number — silently strips it. The
+     * operator loses /platform with recovery only through registro:create-owner
+     * on the CLI. Removing the record from the query closes granting, stripping
+     * and accidental edits in one move.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        if (! RoleAssignmentGuard::canGrant(RoleAssignmentGuard::PROTECTED_ROLE)) {
+            $query->whereDoesntHave(
+                'roles',
+                fn (Builder $roles) => $roles->where('name', RoleAssignmentGuard::PROTECTED_ROLE)
+            );
+        }
+
+        return $query;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -139,7 +166,8 @@ class UserResource extends BaseResource
                         ->label('Role')
                         ->multiple()
                         ->relationship('roles', 'name')
-                        ->options(Role::all()->pluck('name', 'id'))
+                        ->options(fn (): array => RoleAssignmentGuard::assignableRolesQuery()->pluck('name', 'id')->all())
+                        ->rule(new AssignableRole)
                         ->preload()
                         ->searchable()
                         ->helperText('Wybierz jedną lub więcej ról dla użytkownika'),
