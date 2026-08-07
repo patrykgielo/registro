@@ -43,6 +43,15 @@ STOP → agent → implementuj
 
 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — max 3 teammates równolegle.
 
+## Weryfikacja NIE dotyka dev-bazy
+
+Agent sprawdzający swoją pracę używa `php artisan test` (SQLite z `.env.testing`). Tinker **tylko do
+odczytu**. Zapis do dev-MySQL w trakcie weryfikacji jest zabroniony — także „na chwilę, zaraz cofnę".
+
+Incydent 2026-08-07: audytor bezpieczeństwa pobrał „pierwszego użytkownika z bazy" jako aktora testowego,
+trafił na realnego super-admina, dopisał mu rolę i zostawił osierocone rekordy fabryki. Cofnął, ale nie
+wszystko — sierotę znalazłem dopiero przy ręcznym sprawdzeniu.
+
 ## Bounded Retry — Auto-Fix Loops
 
 Jeśli agent (dowolny) próbuje naprawić TEN SAM błąd/test 3 razy bez postępu

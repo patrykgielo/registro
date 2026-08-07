@@ -38,6 +38,19 @@ Od v2.1.133 default = `fresh` (gubi niepushed commits). Ustawione w `.claude/set
 "worktree": { "baseRef": "head" }
 ```
 
+### isolation: worktree — WYŁĄCZONE (2026-08-07)
+
+`laravel-senior-architect` i `frontend-ui-architect` miały `isolation: worktree`. Zdjęte, bo
+**synchronizacja zawiodła w 3 na 3 uruchomieniach** jednej sesji: praca zostawała w worktree, a
+checkout główny wracał czysty. Za każdym razem trzeba było ręcznie kopiować pliki, porównując wersje,
+żeby nie nadpisać nowszych poprawek starszymi.
+
+Worktree kupuje izolację przy agentach pracujących **równolegle** na tym samym repo. Nie robimy tego —
+agenci lecą po kolei. Koszt był realny (ręczne odzyskiwanie, ryzyko cichej utraty), zysk zerowy.
+
+Wracać do tego dopiero, gdy faktycznie pojawi się kilku agentów piszących równolegle — i wtedy
+zweryfikować, czy synchronizacja działa, zanim się na niej oprzemy.
+
 ### Agent Teams
 
 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — max 3 teammates równolegle.

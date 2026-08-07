@@ -6,7 +6,6 @@ model: sonnet
 color: yellow
 memory: project
 effort: high
-isolation: worktree
 ---
 
 ## CRITICAL PROJECT CONSTRAINTS (non-negotiable, memorize these)
