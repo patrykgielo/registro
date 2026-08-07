@@ -207,3 +207,15 @@ Gdy zmieniasz formularz w panelu admina (nowe pola, zmiana formatu danych, Repea
 [ ] Przetestowano z danymi w starym formacie (backward compat)
 [ ] Przetestowano stronę publiczną po zapisie z admin panelu
 ```
+
+---
+
+## Role Escalation Guard (feature/user-role-escalation-guard, 2026-08-07)
+
+**`->options()` na relationship Select is UI-only — for `multiple()` fields it's the only thing
+enforcing the list, because the field itself is `dehydrated(false)` and never reaches
+`mutateFormDataBeforeSave()`.** Real enforcement must be a `->rule()` on the field, since that's
+the only hook that sees the submitted value regardless of client input. Pattern + full "why"
+(including the `canViewAny()`-gates-every-page Livewire testing gotcha) documented in
+`app/docs/security/patterns/role-escalation-guard.md`. Reusable guard: `App\Support\RoleAssignmentGuard`
++ `App\Rules\AssignableRole` (UserResource) / `App\Rules\ProtectedRoleName` (RoleResource).

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\RoleResource\Pages;
+use App\Rules\ProtectedRoleName;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -38,6 +39,7 @@ class RoleResource extends BaseResource
                         ->required()
                         ->unique(ignoreRecord: true)
                         ->maxLength(255)
+                        ->rule(new ProtectedRoleName)
                         ->helperText('Np. admin, staff, customer'),
                     Forms\Components\TextInput::make('guard_name')
                         ->label('Guard')

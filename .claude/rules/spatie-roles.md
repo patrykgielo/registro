@@ -80,6 +80,14 @@ Od Phase 6 permissions używają formatu `module.action`:
 // itd. — pełne mapowanie w migracji
 ```
 
+## Role-granting przez formularz (UI-facing, nie internal `assignRole()`)
+
+`assignRole()`/`syncRoles()` z tej reguły to zaufane, wewnętrzne call sites (hardcoded nazwa roli).
+Gdy rolę wybiera UŻYTKOWNIK przez formularz (`UserResource`'s `roles` Select, `RoleResource`'s
+`name` field) — to jest system boundary i wymaga osobnej walidacji, nie tylko `firstOrCreate`.
+Patrz `.claude/rules/filament-resources.md` (sekcja "Role Escalation Guard") i
+`app/docs/security/patterns/role-escalation-guard.md`.
+
 ## Kiedy seedować role na dev
 
 ```bash
