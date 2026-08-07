@@ -111,6 +111,8 @@ ssh_config
 .staging-credentials.local
 *.credentials.local
 .claude/worktrees/
+# cc-doctor: local timestamp for the weekly MCP health check
+.claude/.cc-doctor-mcp-stamp
 /check_loader.php
 
 # ============================================================================
