@@ -726,3 +726,37 @@ config('retention.carts_days', 7)          // carts
 
 `customer_last_name` na `orders` jest NOT NULL → placeholder `'Anonimizowane'`, NIE null.
 Anonimizowany email: `"anon_{id}@anonymized.local"` — unikalny per rząd (chunkById).
+
+---
+
+## Tabele GLOBALNE udające tenantowe (incydent 2026-08-07)
+
+Nie każdy model w panelu tenanta ma `organization_id`. **Zapis do tych tabel dotyka wszystkich
+tenantów naraz**, nawet jeśli dotarłeś do niego przez zasób poprawnie zakresowany:
+
+| Tabela | Klucz | Skutek zapisu |
+|---|---|---|
+| `email_suppressions` | adres e-mail | wykluczenie blokuje wysyłkę u **każdego** tenanta dzielącego ten kontakt |
+| `sms_suppressions` | numer telefonu | jw. |
+| `roles`, `permissions` | nazwa | `'teams' => false` — jeden wiersz `admin` dla wszystkich organizacji |
+| `users` | — | brak `organization_id`; przynależność wyłącznie przez pivot `organization_user` |
+| `maintenance_events` | — | log operacyjny platformy |
+
+**Incydent:** akcja „Odblokuj" na `EmailEventResource` była widoczna tylko przy własnym,
+zakresowanym zdarzeniu — ale `EmailSuppression::unsuppress()` pisze po adresie. Tenant B dzielący
+kontakt z tenantem A mógł cofnąć wykluczenie A po bounce dla całej platformy.
+
+**Zasada: widoczność rekordu ≠ własność tego, co zapis zmienia.** Zanim udostępnisz akcję
+tenantowi, sprawdź, czy tabela, do której ona pisze, ma `organization_id`. Jeśli nie ma —
+zakres zasobu Cię nie chroni.
+
+### Kolumna `organization_id`, której nikt nie zapisuje
+
+`email_events` i `sms_events` miały tę kolumnę od marca 2026 i **żadna ścieżka tworzenia nigdy jej
+nie wypełniła** — NULL na każdym wierszu. Samo dodanie traitu `BelongsToOrganization` zostawiłoby
+ten stan i uczyniło całą historię niewidoczną dla wszystkich (fail-closed, nie wyciek — ale ciche
+obcięcie danych).
+
+**Dodając trait do istniejącego modelu:** sprawdź `SELECT COUNT(*) WHERE organization_id IS NULL`,
+znajdź wszystkie miejsca `::create()`, i dopisz migrację backfill. Kolumna w migracji ≠ kolumna
+wypełniana.

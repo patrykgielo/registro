@@ -219,3 +219,48 @@ the only hook that sees the submitted value regardless of client input. Pattern 
 (including the `canViewAny()`-gates-every-page Livewire testing gotcha) documented in
 `app/docs/security/patterns/role-escalation-guard.md`. Reusable guard: `App\Support\RoleAssignmentGuard`
 + `App\Rules\AssignableRole` (UserResource) / `App\Rules\ProtectedRoleName` (RoleResource).
+
+---
+
+## Autoryzacja: `can*()` NIE jest punktem egzekwowania (incydent 2026-08-07)
+
+**`app/Policies/` w tym projekcie NIE ISTNIEJE. Zero polityk.** Filament bez polityki i bez strict
+mode zwraca `Response::allow()` — czyli **domyślnie zezwala**. Autoryzacja to 33 ręcznie skopiowane
+`hasRole()` w poszczególnych zasobach, bez jednego punktu.
+
+### Które metody Filament faktycznie pyta
+
+| Piszesz | Filament pyta | Skutek |
+|---|---|---|
+| `canViewAny()` | `canViewAny()` | działa — gatuje też **mount każdej strony** zasobu, nie tylko listę |
+| `canDelete()` | **`getDeleteAuthorizationResponse()`** | `canDelete()` **nie jest wołane** przez `DeleteAction` |
+| `canDeleteAny()` | **`getDeleteAnyAuthorizationResponse()`** | to samo dla `DeleteBulkAction` |
+
+**Incydent:** agent napisał `canDelete()` zwracające `false` dla admina tenanta i uznał sprawę za
+zamkniętą. Recenzent **faktycznie usunął współadmina** przez `callAction('delete')`. Guard czytał
+się poprawnie i nie robił nic.
+
+### Jak to zrobić poprawnie
+
+```php
+// ❌ ZA MAŁO — czyta się jak zabezpieczenie, nie egzekwuje niczego
+public static function canDelete($record): bool { return $user->hasRole('super-admin'); }
+
+// ✅ Egzekwowanie + ukrycie przycisku
+public static function getDeleteAuthorizationResponse(Model $record): Response
+{
+    return static::canDelete($record) ? Response::allow() : Response::deny();
+}
+Actions\DeleteAction::make()->visible(fn ($record) => static::canDelete($record))
+```
+
+Samo `->visible()` nie wystarcza — akcję da się wywołać bez wyrenderowania.
+
+### Zasada
+
+**Otwierasz `canViewAny()` dla szerszej roli → przejrzyj WSZYSTKIE akcje tego zasobu.** To, co było
+nieszkodliwe przy zamkniętym zasobie, staje się osiągalne w tej samej minucie. Dotyczy też
+`getNavigationBadge()` — `getModel()::count()` policzy wszystkich tenantów (patrz `models.md`).
+
+**Test musi być zweryfikowany mutacją.** Odwróć guard, sprawdź że test pada. Test na autoryzację,
+który przechodzi z konstrukcji, jest gorszy niż jego brak — daje fałszywą pewność.
