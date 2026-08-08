@@ -3,13 +3,27 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
+         defaultTestSuite="Unit,Feature"
 >
+    <!--
+        defaultTestSuite="Unit,Feature" (above) means `php artisan test` / plain
+        `phpunit` with no testsuite flag ONLY runs Unit+Feature: verified against
+        vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php around line 830,
+        which falls back to phpunit's defaultTestSuite attribute exclusively when no
+        testsuite CLI flag is given. The Browser suite below requires Chromium and
+        Playwright plus a live in process HTTP server (see tests/Pest.php) and must
+        never run implicitly in CI or a plain `php artisan test`. Run it explicitly
+        by passing the testsuite flag "Browser" to `php artisan test`.
+    -->
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
         </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Browser">
+            <directory>tests/Browser</directory>
         </testsuite>
     </testsuites>
     <source>

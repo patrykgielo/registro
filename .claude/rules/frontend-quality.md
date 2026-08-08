@@ -102,6 +102,26 @@ Patrz `resources/views/booking-wizard/` dla pełnego przykładu.
 
 ---
 
+---
+
+## CRITICAL: Usuwasz właściwość komponentu Alpine → przegrepuj SZABLONY
+
+Kasując getter/pole z `x-data`, wyszukaj jego nazwę w całym `resources/views/`. Blade nic nie zgłosi,
+a `:href="cosCzegoNieMa"` rzuca `ReferenceError` przy **inicjalizacji** Alpine, nie przy kliknięciu.
+
+**Incident 2026-08-08:** przy migracji ze starego wizarda na Cart/Checkout usunięto getter
+`bookingUrl()` (wskazywał na skasowany route), ale zostało jedno z dwóch użyć w
+`services/show.blade.php`. Efekt: **każda** strona sprzętu `item_rental` rzucała
+`Uncaught ReferenceError` i pokazywała drugi, martwy przycisk „Zarezerwuj online" pod działającym
+„Dodaj do koszyka". Przeżyło to wszystkie 1054 testy, bo **testy Feature nie wykonują JS** —
+sprawdzają, co serwer wysłał, nie co przeglądarka z tym zrobiła. Znalazł to dopiero pierwszy test
+przeglądarkowy sklepu.
+
+**Zapobieganie:** `assertNoJavaScriptErrors()` w teście przeglądarkowym każdej ważnej strony
+publicznej. Kosztuje jedną linię i łapie całą tę klasę błędów.
+
+---
+
 ## Verification Checklist (przed commit)
 
 - [ ] `npm run build` wykonany
