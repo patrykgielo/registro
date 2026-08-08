@@ -27,7 +27,7 @@ TIER 1 ma budżet **12 000 znaków łącznie**. Nowa reguła zawsze-ładowana = 
 | `migrations.md` | `database/migrations/**` | Security, indexes, rollback |
 | `security.md` | `app/Http/Controllers/Auth/**` | OWASP basics |
 | `notifications.md` | `app/Notifications/**` | ShouldQueue, ShouldBeUnique |
-| `onboarding.md` | `app/Actions/Onboarding/**` | Industry enum, vertical seeders |
+| `onboarding.md` | `app/Actions/Onboarding/**`, `ProvisionTenantCommand.php` | No public signup — CLI provisioning only; Industry enum, vertical seeders |
 | `services.md` | `app/Services/**` | DI, SettingsManager |
 | `controllers.md` | `app/Http/Controllers/**` | Thin controllers |
 | `frontend-quality.md` | `resources/views/**` | Animation GPU, a11y |

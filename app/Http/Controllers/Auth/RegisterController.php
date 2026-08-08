@@ -27,14 +27,19 @@ class RegisterController extends Controller
 
     /**
      * Show the customer registration form.
-     * On root domain (no tenant), redirect to business registration.
+     *
+     * On root domain (no tenant resolved) there is nothing to register a
+     * customer against -- the public business-registration wizard this used
+     * to fall back to is gone (see routes/web.php), and customer accounts
+     * only ever belong to a tenant. Send the visitor to login instead of a
+     * dead route.
      */
     public function showRegistrationForm(Request $request)
     {
         $tenant = $request->attributes->get('tenant');
 
         if (! $tenant) {
-            return redirect()->route('register');
+            return redirect()->route('login');
         }
 
         return view('auth.register');

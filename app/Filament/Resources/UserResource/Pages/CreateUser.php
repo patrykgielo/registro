@@ -4,6 +4,7 @@ namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Events\AdminCreatedUser;
 use App\Filament\Resources\UserResource;
+use App\Models\User;
 use App\Support\TenantFeature;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -77,7 +78,7 @@ class CreateUser extends CreateRecord
     protected function getCreatedNotificationTitle(): ?string
     {
         if ($this->data['send_setup_email'] ?? false) {
-            return 'Użytkownik utworzony - email z linkiem wysłany (ważny 30 minut)';
+            return 'Użytkownik utworzony - email z linkiem wysłany (ważny '.User::PASSWORD_SETUP_TTL_HOURS.' godziny)';
         }
 
         return 'Użytkownik utworzony pomyślnie';

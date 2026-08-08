@@ -68,9 +68,9 @@
             </p>
         @endif
         <p class="text-sm text-white/70 mt-2">
-            Chcesz założyć firmę?
-            <a href="{{ route('register') }}" class="font-semibold text-white underline decoration-2 underline-offset-4 hover:text-white/80 transition-colors">
-                Wypróbuj za darmo
+            Chcesz założyć konto dla swojej firmy?
+            <a href="mailto:{{ $contactEmail }}" class="font-semibold text-white underline decoration-2 underline-offset-4 hover:text-white/80 transition-colors">
+                Skontaktuj się z nami
             </a>
         </p>
     </x-slot:footer>

@@ -68,3 +68,7 @@
 
 ## VULN-003 Layer 2 (2026-07-03)
 - [project_vuln003_layer2.md](project_vuln003_layer2.md) — BelongsToOrganization fail-closed hardening, tenant_resolution_attempted mechanism, test-fix patterns
+
+## Password Setup TTL + Public Wizard Removal (2026-08-08)
+- [project_setup_ttl_and_wizard_removal.md](project_setup_ttl_and_wizard_removal.md) — `User::PASSWORD_SETUP_TTL_HOURS=24` (not config, single source of truth); public `/register` self-serve wizard removed entirely (CLI-only provisioning now); `TenantRegistered` dispatched from `registro:tenant-provision`, mail off critical path
+- [feedback_pendingcommand_lazy_execution.md](feedback_pendingcommand_lazy_execution.md) — `$this->artisan()` result assigned to a variable defers execution to `__destruct()`; chain in one statement or call `->run()` explicitly before asserting DB state

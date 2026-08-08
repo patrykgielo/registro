@@ -1,39 +1,35 @@
 ---
 paths:
   - "app/Actions/Onboarding/**"
-  - "app/Http/Controllers/Auth/BusinessRegisterController.php"
-  - "resources/views/auth/register-business-*"
-  - "resources/views/onboarding/**"
+  - "app/Console/Commands/ProvisionTenantCommand.php"
   - "app/Enums/Industry.php"
 ---
 
-# Onboarding & Business Registration Rules
+# Onboarding & Tenant Provisioning Rules
 
-## Flow — 3 kroki
+## No public self-serve registration
+
+There is no public "sign up" flow. The product is sold via contract; a new organization is
+provisioned by an operator running:
 
 ```
-Step 1: Firma + branża (guest)
-  → POST validates: org_name, slug, industry (NOT booking_type!)
-  → Session: business_register.step1
-
-Step 2: Dane właściciela (guest)
-  → POST validates: first_name, last_name, email, password, terms
-  → Creates: User + Organization + seed data (w transakcji)
-  → Logs in user
-  → Session: business_register.organization_id
-  → Redirect: step3 (NIE welcome!)
-
-Step 3: Personalizacja (auth, optional)
-  → City, address, mobile_service toggle, service_radius_km
-  → "Pomiń" → welcome (skip link)
-  → "Zapisz" → welcome
-
-Welcome: Auto-redirect do panelu admina (5s)
+php artisan registro:tenant-provision --slug=acme --name="Acme Sp. z o.o." \
+    --industry=equipment_rental --owner-email=owner@acme.pl --owner-name="Jan Kowalski" [--no-email]
 ```
 
-## Kluczowe wzorce
+Full mechanics (idempotency, global-seeder gating, `TenantRegistered` dispatch, singleton lock on
+dedicated tenant-stack containers): `app/docs/features/tenant-stack-provisioning.md`. A prior
+2-step public wizard (`BusinessRegisterController`) was removed entirely — do not re-add a public
+registration route without re-opening that decision; the archived design is at
+`docs/archive/features/tenant-provisioning-wizard.md` for historical reference only.
 
-### Industry zamiast booking_type w onboardingu
+- **Owner has no password.** Access is via `User::initiatePasswordSetup()` (same mechanism
+  Filament's `UserResource` uses for admin-created staff) — the command prints the setup link to
+  stdout, always, regardless of whether the `TenantRegistered` mail dispatch succeeds.
+- **Idempotent by slug.** Re-running the command against an existing organization finds it via
+  `firstOrCreate` rather than duplicating it, and does not re-dispatch `TenantRegistered`.
+
+## Industry zamiast booking_type
 
 ```php
 // ✅ PRAWIDŁOWO — waliduj industry
@@ -45,22 +41,7 @@ $request->validate(['booking_type' => ['required', 'in:time_slot,item_rental']])
 
 Industry automatycznie ustawia booking_type via `Industry::bookingType()`.
 
-### OnboardingData — value object
-
-```php
-new OnboardingData(
-    orgName: $step1['org_name'],
-    slug: $step1['slug'],
-    bookingType: $industry->bookingType(),  // derived!
-    industry: $step1['industry'],           // string value
-    firstName: ...,
-    lastName: ...,
-    email: ...,
-    password: ...,
-);
-```
-
-### Vertical Seeders — dodawanie nowej branży
+## Vertical Seeders — dodawanie nowej branży
 
 **KRYTYCZNE: Nowy tenant startuje z PUSTYM katalogiem.** `SeedOrganizationDefaults::execute()` seeduje tylko settings i feature flags — nigdy produkty/usługi. Vertical seed to operacja opt-in, wyłącznie ręczna.
 
@@ -76,7 +57,7 @@ interface VerticalSeeder {
 }
 ```
 
-### Seeder scope bypass
+## Seeder scope bypass
 
 Seedery MUSZĄ używać `withoutGlobalScope('organization')`:
 
@@ -91,26 +72,6 @@ Service::withoutGlobalScope('organization')->create([
 // ❌ ŹLE — BelongsToOrganization trait nadpisze organization_id
 Service::create([...]);
 ```
-
-## Session keys
-
-| Key | Gdy | Zawartość |
-|-----|-----|-----------|
-| `business_register.step1` | Po step1, przed step2 | `org_name`, `slug`, `industry` |
-| `business_register.organization_id` | Po step2 | int (org ID) |
-
-## Walidacja slug
-
-- AJAX check: `GET /register/check-slug?slug=xxx`
-- Server-side: `ValidOrganizationSlug` rule + `unique:organizations,slug`
-- Race condition guard w `storeStep2()`: re-check + regenerate if taken
-- 36 reserved slugs (admin, api, www, registro, etc.)
-
-## Assets
-
-- **`npm run build`** — buduje assety (jednorazowo, statyczne pliki w `public/build/`)
-- **`npm run dev`** — TYLKO do hot-reload podczas aktywnego developmentu CSS/JS
-- NIGDY nie sugeruj `npm run dev` jako rozwiązania problemu z assetami
 
 ## Moduły — automatyczna inicjalizacja (Phase 6)
 
@@ -129,7 +90,7 @@ Super-admin może nadpisać moduły w Platform panel (zapisuje do `settings.modu
 
 ## Seed data — referencja (opt-in manualny, nie auto)
 
-Vertical seedery są dostępne, ale **NIE są wywoływane automatycznie** podczas onboardingu.
+Vertical seedery są dostępne, ale **NIE są wywoływane automatycznie** podczas provisioningu.
 Uruchom ręcznie: `php artisan onboarding:seed-vertical {id_lub_slug}`
 
 | Industry | Seeder | Ilość |

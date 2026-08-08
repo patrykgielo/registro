@@ -162,7 +162,10 @@ Generates tenant-specific URLs with correct subdomain.
 | `route($tenant, 'route.name')` | `https://demo.registro.local:8444/generated-path` |
 | `admin($tenant)` | `https://demo.registro.local:8444/admin/demo` |
 
-Used in `BusinessRegisterController` for post-onboarding redirects and welcome screen.
+Used in `TenantWelcomeNotification`/`NewTenantRegisteredNotification` (the panel-address link in the
+`TenantRegistered` mail, dispatched by `registro:tenant-provision`). Previously also used in
+`BusinessRegisterController` for post-onboarding redirects and the welcome screen — removed along
+with the public self-serve wizard, see `app/docs/features/tenant-stack-provisioning.md`.
 
 ---
 

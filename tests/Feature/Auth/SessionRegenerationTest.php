@@ -10,9 +10,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Session-fixation defense-in-depth: authenticating a guest session (via any
- * registration flow) must rotate the session ID, matching the behavior already
- * enforced on the login route (AuthenticatesUsers::sendLoginResponse()).
+ * Session-fixation defense-in-depth: authenticating a guest session (via
+ * customer registration) must rotate the session ID, matching the behavior
+ * already enforced on the login route (AuthenticatesUsers::sendLoginResponse()).
+ *
+ * This used to also cover the public business-registration wizard
+ * (BusinessRegisterController, removed -- see routes/web.php), which had its
+ * own manual `Auth::login()` + `session()->regenerate()` call. That subject
+ * is gone along with the controller; the pattern it tested lives on here.
  */
 class SessionRegenerationTest extends TestCase
 {
@@ -23,37 +28,6 @@ class SessionRegenerationTest extends TestCase
         parent::setUp();
 
         $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
-    }
-
-    public function test_business_registration_step2_regenerates_session_id(): void
-    {
-        // Establish a guest session first so we have a "before" session ID.
-        $this->get(route('register'));
-        $sessionIdBefore = $this->app['session']->getId();
-
-        $response = $this->withSession([
-            'business_register.step1' => [
-                'org_name' => 'Session Test Org',
-                'slug' => 'session-test-org',
-                'industry' => 'general_services',
-            ],
-        ])->post(route('register.step2.store'), [
-            'first_name' => 'Jan',
-            'last_name' => 'Testowy',
-            'email' => 'session-regen@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-            'terms' => '1',
-        ]);
-
-        $response->assertRedirect(route('register.step3'));
-
-        $sessionIdAfter = $this->app['session']->getId();
-
-        $this->assertNotEquals($sessionIdBefore, $sessionIdAfter);
-
-        $user = User::where('email', 'session-regen@example.com')->first();
-        $this->assertAuthenticatedAs($user);
     }
 
     public function test_customer_registration_regenerates_session_id(): void

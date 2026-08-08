@@ -16,12 +16,14 @@ use Spatie\Permission\Models\Role;
  * Creates (or finds) the single organization for a dedicated tenant-stack
  * container, on behalf of registro:tenant-provision.
  *
- * Deliberately NOT CreateOrganizationWithOwner (the self-serve wizard action) --
- * this needs two things that action must not do:
+ * Used to be deliberately NOT CreateOrganizationWithOwner, the public
+ * self-serve wizard's action (removed along with the wizard itself -- see
+ * routes/web.php) -- that action inserted unconditionally and collected a
+ * password inline, neither of which this needs:
  *
  * - Idempotent by slug: re-running the command (container restart, re-applied
  *   stack config) must find the existing org/owner rather than duplicate or
- *   overwrite them. CreateOrganizationWithOwner unconditionally inserts.
+ *   overwrite them.
  * - Owner has no password: access is via the existing invite-link mechanism
  *   (User::initiatePasswordSetup(), same as Filament's UserResource) instead of
  *   a password collected inline -- there is no operator-facing form here.

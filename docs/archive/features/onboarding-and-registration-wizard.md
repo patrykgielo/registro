@@ -1,3 +1,8 @@
+> **ARCHIVED 2026-08-08.** The public self-serve wizard this document describes was removed
+> (`BusinessRegisterController` and its routes/views/actions) — the product is now sold via
+> contract and provisioned from the CLI. See `app/docs/features/tenant-stack-provisioning.md`
+> for the current (only) provisioning path. Kept here for historical reference only.
+
 # Onboarding & Business Registration
 
 ## Overview

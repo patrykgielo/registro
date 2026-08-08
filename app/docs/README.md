@@ -71,7 +71,7 @@ for the conceptual overview these deep-dive.
 | Panel Isolation | `architecture/panel-isolation.md` | `/platform` vs `/admin` split, authorization layering, the boundary behind VULN-003 and the EditOrder PII leak |
 | Data Isolation | `architecture/data-isolation.md` | `organization_id` scoping end-to-end — `ResolveTenant` → `BelongsToOrganization` fail-closed scope |
 | Infrastructure | `architecture/infrastructure.md` | Docker Compose topology across dev/staging/prod, real drift between the 4 compose files |
-| Tenant Provisioning | `architecture/tenant-provisioning.md` | Signup → `CreateOrganizationWithOwner` → active tenant; automatic vs. manual `onboarding:seed-vertical` |
+| Tenant Provisioning | `features/tenant-stack-provisioning.md` | `registro:tenant-provision` CLI → active tenant; automatic vs. manual `onboarding:seed-vertical`. (Old public self-serve wizard doc archived: `docs/archive/features/tenant-provisioning-wizard.md`.) |
 | Request Flow | `architecture/request-flow.md` | Checkout sequence diagram (thin-controller pattern) + the sync/async queue boundary |
 
 ### Features

@@ -226,8 +226,11 @@ work to throw away.
 
 `grep -rn "assignRole\|syncRoles" app/` turns up only internal, hardcoded-role
 call sites (`RegisterController::assignRole('customer')`,
-`AssignCustomerRole` listener, `CreateOrganizationWithOwner::assignRole('admin')`,
-`EmployeeResource`/`CustomerResource` create pages, `CreateOwnerCommand`).
+`AssignCustomerRole` listener, `ProvisionTenantOrganization::assignRole('admin')`
+(the CLI provisioning path -- see `app/docs/features/tenant-stack-provisioning.md`;
+`CreateOrganizationWithOwner`, the public self-serve wizard's equivalent, was
+removed along with the wizard), `EmployeeResource`/`CustomerResource` create
+pages, `CreateOwnerCommand`).
 None take a role name from user input — they're trusted internal code paths,
 not a system boundary, so they're out of scope for this guard (see
 `.claude/rules/self-improvement.md`'s "validate at system boundaries").

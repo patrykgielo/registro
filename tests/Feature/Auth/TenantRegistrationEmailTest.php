@@ -12,68 +12,41 @@ use App\Notifications\TenantWelcomeNotification;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 /**
- * Business registration used to send nothing at all: the welcome machinery
- * existed but was wired only to the end-CUSTOMER flow, so the person who had
- * just created a tenant received no confirmation and no panel address, and the
- * operator was never told a tenant had appeared.
- *
- * These tests assert that mail is actually dispatched, and to whom -- not that
- * the controller returns a redirect.
+ * `TenantRegistered` used to be dispatched by the public self-serve
+ * registration wizard (`BusinessRegisterController`, removed -- see
+ * routes/web.php); it's now dispatched by `registro:tenant-provision`
+ * instead (see TenantProvisionCommandTest for that dispatch coverage). The
+ * listener wiring itself -- who gets notified, and the fallback/opt-out
+ * rules around the operator address -- did not change, so these tests
+ * dispatch the event directly rather than driving it through HTTP, and keep
+ * asserting the behavior that survived the removal.
  */
 class TenantRegistrationEmailTest extends TestCase
 {
     use RefreshDatabase;
 
     /**
-     * @return array<string, string>
+     * @return array{0: Organization, 1: User}
      */
-    private function ownerPayload(): array
+    private function dispatchTenantRegistered(): array
     {
-        return [
-            'first_name' => 'Anna',
-            'last_name' => 'Kowalska',
-            'email' => 'anna@firma.test',
-            'password' => 'TajneHaslo12345',
-            'password_confirmation' => 'TajneHaslo12345',
-            'terms' => '1',
-        ];
-    }
+        $organization = Organization::factory()->create();
+        $owner = User::factory()->create(['email' => 'anna@firma.test']);
 
-    private function completeStepOne(): void
-    {
-        $this->post('/register/step/1', [
-            'org_name' => 'Wypozyczalnia Anny',
-            'slug' => 'anna-rental',
-            'industry' => 'equipment_rental',
-        ])->assertRedirect(route('register.step2'));
-    }
+        TenantRegistered::dispatch($organization, $owner);
 
-    public function test_registering_a_business_dispatches_the_tenant_registered_event(): void
-    {
-        Event::fake([TenantRegistered::class]);
-
-        $this->completeStepOne();
-        $this->post('/register/step/2', $this->ownerPayload());
-
-        Event::assertDispatched(TenantRegistered::class, function (TenantRegistered $e) {
-            return $e->organization->slug === 'anna-rental'
-                && $e->owner->email === 'anna@firma.test';
-        });
+        return [$organization, $owner];
     }
 
     public function test_the_new_owner_receives_a_welcome_email(): void
     {
         Notification::fake();
 
-        $this->completeStepOne();
-        $this->post('/register/step/2', $this->ownerPayload());
-
-        $owner = User::where('email', 'anna@firma.test')->firstOrFail();
+        [, $owner] = $this->dispatchTenantRegistered();
 
         Notification::assertSentTo($owner, TenantWelcomeNotification::class);
     }
@@ -83,8 +56,7 @@ class TenantRegistrationEmailTest extends TestCase
         app(SettingsManager::class)->setGlobal('platform.new_tenant_notification_email', 'operator@registro.test');
         Notification::fake();
 
-        $this->completeStepOne();
-        $this->post('/register/step/2', $this->ownerPayload());
+        $this->dispatchTenantRegistered();
 
         Notification::assertSentOnDemand(
             NewTenantRegisteredNotification::class,
@@ -101,8 +73,7 @@ class TenantRegistrationEmailTest extends TestCase
         app(SettingsManager::class)->setGlobal('account.closure_request_email', 'zamkniecia@registro.test');
         Notification::fake();
 
-        $this->completeStepOne();
-        $this->post('/register/step/2', $this->ownerPayload());
+        $this->dispatchTenantRegistered();
 
         Notification::assertSentOnDemand(
             NewTenantRegisteredNotification::class,
@@ -119,8 +90,7 @@ class TenantRegistrationEmailTest extends TestCase
         app(SettingsManager::class)->setGlobal('account.closure_request_email', '');
         Notification::fake();
 
-        $this->completeStepOne();
-        $this->post('/register/step/2', $this->ownerPayload());
+        $this->dispatchTenantRegistered();
 
         Notification::assertNothingSentTo(new \Illuminate\Notifications\AnonymousNotifiable);
     }
@@ -134,13 +104,9 @@ class TenantRegistrationEmailTest extends TestCase
         app(SettingsManager::class)->setGlobal('account.closure_request_email', '');
         Notification::fake();
 
-        $this->completeStepOne();
-        $this->post('/register/step/2', $this->ownerPayload());
+        [, $owner] = $this->dispatchTenantRegistered();
 
-        Notification::assertSentTo(
-            User::where('email', 'anna@firma.test')->firstOrFail(),
-            TenantWelcomeNotification::class,
-        );
+        Notification::assertSentTo($owner, TenantWelcomeNotification::class);
     }
 
     public function test_both_notifications_are_queued_on_the_emails_queue(): void

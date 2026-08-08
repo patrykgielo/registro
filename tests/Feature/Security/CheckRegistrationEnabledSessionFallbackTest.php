@@ -123,8 +123,9 @@ class CheckRegistrationEnabledSessionFallbackTest extends TestCase
             ->get('http://registro.local/customer/register');
 
         // Not blocked by the poisoned session's disabled tenant: the global
-        // default (true) governs, so the request reaches the controller,
-        // which then redirects a tenant-less visitor to business registration.
-        $response->assertRedirect(route('register'));
+        // default (true) governs, so the request reaches the controller, which
+        // then redirects a tenant-less visitor to login — there is no public
+        // business-registration wizard to fall back to (see routes/web.php).
+        $response->assertRedirect(route('login'));
     }
 }

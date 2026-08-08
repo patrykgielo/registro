@@ -55,11 +55,13 @@ class RegisterTenantTest extends TestCase
         $this->assertEquals(0, $user->organizations()->count());
     }
 
-    public function test_customer_registration_on_root_domain_redirects_to_business_register(): void
+    public function test_customer_registration_on_root_domain_redirects_to_login(): void
     {
         $response = $this->get('/customer/register');
 
-        // Without a tenant, customer register redirects to business registration
-        $response->assertRedirect(route('register'));
+        // Without a tenant there is nothing to register a customer against --
+        // the public business-registration wizard this used to fall back to
+        // is gone (see routes/web.php).
+        $response->assertRedirect(route('login'));
     }
 }
