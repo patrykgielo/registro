@@ -1,7 +1,133 @@
+# =============================================================================
+# REGISTRO PRODUCTION / TENANT-STACK COMPOSE FILE
+#
+# Task 4 of the stack-per-tenant epic: this file now serves TWO deployments,
+# distinguished entirely by whether TENANT_PREFIX/TENANT_SLUG are set in .env:
+#
+#   1. The LEGACY SHARED STACK -- what the live server runs today. Leave
+#      TENANT_PREFIX and TENANT_SLUG unset and every name, prefix and default
+#      below resolves to EXACTLY what was hardcoded before this rewrite
+#      (registro-app, registro-nginx, "registro-session" cookie, etc). Zero
+#      .env changes required. Publishes 80/443 itself, terminates its own TLS
+#      (NGINX_CONF), resolves the tenant from the Host header per-request.
+#
+#   2. A DEDICATED PER-TENANT STACK, sitting behind docker-compose.edge.yml
+#      (app/docs/deployment/edge-stack.md) instead of publishing ports itself.
+#      Set TENANT_SLUG (app-level identity, app/docs/features/
+#      tenant-stack-provisioning.md) and TENANT_PREFIX (infra-level naming,
+#      see its own comment below -- a SEPARATE variable on purpose, Compose
+#      interpolation cannot derive one shape from the other). Mounts
+#      NGINX_CONF=app.tenant.local.conf instead of app.prod*.conf, and MUST
+#      set HTTP_PORT_V4/V6 to loopback (see the nginx service below) or it
+#      publishes itself to the internet redundantly, bypassing the edge's
+#      Host-allowlisting entirely.
+#
+# Full design, every manual step, and the exact conflict between "legacy must
+# keep working with zero changes" and "a tenant stack must publish nothing" --
+# resolved here via an explicit opt-out rather than a default that could take
+# the live server down -- is documented in
+# app/docs/deployment/tenant-compose-stack.md. Read it before deploying this
+# file to any host that already has data on it.
+# =============================================================================
+
+name: ${TENANT_PREFIX:-registro}
+
+# ---------------------------------------------------------------------------
+# Shared environment for the three PHP containers (app, horizon, scheduler).
+#
+# Previously three independent, hand-duplicated ~55-line lists that had
+# already drifted (horizon and scheduler were each missing keys app had). This
+# task adds SEVEN more identical keys to all three (TENANT_SLUG, TENANT_HOSTS,
+# TRUSTED_PROXIES_CIDR, SESSION_COOKIE, SESSION_DOMAIN, REDIS_PREFIX,
+# CACHE_PREFIX, HORIZON_PREFIX) -- exactly the shape of bug
+# tenant-stack-provisioning.md warns about ("every isolation gate keys on one
+# scalar... an unset gate relaxes silently"), so tripling them by hand here
+# was the wrong call. One shared mapping via a YAML anchor; each service below
+# merges it with `<<: *app-env` and layers only its genuine differences.
+# ---------------------------------------------------------------------------
+x-app-env: &app-env
+  APP_NAME: ${APP_NAME:-Registro}
+  APP_ENV: production
+  # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
+  # a FILE in storage/framework (a named volume). See .env.production.example.
+  APP_MAINTENANCE_DRIVER: file
+  APP_KEY: ${APP_KEY:?APP_KEY must be set in .env}
+  APP_URL: ${APP_URL}
+  APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN must be set in .env}
+  # Stack-per-tenant pinning (app/docs/features/tenant-stack-provisioning.md).
+  # Unset on the legacy shared stack -- MUST stay unset there; that doc's own
+  # "--assert" section exists because every isolation gate (registration
+  # routes, the /platform panel, the singleton lock) keys on this one scalar.
+  TENANT_SLUG: ${TENANT_SLUG:-}
+  TENANT_HOSTS: ${TENANT_HOSTS:-}
+  TRUSTED_PROXIES_CIDR: ${TRUSTED_PROXIES_CIDR:-}
+  DB_CONNECTION: mysql
+  DB_HOST: mysql
+  DB_DATABASE: ${DB_DATABASE}
+  DB_USERNAME: ${DB_USERNAME}
+  DB_PASSWORD: ${DB_PASSWORD}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+  REDIS_CLIENT: phpredis
+  # Redis/cache/session/Horizon namespacing -- MUST be unique per stack
+  # sharing a host, or two tenant stacks collide in cache keys, cookies and
+  # Horizon's own queue namespace (the literal point of TENANT_PREFIX/
+  # HORIZON_PREFIX existing -- see hard constraint 3 in the task this file was
+  # rebuilt under). Derived from TENANT_PREFIX, not TENANT_SLUG directly:
+  # Compose interpolation has only :-/:+ , no if/else with two independent
+  # literals, so a single variable can't produce "tenant-<slug> when set, else
+  # the bare literal registro" by itself. TENANT_PREFIX's default of exactly
+  # "registro" reproduces what Laravel computes UNPROMPTED for
+  # APP_NAME=Registro (Str::slug('Registro') = 'registro'), so on the legacy
+  # stack every value below is BIT-FOR-BIT what was already live before this
+  # file existed -- config/database.php, config/cache.php, config/session.php
+  # and config/horizon.php's own defaults, verified by reading each.
+  REDIS_PREFIX: ${TENANT_PREFIX:-registro}-database-
+  CACHE_STORE: redis
+  CACHE_PREFIX: ${TENANT_PREFIX:-registro}-cache-
+  HORIZON_PREFIX: "${TENANT_PREFIX:-registro}_horizon:"
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: redis
+  SESSION_ENCRYPT: "true"
+  SESSION_COOKIE: ${TENANT_PREFIX:-registro}-session
+  # Always the literal empty string, not just defaulted -- see the file
+  # header. A tenant stack (and, in practice, the legacy stack too) serves
+  # exactly one Host; there is never a legitimate reason for a cookie scoped
+  # wider than that, so this is locked at the infra level rather than left to
+  # convention (.env.production.example already documents it blank, but
+  # nothing previously stopped an errant edit from widening it).
+  SESSION_DOMAIN: ""
+  FILESYSTEM_DISK: public
+  MAIL_MAILER: smtp
+  MAIL_HOST: smtp.gmail.com
+  MAIL_PORT: "587"
+  MAIL_USERNAME: ${MAIL_USERNAME}
+  MAIL_PASSWORD: ${MAIL_PASSWORD}
+  MAIL_ENCRYPTION: tls
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
+  MAIL_FROM_NAME: ${MAIL_FROM_NAME}
+  SMSAPI_TOKEN: ${SMSAPI_TOKEN}
+  SMSAPI_SERVICE: ${SMSAPI_SERVICE:-pl}
+  SMSAPI_WEBHOOK_SECRET: ${SMSAPI_WEBHOOK_SECRET}
+  GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+  GOOGLE_MAPS_MAP_ID: ${GOOGLE_MAPS_MAP_ID}
+  # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
+  # defaults every value). Present here so enabling online payments is an .env
+  # change, not a compose change on a live server.
+  P24_MERCHANT_ID: ${P24_MERCHANT_ID:-0}
+  P24_POS_ID: ${P24_POS_ID:-}
+  P24_CRC: ${P24_CRC:-}
+  P24_REPORTS_KEY: ${P24_REPORTS_KEY:-}
+  P24_LIVE: ${P24_LIVE:-false}
+  P24_TRANSACTION_GRACE_MINUTES: ${P24_TRANSACTION_GRACE_MINUTES:-120}
+
 services:
   app:
     image: ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}
-    container_name: registro-app
+    # Templated, not hardcoded -- see TENANT_PREFIX's comment on x-app-env.
+    # Defaults to exactly today's "registro-app" with zero .env changes.
+    container_name: ${TENANT_PREFIX:-registro}-app
     restart: unless-stopped
     working_dir: /var/www
     volumes:
@@ -12,6 +138,27 @@ services:
       - storage-logs:/var/www/storage/logs
     networks:
       - registro-prod
+    # Hardening: this image already runs php-fpm as a non-root user (`laravel`,
+    # Dockerfile:228) and binds no privileged port, so cap_drop: ALL needs no
+    # cap_add at all here -- verified by running this exact image
+    # (ghcr.io/patrykgielo/registro, the tag already live on this project's own
+    # GHCR) with --cap-drop ALL --security-opt no-new-privileges: entrypoint's
+    # own user self-check passes and it proceeds straight to waiting on MySQL,
+    # no permission error anywhere in the boot sequence.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    # 768m was BELOW what this image's own config already permits, found in
+    # review: no custom www.conf ships, so pm.max_children defaults to 5, and
+    # docker/php/uploads.ini:21 sets memory_limit=256M -- 5 x 256M = 1280M
+    # worst case against a 768m cgroup. Raised to give that headroom plus the
+    # OPcache shared segment (opcache.memory_consumption=256,
+    # docker/php/opcache-prod.ini) and FPM master overhead, rather than
+    # lowering pm.max_children to fit the old limit -- concurrency is a
+    # capacity decision this compose-only task has no basis to make.
+    mem_limit: 1536m
     healthcheck:
       test: ["CMD-SHELL", "php artisan inspire || exit 1"]
       interval: 30s
@@ -19,62 +166,19 @@ services:
       retries: 3
       start_period: 40s
     environment:
-      - APP_NAME=${APP_NAME:-Registro}
-      - APP_ENV=production
-      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
-      # a FILE in storage/framework (a named volume). See .env.production.example.
-      - APP_MAINTENANCE_DRIVER=file
+      <<: *app-env
       # Only the `app` service mounts app_public read-write, so it is the sole
       # writer. Never set this where /var/www is a bind mount of the repo --
       # docker-compose.yml does that in dev and the sync would eat the working
       # tree. See the block in docker/entrypoint.sh.
-      - SYNC_PUBLIC_FROM_IMAGE=true
-      - APP_DEBUG=false
-      - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
-      - APP_URL=${APP_URL}
-      - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_DATABASE=${DB_DATABASE}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
-      - REDIS_CLIENT=phpredis
-      - CACHE_STORE=redis
-      - QUEUE_CONNECTION=redis
-      - SESSION_DRIVER=redis
-      - SESSION_ENCRYPT=true
-      - SESSION_SECURE_COOKIE=true
-      - SESSION_SAME_SITE=lax
-      - FILESYSTEM_DISK=public
-      - LOG_CHANNEL=stack
-      - LOG_STACK=daily
-      - LOG_DAILY_DAYS=30
-      - LOG_LEVEL=error
-      - MAIL_MAILER=smtp
-      - MAIL_HOST=smtp.gmail.com
-      - MAIL_PORT=587
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_ENCRYPTION=tls
-      - MAIL_FROM_ADDRESS=${MAIL_FROM_ADDRESS}
-      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
-      - SMSAPI_TOKEN=${SMSAPI_TOKEN}
-      - SMSAPI_SERVICE=${SMSAPI_SERVICE:-pl}
-      - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
-      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-      - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
-      # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
-      # defaults every value). Present here so enabling online payments is an .env
-      # change, not a compose change on a live server.
-      - P24_MERCHANT_ID=${P24_MERCHANT_ID:-0}
-      - P24_POS_ID=${P24_POS_ID:-}
-      - P24_CRC=${P24_CRC:-}
-      - P24_REPORTS_KEY=${P24_REPORTS_KEY:-}
-      - P24_LIVE=${P24_LIVE:-false}
-      - P24_TRANSACTION_GRACE_MINUTES=${P24_TRANSACTION_GRACE_MINUTES:-120}
+      SYNC_PUBLIC_FROM_IMAGE: "true"
+      APP_DEBUG: "false"
+      SESSION_SECURE_COOKIE: "true"
+      SESSION_SAME_SITE: lax
+      LOG_CHANNEL: stack
+      LOG_STACK: daily
+      LOG_DAILY_DAYS: "30"
+      LOG_LEVEL: error
     depends_on:
       mysql:
         condition: service_healthy
@@ -83,7 +187,7 @@ services:
 
   mysql:
     image: mysql:8.0
-    container_name: registro-mysql
+    container_name: ${TENANT_PREFIX:-registro}-mysql
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-registro}
@@ -94,6 +198,25 @@ services:
       - mysql_data:/var/lib/mysql
     networks:
       - registro-prod
+    # Hardening: the official entrypoint runs as root (chowns /var/lib/mysql,
+    # writes /var/run/mysqld) then mysqld itself drops to the mysql user.
+    # Verified against mysql:8.0 (the exact image/tag this service pins) with
+    # --cap-drop ALL: SETUID+SETGID+CHOWN+DAC_OVERRIDE is the minimal set that
+    # gets a fresh init AND a real `mysqladmin ping` to succeed; CHOWN alone
+    # (no DAC_OVERRIDE) was not tried in isolation because a database
+    # container refusing to start is the one failure mode worth over- rather
+    # than under-provisioning by one capability.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+    pids_limit: 512
+    mem_limit: 1g
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
       interval: 10s
@@ -103,7 +226,7 @@ services:
 
   redis:
     image: redis:7.2-alpine
-    container_name: registro-redis
+    container_name: ${TENANT_PREFIX:-registro}-redis
     restart: unless-stopped
     command: >
       redis-server
@@ -115,6 +238,26 @@ services:
       - redis_data:/data
     networks:
       - registro-prod
+    # Hardening: the official entrypoint drops from root to the redis user via
+    # setpriv before exec'ing redis-server. Verified against redis:7.2-alpine
+    # (the exact image/tag this service pins) with --cap-drop ALL: SETUID and
+    # SETGID alone are sufficient for a real PONG over an authenticated
+    # connection; CHOWN was tried too and is NOT needed (dropped again after
+    # confirming SETUID+SETGID alone already worked).
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+    pids_limit: 64
+    # Widened from 320m: 64MB above --maxmemory 256mb left too little for
+    # connection/client-buffer overhead plus the copy-on-write memory spike a
+    # BGREWRITEAOF fork can cause under a heavy write burst (appendonly yes,
+    # above) -- neither is bounded by maxmemory, which only governs the
+    # dataset itself.
+    mem_limit: 384m
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}", "ping"]
       interval: 10s
@@ -124,7 +267,7 @@ services:
 
   nginx:
     image: nginx:1.25-alpine
-    container_name: registro-nginx
+    container_name: ${TENANT_PREFIX:-registro}-nginx
     restart: unless-stopped
     # Dual-stack ingress. The bare "80:80" form binds IPv4 only, and this host
     # has a published AAAA record: Let's Encrypt resolves AAAA first and does
@@ -132,9 +275,25 @@ services:
     # otherwise perfectly working site -- burning the 5-failures-per-hour limit.
     # Docker's userland proxy accepts the IPv6 connection and forwards it to the
     # container over IPv4, so no daemon-level IPv6 is required.
+    #
+    # DEFAULTS TO LOOPBACK-ONLY (safe) -- a per-tenant stack sitting behind
+    # docker-compose.edge.yml must publish NOTHING, and a forgotten override
+    # should fail SAFE (unreachable) rather than fail OPEN (reachable
+    # directly, bypassing the edge's Host-allowlist/444 fallback). The LIVE
+    # LEGACY SERVER is the one deployment that genuinely needs the opposite --
+    # it IS the ingress, there is no edge in front of it -- and that is
+    # restored WITHOUT touching this default: scripts/server/deploy.sh passes
+    # `-f docker-compose.legacy-public-ports.override.yml` on every invocation
+    # (that file's own header explains why a bare `${VAR:-default}` override
+    # could not do this alone -- Compose APPENDS `ports:` entries across `-f`
+    # files rather than replacing them). Zero .env change on the live server;
+    # the override lives in a second tracked file instead. Any OTHER operator
+    # bringing this file up directly (no override file, e.g. a genuine tenant
+    # stack) gets the safe loopback default with nothing to remember. See
+    # app/docs/deployment/tenant-compose-stack.md for the full reasoning.
     ports:
-      - "0.0.0.0:80:80"
-      - "[::]:80:80"
+      - "${HTTP_PORT_V4:-127.0.0.1:80:80}"
+      - "${HTTP_PORT_V6:-[::1]:80:80}"
       # 443 reaches the world only once TLS is actually configured.
       #
       # nginx listens on 443 only under app.prod-tls.local.conf. Publishing the
@@ -149,13 +308,18 @@ services:
       # REFUSED in single-digit milliseconds (measured) and the browser falls
       # back to HTTP immediately. deploy-init.sh sets these to the public
       # addresses as part of switching NGINX_CONF to the TLS config, so the two
-      # always move together.
+      # always move together. A tenant stack behind the edge never sets these
+      # at all -- it never terminates TLS, see app.tenant.conf.
       - "${HTTPS_PORT_V4:-127.0.0.1:443:443}"
       - "${HTTPS_PORT_V6:-[::1]:443:443}"
     volumes:
       # app.prod.conf (HTTP, no certificates required) is the default so the
       # very first bring-up works on a machine with no certificate. Switch to
-      # app.prod-tls.conf via NGINX_CONF in .env once certbot has succeeded.
+      # app.prod-tls.local.conf via NGINX_CONF once certbot has succeeded, or
+      # to app.tenant.local.conf for a stack sitting behind the edge (see
+      # app/docs/deployment/tenant-compose-stack.md) -- never app.tenant.conf
+      # or app.prod-tls.conf directly, both are tracked CERT_DOMAIN/
+      # TENANT_SLUG_PLACEHOLDER templates nginx will refuse to start on.
       - ./docker/nginx/production/${NGINX_CONF:-app.prod.conf}:/etc/nginx/conf.d/default.conf:ro
       - app_public:/var/www/public:ro
       - storage-app-public:/var/www/storage/app/public:ro
@@ -164,8 +328,35 @@ services:
       - /var/www/letsencrypt:/var/www/letsencrypt:ro
     networks:
       - registro-prod
+      # ---------------------------------------------------------------------
+      # Per-tenant edge network -- add ONE line here AND a matching top-level
+      # entry below, both `external: true`, when this stack is genuinely
+      # attached behind docker-compose.edge.yml. NEVER `docker network
+      # connect` -- see app/docs/deployment/edge-stack.md for why an
+      # ad-hoc attachment doesn't survive routine `up`/`down`. Example for a
+      # tenant "acme" (uncomment and adjust, matching the edge's own file):
+      #
+      # - tenant-acme-edge
     depends_on:
       - app
+    # Hardening: nginx's master process runs as root to bind port 80/443 and
+    # chown its own cache dirs, then workers drop to the nginx user (uid 101).
+    # Verified against nginx:1.25-alpine (the exact image/tag this service
+    # pins) with --cap-drop ALL: failed on chown() until CHOWN was added,
+    # then failed on setgid() until SETUID+SETGID were both added too; the
+    # four together bring up a real request-serving nginx (confirmed with an
+    # actual HTTP request, not just "container stays up").
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETUID
+      - SETGID
+    pids_limit: 128
+    mem_limit: 256m
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
       interval: 10s
@@ -174,56 +365,30 @@ services:
 
   horizon:
     image: ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}
-    container_name: registro-horizon
+    container_name: ${TENANT_PREFIX:-registro}-horizon
     restart: unless-stopped
     working_dir: /var/www
     networks:
       - registro-prod
+    # Hardening: same image as `app`, same non-root `laravel` user, same
+    # verification -- see app's own comment above.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    # 512m was BELOW what this image's own config already permits, found in
+    # review: config/horizon.php's production `supervisor-1` allows
+    # maxProcesses=10, and the inherited `memory: 128` is Horizon's own
+    # per-worker SOFT self-restart threshold (it does not preempt a job mid
+    # -run) -- 10 x 128M = 1280M worst case against a 512m cgroup, and an OOM
+    # kill here takes the Horizon MASTER process, not one worker. Raised past
+    # that worst case with headroom for the master itself, rather than
+    # lowering maxProcesses to fit the old limit -- concurrency is a capacity
+    # decision this compose-only task has no basis to make.
+    mem_limit: 1536m
     environment:
-      - APP_NAME=${APP_NAME:-Registro}
-      - APP_ENV=production
-      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
-      # a FILE in storage/framework (a named volume). See .env.production.example.
-      - APP_MAINTENANCE_DRIVER=file
-      - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
-      - APP_URL=${APP_URL}
-      - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_DATABASE=${DB_DATABASE}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
-      - REDIS_CLIENT=phpredis
-      - CACHE_STORE=redis
-      - QUEUE_CONNECTION=redis
-      - SESSION_DRIVER=redis
-      - SESSION_ENCRYPT=true
-      - FILESYSTEM_DISK=public
-      - MAIL_MAILER=smtp
-      - MAIL_HOST=smtp.gmail.com
-      - MAIL_PORT=587
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_ENCRYPTION=tls
-      - MAIL_FROM_ADDRESS=${MAIL_FROM_ADDRESS}
-      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
-      - SMSAPI_TOKEN=${SMSAPI_TOKEN}
-      - SMSAPI_SERVICE=${SMSAPI_SERVICE:-pl}
-      - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
-      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-      - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
-      # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
-      # defaults every value). Present here so enabling online payments is an .env
-      # change, not a compose change on a live server.
-      - P24_MERCHANT_ID=${P24_MERCHANT_ID:-0}
-      - P24_POS_ID=${P24_POS_ID:-}
-      - P24_CRC=${P24_CRC:-}
-      - P24_REPORTS_KEY=${P24_REPORTS_KEY:-}
-      - P24_LIVE=${P24_LIVE:-false}
-      - P24_TRANSACTION_GRACE_MINUTES=${P24_TRANSACTION_GRACE_MINUTES:-120}
+      <<: *app-env
     depends_on:
       - app
       - redis
@@ -238,61 +403,26 @@ services:
 
   scheduler:
     image: ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}
-    container_name: registro-scheduler
+    container_name: ${TENANT_PREFIX:-registro}-scheduler
     restart: unless-stopped
     working_dir: /var/www
     networks:
       - registro-prod
+    # Hardening: same image as `app`, same non-root `laravel` user, same
+    # verification -- see app's own comment above.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 256m
     environment:
-      - APP_NAME=${APP_NAME:-Registro}
-      - APP_ENV=production
-      # Pinned: deploy.sh's maintenance-mode safety net depends on the flag being
-      # a FILE in storage/framework (a named volume). See .env.production.example.
-      - APP_MAINTENANCE_DRIVER=file
-      - APP_DEBUG=false
-      - APP_KEY=${APP_KEY:?APP_KEY must be set in .env}
-      - APP_URL=${APP_URL}
-      - APP_DOMAIN=${APP_DOMAIN:?APP_DOMAIN must be set in .env}
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_DATABASE=${DB_DATABASE}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
-      - REDIS_CLIENT=phpredis
-      - CACHE_STORE=redis
-      - QUEUE_CONNECTION=redis
-      - SESSION_DRIVER=redis
-      - SESSION_ENCRYPT=true
-      - FILESYSTEM_DISK=public
-      - LOG_CHANNEL=stack
-      - LOG_STACK=daily
-      - LOG_DAILY_DAYS=30
-      - LOG_LEVEL=error
-      - MAIL_MAILER=smtp
-      - MAIL_HOST=smtp.gmail.com
-      - MAIL_PORT=587
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_ENCRYPTION=tls
-      - MAIL_FROM_ADDRESS=${MAIL_FROM_ADDRESS}
-      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
-      - SMSAPI_TOKEN=${SMSAPI_TOKEN}
-      - SMSAPI_SERVICE=${SMSAPI_SERVICE:-pl}
-      - SMSAPI_WEBHOOK_SECRET=${SMSAPI_WEBHOOK_SECRET}
-      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-      - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID}
-      # Przelewy24 -- deferred, the app boots without them (config/przelewy24.php
-      # defaults every value). Present here so enabling online payments is an .env
-      # change, not a compose change on a live server.
-      - P24_MERCHANT_ID=${P24_MERCHANT_ID:-0}
-      - P24_POS_ID=${P24_POS_ID:-}
-      - P24_CRC=${P24_CRC:-}
-      - P24_REPORTS_KEY=${P24_REPORTS_KEY:-}
-      - P24_LIVE=${P24_LIVE:-false}
-      - P24_TRANSACTION_GRACE_MINUTES=${P24_TRANSACTION_GRACE_MINUTES:-120}
+      <<: *app-env
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stack
+      LOG_STACK: daily
+      LOG_DAILY_DAYS: "30"
+      LOG_LEVEL: error
     depends_on:
       - app
       - mysql
@@ -302,12 +432,30 @@ services:
 networks:
   registro-prod:
     driver: bridge
+  # ---------------------------------------------------------------------------
+  # Per-tenant edge network -- external: true, declared out-of-band
+  # (`docker network create`, see app/docs/deployment/edge-stack.md). Nothing
+  # here creates or deletes it; that is the point -- Compose reconciliation on
+  # this file must never be able to destroy the tenant stack's side of the
+  # connection to the edge. Uncomment and adjust to match nginx's own
+  # `networks:` entry above when this stack is genuinely attached:
+  #
+  # tenant-acme-edge:
+  #   external: true
 
 volumes:
   app_public:
   storage-app-public:
   storage-app-private:
   storage-framework:
+  # horizon and scheduler intentionally do NOT mount any storage-* volume
+  # (pre-existing asymmetry, not introduced by this rewrite). Not fixed here:
+  # doing so needs a grep of every queued Job class for a storage:: write
+  # first (PDF/CSV export jobs, image processing) to know it's actually safe
+  # to hand a hardened, cap-dropped worker container write access to the same
+  # volume nginx serves read-only -- guessing wrong on a live-prod-adjacent
+  # file is worse than leaving the asymmetry recorded for whoever does that
+  # audit. See app/docs/deployment/tenant-compose-stack.md.
   storage-logs:
   mysql_data:
   redis_data:

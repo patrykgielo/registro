@@ -29,6 +29,18 @@ set -euo pipefail
 
 readonly APP_DIR="/var/www/registro"
 readonly COMPOSE_FILE="docker-compose.prod.yml"
+# Restores the public port-80 binding docker-compose.prod.yml's nginx service
+# no longer defaults to as of task 4 (stack-per-tenant epic) -- that file now
+# defaults every tenant stack to loopback-only so a forgotten override can't
+# publish it to the internet redundantly alongside the edge. THIS script is,
+# and always has been, exclusively the legacy single-stack's deploy target
+# (APP_DIR above is hardcoded to one directory) -- a future tenant stack gets
+# its own deploy mechanism (task 6), not this file with a different override.
+# See app/docs/deployment/tenant-compose-stack.md for the full reasoning and
+# why a static `${VAR:-default}` alone could not express "public here, private
+# everywhere else" without this second file.
+readonly OVERRIDE_FILE="docker-compose.legacy-public-ports.override.yml"
+readonly COMPOSE_ARGS=(-f "$COMPOSE_FILE" -f "$OVERRIDE_FILE")
 # Both under paths the deploy user owns: /var/lock is root-only, so a lock file
 # there would make every run abort before it started.
 readonly LOCK_FILE="${APP_DIR}/.deploy.lock"
@@ -78,7 +90,15 @@ case "${ACTION:-}" in
         # need to look: .env not written yet (all of Phase 4), or a password
         # blanked by a bad edit. This action is the only diagnostic the forced
         # command exposes, so it must not depend on .env being valid.
-        docker ps -a --filter "name=registro-" \
+        #
+        # Container names are no longer the literal "registro-*" -- task 4
+        # (docker-compose.prod.yml rebuilt into a per-tenant stack) templated
+        # every container_name from TENANT_PREFIX. A single `grep` for that one
+        # key, not `source .env`, keeps this diagnostic independent of every
+        # other var in the file the way the comment above requires -- an
+        # unset/missing key defaults to "registro", identical to today.
+        prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2-)"
+        docker ps -a --filter "name=${prefix:-registro}-" \
             --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
         exit 0
         ;;
@@ -101,6 +121,7 @@ flock -n 9 || die "another deploy is already running" 4
 cd "$APP_DIR" || die "$APP_DIR not found -- server not bootstrapped"
 [ -f .env ] || die ".env missing in $APP_DIR"
 [ -f "$COMPOSE_FILE" ] || die "$COMPOSE_FILE missing in $APP_DIR"
+[ -f "$OVERRIDE_FILE" ] || die "$OVERRIDE_FILE missing in $APP_DIR"
 
 # Needed below for REDIS_PASSWORD (readiness probe) and APP_URL (health check).
 set -a
@@ -134,55 +155,55 @@ log "=== ${ACTION} ${VERSION} (currently at ${PREVIOUS}) ==="
 
 MAINTENANCE_ON=false
 KEEP_MAINTENANCE=false
-STORAGE_VOL=""
 
-# Resolved lazily and scoped to THIS compose project.
+# Removes the maintenance flag without needing a WORKING app container --
+# and, critically, without needing Compose to successfully interpolate the
+# WHOLE file.
 #
-# `docker volume ls --filter name=storage-framework` is a substring match over
-# every volume on the daemon, not an exact match and not project-scoped. With a
-# second compose project on the host -- or a stale volume from the stack this
-# server previously ran -- it can return someone else's volume, and the caller
-# then deletes files from it. Match on the labels compose sets instead, and
-# refuse to guess when the answer is not exactly one.
+# `artisan up` is tried first (below, in clear_maintenance) so this stays
+# correct whatever maintenance driver is configured, but it needs the
+# container to be running -- and the situations that strand a flag (failed
+# `up -d`, MySQL never ready, crash-looping image) are exactly the ones where
+# it is not.
 #
-# Lazy because on a first bring-up the volume does not exist until `up -d`
-# creates it, and resolving once at startup would leave this empty for exactly
-# the run most likely to need it.
-storage_volume() {
-    [ -z "$STORAGE_VOL" ] || { echo "$STORAGE_VOL"; return 0; }
-
-    local project vols
-    project="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null \
-        | jq -r '.name // empty' 2>/dev/null || true)"
-    [ -n "$project" ] || return 1
-
-    vols="$(docker volume ls -q \
-        --filter "label=com.docker.compose.project=${project}" \
-        --filter "label=com.docker.compose.volume=storage-framework" 2>/dev/null || true)"
-
-    # Exactly one, or nothing. Picking the first of several would be a coin flip
-    # with a destructive loser.
-    [ "$(printf '%s\n' "$vols" | grep -c .)" -eq 1 ] || return 1
-    STORAGE_VOL="$vols"
-    echo "$STORAGE_VOL"
-}
-
-# Removes the maintenance flag without needing a working app container.
+# An earlier version of this function used `docker compose run` on this same
+# file, on the theory that Compose would resolve the correct volume the same
+# way `up -d` already had, with nothing to disambiguate. That was wrong: EVERY
+# Compose subcommand -- `run`, `config`, `ps` -- interpolates the ENTIRE file
+# before selecting a service, and this file hard-requires APP_KEY, APP_DOMAIN
+# and REDIS_PASSWORD via `${VAR:?}`. A blanked or corrupted .env therefore
+# breaks `docker compose run` at interpolation, before `--entrypoint rm` ever
+# runs -- and that is EXACTLY the scenario this function exists for ("a
+# password blanked by a bad edit" is the literal reason the `status` action
+# above already avoids `docker compose ps`). `clear_maintenance()`'s primary
+# path (`docker compose exec -T app php artisan up`) already goes through
+# that same interpolation, so a `docker compose`-based fallback shares its
+# failure with the thing it is meant to catch -- one bad edit takes out both.
 #
-# `artisan up` is tried first so this stays correct whatever maintenance driver
-# is configured, but it needs the container to be running -- and the situations
-# that strand a flag (failed `up -d`, MySQL never ready, crash-looping image)
-# are exactly the ones where it is not. The fallback deletes the flag straight
-# out of the volume, which needs only docker group membership.
-#
-# The image used is the application image, already pulled, NOT alpine:3: this
-# script prunes unreferenced images older than 24h on every successful deploy,
-# so alpine would have to be re-pulled from Docker Hub at the exact moment the
-# stack is broken.
+# Fixed by never asking Compose anything. The volume name is COMPUTED, not
+# looked up: Compose's own deterministic auto-naming is `${project}_
+# ${volume-key}` (confirmed by inspection -- bringing this exact file up
+# under project name "citest" created a volume literally named
+# "citest_storage-framework"), and the project name is `${TENANT_PREFIX:-
+# registro}` (this file's own `name:` field, task 4) -- read here via a bare
+# `grep` on .env, the same technique `status` above already uses, which needs
+# nothing but that one line to be present and un-corrupted. `docker volume
+# inspect` (also raw docker, not compose) confirms the volume actually exists
+# before touching it: `docker run -v name:/path` SILENTLY CREATES an empty
+# named volume for a name that doesn't exist yet, which would make this
+# function report success while removing nothing from a volume that never
+# had the flag. The image is the already-pulled application image, NOT
+# alpine:3: this script prunes unreferenced images older than 24h on every
+# successful deploy, so alpine would have to be re-pulled at the exact moment
+# the stack is broken.
 force_clear_flag() {
-    local vol image
-    vol="$(storage_volume)" || { log "Could not identify the storage-framework volume"; return 1; }
+    local prefix vol image
+    prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2-)"
+    vol="${prefix:-registro}_storage-framework"
     image="ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}"
+
+    docker volume inspect "$vol" >/dev/null 2>&1 \
+        || { log "Volume ${vol} does not exist"; return 1; }
 
     timeout 60 docker run --rm --entrypoint rm -v "${vol}:/s" "$image" \
         -f /s/maintenance.php /s/down >/dev/null 2>&1 \
@@ -199,7 +220,7 @@ clear_maintenance() {
 
     # Bounded: a wedged PHP process would otherwise hang this indefinitely and,
     # under CI's step timeout, reproduce the very problem it is here to fix.
-    if timeout 60 docker compose -f "$COMPOSE_FILE" exec -T app \
+    if timeout 60 docker compose "${COMPOSE_ARGS[@]}" exec -T app \
             php artisan up </dev/null >/dev/null 2>&1; then
         log "Maintenance mode cleared"
         MAINTENANCE_ON=false
@@ -342,7 +363,7 @@ fi
 export REGISTRO_VERSION="$VERSION"
 
 log "Pulling images..."
-docker compose -f "$COMPOSE_FILE" pull || die "docker pull failed" 3
+docker compose "${COMPOSE_ARGS[@]}" pull || die "docker pull failed" 3
 
 if [ "$ACTION" = "deploy" ]; then
     # Maintenance mode goes up BEFORE the new images do. Between `up -d` and the
@@ -361,9 +382,9 @@ if [ "$ACTION" = "deploy" ]; then
     # status would leave MAINTENANCE_ON=false while the site is 503ing, and the
     # cleanup below would skip it. The errors are not symmetric: a false positive
     # costs one no-op `artisan up`, a false negative is a silent outage.
-    if [ -n "$(docker compose -f "$COMPOSE_FILE" ps -q app 2>/dev/null)" ]; then
+    if [ -n "$(docker compose "${COMPOSE_ARGS[@]}" ps -q app 2>/dev/null)" ]; then
         MAINTENANCE_ON=true
-        docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null \
+        docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan down --retry=15 </dev/null \
             || log "artisan down reported failure -- assuming the flag may be set anyway"
     else
         log "No app container yet -- skipping maintenance mode (first bring-up)"
@@ -371,7 +392,7 @@ if [ "$ACTION" = "deploy" ]; then
 fi
 
 log "Starting containers..."
-docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+docker compose "${COMPOSE_ARGS[@]}" up -d --remove-orphans
 
 log "Waiting for MySQL..."
 timeout 120 bash -c "until docker compose -f '$COMPOSE_FILE' exec -T mysql \
@@ -388,9 +409,9 @@ if [ "$ACTION" = "deploy" ]; then
     # Re-assert now that the container definitely exists: on a first bring-up the
     # `down` above had nothing to run in. Same over-approximation as there.
     MAINTENANCE_ON=true
-    docker compose -f "$COMPOSE_FILE" exec -T app php artisan down --retry=15 </dev/null \
+    docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan down --retry=15 </dev/null \
         || log "artisan down reported failure -- assuming the flag may be set anyway"
-    if ! docker compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force </dev/null; then
+    if ! docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan migrate --force </dev/null; then
         # Stay in maintenance. A failed migration leaves the schema in an
         # unknown, possibly half-applied state, and serving the new code against
         # it risks user-visible errors and bad writes -- worse than an honest
@@ -407,13 +428,13 @@ else
 fi
 
 log "Rebuilding caches..."
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan optimize:clear </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan filament:optimize-clear </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan config:cache </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan route:cache </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan view:cache </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan event:cache </dev/null
-docker compose -f "$COMPOSE_FILE" exec -T app php artisan filament:optimize </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan optimize:clear </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan filament:optimize-clear </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan config:cache </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan route:cache </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan view:cache </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan event:cache </dev/null
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php artisan filament:optimize </dev/null
 # Only when it is actually missing.
 #
 # docker/entrypoint.sh already creates this link on container start, so by the
@@ -424,7 +445,7 @@ docker compose -f "$COMPOSE_FILE" exec -T app php artisan filament:optimize </de
 #
 # Kept as a safety net rather than deleted, for the case where the entrypoint
 # did not run, but it now stays quiet when there is nothing to do.
-docker compose -f "$COMPOSE_FILE" exec -T app \
+docker compose "${COMPOSE_ARGS[@]}" exec -T app \
     sh -c '[ -L public/storage ] || php artisan storage:link' </dev/null || true
 
 # No `composer install` here. The image ships a built vendor/ directory; running
@@ -432,7 +453,7 @@ docker compose -f "$COMPOSE_FILE" exec -T app \
 # writes into a container layer that the next up -d discards.
 
 log "Restarting Horizon..."
-docker compose -f "$COMPOSE_FILE" restart horizon
+docker compose "${COMPOSE_ARGS[@]}" restart horizon
 
 # Both asset gates fail through here.
 #
@@ -471,7 +492,7 @@ asset_gate_failed() {
 # that matters. Verifying only that referenced files exist passes happily on a
 # volume that is a year out of date -- verified by reproduction.
 log "Verifying frontend assets..."
-docker compose -f "$COMPOSE_FILE" exec -T app php -r '
+docker compose "${COMPOSE_ARGS[@]}" exec -T app php -r '
     $imageDir = "/tmp/public/build";
     $liveDir  = "/var/www/public/build";
 
@@ -529,7 +550,7 @@ log "Verifying the rest of public/..."
 # and diff does not follow it. Measured at ~10 ms over 78 files / 11 MB.
 # `out` is captured rather than piped so diff's own exit status is not lost:
 # a diff that failed to run would otherwise produce no output and pass the gate.
-docker compose -f "$COMPOSE_FILE" exec -T app sh -c '
+docker compose "${COMPOSE_ARGS[@]}" exec -T app sh -c '
     out="$(diff -rq --exclude=storage /tmp/public /var/www/public 2>&1)"
     rc=$?
     if [ "$rc" -gt 1 ]; then
@@ -588,5 +609,5 @@ log "=== ${ACTION} ${VERSION} OK (was ${PREVIOUS}) ==="
 # `|| true` and an explicit `exit 0`: this is cosmetic output, and as the last
 # command its status would otherwise become the script's. A hiccup in `ps` must
 # not report a failed deploy for a deploy that succeeded.
-docker compose -f "$COMPOSE_FILE" ps || true
+docker compose "${COMPOSE_ARGS[@]}" ps || true
 exit 0

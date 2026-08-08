@@ -17,10 +17,13 @@ pinning and `TENANT_HOSTS`, the thing this edge sends traffic to), `.claude/rule
 This is **task 5** of the stack-per-tenant epic. Task 2 (`feat(tenant): pin a stack to one tenant`,
 #155) landed `TENANT_SLUG`/`TENANT_HOSTS` pinning and taught a dedicated stack to fail closed on an
 unrecognised Host. **Task 4 (rebuilding the tenant compose so each tenant is its own container) has
-not happened yet** — there is no tenant stack in existence today that this edge could actually proxy
-to. Task 6 (an `apply`-style operational script) is expected to automate the manual steps this
-document describes. Everything here is infrastructure sitting ready for tasks 4 and 6, validated in
-isolation, not wired into anything live.
+since landed** — see
+[Tenant Compose Stack](tenant-compose-stack.md) for the implementation of the contract described
+below (`tenant-<slug>-nginx:80`, `X-Tenant`, `TRUSTED_PROXIES_CIDR`). It is still not attached to
+this edge or to anything live — attaching the first tenant is a later, separate operational step.
+Task 6 (an `apply`-style operational script) is expected to automate the manual steps this document
+describes. Everything here is infrastructure sitting ready for task 6, validated in isolation, not
+wired into anything live.
 
 ## What the edge is
 
@@ -153,11 +156,11 @@ stack whose nginx container this can actually reach.
    docker compose -f docker-compose.edge.yml up -d edge-nginx
    ```
 
-### The contract task 4 must satisfy on the tenant side
+### The contract task 4 satisfies on the tenant side
 
-This PR does not touch task 4 — no tenant compose file exists to rebuild yet — but the edge's
-per-tenant vhost (`tenants.d/_example.conf.disabled`) is written against a specific contract task 4
-has to produce:
+This PR did not touch task 4 — no tenant compose file existed to rebuild yet at the time it was
+written — but the edge's per-tenant vhost (`tenants.d/_example.conf.disabled`) was written against a
+specific contract, now implemented by [Tenant Compose Stack](tenant-compose-stack.md):
 
 - The tenant's nginx container must be reachable at `tenant-<slug>-nginx:80` (plain HTTP, no TLS —
   the edge is the only TLS terminator) on the `tenant-<slug>-edge` network. Container names are
@@ -372,19 +375,17 @@ reachable; there's nothing to reconfigure at the firewall layer during the cutov
 - `sync-certificate.sh`'s hostname source still only sees the legacy shared stack (see the "Known
   gap" callout above it).
 - No cutover has been performed or scheduled. The live server is untouched.
-- Task 4 (the tenant-side compose rebuild) does not exist yet; the contract this edge assumes
-  (`tenant-<slug>-nginx:80`, task-4-side `X-Tenant`, `TRUSTED_PROXIES_CIDR`) is documented above but
-  unverified against a real implementation.
-- **`scripts/deploy-init.sh:299-305` is now a silent trap post-cutover, not fixed here.** That branch
-  checks `docker ps` for a container literally named `registro-nginx`; if absent, it starts
-  `temp-nginx` bound to `-p 80:80` to serve the ACME challenge for a first-time certificate request.
-  After the cutover above, port 80 is held by `registro-edge-nginx`, not `registro-nginx` — the check
-  reports "not running" (true, but misleading), and the subsequent `docker run -p 80:80` collides
-  with the edge, which is very much still listening, and fails. Blast radius is low: this path only
-  runs during `deploy-init.sh`'s first-time bootstrap (`setup_ssl_certificates()`), never during
-  routine renewal (`sync-certificate.sh` doesn't touch this script) or routine deploys
-  (`scripts/server/deploy.sh` doesn't call `deploy-init.sh` at all). Not rewritten here because
-  `deploy-init.sh` is exclusively the legacy shared-stack's bootstrap path and this task does not
-  touch that stack; worth a fix (teaching the check about `registro-edge-nginx` too, or retiring the
-  temp-nginx branch once the edge is the only thing that's ever first to exist on a fresh box) whenever
-  `deploy-init.sh` itself is next revisited.
+- Task 4 landed — see [Tenant Compose Stack](tenant-compose-stack.md). The contract this edge assumes
+  (`tenant-<slug>-nginx:80`, `X-Tenant`, `TRUSTED_PROXIES_CIDR`) is implemented and verified there
+  against a real local stack, but still unattached to this edge or to anything live.
+- **`scripts/deploy-init.sh:299-305`'s hardcoded-name trap is fixed, its post-cutover trap is not.**
+  Task 4 generalized the `registro-nginx` literal to read `TENANT_PREFIX` from `.env` (unset still
+  resolves to `registro-nginx`, unchanged) — but that only fixes the check for a *tenant-prefixed*
+  stack, and does nothing for the scenario this bullet originally described: on the **legacy** stack
+  specifically (`TENANT_PREFIX` still unset), after the cutover sequence above, port 80 is held by
+  `registro-edge-nginx`, not `registro-nginx` — the check still reports "not running" (true, but
+  misleading) and the subsequent `docker run -p 80:80` still collides with the edge and fails. Blast
+  radius is still low (same reasoning as before: first-time bootstrap only, not routine renewal or
+  routine deploys). Still worth a fix (teaching the check about `registro-edge-nginx` too, or retiring
+  the temp-nginx branch once the edge is the only thing that's ever first to exist on a fresh box)
+  whenever a legacy-to-edge cutover is actually being planned.
