@@ -23,8 +23,9 @@ and "Scripts fixed" below). **Not deployed anywhere** — the live server still 
 Task 4 of the stack-per-tenant epic. Task 2 landed `TENANT_SLUG`/`TENANT_HOSTS` app-level pinning.
 Task 5 landed the edge (`docker-compose.edge.yml`) and documented the contract a tenant stack must
 satisfy to sit behind it, unverified against a real implementation. This is that implementation.
-Task 6 (an `apply`-style operational script automating attachment) has not happened yet — every step
-below is manual.
+Task 6 (an `apply`-style operational script automating attachment) has now landed — see
+[Tenant Apply](tenant-apply.md). Every step below is still accurate as the underlying manual
+procedure `apply` automates; it is no longer the only way to perform it.
 
 ## Two deployments, one file
 
@@ -180,8 +181,8 @@ sed 's/TENANT_SLUG_PLACEHOLDER/<the tenant slug>/g' \
 then set `NGINX_CONF=app.tenant.local.conf` in that stack's `.env`. `app.tenant.local.conf` is
 gitignored, same reasoning as `app.prod-tls.local.conf`: `scripts/server/deploy.sh` runs
 `git checkout --force` on every deploy/rollback, which would revert an in-place edit back to the
-placeholder. **No automated renderer exists yet** — task 6's job, same as the edge's own per-tenant
-vhost attachment.
+placeholder. **Automated by task 6** — see [Tenant Apply](tenant-apply.md)'s "nginx vhost" step; same
+for the edge's own per-tenant vhost attachment.
 
 Sets `fastcgi_param HTTP_X_TENANT "<slug>";`, not a bare `X_TENANT` — the `HTTP_` prefix is what makes
 it land in PHP exactly where a real `X-Tenant` HTTP header would (`$_SERVER['HTTP_X_TENANT']`,

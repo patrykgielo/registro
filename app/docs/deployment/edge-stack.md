@@ -21,9 +21,11 @@ since landed** — see
 [Tenant Compose Stack](tenant-compose-stack.md) for the implementation of the contract described
 below (`tenant-<slug>-nginx:80`, `X-Tenant`, `TRUSTED_PROXIES_CIDR`). It is still not attached to
 this edge or to anything live — attaching the first tenant is a later, separate operational step.
-Task 6 (an `apply`-style operational script) is expected to automate the manual steps this document
-describes. Everything here is infrastructure sitting ready for task 6, validated in isolation, not
-wired into anything live.
+Task 6 (an `apply`-style operational script) has now landed and automates the manual steps this
+document describes — see [Tenant Apply](tenant-apply.md), including a correction to the network-
+attachment step below (`apply` generates an override file rather than hand-editing
+`docker-compose.edge.yml`, which this document's own runbook still describes as manual-only). This
+document remains the reference for what `apply`'s edge-sync step actually does and why.
 
 ## What the edge is
 
@@ -102,7 +104,15 @@ and the per-tenant-name leak into public Certificate Transparency logs (both doc
 `scripts/server/sync-certificate.sh` and the Phase 7 deployment doc) both go away, because a new
 subdomain is already covered by the wildcard the moment DNS resolves it.
 
-## How a tenant is attached (manual today; task 6's job to automate)
+## How a tenant is attached (manual procedure; automated by `apply` — see below)
+
+**Read this alongside [Tenant Apply](tenant-apply.md)'s "Correcting edge-stack.md's manual runbook"
+section.** Step 4 below (hand-editing `docker-compose.edge.yml`) is what `apply` does NOT do — that
+file is git-tracked and reverted by `deploy.sh`'s own `git checkout --force` on every legacy-stack
+deploy, so an in-place edit there does not survive. `apply`'s edge-sync step instead generates a
+gitignored override file from the set of `tenants.d/*.conf` files actually present. This procedure
+remains correct for attaching a tenant BY HAND, without `apply` — just do not mix the two approaches
+on the same box, they will fight over the same file on `apply`'s next run.
 
 Preconditions: the edge is already running on `edge-tls.local.conf` (a tenant vhost is only ever
 loaded into the TLS config — see `edge.conf`'s header for why loading one into the HTTP-only
@@ -266,8 +276,10 @@ terminating TLS (a later cutover, not part of this PR), set:
 NGINX_RELOAD_CONTAINER=registro-edge-nginx
 ```
 
-in the server's `.env`, and the next cron run retargets itself with no script edit. Task 6's `apply`
-script is expected to write this line itself as part of performing that cutover.
+in the server's `.env`, and the next cron run retargets itself with no script edit. **Not written by
+`apply`** — the legacy-to-edge cutover is a separate, one-time, currently-unscheduled operation (see
+"Cutover sequencing" below), not part of attaching a new dedicated tenant, which is all `apply`
+performs today.
 
 **Known gap, not fixed here:** the *hostname source* (`DESIRED=...tenants:hostnames` a few lines
 above the reload target) still queries the legacy shared stack's `app` container via
@@ -370,8 +382,11 @@ reachable; there's nothing to reconfigure at the firewall layer during the cutov
 
 - No wildcard issuance — see "Certificate source" above. Blocked on a nameserver decision that
   belongs to the domain owner.
-- No per-tenant attachment automation (task 6's `apply` script). Every step under "How a tenant is
-  attached" is manual today.
+- **Per-tenant attachment automation now exists** — `apply` (task 6, see [Tenant Apply](tenant-apply.md)).
+  "How a tenant is attached" above remains the manual procedure and the reference for what `apply`'s
+  edge-sync step actually does; it is no longer the only way to perform it, and its step 4 is
+  specifically superseded by `apply`'s generated-override-file approach (see that document's
+  correction).
 - `sync-certificate.sh`'s hostname source still only sees the legacy shared stack (see the "Known
   gap" callout above it).
 - No cutover has been performed or scheduled. The live server is untouched.
