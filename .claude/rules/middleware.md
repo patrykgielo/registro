@@ -115,6 +115,7 @@ public function terminate(Request $request, Response $response): void
   - **Layer 4 (2026-07-03):** `cart.*`/`checkout.*`/`orders.*` (`routes/web.php:135`) + `dev/fake-pay` — identyczna luka jak Layer 3, teraz naprawiona. `Cart`/`Checkout`/`OrderController` polegały na `abort_unless(TenantFeature::currentTenant() !== null, 404)` — session fallback omijał to na root domain (cross-tenant write: `CartItem`/`Order`). Szczegóły: VULN-003 doc, sekcja Layer 4.
   - **Layer 5 (2026-07-03/04):** home route (`GET /`) dostał `RequireTenant` w Layer 1 mimo że root domain **z założenia** nigdy nie ma tenanta — trasa zaczęła twardo 404ować na głównym lokalnym URL (regresja, nie luka). Naprawa: **NIE** usuwaj `RequireTenant` polegając na `TenantFeature::currentTenant()` (session fallback — złapane przez review!) — gate bezpośrednio na `$request->attributes->get('tenant')`; gdy null, od razu `home-fallback`, bez dotykania `SettingsManager::get()`/modeli. To 3. wystąpienie tej samej klasy błędu (po Layer 3/4): `TenantFeature::currentTenant()` NIGDY nie powinien decydować o dostępie/danych na trasie osiągalnej z root domain. Znany follow-up tej samej klasy: `CheckRegistrationEnabled`. Szczegóły: VULN-003 doc, sekcja Layer 5.
   - **Layer 6 (2026-07-05):** `POST /livewire/update` (Livewire's own shared AJAX route) nigdy nie przechodził przez `ResolveTenant`/`RequireTenant` — niemal cała prawdziwa interakcja w `/admin` (filtry, zapisy) dzieje się przez tę trasę, więc `session('tenant_id')` (poisoned przez inną kartę/subdomenę) był jedynym źródłem tenanta. Fix: `Livewire::addPersistentMiddleware([ResolveTenant::class, RequireTenant::class])` w `AppServiceProvider::boot()` — Livewire's `PersistentMiddleware` replay'uje te middleware na fake-request zbudowanym z REALNEGO Host + tamper-proof `memo.path` z checksummed snapshotu. `/platform` niedotknięty (jego trasy nigdy nie rejestrują tych middleware). Szczegóły: `app/docs/security/patterns/livewire-tenant-isolation.md`.
+  - **Stack-per-tenant pinning (2026-08-08):** przy `config('app.tenant_slug')` (TENANT_SLUG) ustawionym, `ResolveTenant::handle()` idzie od razu w `handlePinnedTenant()` — rozwiązuje tenanta ze zmiennej środowiskowej zamiast z Hosta. RÓWNOLEGLE, niezależnie: `config('app.tenant_hosts')` (TENANT_HOSTS) to fail-closed allowlist — Host spoza niej to 404, nawet gdy slug rozwiązuje się poprawnie; pusty/brak TENANT_HOSTS = 404 na każdym Hoście (pinowanie samo w sobie NIE autoryzuje Hosta). `TENANT_SLUG` puste → gałąź w ogóle nieużywana, zero zmian w shared-stack. Szczegóły: `app/docs/features/tenant-stack-provisioning.md`.
 
 ### Rejestracja w `bootstrap/app.php`
 
@@ -147,3 +148,20 @@ Route::middleware(['auth', 'tenant', 'check-booking-enabled'])
 Route::middleware([ResolveTenant::class, RequireTenant::class])
     ->get('/uslugi', [ServiceController::class, 'index'])->name('services.index');
 ```
+
+## TrustHosts / TrustProxies (2026-08-08)
+
+`bootstrap/app.php` wcześniej nie konfigurował żadnego z nich — luka: nieskonfigurowany `TrustHosts`
+nie waliduje w ogóle Hosta na poziomie frameworka (poza sprawdzeniem samego `ResolveTenant`), a
+`TrustProxies` (zawsze w globalnym stosie, niezależnie od konfiguracji) bez zaufanych proxy ignoruje
+`X-Forwarded-*` w całości — bezpieczne domyślnie, ale ślepe też na PRAWDZIWY edge po przeniesieniu TLS.
+
+- `TrustHosts` rejestrowany przez `$middleware->trustHosts(at: fn () => TrustedTenantHosts::patterns())`
+  — closure, nie gotowa tablica, bo `withMiddleware()` odpala się PRZED `LoadEnvironmentVariables`/
+  `LoadConfiguration` (ten sam timing co `PestBrowserHostBugWorkaround`). `shouldSpecifyTrustedHosts()`
+  jest no-opem poza `local`/`testing` (Laravel core) — dev i `tests/Browser` nietknięte.
+- `TrustedTenantHosts::patterns()` (`app/Support/TrustedTenantHosts.php`) dokłada `TENANT_HOSTS` do
+  domyślnego `config('app.url')`+subdomeny (`subdomains: true`).
+- `TrustProxies` NIGDY nie konfigurowany przez `trustProxies(at: ...)` w bootstrapie (ten sam timing
+  hazard) — zamiast tego `config/trustedproxy.php` (`TRUSTED_PROXIES_CIDR`), czytany przy REQUEST, nie
+  przy boot. Domyślnie `null` = zero zaufanych proxy = `X-Forwarded-Host` zawsze ignorowany. NIGDY `*`.

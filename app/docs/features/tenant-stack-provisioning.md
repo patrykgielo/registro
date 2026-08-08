@@ -1,11 +1,13 @@
 # Tenant-Stack Provisioning
 
-**Scope:** The `registro:tenant-provision` CLI command and the schema/route/panel gating that
-supports it, for the dedicated tenant-stack architecture — one Docker container + one MySQL
-database per client, `TENANT_SLUG` set in that container's environment.
-**Last verified:** 2026-08-06 against `feature/tenant-stacks`.
+**Scope:** The `registro:tenant-provision` CLI command, the schema/route/panel gating that supports
+it, and the request-time gating (`ResolveTenant` slug pinning, `TrustHosts`/`TrustProxies`) for the
+dedicated tenant-stack architecture — one Docker container + one MySQL database per client,
+`TENANT_SLUG` set in that container's environment.
+**Last verified:** 2026-08-08 against `feature/tenant-slug-pinning-and-trusted-hosts`.
 **Related:** [Tenant Provisioning (self-serve wizard)](../architecture/tenant-provisioning.md),
-[Tenant Lifecycle](tenant-lifecycle.md), `.claude/rules/spatie-roles.md`, `.claude/rules/models.md`
+[Tenant Lifecycle](tenant-lifecycle.md), `.claude/rules/spatie-roles.md`, `.claude/rules/models.md`,
+`.claude/rules/middleware.md`
 
 ---
 
@@ -203,11 +205,64 @@ stack. This assumption is load-bearing for the panel gating above; if a future c
 `TENANT_SLUG` was set (or unset) at build time for every deployed stack — worth a note if that
 changes.
 
+## Request-time gating — `ResolveTenant`, `TrustHosts`, `TrustProxies`
+
+Provisioning creates the organization; this section is what actually serves it once the container
+starts taking traffic. Two independent layers, not one:
+
+**`ResolveTenant::handlePinnedTenant()`** — when `config('app.tenant_slug')` (`TENANT_SLUG`) is set,
+`ResolveTenant::handle()` branches immediately, before the Host-derived subdomain logic runs at all.
+It resolves the one Active organization by slug from the container's own environment instead of
+deriving it from the Host header — there is nothing to derive on a dedicated stack; the database holds
+exactly one organization (`organizations.singleton`, above).
+
+Pinning the slug alone is not enough: with nothing else checking the Host, this container would answer
+`200` to literally any Host that reaches it (a stray DNS record, a scanner hitting the bare IP, a
+Host that doesn't match the client's actual domain at all) — there is no other tenant on this stack to
+fall back to or redirect toward, so an unchecked Host would silently serve this tenant's data under it.
+`config('app.tenant_hosts')` (`TENANT_HOSTS`, comma-separated) is the independent, fail-closed second
+layer: a Host outside the allowlist gets `404` even though the slug resolves fine. **Empty/unset
+`TENANT_HOSTS` denies every Host on purpose** — an operator who sets `TENANT_SLUG` but forgets
+`TENANT_HOSTS` gets a 404ing stack, not a silently wide-open one. A pinned slug that fails to resolve
+an Active organization (never provisioned yet, wrong slug) also fails closed to `404` — deliberately
+not wired into the closed/suspended-org pages the Host-derived branch below it uses; out of scope here.
+
+**`TrustHosts` / `TrustProxies`** (`bootstrap/app.php`, `config/trustedproxy.php`,
+`App\Support\TrustedTenantHosts`) — `bootstrap/app.php` previously configured neither. That mattered
+independently of tenant-stack pinning: once TLS moves to an edge proxy (a later task) in front of this
+stack, a client-supplied `X-Forwarded-Host` header, forwarded unfiltered by a naively-configured edge
+and trusted by Laravel, can redirect any absolute URL this app generates (a password-reset link, for
+instance) to an attacker's host. Both are now wired, config/env-driven, safe by default:
+
+- `TrustHosts`, registered via `$middleware->trustHosts(at: fn () => TrustedTenantHosts::patterns())`
+  — a closure, not a resolved array, because `withMiddleware()`'s closure runs *before*
+  `LoadEnvironmentVariables`/`LoadConfiguration` (same timing hazard documented on
+  `PestBrowserHostBugWorkaround`), so reading `config()` has to be deferred to request time. Laravel's
+  own `shouldSpecifyTrustedHosts()` gate is a no-op outside `local`/`testing` — dev and `tests/Browser`
+  are unaffected by construction, not by anything this feature added. `TrustedTenantHosts::patterns()`
+  adds `TENANT_HOSTS` on top of Laravel's own default (`config('app.url')`'s host + subdomains, via
+  `subdomains: true`), so a pinned stack answering on a client's own custom domain is trusted too.
+- `TrustProxies` is always in Laravel's global middleware stack regardless of configuration; what it
+  trusts is driven by `config('trustedproxy.proxies')` (`TRUSTED_PROXIES_CIDR`) — read at request time
+  from `config/trustedproxy.php`, not passed via `trustProxies(at: ...)` in the bootstrap closure (same
+  timing hazard). **Unset (the default) trusts nothing** — `X-Forwarded-*` is ignored entirely, which
+  is what already happened implicitly before this feature and is exactly what keeps
+  `X-Forwarded-Host` from overriding the real Host today. There is no edge network yet; **never** `*`.
+
+Covered by `tests/Feature/Middleware/ResolveTenantPinnedTest.php`,
+`tests/Feature/Security/TrustedProxiesAndHostsTest.php`,
+`tests/Unit/Support/TrustedTenantHostsTest.php`.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `config/app.php` | `tenant_slug` config key (`env('TENANT_SLUG')`) |
+| `config/app.php` | `tenant_slug` (`TENANT_SLUG`), `tenant_hosts` (`TENANT_HOSTS`) config keys |
+| `config/trustedproxy.php` | `proxies` config key (`TRUSTED_PROXIES_CIDR`) |
+| `app/Http/Middleware/ResolveTenant.php` | `handlePinnedTenant()` — slug pinning + `TENANT_HOSTS` fail-closed check |
+| `app/Support/TrustedTenantHosts.php` | Builds `TrustHosts`' extra patterns from `TENANT_HOSTS` |
+| `bootstrap/app.php` | `TrustHosts`/`TrustProxies` wiring |
+| `.env.production.example`, `.env.staging.example` | `TENANT_SLUG`/`TENANT_HOSTS`/`TRUSTED_PROXIES_CIDR` documented alongside `APP_DOMAIN` |
 | `database/migrations/2026_08_06_100001_create_tenant_provisioning_state_table.php` | Marker table |
 | `database/migrations/2026_08_06_100002_add_singleton_lock_to_organizations_table.php` | DB-level 2nd-org lock |
 | `app/Models/TenantProvisioningState.php` | Marker model |
@@ -226,6 +281,14 @@ changes.
 - The shell `apply` script that would call `registro:tenant-provisioned` before deciding whether to
   run `registro:tenant-provision` does not exist yet — `scripts/server/**` is a separate task.
 - Docker/nginx changes (per-tenant image variants, wildcard cert automation, etc.) are untouched.
+- `handlePinnedTenant()` does not reuse the closed/suspended-organization pages the Host-derived
+  branch above it renders (`errors.business-closed`, `errors.business-suspended`) — a pinned tenant
+  that is not `Active` (never provisioned yet, or later suspended/closed) fails closed to a plain
+  `404` instead. Deliberate scope cut to keep the pinning change minimal; revisit if a
+  Suspended/Closing/Closed pinned stack ever needs its own dedicated status page instead of a bare 404.
+- No `apply`/deploy-script wiring yet for `TENANT_HOSTS`/`TRUSTED_PROXIES_CIDR` — an operator
+  provisioning a real dedicated stack has to set both by hand today; there is no CLI helper analogous
+  to `registro:tenant-provision` that also writes these.
 - If an operator re-runs the command with a different `--owner-email` against an already-provisioned
   slug, the new user is linked as an **additional** owner (pivot `role = owner`) rather than
   replacing `organizations.owner_id` — the command prints a warning; it does not silently change
