@@ -106,11 +106,9 @@ class SmsService
         // Step 4: Check spending limits (daily and monthly)
         $this->checkSpendingLimits();
 
-        // Step 5: Fetch template from database
-        $template = SmsTemplate::where('key', $templateKey)
-            ->where('language', $language)
-            ->where('active', true)
-            ->first();
+        // Step 5: Fetch template from database — tenant override if one exists, else the
+        // global (NULL-organization) template. See SmsTemplate::resolveActive() docblock.
+        $template = SmsTemplate::resolveActive($templateKey, $language);
 
         if (! $template) {
             throw new \Exception("SMS template '{$templateKey}' not found for language '{$language}'.");

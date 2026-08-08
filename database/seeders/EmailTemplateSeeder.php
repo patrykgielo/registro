@@ -510,10 +510,20 @@ Best regards, The {{app_name}} Team',
         ];
 
         foreach ($templates as $template) {
-            EmailTemplate::updateOrCreate(
+            // Deliberately scoped to the GLOBAL row only (organization_id IS NULL), with the
+            // tenant scope bypassed outright. In console context BelongsToOrganization's scope
+            // is already a no-op (see its boot method), so an unscoped match on key+language
+            // alone would find ANY row for that key+language — including a tenant's override —
+            // and overwrite it with generic seed content, or (now that the unique constraint is
+            // per-organization, see 2026_08_08_100001_scope_template_uniques_to_organization.php)
+            // create a second global row instead of updating the existing one. Matching
+            // organization_id explicitly keeps re-seeding idempotent against the global row and
+            // untouchable by/for any tenant override.
+            EmailTemplate::withoutGlobalScope('organization')->updateOrCreate(
                 [
                     'key' => $template['key'],
                     'language' => $template['language'],
+                    'organization_id' => null,
                 ],
                 $template
             );

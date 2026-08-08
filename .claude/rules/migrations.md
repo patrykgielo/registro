@@ -24,14 +24,21 @@ $table->unique(['organization_id', 'slug'], 'pages_org_slug_unique');
 **Exception — globally unique by design (no organization_id):** `orders.p24_session_id`,
 `payments.p24_session_id`, `email_sends.message_key`, `sms_sends.message_key`.
 
-**Exception — NULL-org global templates:** `email_templates` and `sms_templates` use
-`(key, language)` global unique because all rows are NULL-org system templates. MySQL treats
-NULL as distinct in unique indexes — converting to composite would break seed migration
-idempotency (`insertOrIgnore` would allow duplicate NULL-org rows).
-
 Incident 2026-06-29: 2nd equipment-rental tenant 500s on `UniqueConstraintViolationException`
 at `services.services_name_unique`. Migration `2026_06_29_120000_fix_tenant_scoped_unique_constraints.php`
-converted 9 constraints.
+converted 9 constraints — but deliberately SKIPPED `email_templates`/`sms_templates` (NULL-org
+global templates; composite unique would allow duplicate NULL-org rows since NULL is distinct
+in unique indexes).
+
+**Update 2026-08-08:** `email_templates`/`sms_templates` DO now use composite
+`(organization_id, key, language)` — `2026_08_08_100001_scope_template_uniques_to_organization.php`
+reversed the 2026-06-29 skip, because per-tenant template overrides need to coexist with the
+global row for the same key+language. Safe only because both seeders (`EmailTemplateSeeder`,
+`SmsTemplateSeeder`) were fixed in the same change to match `organization_id IS NULL` explicitly
+on re-seed (`->withoutGlobalScope('organization')->updateOrCreate([..., 'organization_id' => null], ...)`)
+— an unscoped `updateOrCreate` match on (key, language) alone would otherwise overwrite a
+tenant's override or create a duplicate global row. If you add ANOTHER NULL-org-by-design table
+with an `updateOrCreate` seeder, copy this pattern, not the old single-column unique.
 
 ## FK onDelete Policy — tenant lifecycle (Faza 5.2)
 
