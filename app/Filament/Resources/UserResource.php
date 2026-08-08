@@ -148,7 +148,7 @@ class UserResource extends BaseResource
                 ->schema([
                     Forms\Components\Checkbox::make('send_setup_email')
                         ->label('Wyślij email z linkiem do ustawienia hasła')
-                        ->helperText('Użytkownik otrzyma bezpieczny link ważny 30 minut do samodzielnego ustawienia hasła')
+                        ->helperText('Użytkownik otrzyma bezpieczny link ważny '.User::PASSWORD_SETUP_TTL_HOURS.' godziny do samodzielnego ustawienia hasła')
                         ->default(true)
                         ->live()
                         ->afterStateUpdated(function ($state, callable $set) {
@@ -273,7 +273,7 @@ class UserResource extends BaseResource
                     ->visible(fn (User $record): bool => $record->password === null)
                     ->requiresConfirmation()
                     ->modalHeading('Wysłać email z linkiem do ustawienia hasła?')
-                    ->modalDescription(fn (User $record): string => "Użytkownik {$record->email} otrzyma nowy link ważny 30 minut. ".
+                    ->modalDescription(fn (User $record): string => "Użytkownik {$record->email} otrzyma nowy link ważny ".User::PASSWORD_SETUP_TTL_HOURS.' godziny. '.
                         'Poprzedni link (jeśli istniał) zostanie unieważniony.'
                     )
                     ->modalSubmitActionLabel('Wyślij email')

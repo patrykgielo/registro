@@ -117,10 +117,15 @@
                         @endif
                     @else
                         <x-ui.button variant="ghost" href="{{ route('login') }}">Zaloguj</x-ui.button>
-                        @if($registrationEnabled || !$isTenantDomain)
-                            <x-ui.button href="{{ $isTenantDomain ? route('customer.register') : route('register') }}">
-                                {{ $isTenantDomain ? 'Zarejestruj się' : 'Rozpocznij' }}
-                            </x-ui.button>
+                        @if($isTenantDomain)
+                            @if($registrationEnabled)
+                                <x-ui.button href="{{ route('customer.register') }}">Zarejestruj się</x-ui.button>
+                            @endif
+                        @else
+                            {{-- No tenant resolved: there is no public self-serve
+                                 sign-up anymore (see routes/web.php), so this is a
+                                 sales contact point, not a registration link. --}}
+                            <x-ui.button href="mailto:{{ $contactEmail }}">Kontakt</x-ui.button>
                         @endif
                     @endauth
                 </div>
@@ -235,9 +240,15 @@
                             <a href="{{ route('login') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
                                 <x-heroicon-m-arrow-right-on-rectangle class="h-5 w-5" /> Zaloguj się
                             </a>
-                            @if($registrationEnabled || !$isTenantDomain)
-                                <a href="{{ $isTenantDomain ? route('customer.register') : route('register') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                    <x-heroicon-m-user-plus class="h-5 w-5" /> {{ $isTenantDomain ? 'Zarejestruj się' : 'Rozpocznij' }}
+                            @if($isTenantDomain)
+                                @if($registrationEnabled)
+                                    <a href="{{ route('customer.register') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
+                                        <x-heroicon-m-user-plus class="h-5 w-5" /> Zarejestruj się
+                                    </a>
+                                @endif
+                            @else
+                                <a href="mailto:{{ $contactEmail }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
+                                    <x-heroicon-m-envelope class="h-5 w-5" /> Kontakt
                                 </a>
                             @endif
                         @endauth

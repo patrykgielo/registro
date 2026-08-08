@@ -187,8 +187,9 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Share global feature flags with all Blade views.
      *
-     * Provides $bookingEnabled, $rentalEnabled, $registrationEnabled, $contactPhone
-     * for conditional rendering of CTAs, cart links, and registration links.
+     * Provides $bookingEnabled, $rentalEnabled, $registrationEnabled, $contactPhone,
+     * $contactEmail for conditional rendering of CTAs, cart links, and registration
+     * links.
      */
     private function shareFeatureFlags(): void
     {
@@ -198,6 +199,10 @@ class AppServiceProvider extends ServiceProvider
             $view->with('rentalEnabled', $sm->isRentalEnabled());
             $view->with('registrationEnabled', $sm->isRegistrationEnabled());
             $view->with('contactPhone', $sm->get('contact.phone', ''));
+            // Used on the root domain (no tenant resolved) as the fallback
+            // call-to-action where a "sign up" link used to be -- there is no
+            // public self-serve registration anymore, see routes/web.php.
+            $view->with('contactEmail', $sm->contactInformation()['email'] ?? 'kontakt@registro.app');
         });
     }
 

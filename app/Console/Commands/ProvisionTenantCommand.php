@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Actions\Onboarding\ProvisionTenantOrganization;
 use App\Enums\Industry;
+use App\Events\TenantRegistered;
 use App\Models\Organization;
 use App\Models\TenantProvisioningState;
 use App\Models\User;
@@ -14,6 +15,7 @@ use Database\Seeders\EmailTemplateSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\SettingSeeder;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Enum;
 
@@ -25,8 +27,16 @@ use Illuminate\Validation\Rules\Enum;
  * command's own job is: run the global lookup seeders exactly once per stack
  * (gated by TenantProvisioningState, NOT re-run on every deploy/restart -- see
  * that model for why re-running EmailTemplateSeeder would silently blow away a
- * tenant's customized templates), then create/find the org+owner, then print an
- * invite link instead of e-mailing one.
+ * tenant's customized templates), then create/find the org+owner, then print
+ * the setup link to stdout regardless of what happens with e-mail.
+ *
+ * `TenantRegistered` is dispatched here -- the ONLY place it fires now that the
+ * public self-serve wizard is gone (was `BusinessRegisterController`) -- but
+ * only on genuine first creation (`organization_was_created`), never on an
+ * idempotent re-run, and never allowed to fail the command: a broken mail
+ * transport must not stop the operator from getting the setup link that's the
+ * actual point of this command. `--no-email` opts out of the dispatch entirely
+ * (e.g. a re-provision the operator doesn't want to re-announce).
  *
  * Usage:
  *   php artisan registro:tenant-provision --slug=acme --name="Acme Sp. z o.o." \
@@ -40,7 +50,8 @@ class ProvisionTenantCommand extends Command
                             {--industry=equipment_rental : Industry enum value}
                             {--owner-email= : Owner e-mail address}
                             {--owner-name= : Owner full name, split into first/last name on the first space}
-                            {--attach-existing-owner : Allow --owner-email to match an account that already exists}';
+                            {--attach-existing-owner : Allow --owner-email to match an account that already exists}
+                            {--no-email : Do not dispatch the tenant-registered welcome/operator-notification e-mails}';
 
     protected $description = 'Provision the single organization for a dedicated tenant-stack container';
 
@@ -140,6 +151,8 @@ class ProvisionTenantCommand extends Command
             ));
         }
 
+        $emailStatus = $this->dispatchTenantRegistered($org, $owner, $result['organization_was_created']);
+
         $token = $owner->initiatePasswordSetup();
         $link = route('password.setup', ['token' => $token]);
 
@@ -153,10 +166,44 @@ class ProvisionTenantCommand extends Command
             $owner->email.($result['owner_was_created'] ? '' : ' <fg=gray>already existed</>')
         );
         $this->components->twoColumnDetail('Global seeders', $alreadyProvisioned ? '<fg=gray>already provisioned — skipped</>' : '<fg=green>seeded</>');
+        $this->components->twoColumnDetail('Welcome e-mail', $emailStatus);
         $this->newLine();
         $this->line($link);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Best-effort side effect, deliberately isolated from the command's own
+     * success/failure: the setup link printed below is the actual deliverable
+     * of this command, and a broken mail transport (SMTP down, queue
+     * connection refused) must never stop the operator from getting it. Only
+     * fires on a genuine new organization -- re-running this idempotent
+     * command against one that already exists must not re-announce it to the
+     * owner and operator every time.
+     */
+    private function dispatchTenantRegistered(Organization $org, User $owner, bool $organizationWasCreated): string
+    {
+        if (! $organizationWasCreated) {
+            return '<fg=gray>skipped — organization already existed</>';
+        }
+
+        if ($this->option('no-email')) {
+            return '<fg=gray>skipped — --no-email</>';
+        }
+
+        try {
+            TenantRegistered::dispatch($org, $owner);
+
+            return '<fg=green>dispatched</>';
+        } catch (\Throwable $e) {
+            Log::error('registro:tenant-provision: failed to dispatch TenantRegistered', [
+                'organization_id' => $org->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return '<fg=red>failed — see logs, setup link below is unaffected</>';
+        }
     }
 
     /**

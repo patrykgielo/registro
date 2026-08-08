@@ -23,6 +23,26 @@ class User extends Authenticatable implements FilamentUser, HasName
     use Auditable, HasFactory, HasRoles, Notifiable;
 
     /**
+     * How long an admin-created user's password-setup link stays valid.
+     *
+     * Not `config()`: this is a fixed security/business policy tied to this
+     * model's own method, not something an environment needs to override, and
+     * it must be readable from Blade/Filament strings that quote the number
+     * without adding a SettingsManager round-trip -- `User::PASSWORD_SETUP_TTL_HOURS`
+     * does that directly.
+     *
+     * 24h, not 30 minutes: too short for an email reaching a business owner
+     * who isn't watching their inbox. Not 7 days either: mail-scanning
+     * antivirus follows every link in a message before a human opens it, so a
+     * long-lived link gets silently consumed by a bot before the intended
+     * recipient ever clicks it. This is entirely separate from Laravel's own
+     * password *reset* TTL (`config/auth.php` -> `passwords.users.expire`,
+     * still 60 minutes) -- different flow, different token column, must not
+     * move together.
+     */
+    public const PASSWORD_SETUP_TTL_HOURS = 24;
+
+    /**
      * Fields to exclude from audit logging (sensitive data)
      */
     protected array $auditExclude = [
@@ -773,7 +793,11 @@ class User extends Authenticatable implements FilamentUser, HasName
     // =========================================================================
 
     /**
-     * Initiate password setup for admin-created user (generates 30-minute token).
+     * Initiate password setup for admin-created user.
+     *
+     * TTL comes from self::PASSWORD_SETUP_TTL_HOURS — never restate the number
+     * here. It used to live in four places and they had already drifted apart
+     * from the e-mail template that quotes it to the customer.
      *
      * @return string The password setup token
      */
@@ -785,13 +809,13 @@ class User extends Authenticatable implements FilamentUser, HasName
             'user_id' => $this->id,
             'email' => $this->email,
             'token_length' => strlen($token),
-            'expires_at' => now()->addMinutes(30)->toIso8601String(),
+            'expires_at' => now()->addHours(self::PASSWORD_SETUP_TTL_HOURS)->toIso8601String(),
         ]);
 
         try {
             $updated = $this->update([
                 'password_setup_token' => $token,
-                'password_setup_expires_at' => now()->addMinutes(30),
+                'password_setup_expires_at' => now()->addHours(self::PASSWORD_SETUP_TTL_HOURS),
             ]);
 
             if (! $updated) {

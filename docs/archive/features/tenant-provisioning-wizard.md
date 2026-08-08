@@ -1,3 +1,10 @@
+> **ARCHIVED 2026-08-08.** The public self-serve registration wizard this document
+> describes (`BusinessRegisterController`, `CreateOrganizationWithOwner`, `OnboardingData`) was
+> removed: the product model is "we sign a contract and provision from the CLI." The only
+> remaining tenant-provisioning path is `registro:tenant-provision`, documented at
+> `app/docs/features/tenant-stack-provisioning.md`. Kept here for historical reference only —
+> do not treat anything below as current.
+
 # Tenant Provisioning: Signup → Active Tenant
 
 **Scope:** The real business-registration pipeline — from the public signup form through to an

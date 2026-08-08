@@ -18,13 +18,15 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Welcome mail for the person who just registered a business.
+ * Welcome mail for the person who just had a tenant provisioned for them.
  *
- * Until now this did not exist. `BusinessRegisterController` created the
- * organisation and the owner, logged them in, and sent nothing -- while the
+ * Until PR #139 this did not exist. Back when `BusinessRegisterController`
+ * (public self-serve wizard, since removed -- see routes/web.php) created the
+ * organisation and the owner, it logged them in and sent nothing -- while the
  * end-CUSTOMER registration had a welcome e-mail all along. The owner never
- * received their panel address, so the only way back after closing the browser
- * was to remember the subdomain.
+ * received their panel address, so the only way back after closing the
+ * browser was to remember the subdomain. `TenantRegistered` is now dispatched
+ * by `registro:tenant-provision` instead.
  */
 class TenantWelcomeNotification extends Notification implements ShouldBeUnique, ShouldQueue
 {
