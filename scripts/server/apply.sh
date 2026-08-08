@@ -916,8 +916,9 @@ elif [ -n "$OWNER_EMAIL" ] && [ -n "$OWNER_NAME" ] && [ -n "$ORG_NAME" ]; then
         --slug="$SLUG" --name="$ORG_NAME" --industry="$INDUSTRY" \
         --owner-email="$OWNER_EMAIL" --owner-name="$OWNER_NAME" </dev/null | tee -a "$LOG_FILE"
     # The password-setup link above is now in BOTH stdout and this run's log
-    # file -- tenant-stack-provisioning.md's own residual note applies here
-    # unchanged: 30-minute TTL, and the log is only as private as this
+    # file. The TTL is User::PASSWORD_SETUP_TTL_HOURS -- 24 hours since the
+    # task-7 change, not the 30 minutes this comment used to claim. Longer
+    # exposure widens exactly this residual: the log is only as private as this
     # machine's /var/log. Treat it the same way -- readable by root/deploy
     # only (this log file is not world-readable, see the runbook), and hand
     # it to the client over a channel that isn't this log.
