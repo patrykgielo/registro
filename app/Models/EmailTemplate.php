@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\TenantFeature;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -97,6 +98,45 @@ class EmailTemplate extends Model
     public function scopeForLanguage($query, string $language)
     {
         return $query->where('language', $language);
+    }
+
+    /**
+     * Resolve the active template to actually send, tenant-override-aware.
+     *
+     * `BelongsToOrganization`'s global scope restricts every query to
+     * `organization_id = <current tenant>` the instant a tenant is resolved — but every
+     * seeded template is global (organization_id NULL), so that scope alone makes them
+     * unreachable from any tenant-scoped request. This bypasses that scope deliberately
+     * (`withoutGlobalScope`) and replaces it with an explicit, narrower one: rows must
+     * belong to the CURRENT tenant OR be global (NULL). A tenant-specific override is
+     * preferred over the global fallback when both exist. No other tenant's row can ever
+     * be matched — the `orWhere('organization_id', $tenantId)` only ever adds the caller's
+     * own id, never anyone else's.
+     *
+     * Console/queue-worker context: TenantFeature::currentTenant() has no request or
+     * Filament tenant to resolve there (see its docblock), so $tenantId is null and only
+     * global templates match. That is a deliberate, accepted limitation, not an oversight —
+     * per-tenant email overrides do not yet apply to queued notification sends.
+     */
+    public static function resolveActive(string $key, string $language): ?self
+    {
+        $tenantId = TenantFeature::currentTenant()?->id;
+
+        return static::query()
+            ->withoutGlobalScope('organization')
+            ->where('key', $key)
+            ->where('language', $language)
+            ->where('active', true)
+            ->where(function ($query) use ($tenantId) {
+                $query->whereNull('organization_id');
+
+                if ($tenantId !== null) {
+                    $query->orWhere('organization_id', $tenantId);
+                }
+            })
+            // Tenant-specific row (organization_id NOT NULL) wins over the global fallback.
+            ->orderByRaw('organization_id IS NULL')
+            ->first();
     }
 
     /**

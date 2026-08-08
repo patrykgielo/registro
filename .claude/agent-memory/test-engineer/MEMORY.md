@@ -1,10 +1,26 @@
 # Test Engineer — Project Memory
 
 ## Pre-Existing Failures (drifts over time — check `php artisan test` yourself before trusting this)
-- As of 2026-08-08: 3 failed, 5 skipped, 1054 passed on default suite (Unit+Feature) — 2x
-  `CustomerOrdersTest` (cancel flow, email-template lookup), 1x `TenantFeatureTest` (booking wizard
-  step 4 404). Older note below (5 failures: BookingServiceAreaBypassTest x4 + TenantFeatureTest x1)
-  no longer matches current repo state — don't trust either count blindly, always re-run baseline.
+- As of 2026-08-08 (reconfirmed after adding OrderLifecycleEmailTest/OrderCancellationTest): still 3
+  failed, 5 skipped, 1054 passed on default suite (Unit+Feature) — 2x `CustomerOrdersTest` (cancel
+  flow), 1x `TenantFeatureTest` (booking wizard step 4 404). **Root cause of the 2 CustomerOrdersTest
+  failures is now known** — see [[project_email_template_tenant_scope_bug_2026-08-08]]: both throw
+  "Email template 'order-cancelled' not found for language 'pl'." from the exact same
+  `EmailTemplate`-global-scope bug documented there, not a flaky/unrelated issue. Older note (5
+  failures: BookingServiceAreaBypassTest x4 + TenantFeatureTest x1) no longer matches current repo
+  state — don't trust either count blindly, always re-run baseline.
+
+## CRITICAL FINDING — EmailTemplate global scope breaks ALL in-tenant transactional email (2026-08-08)
+- [project_email_template_tenant_scope_bug_2026-08-08.md](project_email_template_tenant_scope_bug_2026-08-08.md) — `App\Models\EmailTemplate` uses `BelongsToOrganization`, whose global scope filters `organization_id = <tenant>` whenever ANY tenant is resolved, but `EmailTemplateSeeder` seeds every row `organization_id = NULL` (by design, global). Net effect: **every transactional email fired from within a real tenant HTTP request throws "Email template '...' not found"** — confirmed for order-confirmed (Filament admin action) and order-cancelled (storefront customer action), and this is not narrow: same query shape, same bug, for every other EmailService-backed notification. Root-causes 2 of the 3 known pre-existing `php artisan test` failures. NOT fixed (product-code change, out of test-engineer remit) — tests assert the real broken behavior instead, documented as a live bug via `tests/Browser/OrderLifecycleEmailTest.php` and `tests/Browser/OrderCancellationTest.php`.
+
+## Second finding — bare `throttle:N,M` shares ONE rate-limit bucket per user/IP app-wide (2026-08-08)
+- `Illuminate\Routing\Middleware\ThrottleRequests::resolveRequestSignature()` keys purely by
+  `$request->user()?->id ?? "{$domain}|{$ip}"` when no 3rd "prefix" arg is passed — `throttle:5,1`
+  (login/logout) and `throttle:60,1` (rental availability AJAX) share the SAME bucket for an
+  authenticated user. A few calendar-widget AJAX calls during checkout can push the *stricter* 5/min
+  logout limit over its cap even though logout itself was hit once. Caused a genuine (not flaky) 429
+  in `OrderLifecycleEmailTest`; workaround is an extra `Cache::flush()` right before the throttled
+  action, same class of fix `tests/Pest.php` already documents for login. Not fixed app-side.
 
 ## E2E Browser Testing (Pest v4 + pest-plugin-browser, added 2026-08-08, workaround rewritten same day)
 - [project_e2e_browser_foundation_2026-08-08.md](project_e2e_browser_foundation_2026-08-08.md) — `tests/Browser/SmokeTest.php` foundation. Cookie bug fixed upstream by v4.3.0 (was a local vendor patch, now gone — vendor is CLEAN). Host/tenant bug is still open upstream (pest#1734) and is now worked around app-side by `App\Http\Middleware\Testing\PestBrowserHostBugWorkaround` (`APP_ENV=testing`-gated, `bootstrap/app.php`) — NOT a vendor patch, survives `composer update`. Read this file before touching Browser tests again.
@@ -13,6 +29,7 @@
 - [project_e2e_multi_session_deadlock_2026-08-08.md](project_e2e_multi_session_deadlock_2026-08-08.md) — `tests/Browser/EmployeeCreationTest.php` (2nd Browser test). **A second top-level `visit()` call in one test deadlocks the in-process server, 100% reproducible, near-zero CPU, no exception.** Fix: stay in ONE context, drive Filament's real `<form method="post">` logout (AccountWidget) instead of opening a second session. Also: `:visible` Playwright CSS extension needed to disambiguate Filament's labeled+icon-only logout button variants; `wire\\:target="create"` colon-escaping for split-button selectors; resource create pages use statePath `"form"` (not vendor default `"data"`) — verify via real rendered HTML, not vendor source assumptions.
 - [project_e2e_tenant_isolation_2026-08-08.md](project_e2e_tenant_isolation_2026-08-08.md) — `tests/Browser/TenantIsolationTest.php` (3rd Browser test, VULN-003 regression guard). Global-scope leak + cross-subdomain session/cookie bypass. **`.env.testing`'s unset `SESSION_DOMAIN` makes cookies host-only — must force `config(['session.domain' => '.registro.local'])` at runtime or the cross-subdomain scenario never even reaches the code under test.** Use `assertHostIs`/`assertHostIsNot`, not path-only assertions (redirect target and blocked target can share the same path `/`). Both mutations (trait filter, middleware branch) verified to break only their own scenario.
 - [project_e2e_shared_fixture_and_waits_2026-08-08.md](project_e2e_shared_fixture_and_waits_2026-08-08.md) — dedup pass across all 3 Browser tests: `loginAsTenantAdmin()` shared fixture in `tests/Pest.php` (one org/admin/login, deviations built locally per-file, not parameterized). Wait-primitive findings: `fill()`/`click()` already auto-wait (redundant `wait(1)` before them deleted outright), `navigate()`/`visit()` block on `'load'` already (ditto), `waitForEvent('load')` correctly replaces `wait(1)` after a *triggered* navigation in 4/5 spots — but fails 100% deterministically (not flaky) for a login-form-reached-via-in-page-form-POST spot, where a fixed `wait(1)` stays with inline justification (no "Livewire hydrated" primitive exists in this plugin version). All 4 regression mutations reverified to still fail correctly after the refactor.
+- [project_e2e_order_lifecycle_and_cancellation_2026-08-08.md](project_e2e_order_lifecycle_and_cancellation_2026-08-08.md) — `tests/Browser/OrderLifecycleEmailTest.php` + `tests/Browser/OrderCancellationTest.php` (real, non-faked notifications — deliberately NOT `Notification::fake()`). Found the two CRITICAL findings indexed above (EmailTemplate tenant-scope bug, throttle bucket collision) plus a NEW hang class: `.fi-modal-footer-actions` (Filament `requiresConfirmation()` modal) mounts asynchronously over Livewire and does not exist in the DOM yet immediately after the trigger click, even past `waitForEvent('networkidle')` — needs an explicit `wait(2)` before the modal-scoped click, confirmed by direct DOM dump, no "modal mounted" primitive exists. Also: repeated killed/hung `php artisan test` runs leak `playwright run-server`/`chrome-headless-shell` processes that `pkill -f` cannot reliably clean up in this container (silently kills its own shell instead) — `docker compose restart app` is the reliable reset, and a `Fatal Error: Allowed memory size ... exhausted` in `storage/logs/laravel.log` is the tell that this has happened. `EditOrder`'s header actions ("Potwierdź"/"Wydano klientowi"/"Sprzęt zwrócony") are a simpler, equally-real alternative to `OrderResource.php`'s table `ActionGroup` (mousedown-bound `.fi-dropdown-trigger`, ambiguous with other page dropdowns) — same `transitionTo()` call, same hooks. Read this file before writing another Filament-action-modal or real-notification Browser test.
 
 ## Testing Environment
 - Docker only: `docker compose exec -T app php artisan test`
