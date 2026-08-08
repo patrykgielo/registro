@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Usługa tymczasowo niedostępna</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+            color: #ffffff;
+            padding: 1.5rem;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 560px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 1.25rem;
+            padding: 2.5rem 2rem;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            font-weight: 700;
+            line-height: 1.25;
+            margin-bottom: 1rem;
+        }
+
+        p {
+            font-size: 0.9375rem;
+            line-height: 1.65;
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .footer {
+            margin-top: 2.5rem;
+            font-size: 0.8125rem;
+            color: rgba(255, 255, 255, 0.35);
+        }
+    </style>
+</head>
+<body>
+    <main class="card" role="main" aria-labelledby="page-heading">
+        <h1 id="page-heading">Usługa tymczasowo niedostępna</h1>
+        <p>
+            Trwa chwilowa przerwa techniczna. Prosimy spróbować ponownie za kilka minut.
+            Jeśli problem się utrzymuje, prosimy o kontakt bezpośrednio z usługodawcą.
+        </p>
+    </main>
+    <footer class="footer" role="contentinfo">Registro</footer>
+</body>
+</html>
