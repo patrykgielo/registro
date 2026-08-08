@@ -21,6 +21,12 @@ everywhere (APP_URL, nginx `server_name`, Let's Encrypt cert) — not a real pro
 Przelewy24 (P24) payment wiring is **deferred** — launching without live online payments is
 acceptable for now.
 
+**Superseded 2026-08-08**: the domain decision above has been made. The application now runs on
+`registrolabs.com` (own registered domain, own DNS zone at Hostinger); `srv1342834.hstgr.cloud`
+is no longer the app-facing host anywhere (it remains correct as the VPS's own SSH hostname).
+This section is left as-is below as an accurate record of the state at first deploy — see
+`app/docs/deployment/domain-migration-registrolabs.md` for what changed and why.
+
 ---
 
 ## 1. Blocking infra bugs — FIXED 2026-08-01 (`feature/deploy-infra-fixes`)
@@ -294,6 +300,7 @@ otherwise clean log and will make a future reader hunt for a problem that is not
 The full three-step business registration was walked over HTTPS as a browser would, on the live
 server. It works: organisation **Wypozyczalnia Testowa** (`slug=testowa`) created, owner Jan Kowalski
 with role `admin`, redirect to `/register/welcome`, and `testowa.srv1342834.hstgr.cloud` serves 200.
+(That tenant no longer exists — cleaned up before the `registrolabs.com` migration, 2026-08-08.)
 
 Three findings, all pre-existing, all confirmed by running rather than reading.
 
@@ -971,9 +978,9 @@ container IPv6 is needed. `ufw` covers v6 as well.
   `GOOGLE_MAPS_API_KEY`, `SMSAPI_TOKEN`/`SMSAPI_WEBHOOK_SECRET`.
 - [ ] **Rotate** the Gmail App Password found in a local, untracked `.env.production` on this
   machine (`GOOGLE_GMAIL_PASSWORD`) — don't reuse that file as-is on the new server.
-- [ ] Use `srv1342834.hstgr.cloud` for `APP_URL` and nginx `server_name` for now; mark it clearly
-  as a technical/interim host in whatever config carries it, so it's obvious it needs replacing
-  once a real domain is picked.
+- [x] **Superseded 2026-08-08 — a real domain was picked.** `APP_URL`/`APP_DOMAIN`/nginx
+  `server_name` now use `registrolabs.com`; see
+  `app/docs/deployment/domain-migration-registrolabs.md`.
 - [x] **Deferred, not blocking — plumbing added 2026-08-01.** `P24_MERCHANT_ID`,
   `P24_POS_ID`, `P24_CRC`, `P24_REPORTS_KEY`, `P24_LIVE` and `P24_TRANSACTION_GRACE_MINUTES`
   (the sixth was missing from the original list) are read by `config/przelewy24.php` but were
@@ -1070,7 +1077,9 @@ Read these, in this order, before touching the VPS:
 5. `app/docs/deployment/environment-variables.md` — required vars per service.
 
 All IPs/domains referenced inside those documents are stale (old predecessor hosts) — substitute
-`76.13.76.104` / `srv1342834.hstgr.cloud` (or the real domain, once chosen) wherever you see them.
+`76.13.76.104` for the VPS itself and `registrolabs.com` for the application domain (the real
+domain has now been chosen, see `app/docs/deployment/domain-migration-registrolabs.md`;
+`srv1342834.hstgr.cloud` remains correct only for SSH into the VPS).
 
 ## 8. Break-glass — deploy and rollback without GitHub Actions
 

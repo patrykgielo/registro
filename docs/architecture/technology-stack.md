@@ -2,11 +2,14 @@
 
 This document provides a comprehensive overview of all technologies used in the Registro project.
 
-**Last Updated**: 2026-07-30
-**Environment**: Not yet deployed. Target VPS is `srv1342834.hstgr.cloud` (76.13.76.104) —
-a **technical hostname, not a production domain**; substitute the real domain once one is
-chosen. This document was last refreshed ahead of that first deployment; see
-`app/docs/deployment/production-readiness-checklist.md` for what's still outstanding.
+**Last Updated**: 2026-08-08
+**Environment**: Deployed. The application is served at `registrolabs.com` (own registered
+domain, own DNS zone at Hostinger) — the app-facing domain decision this document previously
+flagged as pending has been made. The underlying VPS is still `srv1342834.hstgr.cloud`
+(76.13.76.104), and that hostname remains correct for SSH/infra purposes; it is no longer the
+domain the application answers on. See `app/docs/deployment/domain-migration-registrolabs.md`
+for the migration, and `app/docs/deployment/production-readiness-checklist.md` for the original
+first-deploy history.
 
 ---
 
@@ -371,10 +374,10 @@ storage-framework, storage-logs:                 Shared Laravel storage/ across 
 
 **Ubuntu 24.04 LTS (Noble Numbat)**
 - **Architecture**: x86_64
-- **Target host**: `srv1342834.hstgr.cloud` / `76.13.76.104` — a fresh reset (no prior Registro
-  deployment), currently a bare OS with only a provider-preinstalled, empty Docker CE. RAM/CPU
-  sizing not yet confirmed for this specific box; verify with `free -h`/`nproc` before deploying
-  and consider a swapfile if RAM is 4GB or less (see `production-readiness-checklist.md`).
+- **Target host**: `srv1342834.hstgr.cloud` / `76.13.76.104` — this is the VPS's own hostname for
+  SSH/infra purposes, not the application domain (that's `registrolabs.com`, see
+  `app/docs/deployment/domain-migration-registrolabs.md`). Originally a fresh reset (no prior
+  Registro deployment); now the live production host.
 
 ### Firewall
 
@@ -695,6 +698,6 @@ the decommissioned predecessor server and have moved to `docs/archive/`.)*
 ---
 
 **Document Owner**: Development Team
-**Last Review**: 2026-07-30
-**Next Review**: before the first production deploy to `srv1342834.hstgr.cloud`, and quarterly
-thereafter
+**Last Review**: 2026-08-08
+**Next Review**: quarterly. The first production deploy (to `srv1342834.hstgr.cloud` as an
+interim host) has already happened; the application now runs on `registrolabs.com`.

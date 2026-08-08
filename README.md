@@ -120,7 +120,10 @@ break-glass section.
 #### Manual Deployment (SSH)
 
 The deploy user's key is pinned to a forced command, so the SSH command line is the whole
-API — there is no shell on the far end:
+API — there is no shell on the far end. `srv1342834.hstgr.cloud` here is the VPS's own hostname
+for SSH, not the application domain — the app is served at `registrolabs.com` (see
+`app/docs/deployment/domain-migration-registrolabs.md`). The two are unrelated and change
+independently; don't "fix" this to `registrolabs.com`.
 
 ```bash
 ssh deploy@srv1342834.hstgr.cloud "deploy v1.2.3"
