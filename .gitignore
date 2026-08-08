@@ -145,6 +145,11 @@ docker/nginx/production/app.prod-tls.local.conf.tmp
 docker/nginx/edge/edge-tls.local.conf
 docker/nginx/edge/edge-tls.local.conf.tmp
 
+# Same reasoning again, per-tenant stack (task 4, docker-compose.prod.yml):
+# app.tenant.conf is the tracked TENANT_SLUG_PLACEHOLDER template.
+docker/nginx/production/app.tenant.local.conf
+docker/nginx/production/app.tenant.local.conf.tmp
+
 # Per-tenant vhosts name live customer subdomains -- generated at attach time
 # (app/docs/deployment/edge-stack.md), never committed. The template stays
 # tracked because it doesn't match *.conf (it ends in .disabled).

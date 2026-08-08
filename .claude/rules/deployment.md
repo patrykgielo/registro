@@ -23,6 +23,15 @@ Docker OS-level env (`DB_HOST=mysql`, priorytet 3) wygrywa z phpunit.xml `<env>`
 
 Pełne kroniki obu incydentów (2026-06-29, 2026-07-07): `ci-cd-troubleshooting.md`.
 
+`docker-compose.prod.yml` jest teraz DWUCELOWY (task 4, stack-per-tenant epic): legacy shared stack
+(dziś na serwerze, `TENANT_PREFIX`/`TENANT_SLUG` puste) I szablon per-tenant. `TENANT_PREFIX` (NOWA,
+osobna od `TENANT_SLUG`) steruje `container_name`/prefiksami Redis-Cache-Session-Horizon — puste =
+`registro-*`, identycznie jak dziś. Port 80 domyślnie loopback-only (tenant-safe); legacy dostaje
+publiczny bind z DRUGIEGO pliku, `docker-compose.legacy-public-ports.override.yml`, który
+`scripts/server/deploy.sh` dokleja automatycznie (`COMPOSE_ARGS`) — zero zmian w `.env`. NIGDY
+`docker compose run`/`config` w forced-command recovery path gdy plik ma `${VAR:?}` — patrz
+`ci-cd-troubleshooting.md`. Pełny opis i kroki operatora: `app/docs/deployment/tenant-compose-stack.md`.
+
 ## Critical Variables
 
 ```bash
@@ -30,4 +39,5 @@ FILESYSTEM_DISK=public  # ZAWSZE — nigdy 'local'!
 APP_DEBUG=false         # Produkcja
 APP_KEY=base64:...      # Non-empty
 TRUSTED_PROXIES_CIDR=   # ZOSTAW PUSTE — brak edge network dziś. NIGDY '*'. Patrz middleware.md.
+TENANT_PREFIX=          # PUSTE na legacy stacku. Tenant: TENANT_PREFIX=tenant-<slug>, patrz wyżej.
 ```

@@ -291,18 +291,30 @@ setup_ssl_certificates() {
         warn "www.$domain does not resolve -- requesting a single-name certificate"
     fi
 
+    # Container names are no longer the literal "registro-*" -- task 4
+    # (docker-compose.prod.yml rebuilt into a per-tenant stack) templated every
+    # container_name from TENANT_PREFIX. Reuses this script's own
+    # read_env_value() helper rather than `source .env`, for the same reason
+    # deploy.sh's `status` action avoids it: TENANT_PREFIX is the one key this
+    # check needs, and reading it alone stays correct even when some other
+    # required var in .env is still blank. Unset/missing defaults to
+    # "registro-nginx", identical to before this change.
+    local nginx_container
+    nginx_container="$(read_env_value TENANT_PREFIX)"
+    nginx_container="${nginx_container:-registro}-nginx"
+
     local temp_nginx_started=false
     # Not `docker ps | grep -qx`: under `set -o pipefail` a SIGPIPE'd docker ps
     # makes this read as "nginx is not running", and the branch below then binds
     # a temporary container to port 80 that the real nginx already holds --
     # turning a working stack into a failed certificate request.
-    if [[ $'\n'"$(docker ps --format '{{.Names}}')"$'\n' != *$'\n'registro-nginx$'\n'* ]]; then
+    if [[ $'\n'"$(docker ps --format '{{.Names}}')"$'\n' != *$'\n'"${nginx_container}"$'\n'* ]]; then
         log "Starting temporary Nginx container for ACME challenge..."
         docker run --rm -d --name temp-nginx -p 80:80 \
             -v "${webroot}:/usr/share/nginx/html:ro" nginx:alpine >/dev/null
         temp_nginx_started=true
     else
-        log "Using the running registro-nginx to serve the ACME challenge"
+        log "Using the running ${nginx_container} to serve the ACME challenge"
     fi
 
     # Dry run FIRST, against the ACME staging server. Let's Encrypt allows five

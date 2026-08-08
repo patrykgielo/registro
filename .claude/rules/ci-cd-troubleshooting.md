@@ -103,3 +103,38 @@ Zweryfikowano:
   - `docker compose down && docker compose up -d` (pełna rekoncyliacja — usuwa wszystkie orphany na raz; Docker Compose też ostrzega o `orphan containers` przy `docker compose up` jeśli kontener nie odpowiada żadnemu service)
 - Po każdej zmianie w `docker-compose*.yml` usuwającej service: sprawdź `docker ps -a` i porównaj z `docker compose config --services` — cokolwiek działa, a nie jest na liście, to orphan do usunięcia
 - Zob. też: Incydent 2026-06-29 (ten sam plik, powyżej) — root cause dual-consumer był ten sam, ale tam problem był w pliku compose; tutaj problem był w LIVE środowisku które nigdy nie zostało zrekoncyliowane z poprawionym plikiem
+
+---
+
+## Incydent (znaleziony w review, nie shipped): `docker compose run` w forced-command recovery path
+
+`scripts/server/deploy.sh`'s `force_clear_flag()` (task 4, stack-per-tenant epic) przeszedł przez
+DWIE wersje. Pierwsza szukała wolumenu `storage-framework` ręcznie (`docker volume ls --filter
+label=com.docker.compose.project=...`) i odmawiała działania przy 0 lub 2+ trafieniach — słusznie
+(nie zgadywać przy czymś destrukcyjnym), ale zostawiało to zero ścieżki odzyskania przez forced
+command, gdy dopasowanie zawiodło.
+
+Druga wersja (poprawka na powyższe) zamieniła to na `docker compose -f "$COMPOSE_FILE" run --rm
+--no-deps --entrypoint rm app -f <plik>` — i to była REGRESJA złapana w code review, nie shipped.
+**KAŻDA subkomenda Compose (`run`, `config`, `ps`) interpoluje CAŁY plik przed wyborem serwisu** —
+`docker-compose.prod.yml` ma `${APP_KEY:?}`/`${APP_DOMAIN:?}`/`${REDIS_PASSWORD:?}`, więc
+zblankowany/zepsuty `.env` wywala `docker compose run` na etapie interpolacji, ZANIM `--entrypoint
+rm` się wykona — dokładnie ten scenariusz ("hasło zblankowane złą edycją"), dla którego funkcja
+istnieje, i dokładnie ten sam root cause, który już wywala primary path
+(`docker compose exec -T app php artisan up`). Zweryfikowane: `docker compose run` z pustym
+`REDIS_PASSWORD` → `error while interpolating x-app-env.REDIS_PASSWORD: required variable ... is
+missing a value` — kod wyjścia 1, PRZED jakąkolwiek próbą `rm`.
+
+**Finalny fix: nie pytaj Compose o nic.** Nazwa wolumenu jest OBLICZANA (nie wyszukiwana): Compose
+nazywa wolumeny deterministycznie jako `${project}_${volume-key}`, a `project` to
+`${TENANT_PREFIX:-registro}` — czytane samym `grep` z `.env` (ta sama technika co `status` action),
+nie wymaga interpolacji CAŁEGO pliku. `docker volume inspect` (surowy docker, nie compose)
+potwierdza istnienie PRZED dotknięciem — `docker run -v nazwa:/path` na nieistniejącej nazwie CICHO
+TWORZY pusty wolumen, co dałoby fałszywy sukces bez realnego usunięcia flagi. Zweryfikowane
+end-to-end pod zepsutym `.env` (puste `REDIS_PASSWORD`): flaga usunięta poprawnie.
+
+**Zasada:** w forced-command recovery path (SSH restricted command, brak dostępu do surowego docker
+poza zdefiniowaną gramatyką) — NIGDY `docker compose <cokolwiek>` jeśli plik ma choć jeden
+`${VAR:?}`. Kompozycja subkomend Compose nie ma trybu "zignoruj resztę pliku, obchodzi mnie tylko
+ten serwis" — interpolacja jest zawsze całościowa. Pełny opis + obie weryfikacje (bug i fix, oba pod
+tym samym zepsutym `.env`): `app/docs/deployment/tenant-compose-stack.md`.
