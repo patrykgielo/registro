@@ -155,6 +155,15 @@ $this->assertEquals($expected, $errorMessage);
 2. Run `docker compose exec app php artisan test` - tests in Docker
 3. OR run tests with SQLite: `php artisan test` (requires pdo_sqlite)
 
+## tests/Browser (Pest v4 real-browser E2E)
+
+- In-process server (`LaravelHttpServer`) — Playwright/Chromium hit the app in the SAME PHP process, no `artisan serve`.
+- `SESSION_SECURE_COOKIE=false` in `.env.testing` — plugin forces `http://`; `true` silently drops cookies.
+- Filament login rate-limits at 5/min per IP, array cache is per-process → leftover hit 429s next test's login — `Cache::flush()` first.
+- Only `grent`/`qatest` slugs resolve to `127.0.0.1` in `/etc/hosts` — other slugs fail at DNS, not app logic.
+- Selector gotcha: Filament ids are the dotted statePath (`id="form.email"`). Bare `"form.email"` parses as CSS `tag.class` and hangs — always `fill('[id="form.email"]', ...)`.
+- **pest#1734 workaround (open upstream, no vendor patch):** `LaravelHttpServer` builds every request from a hardcoded `127.0.0.1` URL — the SERVER bag never gets the real tenant Host, only the HEADERS bag does. Livewire's `PersistentMiddleware::makeFakeRequest()` rebuilds headers FROM the server bag on every `/livewire/update`, so `ResolveTenant` sees `127.0.0.1` and redirects to root. Fixed by `App\Http\Middleware\Testing\PestBrowserHostBugWorkaround`, prepended to the GLOBAL stack ONLY under `APP_ENV=testing` (`bootstrap/app.php`) — dead everywhere else. Mechanism in the class docblock. Delete both once pest/pest#1734 ships upstream.
+
 ## Laravel Pint (Code Style)
 
 **CRITICAL:** All code MUST pass Pint before commit.

@@ -115,6 +115,9 @@ ssh_config
 .claude/.cc-doctor-mcp-stamp
 /check_loader.php
 
+# Pest browser test screenshots (local debugging artifacts)
+tests/Browser/Screenshots
+
 # ============================================================================
 # Architecture docs portal (docker-compose.docs.yml) — build artifacts
 # ============================================================================

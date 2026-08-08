@@ -1,8 +1,14 @@
 # Test Engineer — Project Memory
 
-## Pre-Existing Failures (5 total — IGNORE)
-- BookingServiceAreaBypassTest (4 failures) — CSRF related
-- TenantFeatureTest (1 failure) — tenant scoping edge case
+## Pre-Existing Failures (drifts over time — check `php artisan test` yourself before trusting this)
+- As of 2026-08-08: 3 failed, 5 skipped, 1051 passed on default suite (Unit+Feature) — 2x
+  `CustomerOrdersTest` (cancel flow, email-template lookup), 1x `TenantFeatureTest` (booking wizard
+  step 4 404). Older note below (5 failures: BookingServiceAreaBypassTest x4 + TenantFeatureTest x1)
+  no longer matches current repo state — don't trust either count blindly, always re-run baseline.
+
+## E2E Browser Testing (Pest v4 + pest-plugin-browser, added 2026-08-08, workaround rewritten same day)
+- [project_e2e_browser_foundation_2026-08-08.md](project_e2e_browser_foundation_2026-08-08.md) — `tests/Browser/SmokeTest.php` foundation. Cookie bug fixed upstream by v4.3.0 (was a local vendor patch, now gone — vendor is CLEAN). Host/tenant bug is still open upstream (pest#1734) and is now worked around app-side by `App\Http\Middleware\Testing\PestBrowserHostBugWorkaround` (`APP_ENV=testing`-gated, `bootstrap/app.php`) — NOT a vendor patch, survives `composer update`. Read this file before touching Browser tests again.
+- Selector gotcha: Filament login inputs render `id="form.email"`/`id="form.password"` (dotted statePath), NOT `data.email`. Must use explicit attribute selector `[id="form.email"]` — the bare dotted string gets misread as CSS `tag.class` by `Selector::isExplicit()` and HANGS (not a fast failure).
 
 ## Testing Environment
 - Docker only: `docker compose exec -T app php artisan test`
