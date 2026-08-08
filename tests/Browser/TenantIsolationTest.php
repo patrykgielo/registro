@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 use App\Models\Organization;
 use App\Models\Service;
-use App\Models\User;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Hash;
-use Pest\Browser\ServerManager;
 use Spatie\Permission\Models\Role;
 
 /*
@@ -36,20 +32,15 @@ use Spatie\Permission\Models\Role;
 | and is already reachable/authorized for the 'admin' role with no extra Policy
 | wiring (see app/Filament/Resources/ServiceResource.php, App\Filament\Resources\BaseResource).
 |
-| Shared foundation (rate limiting, dotted-statePath selectors, one-context-per-test,
-| subdomain/host workaround) lives in tests/Browser/SmokeTest.php and
-| tests/Browser/EmployeeCreationTest.php — read those + .claude/rules/tests.md
-| ("tests/Browser") before extending this file. Only gotchas specific to this
-| scenario are commented inline below.
+| The "grent" admin + its login is the one standard fixture shared across this
+| whole suite — loginAsTenantAdmin() in tests/Pest.php. The second tenant
+| ("qatest") this file needs to prove isolation is its own explicit deviation
+| from that fixture and is built here, locally, on purpose — see tests/Pest.php's
+| docblock for why that isn't generalized into the shared helper.
 |
 */
 
 beforeEach(function () {
-    // Same reasoning as SmokeTest/EmployeeCreationTest: the array cache store is
-    // per-process, and this whole Browser suite runs in ONE process — a leftover
-    // hit from an earlier test's login would 429 this file's login attempt.
-    Cache::flush();
-
     // Real deployments (staging: SESSION_DOMAIN=.srv1203357.hstgr.cloud, see
     // .env.staging.example) issue the session cookie for the WHOLE base domain,
     // not just the subdomain that set it — that is the actual precondition behind
@@ -64,29 +55,11 @@ beforeEach(function () {
 
     Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
 
-    $this->grent = Organization::factory()->create(['slug' => 'grent']);
     $this->qatest = Organization::factory()->create(['slug' => 'qatest']);
-
-    // Explicit organization_id (not relying on BelongsToOrganization's `creating`
-    // hook / TenantFeature::currentTenant()) — these rows are built outside any
-    // HTTP request, so there is no tenant context for the hook to auto-assign from.
-    $this->grentService = Service::factory()->create([
-        'organization_id' => $this->grent->id,
-        'name' => 'Serwis GRENT E2E',
-    ]);
     $this->qatestService = Service::factory()->create([
         'organization_id' => $this->qatest->id,
         'name' => 'Serwis QATEST E2E',
     ]);
-
-    $this->adminPassword = 'e2e-tenant-isolation-password';
-    $this->grentAdmin = User::factory()->create([
-        'password' => Hash::make($this->adminPassword),
-    ]);
-    $this->grentAdmin->assignRole('admin');
-    $this->grentAdmin->organizations()->attach($this->grent->id, ['role' => 'owner']);
-
-    $this->port = ServerManager::instance()->http()->port;
 });
 
 afterEach(function () {
@@ -97,39 +70,46 @@ afterEach(function () {
 });
 
 it('does not show another tenant\'s records on the admin resource list', function () {
-    $page = visit("http://grent.registro.local:{$this->port}/admin/login");
+    ['organization' => $grent, 'page' => $page, 'baseUrl' => $baseUrl] = loginAsTenantAdmin('grent');
 
-    $page->fill('[id="form.email"]', $this->grentAdmin->email)
-        ->fill('[id="form.password"]', $this->adminPassword)
-        ->click('button[type="submit"]')
-        ->wait(1)
-        ->assertPathIs('/admin');
+    // Explicit organization_id (not relying on BelongsToOrganization's `creating`
+    // hook / TenantFeature::currentTenant()) — this row is built outside any
+    // HTTP request, so there is no tenant context for the hook to auto-assign from.
+    Service::factory()->create([
+        'organization_id' => $grent->id,
+        'name' => 'Serwis GRENT E2E',
+    ]);
 
-    $page->navigate("http://grent.registro.local:{$this->port}/admin/services")
-        ->wait(1)
+    // No explicit wait before these assertions: navigate() already blocks
+    // until the document's 'load' event fires, which for a server-rendered
+    // Filament table is enough for the row markup to be present.
+    $page->navigate("{$baseUrl}/admin/services")
         ->assertSee('Serwis GRENT E2E')
         ->assertDontSee('Serwis QATEST E2E');
 });
 
 it('refuses an admin session from one tenant on a different tenant\'s subdomain', function () {
     // --- Same context, log in on grent's own subdomain first ---
-    $page = visit("http://grent.registro.local:{$this->port}/admin/login");
+    ['organization' => $grent, 'page' => $page, 'port' => $port] = loginAsTenantAdmin('grent');
 
-    $page->fill('[id="form.email"]', $this->grentAdmin->email)
-        ->fill('[id="form.password"]', $this->adminPassword)
-        ->click('button[type="submit"]')
-        ->wait(1)
-        ->assertPathIs('/admin');
+    Service::factory()->create([
+        'organization_id' => $grent->id,
+        'name' => 'Serwis GRENT E2E',
+    ]);
 
     // --- Same browser context/cookies, now cross to qatest's subdomain ---
-    // This admin has no organization_user row for qatest (see beforeEach — only
-    // attached to grent). ResolveTenant.php's admin/staff branch must catch this:
-    // Auth::check() is true (cookies carried the session over — the precondition
-    // this whole scenario exists to test), the user hasAnyRole(['admin','staff']),
-    // and canAccessTenant($qatest) is false, so the middleware redirects to the
-    // ROOT domain rather than letting Filament render qatest's panel.
-    $page->navigate("http://qatest.registro.local:{$this->port}/admin/services")
-        ->wait(1)
+    // This admin has no organization_user row for qatest (loginAsTenantAdmin()
+    // only attaches it to the tenant it just logged into). ResolveTenant.php's
+    // admin/staff branch must catch this: Auth::check() is true (cookies carried
+    // the session over — the precondition this whole scenario exists to test),
+    // the user hasAnyRole(['admin','staff']), and canAccessTenant($qatest) is
+    // false, so the middleware redirects to the ROOT domain rather than letting
+    // Filament render qatest's panel.
+    //
+    // No explicit wait here either — navigate() follows the redirect chain
+    // itself and only returns once the FINAL document ('load' on the root
+    // domain) has loaded.
+    $page->navigate("http://qatest.registro.local:{$port}/admin/services")
         ->assertHostIsNot('qatest.registro.local')
         ->assertHostIs('registro.local')
         ->assertDontSee('Serwis QATEST E2E')
