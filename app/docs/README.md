@@ -57,7 +57,7 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 | **Decisions** | `decisions/` | Architecture Decision Records (ADR) |
 | **Security** | `security/` | Baseline, audits, vulnerabilities |
 | **Legal** | `legal/` | GDPR assessments (analytics-gdpr-lia.md) |
-| **Deployment** | `deployment/` | Deploy scripts, pre-deployment checks |
+| **Deployment** | `deployment/` | Deploy scripts, pre-deployment checks. **Start here for installing a tenant: [`deployment/instalacja-tenanta-od-zera.md`](deployment/instalacja-tenanta-od-zera.md)** — the operator path from an unprepared server to a working client, in Polish, one line of explanation per command. Every other deployment doc is a deep-dive on one piece of it. |
 | **Dependencies** | `dependencies.md` | External packages i wersje |
 
 ### Architecture
