@@ -6,24 +6,33 @@
 # root:root. Run from cron as root -- certbot needs to write /etc/letsencrypt
 # and nginx needs reloading, neither of which the deploy user can do.
 #
-# WHY THIS EXISTS AND NOT A WILDCARD
+# WHY THIS EXISTS, AND WHY IT'S SANs AND NOT A WILDCARD (YET)
 #
-# Let's Encrypt issues wildcard certificates only through the DNS-01 challenge,
-# which requires publishing _acme-challenge.<domain> TXT. This host's name lives
-# inside Hostinger's own hstgr.cloud zone -- confirmed: the SOA and NS for
-# srv1342834.hstgr.cloud are any1/any2.hostinger.com, and there is no delegation
-# to a zone we control. A wildcard is therefore not obtainable here at all.
+# The app domain is registrolabs.com, a domain we own -- we control its DNS
+# zone, so a wildcard IS technically obtainable (Let's Encrypt issues wildcards
+# via the DNS-01 challenge, which needs _acme-challenge.registrolabs.com TXT
+# published, and nothing stops us from publishing it). It just isn't
+# implemented yet: the zone is parked on Hostinger, and Hostinger is supported
+# by neither certbot's DNS plugins nor acme.sh's dnsapi (checked directly
+# against both plugin lists). Getting DNS-01 working means writing custom
+# certbot --manual-auth-hook/--manual-cleanup-hook scripts against Hostinger's
+# REST API -- which does support adding a single TXT with overwrite=false and
+# deleting by name+type, so the hooks are plausible, just not written.
 #
-# What IS obtainable: one certificate carrying every tenant subdomain as a SAN,
-# validated over HTTP-01. Hostinger publishes a wildcard A record, so every
-# <slug>.<domain> already resolves to this machine and nginx answers the ACME
-# path from the catch-all server block.
+# What IS implemented, and what this script does: one certificate carrying
+# every tenant subdomain as a SAN, validated over HTTP-01. registrolabs.com
+# publishes a wildcard A/AAAA record, so every <slug>.<domain> already resolves
+# to this machine and nginx answers the ACME path from the catch-all server
+# block. Cost of staying on this approach: a new tenant has a ~15-minute window
+# between signup and its subdomain being covered by the certificate (until the
+# next reconcile), and every tenant slug that has ever existed is permanently
+# visible in public Certificate Transparency logs. A wildcard would remove both.
 #
-# hstgr.cloud is on the Public Suffix List, so Let's Encrypt treats
-# srv1342834.hstgr.cloud as its own registered domain: the rate limits are this
-# server's alone rather than shared with every Hostinger VPS. Budget is 50 new
-# orders per week and 100 names per certificate -- so this reconciles only when
-# the name set actually changed, never on a timer.
+# registrolabs.com is on Let's Encrypt's own registered-domain boundary (it is
+# the registered domain, not a suffix inside someone else's), so the rate
+# limits are this server's alone rather than shared with anything else on
+# Hostinger. Budget is 50 new orders per week and 100 names per certificate --
+# so this reconciles only when the name set actually changed, never on a timer.
 #
 # Exit codes: 0 - nothing to do or success, 1 - error
 ###############################################################################
@@ -77,6 +86,24 @@ DESIRED="$(su - deploy -s /bin/bash -c \
     2>/dev/null | tr -d '\r' | grep -E '^[A-Za-z0-9.-]+$' | sort -u || true)"
 
 [ -n "$DESIRED" ] || die "could not read the hostname list from the application"
+
+# tenants:hostnames deliberately means "tenants" (app.domain plus tenant
+# subdomains) -- see ListTenantHostnamesCommand's own docblock -- so it never
+# emits www on purpose. Added here instead, and only if it actually resolves:
+# Let's Encrypt fails the WHOLE request when any single name fails HTTP-01
+# validation, so an unconditional add would silently break renewal for every
+# name on the certificate the moment www stopped resolving. Mirrors the same
+# check in scripts/deploy-init.sh.
+APP_DOMAIN="$(grep -m1 '^APP_DOMAIN=' .env 2>/dev/null | cut -d= -f2- || true)"
+if [ -n "$APP_DOMAIN" ]; then
+    WWW_DOMAIN="www.${APP_DOMAIN}"
+    if host "$WWW_DOMAIN" >/dev/null 2>&1 || getent hosts "$WWW_DOMAIN" >/dev/null 2>&1; then
+        DESIRED="$(printf '%s\n%s\n' "$DESIRED" "$WWW_DOMAIN" | sort -u)"
+        log "${WWW_DOMAIN} resolves -- including it in the certificate"
+    else
+        log "${WWW_DOMAIN} does not resolve -- not including it"
+    fi
+fi
 
 ###############################################################################
 # What it covers today

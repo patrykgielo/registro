@@ -11,13 +11,20 @@ use Illuminate\Console\Command;
 /**
  * Prints the hostnames a TLS certificate has to cover, one per line.
  *
- * Exists because a wildcard certificate is unobtainable on this installation:
- * Let's Encrypt issues wildcards only via DNS-01, and srv1342834.hstgr.cloud is
- * a record inside Hostinger's own hstgr.cloud zone -- there is no way to publish
- * the required _acme-challenge TXT. The workable alternative is one certificate
- * carrying every tenant subdomain as a SAN, re-issued via HTTP-01 whenever the
- * tenant list changes. This command is the machine-readable half of that; the
- * privileged half is scripts/server/sync-certificate.sh, which runs as root.
+ * Exists because this installation uses one certificate carrying every tenant
+ * subdomain as a SAN, re-issued via HTTP-01 whenever the tenant list changes --
+ * NOT because a wildcard is unobtainable. The app domain is registrolabs.com, a
+ * domain we own and control the DNS zone for, so a wildcard (DNS-01, publishing
+ * _acme-challenge.registrolabs.com TXT) is technically obtainable. It just isn't
+ * implemented yet: Hostinger (where the zone is parked) is supported by neither
+ * certbot's DNS plugins nor acme.sh's dnsapi, so DNS-01 would need custom certbot
+ * --manual-auth-hook/--manual-cleanup-hook scripts against Hostinger's REST API
+ * (which does support adding a single TXT with overwrite=false and deleting by
+ * name+type). See scripts/server/sync-certificate.sh for what the SAN approach
+ * costs in the meantime and what a wildcard would buy when someone builds it.
+ *
+ * This command is the machine-readable half of that; the privileged half is
+ * scripts/server/sync-certificate.sh, which runs as root.
  *
  * Output is deliberately bare -- no headers, no colour, no decoration -- so the
  * shell can consume it directly.
