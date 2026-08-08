@@ -247,7 +247,10 @@ instance) to an attacker's host. Both are now wired, config/env-driven, safe by 
   from `config/trustedproxy.php`, not passed via `trustProxies(at: ...)` in the bootstrap closure (same
   timing hazard). **Unset (the default) trusts nothing** — `X-Forwarded-*` is ignored entirely, which
   is what already happened implicitly before this feature and is exactly what keeps
-  `X-Forwarded-Host` from overriding the real Host today. There is no edge network yet; **never** `*`.
+  `X-Forwarded-Host` from overriding the real Host today. No tenant sits behind an edge network yet
+  (task 5, [Edge Stack](../deployment/edge-stack.md), built the ingress but nothing is attached to it)
+  — once one does, its `TRUSTED_PROXIES_CIDR` becomes that tenant's `tenant-<slug>-edge` subnet, never
+  `*`.
 
 Covered by `tests/Feature/Middleware/ResolveTenantPinnedTest.php`,
 `tests/Feature/Security/TrustedProxiesAndHostsTest.php`,
@@ -279,8 +282,11 @@ Covered by `tests/Feature/Middleware/ResolveTenantPinnedTest.php`,
 ## Known gaps / explicitly out of scope
 
 - The shell `apply` script that would call `registro:tenant-provisioned` before deciding whether to
-  run `registro:tenant-provision` does not exist yet — `scripts/server/**` is a separate task.
-- Docker/nginx changes (per-tenant image variants, wildcard cert automation, etc.) are untouched.
+  run `registro:tenant-provision` does not exist yet — `scripts/server/**` is a separate task (task 6).
+- Docker/nginx changes: task 5 (`docker-compose.edge.yml`, see
+  [Edge Stack](../deployment/edge-stack.md)) builds the shared ingress this architecture needs, but
+  it proxies to a `tenant-<slug>-nginx` container that task 4 (rebuilding the tenant compose itself)
+  has not produced yet. Per-tenant image variants and wildcard cert automation remain untouched.
 - `handlePinnedTenant()` does not reuse the closed/suspended-organization pages the Host-derived
   branch above it renders (`errors.business-closed`, `errors.business-suspended`) — a pinned tenant
   that is not `Active` (never provisioned yet, or later suspended/closed) fails closed to a plain

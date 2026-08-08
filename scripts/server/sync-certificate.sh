@@ -52,6 +52,17 @@ cd "$APP_DIR" || die "$APP_DIR not found"
 CERT_DIR="$(grep -m1 '^CERT_DIR=' .env 2>/dev/null | cut -d= -f2- || true)"
 [ -n "${CERT_DIR:-}" ] || die "CERT_DIR not set in .env -- run deploy-init.sh first"
 
+# Which container to `nginx -t`/`-s reload`. Defaults to today's hardcoded
+# name so the live single-stack deployment (docker-compose.prod.yml) keeps
+# working with no .env change at all. Once the edge stack (docker-compose.edge.yml,
+# see app/docs/deployment/edge-stack.md) is the one actually holding the
+# certificate's ACME webroot and terminating TLS, set
+# NGINX_RELOAD_CONTAINER=registro-edge-nginx in .env -- no script change
+# needed. Task 6 (the `apply` script) is expected to write this var itself
+# once it performs that cutover; until then it's a manual step.
+NGINX_CONTAINER="$(grep -m1 '^NGINX_RELOAD_CONTAINER=' .env 2>/dev/null | cut -d= -f2- || true)"
+[ -n "${NGINX_CONTAINER:-}" ] || NGINX_CONTAINER="registro-nginx"
+
 EMAIL="$(grep -m1 '^MAIL_FROM_ADDRESS=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)"
 [ -n "${EMAIL:-}" ] || EMAIL="admin@${CERT_DIR}"
 
@@ -111,11 +122,11 @@ fi
 
 # Reload rather than restart: the certificate path is unchanged, so nginx only
 # needs to re-read the files, and open connections are not dropped.
-if ! docker exec registro-nginx nginx -t >>"$LOG_FILE" 2>&1; then
+if ! docker exec "$NGINX_CONTAINER" nginx -t >>"$LOG_FILE" 2>&1; then
     die "nginx rejected its configuration after renewal -- NOT reloading"
 fi
 
-docker exec registro-nginx nginx -s reload >>"$LOG_FILE" 2>&1 \
+docker exec "$NGINX_CONTAINER" nginx -s reload >>"$LOG_FILE" 2>&1 \
     || die "nginx reload failed"
 
 log "Certificate now covers ${COUNT} name(s); nginx reloaded"
