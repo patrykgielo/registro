@@ -7,6 +7,7 @@ namespace Tests\Feature\Rental;
 use App\Enums\ExtensionRequestStatus;
 use App\Exceptions\RentalUnavailableException;
 use App\Models\AuditLog;
+use App\Models\EmailSend;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemExtensionRequest;
@@ -16,10 +17,13 @@ use App\Models\User;
 use App\Notifications\RentalExtensionApprovedNotification;
 use App\Notifications\RentalExtensionRejectedNotification;
 use App\Notifications\RentalExtensionRequestedNotification;
+use App\Services\Email\EmailService;
 use App\Services\RentalExtensionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -47,6 +51,55 @@ class RentalExtensionServiceTest extends TestCase
         // Set tenant on the current request so TenantFeature::currentTenant() resolves
         // inside DB transactions (service calls) without an HTTP request context.
         app('request')->attributes->set('tenant', $this->org);
+    }
+
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
+    }
+
+    // -------------------------------------------------------------------------
+    // Helper: mock EmailService so ShouldQueueAfterCommit tests observe whether
+    // the app actually tried to send, instead of Notification::fake() — which
+    // bypasses the queue/afterCommit pathway entirely (NotificationFake::send()
+    // calls sendNow() directly) and therefore cannot prove or disprove this fix.
+    // See .claude/rules/notifications.md.
+    //
+    // Mocking EmailService (not EmailGatewayInterface, the real transport
+    // boundary — see EmailRetryTest) is deliberate: every test in this class
+    // resolves a real tenant (setUp() sets 'tenant' on the request), and
+    // EmailTemplate's BelongsToOrganization scope filters seeded templates
+    // (organization_id = NULL) OUT once a tenant is resolved — the real
+    // sendFromTemplate() would 500 with "template not found" before ever
+    // reaching the gateway, regardless of this fix. That's a separate, known
+    // gap (see CustomerOrdersTest's pre-existing failures), not something to
+    // paper over here. Mocking one level up, at EmailService itself, still
+    // exercises the real notify() → ShouldQueue → SendQueuedNotifications →
+    // ChannelManager → EmailServiceChannel pipeline this fix changes.
+    // -------------------------------------------------------------------------
+
+    private function expectEmailServiceSend(): void
+    {
+        $mock = Mockery::mock(EmailService::class);
+        $mock->shouldReceive('sendFromTemplate')
+            ->once()
+            ->andReturnUsing(function () {
+                // Explicit assertion (not just Mockery::close() in tearDown) so the
+                // test fails loudly, in the test body, if the mock is never invoked —
+                // and isn't flagged risky for having zero PHPUnit assertions.
+                $this->addToAssertionCount(1);
+
+                return new EmailSend;
+            });
+        $this->app->instance(EmailService::class, $mock);
+    }
+
+    private function expectEmailServiceNeverSends(): void
+    {
+        $mock = Mockery::mock(EmailService::class);
+        $mock->shouldNotReceive('sendFromTemplate');
+        $this->app->instance(EmailService::class, $mock);
     }
 
     // -------------------------------------------------------------------------
@@ -263,6 +316,65 @@ class RentalExtensionServiceTest extends TestCase
         Notification::assertSentTo($owner, RentalExtensionRequestedNotification::class);
     }
 
+    /**
+     * The bug this guards against: requestExtension()'s own DB::transaction()
+     * commits, but notify() fires the instant it's called — if a caller wraps
+     * requestExtension() in a wider transaction that later rolls back, the
+     * customer/admin-facing email must not have already gone out for a request
+     * that no longer exists in the database.
+     *
+     * Not using Notification::fake() here — it bypasses SendQueuedNotifications
+     * and the afterCommit deferral entirely (NotificationFake::send() calls
+     * sendNow() directly), so it cannot distinguish "fixed" from "broken". See
+     * expectEmailServiceNeverSends() above for why EmailService, not
+     * EmailGatewayInterface, is the mocked boundary here.
+     */
+    public function test_request_extension_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back(): void
+    {
+        $owner = User::factory()->create();
+        $this->org->update(['owner_id' => $owner->id]);
+        app('request')->attributes->set('tenant', $this->org->fresh());
+
+        [$order, $item] = $this->paidOrderWithItem();
+        $this->expectEmailServiceNeverSends();
+
+        try {
+            DB::transaction(function () use ($item): void {
+                $this->service->requestExtension(
+                    $item,
+                    $this->customer,
+                    $item->end_date->copy()->addDays(3),
+                    null
+                );
+
+                throw new \RuntimeException('forced rollback for test');
+            });
+            $this->fail('Expected the forced exception to propagate.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('forced rollback for test', $e->getMessage());
+        }
+
+        $this->assertDatabaseMissing('order_item_extension_requests', ['order_item_id' => $item->id]);
+    }
+
+    /** Positive control for the test above: a transaction that commits normally must still send. */
+    public function test_request_extension_notification_is_sent_when_the_transaction_commits(): void
+    {
+        $owner = User::factory()->create();
+        $this->org->update(['owner_id' => $owner->id]);
+        app('request')->attributes->set('tenant', $this->org->fresh());
+
+        [$order, $item] = $this->paidOrderWithItem();
+        $this->expectEmailServiceSend();
+
+        $this->service->requestExtension(
+            $item,
+            $this->customer,
+            $item->end_date->copy()->addDays(3),
+            null
+        );
+    }
+
     // =========================================================================
     // approve
     // =========================================================================
@@ -446,6 +558,69 @@ class RentalExtensionServiceTest extends TestCase
         $this->service->approve($extensionRequest, $this->admin);
 
         Notification::assertSentTo($this->customer, RentalExtensionApprovedNotification::class);
+    }
+
+    /**
+     * approve()'s transaction also does the mass auto-reject update on competing
+     * requests AFTER the customer notification is queued — if that update (or
+     * anything else after notify()) fails and the whole transaction rolls back,
+     * the customer must not be told about an approval that was never persisted.
+     * See test_request_extension_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back()
+     * for why Notification::fake() cannot be used to prove this.
+     */
+    public function test_approve_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back(): void
+    {
+        [$order, $item] = $this->paidOrderWithItem();
+
+        $extensionRequest = OrderItemExtensionRequest::create([
+            'organization_id' => $this->org->id,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'requested_by_user_id' => $this->customer->id,
+            'status' => ExtensionRequestStatus::Pending,
+            'original_end_date' => $item->end_date,
+            'requested_end_date' => $item->end_date->copy()->addDays(3),
+            'additional_days' => 3,
+            'additional_amount' => 300.00,
+        ]);
+
+        $this->expectEmailServiceNeverSends();
+
+        try {
+            DB::transaction(function () use ($extensionRequest): void {
+                $this->service->approve($extensionRequest, $this->admin);
+
+                throw new \RuntimeException('forced rollback for test');
+            });
+            $this->fail('Expected the forced exception to propagate.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('forced rollback for test', $e->getMessage());
+        }
+
+        $extensionRequest->refresh();
+        $this->assertEquals(ExtensionRequestStatus::Pending, $extensionRequest->status);
+    }
+
+    /** Positive control for the test above: a transaction that commits normally must still send. */
+    public function test_approve_notification_is_sent_when_the_transaction_commits(): void
+    {
+        [$order, $item] = $this->paidOrderWithItem();
+
+        $extensionRequest = OrderItemExtensionRequest::create([
+            'organization_id' => $this->org->id,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'requested_by_user_id' => $this->customer->id,
+            'status' => ExtensionRequestStatus::Pending,
+            'original_end_date' => $item->end_date,
+            'requested_end_date' => $item->end_date->copy()->addDays(3),
+            'additional_days' => 3,
+            'additional_amount' => 300.00,
+        ]);
+
+        $this->expectEmailServiceSend();
+
+        $this->service->approve($extensionRequest, $this->admin);
     }
 
     public function test_approve_throws_runtime_exception_when_already_approved(): void
@@ -733,6 +908,65 @@ class RentalExtensionServiceTest extends TestCase
         $this->service->reject($extensionRequest, $this->admin, 'Brak miejsca w magazynie.');
 
         Notification::assertSentTo($this->customer, RentalExtensionRejectedNotification::class);
+    }
+
+    /**
+     * See test_request_extension_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back()
+     * for why Notification::fake() cannot be used to prove this.
+     */
+    public function test_reject_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back(): void
+    {
+        [$order, $item] = $this->paidOrderWithItem();
+
+        $extensionRequest = OrderItemExtensionRequest::create([
+            'organization_id' => $this->org->id,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'requested_by_user_id' => $this->customer->id,
+            'status' => ExtensionRequestStatus::Pending,
+            'original_end_date' => $item->end_date,
+            'requested_end_date' => $item->end_date->copy()->addDays(3),
+            'additional_days' => 3,
+            'additional_amount' => 300.00,
+        ]);
+
+        $this->expectEmailServiceNeverSends();
+
+        try {
+            DB::transaction(function () use ($extensionRequest): void {
+                $this->service->reject($extensionRequest, $this->admin, 'Brak miejsca w magazynie.');
+
+                throw new \RuntimeException('forced rollback for test');
+            });
+            $this->fail('Expected the forced exception to propagate.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('forced rollback for test', $e->getMessage());
+        }
+
+        $extensionRequest->refresh();
+        $this->assertEquals(ExtensionRequestStatus::Pending, $extensionRequest->status);
+    }
+
+    /** Positive control for the test above: a transaction that commits normally must still send. */
+    public function test_reject_notification_is_sent_when_the_transaction_commits(): void
+    {
+        [$order, $item] = $this->paidOrderWithItem();
+
+        $extensionRequest = OrderItemExtensionRequest::create([
+            'organization_id' => $this->org->id,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'requested_by_user_id' => $this->customer->id,
+            'status' => ExtensionRequestStatus::Pending,
+            'original_end_date' => $item->end_date,
+            'requested_end_date' => $item->end_date->copy()->addDays(3),
+            'additional_days' => 3,
+            'additional_amount' => 300.00,
+        ]);
+
+        $this->expectEmailServiceSend();
+
+        $this->service->reject($extensionRequest, $this->admin, 'Brak miejsca w magazynie.');
     }
 
     // =========================================================================

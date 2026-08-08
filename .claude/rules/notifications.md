@@ -199,6 +199,43 @@ udanej próby.
 **Pisząc nową ścieżkę wysyłki: nie kopiuj `if ($existing) return $existing;`.** Użyj
 `isRetryable()`.
 
+## `notify()` wewnątrz `DB::transaction()` → `ShouldQueueAfterCommit` (Incident 2026-08)
+
+**Problem:** `config/queue.php` ma `'after_commit' => false` na WSZYSTKICH połączeniach (projektowy default). Notyfikacja bez `ShouldQueueAfterCommit` wywołana wewnątrz `DB::transaction()` jest wysyłana **natychmiast** — zanim transakcja się zatwierdzi. Jeśli coś PO `notify()` w tej samej transakcji padnie (np. masowy `update()`, kolejny zapis), odbiorca dostaje maila o czymś, czego nie ma w bazie.
+
+**Fix:** notyfikacja implementuje `Illuminate\Contracts\Queue\ShouldQueueAfterCommit`:
+
+```php
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
+
+class SomeNotification extends Notification implements ShouldQueue, ShouldQueueAfterCommit
+{
+    use Queueable;
+}
+```
+
+To odkłada dispatch joba `SendQueuedNotifications` do faktycznego commitu najbardziej zewnętrznej transakcji — a przy rollbacku job jest po cichu odrzucany. Zero zmian w miejscu wywołania `notify()`.
+
+**Dlaczego to, a nie wyniesienie `notify()` poza transakcję:** jeśli transakcja jest szeroka (wiele locków, sprawdzeń dostępności, korekt finansowych) i treść powiadomienia zależy od danych mutowanych w jej środku, wyniesienie `notify()` wymaga odtwarzania stanu po commicie w każdym miejscu z osobna i nie chroni przyszłego `notify()` dodanego w tej samej transakcji później. `ShouldQueueAfterCommit` jest deklaratywne na klasie notyfikacji — chroni każde miejsce wywołania, obecne i przyszłe. Global `'after_commit' => true` w `config/queue.php` byłby zbyt szeroki — cichy zasięg na wszystko, co ktoś kiedykolwiek zakolejkuje, łącznie z rzeczami nigdy nie testowanymi pod tym kątem.
+
+**Wzorzec odwrotny (nadal poprawny):** gdy transakcja jest wąska i nie zależy od niej treść powiadomienia — trzymaj `notify()` jawnie POZA `DB::transaction()`, tak jak `StartOrganizationOffboarding` (transakcja obejmuje wyłącznie zapis `lifecycle_state`, `notify()` jest już poza nią). Nie trzeba dodawać `ShouldQueueAfterCommit` tam, gdzie kod i tak już nie wysyła nic z wnętrza transakcji.
+
+### Testowanie — `Notification::fake()` i `Queue::fake()` NIE dowodzą niczego tutaj
+
+Oba fake'i **całkowicie omijają** ścieżkę `SendQueuedNotifications` → `Queue::push()` → `shouldDispatchAfterCommit()`:
+- `NotificationFake::send()` woła `sendNow()` bezpośrednio, synchronicznie, niezależnie od `ShouldQueue`/`ShouldQueueAfterCommit` i stanu transakcji.
+- `QueueFake::push()` zapisuje joba do wewnętrznej tablicy bez sprawdzania `shouldDispatchAfterCommit()`.
+
+Test z `Notification::fake()` + `assertNothingSent()` po wymuszonym rollbacku przejdzie (lub padnie) **identycznie z fixem i bez niego** — nie ma mocy dowodowej.
+
+**Właściwy sposób:** nie fake'uj Notification/Queue. Zamockuj prawdziwą granicę systemową (np. `EmailGatewayInterface` albo, gdy w teście jest realnie rozwiązany tenant i seed'owane szablony są global/NULL-org — patrz `email_templates` w `MEMORY.md` — jeden poziom wyżej: `EmailService`), i:
+1. **Negatywny test:** owiń wywołanie w zewnętrzną `DB::transaction()`, rzuć wyjątek PO wywołaniu serwisu → assert, że mock NIGDY nie został wywołany (`shouldNotReceive`) + `assertDatabaseMissing`.
+2. **Pozytywny test (kontrola):** to samo bez wymuszonego rollbacku → assert, że mock BYŁ wywołany dokładnie raz.
+3. **Zweryfikuj mutacją:** cofnij `ShouldQueueAfterCommit`, potwierdź że negatywny test PADA (mock wywołany 1 raz zamiast 0) — inaczej test nie ma mocy dowodowej.
+
+**RefreshDatabase + `DB::transaction()` w teście — działa poprawnie, ale nieoczywiście:** `RefreshDatabase` podmienia `db.transactions` na `Illuminate\Foundation\Testing\DatabaseTransactionsManager` (nie bazową klasę), która traktuje poziom **1** (własną owijającą transakcję testu) jako efektywny root — `afterCommitCallbacksShouldBeExecuted($level) { return $level === 1; }`. Dzięki temu `DB::transaction()` wywołane wewnątrz testu poprawnie odpala `ShouldQueueAfterCommit` callbacki od razu po swoim (pozornie tylko nested/SAVEPOINT) commicie — nie trzeba żadnego specjalnego triku. Bez tego callbacki nigdy by nie odpaliły podczas testu (znane, udokumentowane ograniczenie Laravela poza kontekstem testowym — zob. laravel/framework#35857, #48451, #48472). Ref: `RentalExtensionServiceTest::test_request_extension_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back()` i sąsiednie testy.
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
