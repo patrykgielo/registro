@@ -153,6 +153,17 @@ it('lets a logged-in customer rent equipment and creates a paid order', function
     // --- Step 2: service page — select a rental date via the real calendar, add to cart ---
     $page->navigate("{$baseUrl}/uslugi/{$service->slug}");
 
+    // Guards against a real regression found on this exact page: a dead,
+    // unconditionally-rendered duplicate CTA block used to bind
+    // `:href="bookingUrl"` — a getter that was deleted from the Alpine
+    // component when the old rental.step1 wizard was replaced by the
+    // Cart/Checkout flow, but the template usage was never cleaned up.
+    // Alpine evaluates every binding on initial render regardless of
+    // whether the element is ever clicked, so this threw a
+    // ReferenceError on every item_rental service page — invisible to
+    // the 1054 non-browser tests since none of them execute JS.
+    $page->assertNoJavaScriptErrors();
+
     // Text, not `button[type="submit"]`: a logged-in customer also gets the
     // storefront navbar's own type="submit" logout button on this page, so a
     // bare type-based selector is ambiguous (2 matches) — confirmed the hard

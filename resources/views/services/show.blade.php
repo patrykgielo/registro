@@ -476,55 +476,6 @@
                         </div>
                         @endif {{-- !price_on_request --}}
                         {{-- ─── /Availability Calendar ─── --}}
-
-                        {{-- Price breakdown (when dates selected) --}}
-                        <div x-show="rentalDays > 0" x-transition class="rounded-lg bg-surface-sunken p-4 space-y-1.5 text-sm">
-                            <div class="flex justify-between">
-                                <span class="text-text-secondary">
-                                    <span x-text="rentalDays"></span> <span x-text="rentalDays === 1 ? 'dzień' : 'dni'"></span>
-                                    &times; <span x-text="formatPrice(unitPrice)"></span> zł
-                                </span>
-                                <span class="font-medium text-text-primary" x-text="formatPrice(totalPrice) + ' zł'"></span>
-                            </div>
-                            <template x-if="isDiscounted">
-                                <div class="text-xs text-success">Rabat długoterminowy aktywny</div>
-                            </template>
-                            @if($service->deposit_amount)
-                            <div class="flex justify-between text-text-secondary">
-                                <span>Kaucja zwrotna</span>
-                                <span>+ {{ number_format($service->deposit_amount, 2, ',', ' ') }} zł</span>
-                            </div>
-                            @endif
-                        </div>
-
-                        {{-- CTA --}}
-                        <p x-show="!selectedStart" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu</p>
-                        <div class="space-y-3">
-                            <a
-                                :href="bookingUrl"
-                                :class="canBook
-                                    ? 'bg-brand text-white hover:bg-brand-hover'
-                                    : 'bg-surface-sunken text-text-muted pointer-events-none'"
-                                class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full"
-                                :aria-disabled="!canBook"
-                            >
-                                <span x-text="selectedStart && selectedEnd ? 'Zarezerwuj online' : 'Zarezerwuj online'"></span>
-                            </a>
-                            @if($contactPhone)
-                                <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
-                                    Lub zadzwoń: {{ $contactPhone }}
-                                </x-ui.button>
-                            @endif
-                        </div>
-
-                        {{-- Availability badge --}}
-                        @if($service->quantity_total && $service->quantity_total > 0)
-                            <div class="flex items-center gap-2 text-sm text-success pt-2 border-t border-border">
-                                <span class="h-2 w-2 rounded-full bg-success"></span>
-                                Dostępny ({{ $service->quantity_total }} szt.)
-                            </div>
-                        @endif
-                        {{-- ─── /Availability Calendar ─── --}}
                     </x-ui.card>
 
                     {{-- ─── Inquiry Modal (price_on_request) — must stay inside x-data scope for x-teleport to work ─── --}}
