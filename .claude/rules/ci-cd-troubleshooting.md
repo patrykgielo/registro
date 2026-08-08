@@ -138,3 +138,89 @@ poza zdefiniowaną gramatyką) — NIGDY `docker compose <cokolwiek>` jeśli pli
 `${VAR:?}`. Kompozycja subkomend Compose nie ma trybu "zignoruj resztę pliku, obchodzi mnie tylko
 ten serwis" — interpolacja jest zawsze całościowa. Pełny opis + obie weryfikacje (bug i fix, oba pod
 tym samym zepsutym `.env`): `app/docs/deployment/tenant-compose-stack.md`.
+
+---
+
+## Incydent (znaleziony przez faktyczne uruchomienie, nie shipped): `apply.sh` — 6 bugów w jednej sesji walidacji
+
+Task 6 (`scripts/server/apply.sh`, `tenant-check.sh`, `tenant-backup.sh` — reconciler dla
+stack-per-tenant). Każdy z poniższych złapany dopiero przez REALNE uruchomienie danej ścieżki
+(`docker build` z bieżącego brancha, prawdziwy `git clone`, prawdziwy `systemd-run --user`), nie przez
+inspekcję kodu. Pełny opis: `app/docs/deployment/tenant-apply.md`.
+
+1. **`log()`/`die()` czytały `$LOG_FILE` zanim zmienna istniała.** `LOG_FILE` zależy od `SLUG`,
+   znanego dopiero po parsowaniu argumentów — ale `die()` jest wywoływane już PRZY walidacji argumentów.
+   Pod `set -u`: `unbound variable` zamiast realnego komunikatu błędu. Fix: `${LOG_FILE:-/dev/null}`.
+2. **Plik locka leżał W ŚRODKU katalogu, do którego `git clone` miał dopiero sklonować repo.**
+   `mkdir -p "$STACK_DIR"; exec 9>"${STACK_DIR}/.apply.lock"` — katalog przestawał być pusty PRZED
+   `git clone`, a `git clone` odmawia klonowania do niepustego katalogu. Każdy pierwszy `apply` dla
+   nowego tenanta padał. Fix: całe bookkeeping skryptu (lock/log/status/pre-dumpy) w osobnym
+   `STACKS_ROOT/.state/<slug>/`, nigdy w git working tree.
+3. **`registro:tenant-provisioned --assert` nie znaczy "spójny".** Nawet gdy `assertConsistent()`
+   przechodzi, komenda i tak zwraca `FAILURE` (`not-provisioned`) dla świeżego, jeszcze
+   nie-sprowizjonowanego stacka. Traktowanie każdego niezerowego exit code jako "niespójność, die"
+   wywalałoby KAŻDY pierwszy `apply` dla KAŻDEGO nowego tenanta, zawsze. Rozróżnienie po TREŚCI
+   wyjścia (dokładnie `not-provisioned` = OK, cokolwiek innego = realna niespójność), nie po exit code.
+4. **`VAR="$(cmd)"` w osobnej linii NIE jest warunkiem pod `set -e`.** Linia `RC=$?` zaraz po takim
+   przypisaniu nigdy się nie wykonywała — `set -e` zabijał skrypt w momencie gdy `cmd` (oczekiwanie
+   zwracające czasem niezero, jak w punkcie 3) zwracało błąd. Fix: `VAR="$(cmd)" || RC=$?`.
+5. **`find`, w przeciwieństwie do bash-owego globa, nie pomija plików/katalogów zaczynających się od
+   kropki.** Skan sierot w `tenant-check.sh` raportował własny katalog `.state/` apply.sh jako
+   "osierocony katalog tenanta". Fix: `-not -name '.*'`.
+
+**Zasada:** żaden z tych pięciu nie był widoczny przy samej lekturze kodu — wszystkie wymagały
+faktycznego uruchomienia ścieżki, którą łamały (pierwszy `apply` dla nowego tenanta, `--assert` na
+świeżym stacku, skan `check` na drzewie z `.state/`). Przy skryptach powłoki obsługujących "pierwsze
+uruchomienie czegoś nowego" — zawsze faktycznie wykonaj tę ścieżkę, nie tylko `bash -n`/shellcheck.
+
+---
+
+## Incydent (drugi przegląd infrastrukturalny, znaleziony i naprawiony): `apply.sh` — plik statusu mógł kłamać po sygnale
+
+Kontynuacja incydentu powyżej. Pełny opis + reprodukcja SIGTERM krok po kroku:
+`app/docs/deployment/tenant-apply.md` → "Infrastructure review — six more fixes".
+
+1. **KRYTYCZNE — `on_exit`'s `$?` czyta 0 nawet gdy proces ginie od nieprzechwyconego sygnału**
+   (bash raportuje status ostatniej komendy, nie sygnału, gdy sygnał trafia między komendami).
+   Stary `OK` z poprzedniego udanego przebiegu przeżywał SIGTERM w trakcie kolejnego. Fix: `RUNNING`
+   pisane BEZWARUNKOWO jako pierwsza rzecz po zajęciu locka — jedyny sposób, żeby plik znów pokazał
+   `OK`, to żeby ten KONKRETNY przebieg faktycznie dobiegł końca. Traps (HUP/INT/TERM, wzorzec z
+   `deploy.sh`) to tylko szybsza, bardziej informacyjna ścieżka (natychmiastowy `FAILED` z powodem
+   zamiast czekania na próg wieku `RUNNING` w `check.sh`) — NIE gwarancja; SIGKILL i tak ich nie złapie.
+   **Odkryte przy okazji:** bash ODKŁADA wykonanie trap handlera do zakończenia BIEŻĄCEJ komendy
+   pierwszoplanowej (udokumentowane zachowanie bash) — SIGTERM wysłany w trakcie długiego `docker
+   compose` nie przerywa go, handler odpala dopiero gdy ta komenda się skończy. Dotyczy też własnego
+   `on_signal` w `deploy.sh`.
+2. **WYSOKIE — maintenance mode zwalniał się przy dokładnie tych dwóch awariach, które oznaczają
+   "ruch może trafić do złego tenanta"**: niespójność `registro:tenant-provisioned --assert` i
+   niezgodność sondy X-Tenant. Naprawione (`KEEP_MAINTENANCE=true` w obu miejscach), zweryfikowane
+   przez realne wywołanie tej samej `clear_maintenance()` na żywym stacku ze SPREPAROWANYM złym
+   X-Tenant: `KEEP_MAINTENANCE=true` → strona zostaje na 503; `KEEP_MAINTENANCE=false` (stare
+   zachowanie) → strona wraca na 200, serwując POTWIERDZONY zły slug.
+3. **WYSOKIE — "ponowne uruchomienie to czysty retry" nieprawdziwe dla migracji** (DDL MySQL nie jest
+   atomowe — kolumna A może zostać, migracja nierozliczona, retry pada na "column already exists").
+   Doprecyzowano w dokumentacji. Osobno: `REGISTRO_VERSION` eksportowane jako zmienna powłoki DZIAŁA
+   na nowym tagu już od `pull`/`migrate`/`up -d` — zapis do `.env` na końcu chroni REKORD, nie STAN
+   DZIAŁAJĄCY; operator ufający samemu `.env` między `up -d` a końcem może zobaczyć starą wersję,
+   podczas gdy działa już nowa.
+4. **WYSOKIE — konflikt blokady restic bez udokumentowanego `restic unlock`.** Zweryfikowane
+   bezpośrednio: `restic backup` bierze blokadę WSPÓLNĄ (nie blokuje kolejnych backupów), martwa
+   blokada realnie blokuje dopiero przy konflikcie z operacją WYŁĄCZNĄ (`prune`/`check`) — węziej niż
+   pierwotnie zakładano, ale realne. Dodano wykrywanie `already locked` w wyjściu restic + gotowa
+   komenda `restic unlock` z wypełnionymi zmiennymi w komunikacie błędu.
+5. **ŚREDNIE — nieudany backup po ZDROWYM, żywym release'ie raportował FAILED**, tak samo jak
+   faktycznie zepsuty deploy — operator nie mógł odróżnić "strona padła" od "strona żyje, tylko backup
+   nawalił". Nowy status `DEGRADED` (exit 5), `REGISTRO_VERSION` i tak przypinane (release faktycznie
+   żyje). Zweryfikowane end-to-end dwa razy (awaria → `DEGRADED`, potem naprawa hasła restic → `OK`)
+   na żywym, health-checked stacku.
+6. **ŚREDNIE — alokacja portu: dwaj pierwsi tenanci provisionowani jednocześnie mogli wybrać ten sam
+   port**, a przegrany trwale utykał (wybór zapisywany w `.env`, każdy kolejny apply odczytywał
+   kolizję zamiast realokować) — w przeciwieństwie do alokacji subnetu, gdzie nic nie jest
+   zapisywane wcześniej, więc retry naturalnie skanuje od nowa. Naprawione globalnym, krótkim
+   `flock` wokół sekcji skan-potem-rezerwacja. Współbieżne provisionowanie RÓŻNYCH tenantów jest
+   celowo wspierane (osobny lock niż per-tenantowy `STATE_DIR/apply.lock`), nie odrzucane.
+
+**Zasada:** dokładnie jak wyżej — żaden z tych sześciu nie był widoczny przy samej lekturze kodu.
+Reprodukcja SIGTERM wymagała wstrzykniętego `sleep` w kopii testowej (realne okno wyścigu przez
+round-trip narzędzi było za wąskie) — deterministyczne opóźnienie w rzucanej kopii, zdiffowane
+przeciwko oryginałowi, żeby dowieść że różni się dokładnie o jedną linię.

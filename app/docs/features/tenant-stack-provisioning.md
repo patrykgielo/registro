@@ -281,8 +281,11 @@ Covered by `tests/Feature/Middleware/ResolveTenantPinnedTest.php`,
 
 ## Known gaps / explicitly out of scope
 
-- The shell `apply` script that would call `registro:tenant-provisioned` before deciding whether to
-  run `registro:tenant-provision` does not exist yet — `scripts/server/**` is a separate task (task 6).
+- **Done** — `scripts/server/apply.sh` (task 6, see `app/docs/deployment/tenant-apply.md`) now calls
+  `registro:tenant-provisioned` before deciding whether to run `registro:tenant-provision`, and
+  documents a real bug this surfaced: `--assert` returning non-zero does not by itself mean
+  "inconsistent" — it also returns non-zero, printing exactly `not-provisioned`, for any stack that
+  simply hasn't been provisioned yet.
 - Docker/nginx changes: task 5 (`docker-compose.edge.yml`, see
   [Edge Stack](../deployment/edge-stack.md)) builds the shared ingress this architecture needs, but
   it proxies to a `tenant-<slug>-nginx` container that task 4 (rebuilding the tenant compose itself)

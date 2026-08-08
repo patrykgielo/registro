@@ -160,3 +160,13 @@ docker/nginx/edge/tenants.d/*.conf
 # tracked. _default/ itself stays tracked as the seed and the fallback.
 docker/nginx/edge/tenant-pages/*/
 !docker/nginx/edge/tenant-pages/_default/
+
+# Task 6 (scripts/server/apply.sh) -- regenerated on every apply run from the
+# ground truth (which tenants.d/*.conf files exist / which tenant a given
+# stack checkout belongs to), never hand-edited. Exists so neither
+# docker-compose.edge.yml nor docker-compose.prod.yml ever needs an in-place
+# edit to attach a tenant network -- both are tracked files `git checkout
+# --force` reverts on every deploy/apply, which would silently undo a
+# hand-edit the next time either ran. See app/docs/deployment/tenant-apply.md.
+docker-compose.edge.tenants.override.yml
+docker-compose.tenant-network.override.yml
