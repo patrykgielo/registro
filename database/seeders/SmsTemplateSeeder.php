@@ -162,12 +162,20 @@ class SmsTemplateSeeder extends Seeder
             ],
         ];
 
-        // Seed templates using updateOrCreate for idempotency
+        // Seed templates using updateOrCreate for idempotency.
+        //
+        // Deliberately scoped to the GLOBAL row only (organization_id IS NULL), with the
+        // tenant scope bypassed outright — same reasoning as EmailTemplateSeeder. Matching on
+        // key+language alone (in the unscoped console context this seeder always runs in) would
+        // find and overwrite ANY row for that key+language, including a tenant's override, or
+        // create a second global row now that the unique constraint is per-organization (see
+        // 2026_08_08_100001_scope_template_uniques_to_organization.php).
         foreach ($templates as $template) {
-            SmsTemplate::updateOrCreate(
+            SmsTemplate::withoutGlobalScope('organization')->updateOrCreate(
                 [
                     'key' => $template['key'],
                     'language' => $template['language'],
+                    'organization_id' => null,
                 ],
                 $template
             );

@@ -14,17 +14,28 @@ return new class extends Migration
      * organization_id's presence on both models and EmailTemplate/SmsTemplate::resolveActive(),
      * which is written to prefer a tenant override when one exists.
      *
-     * Trade-off, already accepted for `categories` in
-     * 2026_06_29_120000_fix_tenant_scoped_unique_constraints.php: MySQL and SQLite both
-     * treat every NULL as distinct in a unique index, so composite (organization_id, key,
-     * language) no longer blocks a second accidental global (NULL-org) row for the same
-     * key+language. Nothing in the codebase creates one deliberately — EmailTemplateSeeder
-     * and SmsTemplateSeeder both `updateOrCreate` matched on (key, language) alone, which
-     * (in the console context seeders run in) ignores tenant scoping entirely and finds the
-     * existing global row regardless — and resolveActive() picks deterministically via
-     * orderBy even if a duplicate ever existed. A filtered "unique WHERE organization_id IS
-     * NULL" index would close that gap but isn't portable across MySQL and SQLite alike, so
-     * it is documented here rather than attempted.
+     * THIS DELIBERATELY REVERSES 2026_06_29_120000_fix_tenant_scoped_unique_constraints.php,
+     * which explicitly SKIPPED email_templates and sms_templates from this exact composite-unique
+     * treatment (see its own docblock), for a real reason: MySQL and SQLite both treat every NULL
+     * as distinct in a unique index, so composite (organization_id, key, language) does not stop a
+     * second accidental global (NULL-org) row for the same key+language the way the single-column
+     * (key, language) unique did.
+     *
+     * That risk is real only because of HOW the row was found for re-seeding, not because of the
+     * unique index shape itself. Before this migration, EmailTemplateSeeder and SmsTemplateSeeder
+     * both `updateOrCreate`'d matched on (key, language) alone, unscoped by organization_id — safe
+     * only because at most one row could ever exist per key+language. Once tenant overrides became
+     * possible, that same unscoped match could hit and overwrite a TENANT'S override with generic
+     * seed content, or create a duplicate global row, with no deterministic tie-break. Both seeders
+     * were fixed in the same change as this migration to match `organization_id IS NULL` explicitly
+     * (`EmailTemplate::withoutGlobalScope('organization')->updateOrCreate([..., 'organization_id' =>
+     * null], ...)`), which makes re-seeding always target the global row and only the global row —
+     * closing the exact gap the 2026-06-29 migration was avoiding, not just accepting it. That is
+     * what makes doing the opposite of that migration's decision safe here.
+     *
+     * A filtered "unique WHERE organization_id IS NULL" index would close the gap at the schema
+     * level too and isn't portable across MySQL and SQLite alike, so the seeder-level fix is the
+     * one actually relied on; this is documented, not attempted.
      */
     public function up(): void
     {

@@ -1,17 +1,15 @@
 # Test Engineer — Project Memory
 
 ## Pre-Existing Failures (drifts over time — check `php artisan test` yourself before trusting this)
-- As of 2026-08-08 (reconfirmed after adding OrderLifecycleEmailTest/OrderCancellationTest): still 3
-  failed, 5 skipped, 1054 passed on default suite (Unit+Feature) — 2x `CustomerOrdersTest` (cancel
-  flow), 1x `TenantFeatureTest` (booking wizard step 4 404). **Root cause of the 2 CustomerOrdersTest
-  failures is now known** — see [[project_email_template_tenant_scope_bug_2026-08-08]]: both throw
-  "Email template 'order-cancelled' not found for language 'pl'." from the exact same
-  `EmailTemplate`-global-scope bug documented there, not a flaky/unrelated issue. Older note (5
-  failures: BookingServiceAreaBypassTest x4 + TenantFeatureTest x1) no longer matches current repo
-  state — don't trust either count blindly, always re-run baseline.
+- As of 2026-08-08 (after the EmailTemplate/SmsTemplate tenant-scope fix below shipped): **1 failed**,
+  5 skipped, 1062+ passed on default suite (Unit+Feature) — only `TenantFeatureTest` (booking wizard
+  step 4 404, unrelated to email templates, still unexplained). The 2 `CustomerOrdersTest` failures
+  that used to appear here are GONE — `CustomerOrdersTest` is fully green — see
+  [[project_email_template_tenant_scope_bug_2026-08-08]] for the fix that resolved them. Don't trust
+  this count blindly either — always re-run baseline yourself.
 
-## CRITICAL FINDING — EmailTemplate global scope breaks ALL in-tenant transactional email (2026-08-08)
-- [project_email_template_tenant_scope_bug_2026-08-08.md](project_email_template_tenant_scope_bug_2026-08-08.md) — `App\Models\EmailTemplate` uses `BelongsToOrganization`, whose global scope filters `organization_id = <tenant>` whenever ANY tenant is resolved, but `EmailTemplateSeeder` seeds every row `organization_id = NULL` (by design, global). Net effect: **every transactional email fired from within a real tenant HTTP request throws "Email template '...' not found"** — confirmed for order-confirmed (Filament admin action) and order-cancelled (storefront customer action), and this is not narrow: same query shape, same bug, for every other EmailService-backed notification. Root-causes 2 of the 3 known pre-existing `php artisan test` failures. NOT fixed (product-code change, out of test-engineer remit) — tests assert the real broken behavior instead, documented as a live bug via `tests/Browser/OrderLifecycleEmailTest.php` and `tests/Browser/OrderCancellationTest.php`.
+## FIXED — EmailTemplate/SmsTemplate global scope broke ALL in-tenant transactional email (found + fixed 2026-08-08)
+- [project_email_template_tenant_scope_bug_2026-08-08.md](project_email_template_tenant_scope_bug_2026-08-08.md) — `App\Models\EmailTemplate`/`SmsTemplate` use `BelongsToOrganization`, whose global scope filtered `organization_id = <tenant>` whenever ANY tenant was resolved, but both seeders seed every row `organization_id = NULL` (by design, global). Net effect: **every transactional email fired from within a real tenant HTTP request threw "template '...' not found"** — confirmed for order-confirmed (Filament admin action) and order-cancelled (storefront customer action), and it wasn't narrow: same query shape, same bug, for every other EmailService/SmsService-backed notification. Root-caused 2 of the (then) 3 known pre-existing `php artisan test` failures. **FIXED** by `laravel-senior-architect`: `EmailTemplate::resolveActive()`/`SmsTemplate::resolveActive()` (tenant override OR global, never another tenant's row) + a migration making per-tenant overrides schema-possible + both seeders scoped to the global row only. `tests/Browser/OrderLifecycleEmailTest.php` and `tests/Browser/OrderCancellationTest.php` were rewritten in the same change to assert the now-correct behavior (real emails land in `email_sends`, no more 500). `tests/Feature/Email/TemplateResolutionTest.php` covers the lookup itself for both models, override-wins/global-fallback/cross-tenant-denial/console-context, each assertion mutation-verified to actually fail without the fix.
 
 ## Second finding — bare `throttle:N,M` shares ONE rate-limit bucket per user/IP app-wide (2026-08-08)
 - `Illuminate\Routing\Middleware\ThrottleRequests::resolveRequestSignature()` keys purely by

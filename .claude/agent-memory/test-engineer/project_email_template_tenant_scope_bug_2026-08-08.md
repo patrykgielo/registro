@@ -1,6 +1,6 @@
 ---
 name: project_email_template_tenant_scope_bug_2026-08-08
-description: CRITICAL app bug — EmailTemplate's tenant global scope makes every transactional email fired from a real tenant HTTP request throw "template not found"; root-causes 2 of the 3 known pre-existing test failures
+description: FIXED — EmailTemplate/SmsTemplate's tenant global scope made every transactional email fired from a real tenant HTTP request throw "template not found"; root-caused and resolved 2 of the (then) 3 known pre-existing test failures
 metadata:
   type: project
 ---
@@ -68,19 +68,53 @@ fire on the ROOT domain, before any tenant is ever resolved — same reason.
   exception. Previously logged in memory only as "cancel flow, email-template lookup" with no root
   cause identified — now identified.
 
-## What I did NOT do
+## STATUS: FIXED (2026-08-08, same day, by `laravel-senior-architect`)
 
-Did not fix `BelongsToOrganization`, `EmailTemplate`, or `EmailService` — that's a product-code change,
-outside a test-engineer's remit per `.claude/rules/agent-usage.md` (`laravel-senior-architect` territory).
-The two new Browser tests assert the CURRENT real (broken) behavior instead, heavily commented as a live
-bug, not a design choice, so that fixing this bug forces someone to come back and update those tests
-deliberately (not silently drift green).
+At the time this file was first written, the fix below was correctly out of a test-engineer's remit
+(product-code change, `BelongsToOrganization`/`EmailTemplate`/`EmailService` territory per
+`.claude/rules/agent-usage.md`) — the two new Browser tests asserted the CURRENT real (broken)
+behavior instead, heavily commented as a live bug. **That fix has since shipped in the same commit
+this file lives in.** Do not treat the "not implemented" framing below as current — it describes what
+was true before the fix, kept for the historical trail, not as a task list.
 
-## Likely fix shape (not implemented, for whoever picks this up)
+## The shipped fix
 
-`EmailTemplate::where(...)` in `EmailService::sendFromTemplate()` needs
-`->withoutGlobalScope('organization')` (or a dedicated scoped-vs-global template lookup strategy) since
-these rows are intentionally NULL-org and meant to be visible regardless of tenant context. Verified via
-mutation testing (temporarily adding `withoutGlobalScope('organization')` to the query) that this exact
-change makes both Browser tests' current assertions fail — i.e. it genuinely fixes the underlying
-problem and the tests are correctly wired to notice.
+- `EmailTemplate::resolveActive(string $key, string $language): ?self` and the identical
+  `SmsTemplate::resolveActive()` (both models) — explicit `withoutGlobalScope('organization')`
+  replaced with a narrower, hand-written condition: `organization_id IS NULL OR organization_id =
+  <current tenant id>`, tenant-specific row preferred via `orderByRaw('organization_id IS NULL')`.
+  Cross-tenant-safe by construction — the `orWhere` only ever adds the CALLER's own resolved tenant
+  id, never any other tenant's.
+- `EmailService::sendFromTemplate()` / `SmsService::sendFromTemplate()` call `resolveActive()` instead
+  of the old plain `::where(...)->first()`.
+- Console/queue-worker context (Horizon): `TenantFeature::currentTenant()` resolves nothing there (no
+  Filament tenant, no request attribute, no session) — `resolveActive()` degrades to "global template
+  only," a deliberate, documented limitation, not a regression (there was no reachable override
+  mechanism there before this fix either).
+- Migration `2026_08_08_100001_scope_template_uniques_to_organization.php`: the old `(key, language)`
+  unique made a tenant override collide with the global row it was meant to override, so overrides
+  were schema-impossible even though both models always carried `organization_id`. Converted to
+  composite `(organization_id, key, language)` — deliberately reverses the 2026-06-29 migration's
+  decision to skip these two tables from that treatment; safe only because both seeders
+  (`EmailTemplateSeeder`, `SmsTemplateSeeder`) were also fixed in the same change to match
+  `organization_id IS NULL` explicitly on re-seed, so re-seeding can never touch a tenant's override
+  or create a duplicate global row.
+- `tests/Browser/OrderLifecycleEmailTest.php` / `tests/Browser/OrderCancellationTest.php`: rewritten
+  to assert the NOW-CORRECT behavior — cancellation completes cleanly with `cancelled_at` set and a
+  real `order-cancelled` `EmailSend` row, `order-confirmed` genuinely sends and the admin sees the real
+  success toast. `OrderLifecycleEmailTest`'s two still-real, untouched gaps (dev payment bypass never
+  dispatches `OrderPaid`; `in_progress`/`completed` have no notification hooks at all) are preserved
+  deliberately — its final count assertion is `1`, not `0` and not `4`.
+- `tests/Feature/Email/TemplateResolutionTest.php` (new): Feature-level coverage of `resolveActive()`
+  itself for BOTH models — tenant override wins, global fallback, tenant A cannot resolve tenant B's
+  override, console/no-tenant-context resolves only the global row. Every assertion mutation-verified
+  (temporarily reverting `resolveActive()` to a naive scoped query and confirming the relevant test
+  fails, then restoring) to actually catch a regression, not just exercise the happy path.
+
+## Verified after the fix
+
+- `./vendor/bin/pint --test` — clean.
+- `php artisan test` (Unit+Feature) — 1 failed (unrelated `TenantFeatureTest` booking-wizard 404), 5
+  skipped, 1062+ passed. Both `CustomerOrdersTest` cancel-flow tests that used to fail on this exact
+  bug are green.
+- `php artisan test --testsuite=Browser` — all Browser tests pass, including the two rewritten ones.

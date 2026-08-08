@@ -127,21 +127,27 @@ class TemplateResolutionTest extends TestCase
     {
         $org = Organization::factory()->equipmentRental()->create();
 
-        $global = EmailTemplate::create([
-            'key' => self::KEY,
-            'language' => 'pl',
-            'subject' => 'Global subject',
-            'html_body' => '<p>Global</p>',
-            'variables' => [],
-            'active' => true,
-        ]);
-
+        // Override created FIRST (lower id) deliberately: a naive, unscoped fallback query
+        // (no ORDER BY, no organization_id filter — exactly what the trait's own global scope
+        // reduces to when no tenant is resolved AND ResolveTenant never touched this request)
+        // would return the LOWEST-id row by default, i.e. this override — the wrong answer, and
+        // silently so. Insertion order this way makes that failure mode deterministic, not a
+        // coincidence of row order, so this assertion actually catches it.
         EmailTemplate::create([
             'organization_id' => $org->id,
             'key' => self::KEY,
             'language' => 'pl',
             'subject' => 'Tenant override subject',
             'html_body' => '<p>Tenant override</p>',
+            'variables' => [],
+            'active' => true,
+        ]);
+
+        $global = EmailTemplate::create([
+            'key' => self::KEY,
+            'language' => 'pl',
+            'subject' => 'Global subject',
+            'html_body' => '<p>Global</p>',
             'variables' => [],
             'active' => true,
         ]);
@@ -206,5 +212,58 @@ class TemplateResolutionTest extends TestCase
         $resolved = SmsTemplate::resolveActive(self::KEY, 'pl');
 
         $this->assertNull($resolved);
+    }
+
+    public function test_sms_falls_back_to_global_template_when_no_override_exists(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+
+        $global = SmsTemplate::create([
+            'key' => self::KEY,
+            'language' => 'pl',
+            'message_body' => 'Global reminder',
+            'variables' => [],
+            'active' => true,
+        ]);
+
+        $this->actingAsTenant($org);
+
+        $resolved = SmsTemplate::resolveActive(self::KEY, 'pl');
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($global->id, $resolved->id);
+    }
+
+    public function test_sms_no_tenant_context_only_ever_resolves_the_global_template(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+
+        // Override created FIRST (lower id) deliberately — see the identical comment on
+        // test_email_no_tenant_context_only_ever_resolves_the_global_template() for why: it
+        // makes a naive, unscoped fallback query's default row order pick the WRONG (override)
+        // row deterministically, instead of coincidentally passing either way.
+        SmsTemplate::create([
+            'organization_id' => $org->id,
+            'key' => self::KEY,
+            'language' => 'pl',
+            'message_body' => 'Tenant override reminder',
+            'variables' => [],
+            'active' => true,
+        ]);
+
+        $global = SmsTemplate::create([
+            'key' => self::KEY,
+            'language' => 'pl',
+            'message_body' => 'Global reminder',
+            'variables' => [],
+            'active' => true,
+        ]);
+
+        // Deliberately no actingAsTenant() — this is the queue-worker/console scenario:
+        // TenantFeature::currentTenant() resolves nothing, so only the global row can match.
+        $resolved = SmsTemplate::resolveActive(self::KEY, 'pl');
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($global->id, $resolved->id);
     }
 }
