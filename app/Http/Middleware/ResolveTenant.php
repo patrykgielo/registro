@@ -33,6 +33,12 @@ class ResolveTenant
         // middleware at all. See app/Traits/BelongsToOrganization.php.
         $request->attributes->set('tenant_resolution_attempted', true);
 
+        $pinnedSlug = config('app.tenant_slug');
+
+        if (filled($pinnedSlug)) {
+            return $this->handlePinnedTenant($request, $next, $pinnedSlug);
+        }
+
         $host = $request->getHost();
         $baseDomain = config('app.domain', 'registro.local');
 
@@ -55,21 +61,10 @@ class ResolveTenant
             return redirect()->to($this->rootUrl($request));
         }
 
-        // Resolve tenant with cache (5 min TTL).
-        // lifecycle_state is authoritative (Faza 5.2): only Active tenants serve the public site.
-        // is_active is kept as a derived column for other internal uses but is no longer
-        // the gating condition here. Stale cache entries (from pre-5.2) expire in 300 s.
-        $tenant = Cache::remember("tenant:slug:{$slug}", 300, function () use ($slug) {
-            return Organization::where('slug', $slug)
-                ->where('lifecycle_state', OrganizationLifecycleState::Active->value)
-                ->first();
-        });
+        $tenant = $this->resolveActiveTenantBySlug($slug);
 
         if (! $tenant) {
             // Unknown or inactive tenant — redirect to root domain (fail closed)
-            // Do NOT cache null results (tenant might be created/activated soon)
-            Cache::forget("tenant:slug:{$slug}");
-
             // Before redirecting: check if this is a Closing/Closed tenant.
             // These states warrant a dedicated "business closed" page rather than a silent
             // root redirect — the business existed and deliberately shut down.
@@ -118,20 +113,8 @@ class ResolveTenant
             $request->session()->put('tenant_id', $tenant->id);
         }
 
-        // Authorization: authenticated admin/staff must belong to this tenant.
-        // Login route is excluded — user must be able to authenticate first.
-        if (
-            $request->is('admin*') &&
-            ! $request->is('admin/login*') &&
-            Auth::check()
-        ) {
-            $user = Auth::user();
-            if (
-                $user->hasAnyRole(['admin', 'staff']) &&
-                ! $user->canAccessTenant($tenant)
-            ) {
-                return redirect()->to($this->rootUrl($request));
-            }
+        if (! $this->staffCanAccessTenant($request, $tenant)) {
+            return redirect()->to($this->rootUrl($request));
         }
 
         // Force route() to generate URLs with tenant subdomain instead of APP_URL.
@@ -141,6 +124,116 @@ class ResolveTenant
         URL::forceRootUrl($request->getSchemeAndHttpHost());
 
         return $next($request);
+    }
+
+    /**
+     * Stack-per-tenant mode (TENANT_SLUG set): resolves the tenant from the
+     * container's own environment instead of the Host header — a dedicated
+     * stack's database holds exactly one Organization (see
+     * `organizations.singleton`, app/docs/features/tenant-stack-provisioning.md),
+     * so there is nothing meaningful to derive from a subdomain.
+     *
+     * Pinning the slug alone would make the stack answer 200 on ANY Host that
+     * reaches it (a stray DNS entry, a scanner hitting the bare IP, a Host
+     * header that doesn't match the client's actual domain at all) — the
+     * container has no other tenant to fall back to or redirect toward, so an
+     * unchecked Host would silently serve this tenant's data under it.
+     * TENANT_HOSTS is the independent, fail-closed layer that stops that: a
+     * Host outside the allowlist gets 404 even though the slug resolves fine.
+     * Empty/unset TENANT_HOSTS denies every Host on purpose — an operator who
+     * sets TENANT_SLUG but forgets TENANT_HOSTS gets a 404ing stack, not a
+     * silently wide-open one.
+     *
+     * Deliberately does not reuse the closed/suspended-org pages from the
+     * host-derived branch above — out of scope here (see the ResolveTenant
+     * section of app/docs/features/tenant-stack-provisioning.md); a pinned
+     * tenant that is not Active fails closed to a plain 404.
+     */
+    private function handlePinnedTenant(Request $request, Closure $next, string $pinnedSlug): Response
+    {
+        $allowedHosts = config('app.tenant_hosts', []);
+        $host = strtolower($request->getHost());
+
+        abort_unless(in_array($host, $allowedHosts, true), 404);
+
+        $tenant = $this->resolveActiveTenantBySlug($pinnedSlug);
+
+        if (! $tenant) {
+            abort(404);
+        }
+
+        $request->attributes->set('tenant', $tenant);
+
+        if ($request->hasSession()) {
+            $request->session()->put('tenant_id', $tenant->id);
+        }
+
+        // Same staff/admin tenant-membership guard as the host-derived branch —
+        // see staffCanAccessTenant() (login route excluded so a user can
+        // authenticate first).
+        abort_unless($this->staffCanAccessTenant($request, $tenant), 404);
+
+        // Force route() to generate URLs with the request's own host instead of
+        // APP_URL — same reasoning as the host-derived branch below.
+        URL::forceRootUrl($request->getSchemeAndHttpHost());
+
+        return $next($request);
+    }
+
+    /**
+     * Resolve the Active organization for a slug, with cache (5 min TTL) —
+     * shared by both the host-derived and pinned-stack branches, which
+     * otherwise called through to Organization::where() identically.
+     *
+     * lifecycle_state is authoritative (Faza 5.2): only Active tenants serve
+     * the public site. is_active is kept as a derived column for other
+     * internal uses but is no longer the gating condition here. Stale cache
+     * entries (from pre-5.2) expire in 300 s.
+     *
+     * Deliberately does NOT decide what to do on a miss (redirect, 410/503
+     * page, plain 404) — that differs by branch and stays in the caller.
+     */
+    private function resolveActiveTenantBySlug(string $slug): ?Organization
+    {
+        $tenant = Cache::remember("tenant:slug:{$slug}", 300, function () use ($slug) {
+            return Organization::where('slug', $slug)
+                ->where('lifecycle_state', OrganizationLifecycleState::Active->value)
+                ->first();
+        });
+
+        if (! $tenant) {
+            // Do NOT cache null results — the org might be created/activated soon.
+            Cache::forget("tenant:slug:{$slug}");
+        }
+
+        return $tenant;
+    }
+
+    /**
+     * Authorization: an authenticated admin/staff user must belong to the
+     * resolved tenant. Login route is excluded — a user must be able to
+     * authenticate first. Not admin/staff, not on /admin*, or not
+     * authenticated at all → nothing to check here, so `true`.
+     *
+     * Shared by both branches on purpose: a future change to this rule
+     * applied to only one branch would open an authorization gap between the
+     * shared stack and a pinned stack, silently — this project already
+     * shipped exactly that failure once, duplicated across OrderResource and
+     * EditOrder.
+     */
+    private function staffCanAccessTenant(Request $request, Organization $tenant): bool
+    {
+        if (
+            ! $request->is('admin*') ||
+            $request->is('admin/login*') ||
+            ! Auth::check()
+        ) {
+            return true;
+        }
+
+        $user = Auth::user();
+
+        return ! $user->hasAnyRole(['admin', 'staff']) || $user->canAccessTenant($tenant);
     }
 
     /**

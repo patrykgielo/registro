@@ -29,4 +29,5 @@ Pełne kroniki obu incydentów (2026-06-29, 2026-07-07): `ci-cd-troubleshooting.
 FILESYSTEM_DISK=public  # ZAWSZE — nigdy 'local'!
 APP_DEBUG=false         # Produkcja
 APP_KEY=base64:...      # Non-empty
+TRUSTED_PROXIES_CIDR=   # ZOSTAW PUSTE — brak edge network dziś. NIGDY '*'. Patrz middleware.md.
 ```

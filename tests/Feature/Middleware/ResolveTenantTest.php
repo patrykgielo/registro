@@ -352,6 +352,52 @@ class ResolveTenantTest extends TestCase
         $this->assertTrue($response->isRedirection());
     }
 
+    /**
+     * Fast Feature-level counterpart to the Browser test
+     * (Tests\Browser\TenantIsolationTest > it refuses an admin session from
+     * one tenant on a different tenant's subdomain), which exercises the same
+     * guard end-to-end but takes ~9s and requires the Browser suite to be run
+     * explicitly. staffCanAccessTenant() is shared with the pinned-stack
+     * branch (see ResolveTenantPinnedTest::test_staff_outside_the_pinned_tenant_is_denied_admin_access) —
+     * this is the host-derived branch's own coverage for it.
+     */
+    public function test_staff_outside_the_resolved_tenant_is_redirected_to_root(): void
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+
+        config(['app.domain' => 'registro.local']);
+
+        $owner = User::factory()->create();
+        Organization::create([
+            'name' => 'Demo Salon',
+            'slug' => 'demo',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+        ]);
+
+        // A different organization's admin, with no pivot row on "demo".
+        $otherOwner = User::factory()->create();
+        $otherOrg = Organization::create([
+            'name' => 'Other Org',
+            'slug' => 'other',
+            'booking_type' => 'time_slot',
+            'owner_id' => $otherOwner->id,
+        ]);
+        $foreignAdmin = User::factory()->create();
+        $foreignAdmin->assignRole('admin');
+        $foreignAdmin->organizations()->attach($otherOrg->id, ['role' => 'owner']);
+
+        $this->actingAs($foreignAdmin);
+
+        $request = Request::create('https://demo.registro.local/admin');
+        $request->headers->set('HOST', 'demo.registro.local');
+
+        $response = $this->middleware->handle($request, fn ($req) => response('ok'));
+
+        $this->assertTrue($response->isRedirection());
+        $this->assertStringContains('registro.local', $response->headers->get('Location'));
+    }
+
     private function assertStringContains(string $needle, ?string $haystack): void
     {
         $this->assertNotNull($haystack);
