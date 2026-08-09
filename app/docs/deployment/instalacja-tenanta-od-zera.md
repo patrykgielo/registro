@@ -269,55 +269,35 @@ curl -s -o /dev/null -w "HTTP %{http_code} tls=%{ssl_verify_result}\n" https://n
 
 Spodziewaj się **błędu certyfikatu**. To jest oczekiwane i wymaga Twojego działania — patrz 2.5.
 
-### 2.5 — Dołóż subdomenę klienta do certyfikatu RĘCZNIE
+### 2.5 — Poczekaj na crona uzgadniającego nazwy
 
-**Nie czekaj na crona. On tego nie zrobi — a co gorsza, cofnie to, co zrobisz ręcznie.**
+**Ten krok jest teraz automatyczny — dawniej wymagał ręcznej interwencji, patrz niżej.**
 
-`sync-certificate.sh` pyta o listę nazw **bazę starego, współdzielonego stacka**. Klient na własnym
-stacku ma własną bazę, więc jego nazwa nigdy tam nie trafi. I ponieważ skrypt wystawia certyfikat
-na **dokładnie tę listę**, każda nazwa spoza niej zostaje **usunięta** przy najbliższym przebiegu.
+`sync-certificate.sh` enumeruje dziś zarówno starą, współdzieloną bazę, JAK i każdy dedykowany
+stack pod `/opt/stacks/*/` (czyta `TENANT_HOSTS` bezpośrednio z kontenera `app` tego stacka —
+dokładnie tę samą listę, którą `apply.sh` już zapisał w jego `.env`). Nowy klient dostanie się na
+certyfikat przy najbliższym przebiegu crona (`/etc/cron.d/registro-certificate`, co 15 minut) —
+bez żadnego ręcznego kroku. Do tego czasu `curl` z kroku 2.4 pokaże błąd certyfikatu — to
+oczekiwane, poczekaj do 15 minut i powtórz sprawdzenie; oczekuj `HTTP 200 tls=0`.
 
-Czyli: dodasz nazwę ręcznie, sprawdzisz że działa, pójdziesz spać — i w ciągu 15 minut certyfikat
-znowu jej nie pokrywa, bez żadnego komunikatu. To znana, zapisana luka (`edge-stack.md`, sekcja
-„Known gap"), nie awaria — ale musisz ją obejść.
+**Jeśli po 15+ minutach certyfikat WCIĄŻ nie pokrywa nowego klienta** — to nie jest już "znana
+luka", tylko awaria: sprawdź log crona (`/var/log/registro-certificate.log` na serwerze). Skrypt
+teraz **przerywa cały przebieg** (i zostawia certyfikat bez zmian), jeśli którykolwiek dedykowany
+stack istnieje, ale nie odpowiada (kontener padnięty, zepsuty `.env`, timeout) — więc brak
+aktualizacji zwykle oznacza, że TEN klient (albo inny stack na tym samym serwerze) jest w takim
+stanie, nie że mechanizm enumeracji znów widzi tylko starą bazę.
 
-> Krok 0: **zatrzymaj crona uzgadniającego nazwy**, zanim cokolwiek dodasz.
->
-> Kosztuje Cię to mniej, niż się wydaje: odnowieniami certyfikatu zajmuje się **własny timer
-> certbota** (`certbot.timer`, aktywny i niezależny). Wstrzymujesz wyłącznie automatyczne
-> dokładanie nazw dla tenantów ze starego stacka — a tych nie przybywa.
+<details>
+<summary>Historia: dawna procedura ręczna (dla kontekstu, już niepotrzebna)</summary>
 
-```bash
-ssh root@srv1342834.hstgr.cloud 'mv /etc/cron.d/registro-certificate /root/registro-certificate.wstrzymany && echo "cron wstrzymany"'
-```
+Przed naprawą `sync-certificate.sh` pytał wyłącznie o bazę starego, współdzielonego stacka —
+klient na własnym stacku nigdy tam nie trafiał, a skrypt wystawiał certyfikat na dokładnie tę
+listę, więc każda ręcznie dodana nazwa znikała przy najbliższym przebiegu. Wymagało to
+wstrzymania crona, ręcznego `certbot certonly --expand` z pełną listą nazw i ręcznego reloadu
+edge'a. Ta procedura jest teraz zbędna — zostawiona tu wyłącznie jako historia problemu, nie jako
+instrukcja do wykonania.
 
-Przywrócisz go dopiero, gdy `sync-certificate.sh` nauczy się widzieć stacki dedykowane. Zapisz
-sobie to gdzieś — bo inaczej za pół roku nikt nie będzie wiedział, czemu ten plik leży w `/root`.
-
-> Krok 1: odczytaj, jakie nazwy certyfikat pokrywa dzisiaj.
-
-```bash
-ssh root@srv1342834.hstgr.cloud 'certbot certificates --cert-name registrolabs.com | grep Domains'
-```
-
-> Krok 2: wystaw ponownie, wypisując **WSZYSTKIE** nazwy z kroku 1 **plus** nową. Pominięcie
-> którejkolwiek dotychczasowej usunie ją z certyfikatu i zepsuje tamten adres.
-
-```bash
-ssh root@srv1342834.hstgr.cloud 'certbot certonly --webroot -w /var/www/letsencrypt \
-  --cert-name registrolabs.com --expand \
-  -d registrolabs.com -d www.registrolabs.com -d budowlana.registrolabs.com \
-  -d nazwaklienta.registrolabs.com \
-  --non-interactive'
-```
-
-> Krok 3: brzeg musi przeczytać nowy certyfikat.
-
-```bash
-ssh deploy@srv1342834.hstgr.cloud 'docker exec registro-edge-nginx nginx -s reload'
-```
-
-Potem powtórz sprawdzenie z 2.4 — teraz musi być `HTTP 200 tls=0`.
+</details>
 
 ---
 
@@ -472,11 +452,9 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
 
 - **Części 1 i 2 nigdy nie były wykonane na serwerze.** Spodziewaj się poprawek.
 - **Krok 4.1** (nowy link do hasła) nie ma jeszcze sprawdzonej komendy.
-- **Certyfikat dla nowego klienta trzeba dołożyć ręcznie, a crona uzgadniającego nazwy trzeba
-  najpierw wstrzymać** (krok 2.5) — bo inaczej cofnie tę zmianę w ciągu 15 minut. To najbrzydszy
-  element całej tej ścieżki. Domknięcie: `sync-certificate.sh` musi nauczyć się enumerować
-  podpięte stacki dedykowane, zamiast pytać wyłącznie bazę starego. Zapisane jako follow-up
-  w `edge-stack.md`. **Dopóki to nie powstanie, każdy nowy klient wymaga ręcznego kroku 2.5.**
+- ~~Certyfikat dla nowego klienta trzeba dołożyć ręcznie~~ — naprawione: `sync-certificate.sh`
+  enumeruje dziś też podpięte stacki dedykowane (krok 2.5), żaden ręczny krok już nie jest
+  potrzebny, poza zwykłym odczekaniem do 15 minut na najbliższy przebieg crona.
 - **Nie ma tu usuwania klienta.** Offboarding istnieje w aplikacji, ale nie ma ścieżki operatora
   „zdejmij ten stack z serwera".
 - **Nie ma tu przywracania z backupu.** Skrypt robi kopie; procedura odtworzenia nie jest opisana

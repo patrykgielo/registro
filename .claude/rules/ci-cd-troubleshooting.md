@@ -224,3 +224,43 @@ Kontynuacja incydentu powyżej. Pełny opis + reprodukcja SIGTERM krok po kroku:
 Reprodukcja SIGTERM wymagała wstrzykniętego `sleep` w kopii testowej (realne okno wyścigu przez
 round-trip narzędzi było za wąskie) — deterministyczne opóźnienie w rzucanej kopii, zdiffowane
 przeciwko oryginałowi, żeby dowieść że różni się dokładnie o jedną linię.
+
+---
+
+## Incydent (znaleziony przez analizę, przed shippingiem): `sync-certificate.sh` enumerował TYLKO
+## starą bazę — dedykowane stacki znikały z certyfikatu na każdym przebiegu crona
+
+Kontynuacja epiki stack-per-tenant (task 6+). `sync-certificate.sh` budował listę nazw SAN
+wyłącznie z `php artisan tenants:hostnames` w kontenerze STAREGO, współdzielonego stacka. Tenant
+provisionowany na własnym stacku (`/opt/stacks/<slug>/`, własna baza) nigdy tam nie trafiał — a
+skrypt wystawia certyfikat na DOKŁADNIE tę listę (`certbot --expand`), więc każda nazwa dodana
+ręcznie znikała przy najbliższym przebiegu (co 15 min). Pełny opis: `edge-stack.md` → "Known gap,
+fixed", `instalacja-tenanta-od-zera.md` krok 2.5.
+
+**Znaleziony, ale NIE naprawiony pułapką, przy projektowaniu naprawy:** oczywisty pierwszy pomysł —
+odpalić `tenants:hostnames` też wewnątrz kontenera każdego dedykowanego stacka — jest SAM W SOBIE
+błędny. Ta komenda liczy `baseDomain + "<org-slug>.<baseDomain>"`; na dedykowanym stacku
+`APP_DOMAIN` to już `PRIMARY_HOST` tenanta (np. `acme.registrolabs.com`), a jedyna organizacja w
+jego bazie ma TEN SAM slug (`acme`) — wynik: `acme.acme.registrolabs.com`, nazwa której nic nie
+serwuje i której nie pokrywa jednopoziomowy wildcard. Let's Encrypt odrzuca CAŁE zamówienie przy
+jednej niewalidującej się nazwie — czyli naiwna naprawa zepsułaby odnawianie certyfikatu dla
+WSZYSTKICH tenantów naraz, w tym starego stacka. Znalezione przez analizę przepływu danych
+(`apply.sh`'s `.env` generation → `config('app.domain')` → `ListTenantHostnamesCommand`), nie przez
+uruchomienie — ale zweryfikowane logicznie krok po kroku przed napisaniem jakiegokolwiek kodu.
+
+**Naprawa:** źródłem nazw dla dedykowanego stacka jest `TENANT_HOSTS`, odczytywane NA ŻYWO z
+środowiska kontenera `app` (`docker compose exec app sh -c 'echo $TENANT_HOSTS'`) — to już jest
+dokładna, ustalona przy `apply` allowlista, którą `ResolveTenant`/`TrustedTenantHosts` i tak
+egzekwują. Zero przeliczania.
+
+**Fail-safe, nie fail-shrink:** katalog bez pliku compose (śmieć albo `.state/` — `find` NIE pomija
+kropkowanych wpisów, patrz incydent apply.sh wyżej) = cichy skip. Katalog z plikiem compose, który
+NIE odpowiada (kontener padnięty, zepsuty `.env`, timeout) = **przerwanie CAŁEGO przebiegu przed
+dotknięciem certbota** — nigdy cichego zawężenia listy. Zweryfikowane end-to-end w piaskownicy
+(fake `su`/`docker`/`certbot`/`id` w PATH, cztery scenariusze: brak `/opt/stacks`, `.state` +
+katalog-śmieć, zdrowy stack, niedostępny stack) — `certbot certonly` w scenariuszu niedostępnego
+stacka NIE został wywołany ani razu.
+
+**Zasada:** przy REUŻYWANIU istniejącej komendy/mechanizmu w NOWYM kontekście (inna architektura,
+inny model danych) — prześledź co faktycznie policzy, zanim się do niej podłączysz. "Ta sama
+komenda" nie znaczy "ten sam poprawny wynik", jeśli założenia kontekstu się zmieniły.

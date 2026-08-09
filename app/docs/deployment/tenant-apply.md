@@ -110,19 +110,17 @@ carry inline (this is a summary, not a duplicate):
 
 ### Why the X-Tenant assertion doesn't go through the edge
 
-The edge's certificate may not cover this tenant's hostname yet —
-`sync-certificate.sh`'s hostname source is a documented, pre-existing gap for
-dedicated tenant stacks (it only enumerates the legacy shared stack's own
-database — see `edge-stack.md`'s "Known gap"). Asserting through HTTPS via the
-edge would make this step fail on every brand-new tenant for a reason that has
-nothing to do with what this step actually verifies. What it verifies instead
-— the one thing genuinely in this task's control — is that this tenant's own
-nginx hop sets `HTTP_X_TENANT` from the real rendered slug, not the
-placeholder. **Residual, stated plainly:** this does not prove the edge
-correctly proxies to this tenant end-to-end over HTTPS with a valid
-certificate. That is a separate, already-documented gap; fixing
-`sync-certificate.sh`'s hostname enumeration to also see dedicated stacks is
-follow-up work this task did not attempt to guess at.
+The edge's certificate may not cover this tenant's hostname **yet** — even now
+that `sync-certificate.sh` enumerates dedicated stacks too (see `edge-stack.md`'s
+"Known gap, fixed"), a brand-new tenant still has to wait for the next
+15-minute cron reconcile before its name is actually on the certificate.
+Asserting through HTTPS via the edge would make this step flaky on every
+brand-new tenant for a reason that has nothing to do with what this step
+actually verifies. What it verifies instead — the one thing genuinely in this
+task's control — is that this tenant's own nginx hop sets `HTTP_X_TENANT` from
+the real rendered slug, not the placeholder. **Residual, stated plainly:** this
+does not prove the edge correctly proxies to this tenant end-to-end over HTTPS
+with a valid certificate within that first 15-minute window.
 
 ## Bugs this task's own validation found and fixed
 
