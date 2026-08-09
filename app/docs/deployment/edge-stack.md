@@ -281,13 +281,27 @@ in the server's `.env`, and the next cron run retargets itself with no script ed
 "Cutover sequencing" below), not part of attaching a new dedicated tenant, which is all `apply`
 performs today.
 
-**Known gap, not fixed here:** the *hostname source* (`DESIRED=...tenants:hostnames` a few lines
-above the reload target) still queries the legacy shared stack's `app` container via
-`docker-compose.prod.yml`. That's correct as long as every tenant lives in that one shared database.
-Once tenants start moving to dedicated per-tenant stacks (task 4), their hostnames live in *their
-own* databases and this script stops seeing them — it would keep renewing a certificate that only
-covers whichever tenants are still on the legacy stack. Generalizing the hostname source to also
-enumerate attached dedicated stacks is follow-up work, not something to guess at here.
+**Known gap, fixed:** the *hostname source* used to query only the legacy shared stack's `app`
+container via `docker-compose.prod.yml` (`DESIRED=...tenants:hostnames`), which was correct as long
+as every tenant lived in that one shared database. Once tenants started moving to dedicated
+per-tenant stacks (task 4), their hostnames live in *their own* databases and were never seen — worse,
+because `certbot --expand` reissues against exactly the list computed, any SAN an operator added for
+a dedicated tenant by hand was silently stripped on the next 15-minute cron run. `sync-certificate.sh`
+now also enumerates every stack under `STACKS_ROOT` (`/opt/stacks`, overridable via
+`REGISTRO_STACKS_ROOT`) and unions their names in. The source per dedicated stack is `TENANT_HOSTS`
+(read live from the container's own environment via `docker compose exec`), not another
+`tenants:hostnames` call — that command's own "baseDomain + org-slug.baseDomain" logic is written for
+the legacy shared-tenant architecture and would emit a broken double-subdomain name
+(`acme.acme.registrolabs.com`) if pointed at a dedicated stack, since `apply.sh` already sets that
+stack's `APP_DOMAIN`/org slug to the tenant's own primary host. `TENANT_HOSTS` is already the exact
+allowlist `ResolveTenant`/`TrustedTenantHosts` enforce for that container, so it needs no
+recomputation. Fail-safe by design: a stack directory with no compose file is skipped quietly (not
+provisioned yet); a stack that exists but cannot be queried (container down, broken `.env`, compose
+interpolation failure, timeout) aborts the **entire** run before anything touches certbot, leaving the
+live certificate exactly as it was — see the script's own comments for the full reasoning and
+`scripts/server/sync-certificate.sh`'s validation notes in this task's PR description for the four
+scenarios actually exercised (no `/opt/stacks`, dotdir + junk directory both skipped, a healthy stack's
+names unioned in, an unqueryable stack aborting the run with the cert list provably untouched).
 
 ## Cutover sequencing (documented, not performed)
 
@@ -387,8 +401,8 @@ reachable; there's nothing to reconfigure at the firewall layer during the cutov
   edge-sync step actually does; it is no longer the only way to perform it, and its step 4 is
   specifically superseded by `apply`'s generated-override-file approach (see that document's
   correction).
-- `sync-certificate.sh`'s hostname source still only sees the legacy shared stack (see the "Known
-  gap" callout above it).
+- `sync-certificate.sh`'s hostname source now enumerates dedicated stacks too (see the "Known gap,
+  fixed" callout above it) — done, not a gap anymore.
 - No cutover has been performed or scheduled. The live server is untouched.
 - Task 4 landed — see [Tenant Compose Stack](tenant-compose-stack.md). The contract this edge assumes
   (`tenant-<slug>-nginx:80`, `X-Tenant`, `TRUSTED_PROXIES_CIDR`) is implemented and verified there
