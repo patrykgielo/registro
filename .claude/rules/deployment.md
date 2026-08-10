@@ -48,6 +48,15 @@ cicho cofa zmianę domeny, bez błędu.
 `stage_volume()` w `apply.sh`/`tenant-backup.sh` cicho tworzyło pusty backup obu wolumenów storage
 (znalezione 2026-08-10, patrz `ci-cd-troubleshooting.md`).
 
+## Dwie maszyny (plan `dwie-maszyny-uat-preprod.md`)
+
+UAT (`srv1342834`, dziś) = `registrolabs.com`, stack legacy + apply.sh. PreProd (do kupienia,
+Faza 4 — **nigdy nic z niej nie uruchomione**) = `registroapps.com`, **legacy-free**: `/var/www/
+registro` istnieje TYLKO jako katalog sterujący (`.git` + minimalny `.env`:
+`APP_DOMAIN`/`CERT_DIR`/`NGINX_RELOAD_CONTAINER=registro-edge-nginx`) — `docker-compose.prod.yml`
+tam NIGDY nie wstaje. Pełny `.env.production.example`/`validate-env.sh production`/`deploy-init.sh`
+— tylko dla maszyny ze stackiem legacy. Procedura: `instalacja-tenanta-od-zera.md` Część 10.
+
 ## Critical Variables
 
 ```bash

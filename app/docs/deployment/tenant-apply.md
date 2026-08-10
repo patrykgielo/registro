@@ -176,6 +176,37 @@ silently against the resulting stack; and the rendered vhost passed `nginx -t` i
 `nginx:1.25-alpine` container against a throwaway self-signed certificate — the same pattern
 `edge-stack.md`'s own validation already used.
 
+## `${LEGACY_APP_DIR}/.env` — the complete list of keys `apply.sh` and `sync-certificate.sh` read
+
+Verified by grepping both scripts for `.env` reads against `LEGACY_APP_DIR`/`APP_DIR` (the same
+directory, two names — see each script's own header), not by copying `.env.production.example`.
+Four keys total, two required unconditionally:
+
+| key | required? | read at | behavior if absent |
+|---|---|---|---|
+| `APP_DOMAIN` | yes, unless `apply.sh` is given an explicit `[hosts]` argument | `apply.sh:205`, `sync-certificate.sh:301` (optional there — only gates whether `www.<domain>` is probed) | `apply.sh` refuses immediately, before touching disk or Docker |
+| `CERT_DIR` | yes, always | `apply.sh:956` (edge-sync step), `sync-certificate.sh:72` | both `die()` immediately |
+| `NGINX_RELOAD_CONTAINER` | no (defaults to `registro-nginx`) — but see the legacy-free case below | `sync-certificate.sh:86` | reload targets `registro-nginx`, which is correct on the legacy shared stack and wrong on a machine that never ran it |
+| `MAIL_FROM_ADDRESS` | no | `sync-certificate.sh:89` | falls back to `admin@${CERT_DIR}` — where Let's Encrypt sends expiry warnings. **Whether that mailbox receives anything is unverified.** Does not block issuance; loses the warning |
+
+`apply.sh` also requires `${LEGACY_APP_DIR}/.git` to exist (line 486 — a real git checkout, to
+determine the origin to clone tenants from), which is not an `.env` key but is the other genuine
+precondition on this directory. Nothing else in `.env.production.example` — `APP_KEY`,
+`DB_PASSWORD`, `DB_ROOT_PASSWORD`, `REDIS_PASSWORD`, every `MAIL_*` besides `MAIL_FROM_ADDRESS`,
+every `P24_*`, ... — is read by either script; those belong to `docker-compose.prod.yml`'s own
+containers.
+
+**On a legacy-free machine (two-machines plan, Faza 4 — PreProd), `NGINX_RELOAD_CONTAINER` moves
+from "optional" to "must be pre-seeded before the first certificate request."** `registro-edge-nginx`
+is the only nginx that will ever hold 80/443 there, from the very first bring-up — there is no
+pre-cutover legacy nginx for the default to protect. Full reasoning and operator sequence:
+`edge-stack.md`'s "A legacy-free machine does not cut over — it bootstraps" and
+`instalacja-tenanta-od-zera.md`'s Część 10. `setup-production-server.sh`'s own closing instructions
+were split into paths 3a (legacy shared stack) / 3b (control-plane only) for exactly this reason —
+3a's `.env.production.example` + `validate-env.sh production` requires secrets a 3b machine's
+containers never start, and running `deploy-init.sh` on a 3b machine would stand up a second,
+unwanted legacy stack fighting the edge for ports 80/443.
+
 ## Bugs this task's own validation found and fixed
 
 Every one of these was found by *running* the guard it broke, not by

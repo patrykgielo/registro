@@ -416,6 +416,31 @@ by **port**, not by container (`ufw route allow proto tcp from any to any port 8
 whichever container is actually bound to those ports at any point in the sequence above is already
 reachable; there's nothing to reconfigure at the firewall layer during the cutover.
 
+## A legacy-free machine (two-machines plan, Faza 4) does not cut over — it bootstraps
+
+Everything above ("Cutover sequencing") describes **displacing** an already-running legacy `nginx`
+that currently holds 80/443. A machine that has never run `docker-compose.prod.yml` at all (the
+two-machines plan's PreProd) has nothing to displace: `registro-edge-nginx` is the *only* nginx that
+will ever hold those ports there, from the very first `docker compose -f docker-compose.edge.yml up
+-d` onward. Two consequences that do not apply to the cutover case above:
+
+- **No step 2 ("stop the legacy nginx"), and no user-facing outage window at any point** — nothing
+  was serving this machine's domain before the edge existed, so there is nothing to lose by getting
+  a step wrong. Step 1's pre-flight and step 4's rollback both still apply (rendered config can still
+  be wrong), just without the time pressure a live cutover carries.
+- **`sync-certificate.sh`'s `NGINX_RELOAD_CONTAINER` must be pre-seeded to `registro-edge-nginx` in
+  `.env` BEFORE the first certificate request, not left for `apply.sh`'s edge-sync step to discover
+  later.** That step only writes the var once it can see the edge's *actual* bind mount already
+  pointing at `edge-tls.local.conf` (see "reload target" above) — correct for the cutover case, where
+  writing it prematurely would target the edge before the legacy nginx has actually released TLS. On
+  a legacy-free machine that guard never has anything to guard against (there is no pre-TLS legacy
+  nginx to protect), but the script's own default (`registro-nginx`) is still read unconditionally
+  and is simply wrong here — that container has never existed on this machine. Left unset, the
+  **first ever** certificate request on this machine succeeds (files land under
+  `/etc/letsencrypt/live/`) and then `die()`s on the reload step immediately after, which reads as a
+  total failure when the part that matters — the certificate — actually worked. Full operator
+  sequence: `instalacja-tenanta-od-zera.md`, Część 10.
+
 ## Files
 
 | File | Purpose |
