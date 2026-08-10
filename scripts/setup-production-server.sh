@@ -456,16 +456,55 @@ cat <<EOF
 $(log "Server ready. Remaining manual steps:")
 
   1. Replace ${DEPLOY_USER}'s authorized_keys with the CI key, prefixed by the
-     forced command (one line, no wrapping):
+     forced command (one line, no wrapping) -- ONLY needed if this machine
+     will run the legacy shared stack under CI (path 3a below). A path-3b
+     (control-plane-only) machine is never touched by CI's deploy.sh, so this
+     key is optional there; ${DEPLOY_USER} still needs its own normal,
+     unrestricted key either way, for the apply.sh/tenant-check.sh/
+     sync-certificate.sh commands both paths run by hand over plain SSH:
 
        command="${DEPLOY_SCRIPT_DIR}/deploy.sh",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,restrict ssh-ed25519 AAAA... ci@github
 
   2. As ${DEPLOY_USER}, log in to GHCR once so deploys need no token:
        su - ${DEPLOY_USER} -c 'docker login ghcr.io -u <user> --password-stdin'
 
-  3. git clone the repository into ${PROJECT_DIR} as ${DEPLOY_USER}, then
-     create .env from .env.production.example and run:
-       ./scripts/validate-env.sh production
+  3. git clone the repository into ${PROJECT_DIR} as ${DEPLOY_USER}. This
+     checkout is the CONTROL PLANE for every tenant apply.sh will ever
+     provision on this box (git remote to clone from, CERT_DIR/APP_DOMAIN to
+     read) -- whether or not it also runs the legacy shared stack itself.
+     Pick exactly ONE of the two paths below; see
+     app/docs/deployment/instalacja-tenanta-od-zera.md (two-machines model)
+     for the reasoning:
+
+     3a. This machine ALSO runs the legacy shared stack (today's UAT model):
+           create .env from .env.production.example and run
+           ./scripts/validate-env.sh production, then scripts/deploy-init.sh
+           to bring docker-compose.prod.yml up.
+
+     3b. This machine is control-plane ONLY (PreProd model -- see that
+         runbook's Część 10): the checkout's own docker-compose.prod.yml is
+         NEVER brought up here. Create .env containing ONLY the keys
+         apply.sh/sync-certificate.sh actually read from it -- everything
+         else in .env.production.example (APP_KEY, DB_PASSWORD,
+         REDIS_PASSWORD, ...) is read by containers this path never starts,
+         so validate-env.sh production would refuse over secrets nothing on
+         this path needs, and deploy-init.sh must NOT be run here:
+
+           APP_DOMAIN=<this machine's tenant domain, e.g. registroapps.com>
+           CERT_DIR=<bare domain above -- the certbot --cert-name this
+                     machine's certificate will be pinned to; chosen now,
+                     confirmed once sync-certificate.sh issues it for real>
+           NGINX_RELOAD_CONTAINER=registro-edge-nginx
+
+         The last line matters from the FIRST certificate onward, not only
+         after some later cutover: on this path the edge (docker-compose.
+         edge.yml's registro-edge-nginx) is the ONLY nginx that will ever
+         hold ports 80/443 here -- there is no legacy nginx to hand off
+         from. sync-certificate.sh's built-in default ("registro-nginx") is
+         correct for path 3a and wrong here, since that container never
+         exists on this path; left unset, the very first certificate
+         request would succeed and then die() on the reload step
+         immediately after.
 
   4. Verify nothing but 22/80/443 is reachable once the stack is up:
        ss -tlnp && docker ps --format '{{.Names}} {{.Ports}}'

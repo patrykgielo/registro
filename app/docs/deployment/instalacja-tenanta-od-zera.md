@@ -1297,6 +1297,227 @@ maszyną, dla każdego tenanta, zanim S8 stanie się czymś więcej niż teorią
 
 ---
 
+# CZĘŚĆ 10 — Postawienie drugiej maszyny, PreProd, od zera (Faza 4)
+
+**Nic w tej części nigdy nie zostało uruchomione.** Maszyna PreProd nie istnieje — nie jest kupiona.
+Fazy 1–3 planu dwóch maszyn (`~/.claude/plans/dwie-maszyny-uat-preprod.md`) są zmergowane i
+zweryfikowane w piaskownicy (jedna domena na tenanta, `sync-certificate.sh` bez stacka legacy,
+`NGINX_RELOAD_CONTAINER` zapisywane, backup obu wolumenów) — dzięki nim ta część jest wykonaniem
+runbooka, nie odkrywaniem. To i tak nie znaczy, że pójdzie bezbłędnie: wzorzec z tego projektu
+(`ci-cd-troubleshooting.md`) jest jednoznaczny — **każde pierwsze uruchomienie czegoś nowego
+znajdowało pięć-sześć realnych błędów.** Traktuj to jak Część 1/2 kiedyś: znajdowanie błędów, nie
+ceremonia.
+
+**Różnica względem każdej innej części tego dokumentu:** wszystkie poprzednie części zakładają
+maszynę, na której `/var/www/registro` już jest pełnym, działającym stackiem legacy (`docker-compose.
+prod.yml` w górze, `.env` z sekretami). PreProd **nigdy nie ma** tego stacka w górze — `/var/www/
+registro` istnieje tam wyłącznie jako katalog sterujący: coś, z czego `apply.sh` klonuje kod dla
+tenantów i czyta dwie wartości (`APP_DOMAIN`, `CERT_DIR`). Pomylenie tych dwóch ról (uruchomienie
+`deploy-init.sh` tutaj, "żeby było jak na UAT") postawiłoby drugi, nikomu niepotrzebny stack legacy,
+z własną bazą, własnym certyfikatem i własnymi portami 80/443 walczącymi o te same porty co brzeg —
+stąd ta część istnieje jako osobna, nie jako wariant Części 0/1.
+
+## 10.0 — Rozmiar maszyny (decyzja zapisana raz, żeby nikt nie liczył od nowa)
+
+Zmierzone na żywym stacku UAT: **jeden bezczynny tenant to ~1 GB** (horizon ~415 MB, mysql ~441 MB,
+reszta poniżej 80 MB na kontener). Sufity ustawione w PR #157 (zabezpieczenie przed skokiem, nie
+rezerwacja — Horizon legalnie sięga 10 workerów po 128 MB): **4,9 GB na stack** (app 1536 + mysql
+1024 + horizon 1536 + redis 384 + nginx 256 + scheduler 256 = 4992 MB). Dzisiejsza maszyna: 2 vCPU /
+7,8 GB, jeden stack.
+
+**PreProd hostuje produkcję klientów — sizing pod sufit, nie pod średnią:**
+
+| tenantów | bezczynnie (×~1,1 GB) | pod skokiem (×4,9 GB) | rekomendacja |
+|---|---|---|---|
+| 2 | ~2,2 GB | ~10 GB | **8 GB / 4 vCPU** — dwa naraz raczej nie skoczą jednocześnie |
+| 5 | ~5,5 GB | ~25 GB | **16 GB / 4–6 vCPU** |
+
+**Twardszym ograniczeniem będzie CPU, nie RAM.** Każdy stack niesie własny MySQL, Redis, pulę
+PHP-FPM i mastera Horizona — to się nie dzieli między tenantami tak jak na maszynie współdzielonej.
+Minimum na produkcję klientów: **4 rdzenie**. Dysk (dziś 100 GB) do policzenia osobno, gdy będą
+znane realne rozmiary wolumenów ze zdjęciami sprzętu — rosną szybciej niż baza.
+
+## 10.1 — `setup-production-server.sh` jest identyczny na obu maszynach
+
+Cały skrypt (pakiety, swap, Docker, użytkownik `deploy`, `/opt/stacks`, cron `tenant-check`/
+`sync-certificate`, SSH hardening, ufw) **nie różni się w niczym** między UAT a PreProd — obie
+maszyny potrzebują dokładnie tej samej infrastruktury bazowej, żeby `apply.sh`/`tenant-check.sh`/
+`sync-certificate.sh` mogły działać. Jedyna różnica leży w komunikacie na końcu skryptu: krok 3
+rozgałęzia się na **3a** (stack legacy — dziś jedynie UAT) i **3b** (tylko control plane — PreProd).
+Świadomie NIE flaga trybu: skrypt sam nie wie i nie musi wiedzieć, którą rolę ta maszyna dostanie —
+to decyzja operatora podejmowana PO zakończeniu skryptu, przy tworzeniu `.env`, tak samo jak dziś.
+Dodanie flagi dodałoby stan do zapamiętania bez żadnej korzyści — obie ścieżki i tak są jawnie opisane
+w wydruku, każda z osobną, sprawdzalną komendą.
+
+```bash
+scp scripts/setup-production-server.sh scripts/server/deploy.sh root@<preprod-host>:/root/
+ssh root@<preprod-host> 'bash /root/setup-production-server.sh'
+```
+
+Powinieneś zobaczyć ten sam ciąg `[+]` co przy pierwszym uruchomieniu na UAT, kończący się blokiem
+"Remaining manual steps" z krokami 3a/3b poniżej.
+
+## 10.2 — Sklonuj checkout sterujący (ścieżka 3b, bez stacka legacy)
+
+```bash
+ssh deploy@<preprod-host> 'git clone https://github.com/patrykgielo/registro.git /var/www/registro'
+```
+
+**Nie uruchamiaj tu `deploy-init.sh`.** Ten skrypt buduje i startuje `docker-compose.prod.yml`,
+prosi o certyfikat dla TEGO stacka i zakłada bazę — dokładnie to, czego ta maszyna nie ma robić.
+
+## 10.3 — Minimalny `.env` — dokładnie te klucze, żaden więcej
+
+**Zweryfikowane czytaniem kodu, nie kopiowaniem `.env.production.example`:** `apply.sh` i
+`sync-certificate.sh` razem czytają z tego pliku dokładnie cztery klucze, nic poza nimi.
+
+| klucz | wymagany? | kto czyta | co się stanie bez niego |
+|---|---|---|---|
+| `APP_DOMAIN` | tak (gdy `apply.sh` wywołany bez `[hosts]` — czyli zawsze w rutynowej pracy) | `apply.sh:205`, `sync-certificate.sh:301` (opcjonalnie, sprawdzenie `www.`) | `apply.sh` odmawia natychmiast z jasnym komunikatem, zanim dotknie dysku |
+| `CERT_DIR` | tak | `apply.sh:956`, `sync-certificate.sh:72` | oba skrypty `die()` natychmiast |
+| `NGINX_RELOAD_CONTAINER` | **tak, na TEJ ścieżce** (opcjonalny formalnie, ale domyślna wartość jest tu błędna — patrz 10.6) | `sync-certificate.sh:86` | reload po pierwszym certyfikacie trafi w `registro-nginx`, kontener którego na tej maszynie NIGDY nie było — `die()` PO udanym wystawieniu certyfikatu |
+| `MAIL_FROM_ADDRESS` | nie | `sync-certificate.sh:89` | pada z powrotem na `admin@${CERT_DIR}`. To adres, na który Let's Encrypt wysyła powiadomienia o zbliżającym się wygaśnięciu — **nie sprawdziliśmy, czy ta skrzynka w ogóle odbiera pocztę**. Nie blokuje wystawienia certyfikatu, ale traci się ostrzeżenie przed wygaśnięciem |
+
+Każdy inny klucz z `.env.production.example` (`APP_KEY`, `DB_PASSWORD`, `DB_ROOT_PASSWORD`,
+`REDIS_PASSWORD`, `MAIL_*` poza `MAIL_FROM_ADDRESS`, `P24_*`, ...) należy do kontenerów, które ta
+ścieżka nigdy nie startuje — nie twórz ich tutaj. `./scripts/validate-env.sh production` **nie jest
+przeznaczony do tej ścieżki** — wymaga `APP_KEY`/`DB_PASSWORD`/`REDIS_PASSWORD` (patrz jego własne
+`check_var_set`), a wypełnienie ich fikcyjnymi wartościami tylko po to, żeby przeszedł, zostawia
+niepotrzebne sekrety leżące w pliku, którego nic nigdy nie przeczyta.
+
+```bash
+ssh deploy@<preprod-host> "cat > /var/www/registro/.env <<'ENV'
+APP_DOMAIN=registroapps.com
+CERT_DIR=registroapps.com
+NGINX_RELOAD_CONTAINER=registro-edge-nginx
+ENV
+chmod 600 /var/www/registro/.env"
+```
+
+**`CERT_DIR=registroapps.com` jest wyborem operatora, nie odkryciem.** To wartość, którą przekażesz
+certbotowi jako `--cert-name` (`sync-certificate.sh` robi to za Ciebie) — pinuje nazwę katalogu pod
+`/etc/letsencrypt/live/`, tak samo jak `deploy-init.sh` robi to dla stacka legacy. Inaczej niż na
+UAT, gdzie sama domena bazowa (`registrolabs.com`) jest jedną z nazw na certyfikacie (bo
+`tenants:hostnames` ją tam wpisuje), **na tej ścieżce `registroapps.com` sam nigdy nie będzie SAN-em**
+— certyfikat pokryje wyłącznie `<slug>.registroapps.com` per tenant (i `www.registroapps.com`, jeśli
+kiedyś zacznie się rozwiązywać). To nie jest błąd: `--cert-name` to tylko etykieta linii certyfikatu,
+nie musi być jedną z nazw, które pokrywa.
+
+## 10.4 — Postaw brzeg pierwszy raz w historii tej maszyny
+
+**Inaczej niż Część 1.** Część 1 to CUTOVER — zwalnia porty trzymane przez działający, stary nginx.
+Tu nie ma żadnego nginxa do zwolnienia; port 80/443 nikt jeszcze nigdy na tej maszynie nie trzymał.
+Nie ma więc ryzyka przerwy w działaniu czegokolwiek — jedyne co się dzieje, to pierwsze uruchomienie.
+
+```bash
+ssh deploy@<preprod-host> 'cd /var/www/registro && docker compose -f docker-compose.edge.yml up -d'
+```
+
+Powinieneś zobaczyć `registro-edge-nginx` w stanie `Up (healthy)` w ciągu ~30s (healthcheck co 10s,
+3 próby). Odpowiada na razie tylko HTTP-em bootstrapowym (`edge.conf`) — `curl http://<ip-maszyny>/`
+zwraca zamkniętym połączeniem (444, patrz `edge-stack.md` „default_server → 444"), co jest
+oczekiwane: żaden tenant jeszcze nie jest podpięty.
+
+## 10.5 — Sprowizjonuj pierwszego tenanta (dokładnie Część 2, bez zmian)
+
+Ta sama procedura co na UAT — `apply.sh` nie wie i nie musi wiedzieć, że stoi na maszynie bez stacka
+legacy; czyta `APP_DOMAIN` z tego samego pliku, którego istnienie 10.2–10.3 właśnie zapewniły.
+Wykonaj Część 2.1–2.4, podmieniając **dwie różne rzeczy** — i to nie jest jedna zamiana:
+
+- **nazwę hosta do SSH**: `srv1342834.hstgr.cloud` → `<preprod-host>` (dotyczy 2.2 i 2.3)
+- **domenę aplikacji**: `registrolabs.com` → `registroapps.com` (dotyczy **2.4**)
+
+Krok 2.4 to pułapka: jego komenda `curl` nie zawiera nazwy serwera w ogóle, tylko domenę
+(`https://nazwaklienta.registrolabs.com/`). Mechaniczna podmiana samej nazwy hosta jej **nie
+dotknie**, a wtedy sprawdzisz UAT zamiast maszyny, którą właśnie postawiłeś — i dostaniesz
+zielony wynik z niewłaściwego pudła. Patrz słownik na początku dokumentu: nazwa serwera i domena
+aplikacji to dwie różne rzeczy.
+
+Krok 2.4
+(sprawdzenie HTTPS) pokaże błąd certyfikatu **na dłużej niż zwykłe 15 minut** — do czasu, aż wykonasz
+10.6 poniżej. Krok 2.5 (poczekaj na crona) **nie zadziała jeszcze automatycznie**: `sync-certificate.
+sh`'s reload na tej maszynie, przed pierwszym certyfikatem, wymaga wartości z 10.3 — cron JĄ ma, ale
+sam certyfikat i tak trzeba wymusić ręcznie raz, patrz niżej.
+
+## 10.6 — Pierwszy certyfikat: wymuś ręcznie, nie czekaj na crona
+
+> Cron (`/etc/cron.d/registro-certificate`, co 15 min) w końcu i tak by to zrobił — ale pierwszy raz
+> warto zobaczyć wynik od razu, nie zgadywać z logu.
+
+```bash
+ssh root@<preprod-host> '/opt/registro/sync-certificate.sh; tail -30 /var/log/registro-certificate.log'
+```
+
+**Co powinieneś zobaczyć:** `No 'registro-app' container on this machine -- contributing zero legacy
+hostnames (this machine never ran the legacy stack)`, potem nazwa hosta pierwszego tenanta
+z `/opt/stacks/<slug>/.env`, `Requesting certificate
+for 1 name(s)...`, i na końcu `Certificate now covers 1 name(s); nginx reloaded`. Ten ostatni reload
+trafia w `registro-edge-nginx` (10.3's `NGINX_RELOAD_CONTAINER`) — **gdyby ten klucz nie był
+ustawiony**, dokładnie w tym miejscu zobaczyłbyś `die()` na `nginx rejected its configuration after
+renewal` albo `No such container: registro-nginx`, MIMO że certyfikat sam już poprawnie powstał na
+dysku (`certbot certificates` by to potwierdził) — myląca porażka po faktycznym sukcesie, dokładnie
+dlatego 10.3 wymaga tej wartości z góry, a nie liczy na to, że `apply.sh` dopisze ją później (dopisze
+— ale dopiero po 10.7, i tylko re-potwierdzi tę samą wartość).
+
+## 10.7 — Przełącz brzeg na TLS
+
+Odpowiednik Części 1, kroki 1.0/1.3/1.4 — bez kroku 1.2 (nie ma starego nginxa do zatrzymania) i bez
+1.1 jako osobnego kroku (możesz go i tak wykonać jako czystą weryfikację przed 1.3, zero ryzyka).
+
+```bash
+ssh deploy@<preprod-host> 'cd /var/www/registro && \
+  CERT=$(grep -m1 "^CERT_DIR=" .env | cut -d= -f2-) && \
+  sed "s|CERT_DOMAIN|$CERT|g" docker/nginx/edge/edge-tls.conf > docker/nginx/edge/edge-tls.local.conf && \
+  EDGE_NGINX_CONF=edge-tls.local.conf docker compose -f docker-compose.edge.yml up -d edge-nginx'
+```
+
+```bash
+curl -s -o /dev/null -w "HTTP %{http_code} tls=%{ssl_verify_result}\n" https://<slug>.registroapps.com/up
+```
+
+Musisz zobaczyć `HTTP 200 tls=0`. **Odwrót, jeśli nie:** `EDGE_NGINX_CONF=edge.conf docker compose -f
+docker-compose.edge.yml up -d edge-nginx` — wraca do bootstrapu HTTP. Nic tu nie miało wcześniej
+działającego stanu do utraty (10.4), więc to jest strzał bez presji czasu, inaczej niż Część 1.2–1.5.
+
+## 10.8 — Domknij pętlę: `apply.sh` potwierdza TLS
+
+```bash
+ssh -t deploy@<preprod-host> '/opt/registro/apply.sh <slug> v0.13.0-rc9 --foreground'
+```
+
+W logu szukaj: `Edge is terminating TLS (edge-tls.local.conf) -- NGINX_RELOAD_CONTAINER set to
+registro-edge-nginx`. To jest re-potwierdzenie tej samej wartości, którą 10.3 już wpisało ręcznie —
+idempotentne, nie duplikuje linii w `.env`.
+
+## 10.9 — DNS: dopiero teraz, nie wcześniej
+
+Wskaż `*.registroapps.com` na tę maszynę. **Bezpieczne dopiero teraz** dzięki Fazie 1 (już
+zmergowanej): każdy tenant dostaje wyłącznie własną domenę maszyny w `TENANT_HOSTS`/`server_name` —
+przed tą naprawą wskazanie drugiej domeny na drugą maszynę zrywałoby odnawianie certyfikatu na
+WSZYSTKICH tenantach UAT naraz (patrz `ci-cd-troubleshooting.md`, incydent „`apply.sh` domyślnie
+doklejał OBIE domeny").
+
+## 10.10 — Weryfikacja końcowa
+
+1. `ssh root@<preprod-host> '/opt/registro/tenant-check.sh'` — musi być cicho (exit 0, zero stdout).
+2. `certbot certificates --cert-name registroapps.com` na maszynie — nazwy pokrywają dokładnie tych
+   tenantów, którzy istnieją, nic więcej.
+3. `/opt/registro/sync-certificate.sh` ponownie, ręcznie — `Certificate already covers N name(s) --
+   nothing to do`, exit 0. Dowód, że przechodzi **bez stacka legacy**, nie tylko raz po prowizji.
+4. Pełna ścieżka klienta (rezerwacja, płatność, potwierdzenie, wydanie, zwrot) na pierwszym
+   tenancie PreProd — patrz plan, sekcja 8, punkt 6. To NIE jest część tej sesji.
+
+## 10.11 — Co pozostaje niezweryfikowane, dopóki ta maszyna nie istnieje
+
+Zapisane wprost, bo to jest dokładnie to, czego ta część nie może dowieść bez prawdziwego hosta:
+rzeczywisty zakup i dostawa maszyny; realne DNS `*.registroapps.com` wskazujące na jej IP; realny
+`certbot` przeciw prawdziwemu Let's Encrypt (nie stagingowi, nie piaskownicy) z tej maszyny;
+rzeczywisty ruch przez `ufw`/`ufw-docker` na tym hoście; i to, czy sekwencja 10.4–10.8 faktycznie
+znajdzie swoje pięć-sześć błędów, jak każde inne pierwsze uruchomienie w tym projekcie. Traktuj tę
+część jako dobrze uzasadnioną hipotezę, nie jako dowód.
+
+---
+
 ## Dokumenty szczegółowe
 
 | temat | plik |
@@ -1307,6 +1528,7 @@ maszyną, dla każdego tenanta, zanim S8 stanie się czymś więcej niż teorią
 | Komenda `registro:tenant-provision` | `../features/tenant-stack-provisioning.md` |
 | Przenosiny domeny i ich pułapki | `domain-migration-registrolabs.md` |
 | `stage_volume()` entrypoint bug (Część 9.6), `sync-certificate.sh` fixes | `tenant-apply.md`, `edge-stack.md` |
+| Postawienie drugiej maszyny (PreProd) od zera, sizing | Część 10 (ten dokument) |
 
 ---
 
@@ -1318,3 +1540,4 @@ maszyną, dla każdego tenanta, zanim S8 stanie się czymś więcej niż teorią
 | 2026-08-09 | Krok 4.1 zastąpiony realną komendą (`registro:password-setup-link`, nowa, przetestowana). Dodano Część 7 (usunięcie klienta) i Część 8 (przywracanie z backupu, przetestowane end-to-end). |
 | 2026-08-10 | Faza 2 planu dwóch maszyn: `tenant-backup.sh`/`apply.sh` obejmują teraz `storage-app-public`/`storage-app-private` w tym samym snapshocie co bazę (7.6, 7.8, 8.1, nowa Część 8.6/8.7, przetestowane end-to-end). Krok 7.5 zaktualizowany — zatrzymany kontener dedykowanego stacka już nie zamraża certyfikatu dla innych tenantów (`sync-certificate.sh` czyta `TENANT_HOSTS` z `.env`, nie z żywego kontenera). |
 | 2026-08-10 | Faza 3 planu dwóch maszyn: nowa Część 9 — przeniesienie klienta między maszynami / zmiana domeny (S3/S4/S8), przetestowana end-to-end (9.6). Przy okazji znaleziony i naprawiony realny bug: `stage_volume()` w `apply.sh`/`tenant-backup.sh` nigdy nie ustawiały `--entrypoint`, więc backup obu wolumenów storage tworzył pusty snapshot na prawdziwym obrazie (zgłaszane jako DEGRADED, łatwe do przeoczenia, bo zrzut bazy szedł poprawnie) (ten obraz ma własny entrypoint odmawiający startu jako root). |
+| 2026-08-10 | Faza 4 planu dwóch maszyn: nowa Część 10 — postawienie maszyny PreProd od zera, legacy-free (checkout jako katalog sterujący, minimalny `.env`, pierwszy certyfikat i przełączenie brzegu bez cutoveru, bo nie ma starego nginxa do zwolnienia), sizing zapisany jako decyzja. `setup-production-server.sh`'s domykający wydruk rozdzielony na ścieżki 3a (legacy)/3b (control-plane-only). **Nic z Części 10 nigdy nie zostało uruchomione** — maszyna nie istnieje. |
