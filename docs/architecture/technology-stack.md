@@ -456,7 +456,9 @@ password in this file or anywhere else in the repo.
 
 ### SSL/TLS
 
-**Status**: Not yet provisioned on the target VPS (fresh reset). Pattern is designed and
+**Status**: Provisioned and live on UAT since 2026-08-08 — Let's Encrypt certificate covering
+`registrolabs.com`, `www` and the tenant subdomain, renewed by cron. See
+`app/docs/deployment/domain-migration-registrolabs.md`. Pattern is designed and
 documented, just needs to be run against the real host once a domain is chosen.
 - **Tool**: Certbot (`certonly`, standalone for first issuance, webroot for renewal)
 - **Certificate**: Let's Encrypt, mounted read-only into the `nginx` container, with a
