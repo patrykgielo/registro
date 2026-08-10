@@ -282,19 +282,27 @@ Spodziewaj się **błędu certyfikatu**. To jest oczekiwane i wymaga Twojego dzi
 
 **Ten krok jest teraz automatyczny — dawniej wymagał ręcznej interwencji, patrz niżej.**
 
-`sync-certificate.sh` enumeruje dziś zarówno starą, współdzieloną bazę, JAK i każdy dedykowany
-stack pod `/opt/stacks/*/` (czyta `TENANT_HOSTS` bezpośrednio z kontenera `app` tego stacka —
-dokładnie tę samą listę, którą `apply.sh` już zapisał w jego `.env`). Nowy klient dostanie się na
-certyfikat przy najbliższym przebiegu crona (`/etc/cron.d/registro-certificate`, co 15 minut) —
-bez żadnego ręcznego kroku. Do tego czasu `curl` z kroku 2.4 pokaże błąd certyfikatu — to
-oczekiwane, poczekaj do 15 minut i powtórz sprawdzenie; oczekuj `HTTP 200 tls=0`.
+`sync-certificate.sh` enumeruje dziś zarówno starą, współdzieloną bazę (o ile jej kontener w ogóle
+działa na tej maszynie — na maszynie bez stacka legacy w ogóle, np. świeże PreProd, to źródło
+legalnie wnosi zero nazw, patrz Faza 2 planu dwóch maszyn), JAK i każdy dedykowany stack pod
+`/opt/stacks/*/` (czyta `TENANT_HOSTS` z pliku `.env` tego stacka NA DYSKU, nie z żywego kontenera —
+dokładnie tę samą listę, którą `apply.sh` już tam zapisał; kontener stacka może być zatrzymany, to
+już nie ma znaczenia). Nowy klient dostanie się na certyfikat przy najbliższym przebiegu crona
+(`/etc/cron.d/registro-certificate`, co 15 minut) — bez żadnego ręcznego kroku. Do tego czasu `curl`
+z kroku 2.4 pokaże błąd certyfikatu — to oczekiwane, poczekaj do 15 minut i powtórz sprawdzenie;
+oczekuj `HTTP 200 tls=0`.
 
 **Jeśli po 15+ minutach certyfikat WCIĄŻ nie pokrywa nowego klienta** — to nie jest już "znana
 luka", tylko awaria: sprawdź log crona (`/var/log/registro-certificate.log` na serwerze). Skrypt
-teraz **przerywa cały przebieg** (i zostawia certyfikat bez zmian), jeśli którykolwiek dedykowany
-stack istnieje, ale nie odpowiada (kontener padnięty, zepsuty `.env`, timeout) — więc brak
-aktualizacji zwykle oznacza, że TEN klient (albo inny stack na tym samym serwerze) jest w takim
-stanie, nie że mechanizm enumeracji znów widzi tylko starą bazę.
+teraz **przerywa cały przebieg** (i zostawia certyfikat bez zmian), jeśli:
+- stara, współdzielona baza MA działający kontener, ale zapytanie o jej nazwy zawiodło (różne od
+  "kontener po prostu nie działa" — to jest legalne i wnosi zero nazw, patrz wyżej), lub
+- którykolwiek dedykowany stack istnieje (ma plik `docker-compose.prod.yml`), ale jego `.env` jest
+  nieczytelny albo nie ma w nim `TENANT_HOSTS`, lub
+- żadne z powyższych źródeł (stara baza, dedykowane stacki, `www`) nie wniosło ŻADNEJ nazwy —
+
+więc brak aktualizacji zwykle oznacza, że TEN klient (albo inny stack na tym samym serwerze) jest w
+takim stanie, nie że mechanizm enumeracji znów widzi tylko starą bazę.
 
 <details>
 <summary>Historia: dawna procedura ręczna (dla kontekstu, już niepotrzebna)</summary>
@@ -633,17 +641,19 @@ to polecenie, dokładnie ten wynik. Domena nie pasuje już do żadnego vhosta br
 ## 7.5 — Kolejność, którą łatwo pomylić (i dlaczego to psuje WSZYSTKICH klientów)
 
 `sync-certificate.sh` (co 15 minut, patrz krok 2.5) enumeruje `/opt/stacks/*` — dla każdego katalogu
-**z obecnym plikiem `docker-compose.prod.yml`** próbuje odpytać jego kontener `app` o `TENANT_HOSTS`.
-Jeśli plik istnieje, ale kontener nie odpowiada (bo już go zatrzymałeś, a katalog jeszcze zostaje) —
-skrypt **przerywa CAŁY przebieg** i **nie dotyka certyfikatu wcale**, dla żadnego klienta, dopóki
-sytuacja się nie wyjaśni. To jest zamierzony fail-safe (patrz krok 2.5), ale oznacza, że pozostawienie
-zatrzymanych kontenerów z wciąż obecnym katalogiem stacka jest stanem, którego trzeba unikać, nie
-tylko posprzątać później.
+**z obecnym plikiem `docker-compose.prod.yml`** czyta `TENANT_HOSTS` z jego pliku `.env` na dysku
+(od Fazy 2 planu dwóch maszyn — wcześniej odpytywał żywy kontener `app`, co zamrażało cały przebieg
+za każdym razem, gdy projekt na UAT stał zatrzymany między sesjami). **Zatrzymany kontener już nie
+jest problemem** — `.env` jest czytelny niezależnie od tego, czy kontener działa. Problemem
+pozostaje katalog, który MA plik `docker-compose.prod.yml`, ale którego `.env` zniknął, jest
+nieczytelny albo nie ma w nim `TENANT_HOSTS` — wtedy skrypt nadal **przerywa CAŁY przebieg** i **nie
+dotyka certyfikatu wcale**, dla żadnego klienta, dopóki sytuacja się nie wyjaśni (zamierzony
+fail-safe, patrz krok 2.5).
 
 **Zasada:** krok 7.6 (zatrzymanie kontenerów + usunięcie katalogu) rób jako jedną, nieprzerywaną
-sekwencję poleceń — nie zostawiaj przerwy między „kontenery stoją" a „katalog zniknął". Jeśli mimo to
-`sync-certificate.sh` trafi dokładnie w to okno i przerwie się raz — to się samo naprawi przy
-następnym przebiegu (15 minut później), bo katalog już nie będzie istniał. Sprawdź log
+sekwencję poleceń — nie zostawiaj przerwy między „kontenery stoją" a „katalog zniknął". To wciąż
+dobra higiena (katalog z martwym `.env` blokuje inne tenanty), nawet jeśli samo zatrzymanie
+kontenera już nie jest tym, co psuje inne certyfikaty. Sprawdź log
 (`/var/log/registro-certificate.log`) jeśli chcesz się upewnić.
 
 ## 7.6 — NIEODWRACALNE: zdejmij stack z serwera
@@ -654,10 +664,12 @@ klienta) na stałe. Zweryfikuj PRZED uruchomieniem:
 - [ ] Krok 7.4 (odłączenie od brzegu) zakończony — domena już nie routuje do tego stacka.
 - [ ] Masz nazwę sluga poprawnie wpisaną — to polecenie nie pyta o potwierdzenie po nazwie.
 
-> **Jeśli klient miał wgrane zdjęcia/pliki (`storage-app-public`, `storage-app-private`) i zależy Ci
-> na ich zachowaniu — zrób to TERAZ, osobno.** `tenant-backup.sh` kopiuje wyłącznie zrzut bazy danych
-> (`mysqldump`), nigdy te wolumeny — to jest nazwana, nie rozwiązana tu luka (patrz „Czego ten
-> dokument jeszcze nie umie"). Przykład ręcznej kopii jednego wolumenu:
+> **Zdjęcia/pliki klienta (`storage-app-public`, `storage-app-private`) są już objęte krokiem 7.3.**
+> Od Fazy 2 planu dwóch maszyn `tenant-backup.sh` (i `apply.sh`'s własny krok backupu) kopiują OBA te
+> wolumeny do TEGO SAMEGO snapshota restica co `mysqldump` — żadna ręczna kopia nie jest już
+> potrzebna, o ile krok 7.3 zakończył się sukcesem. Zobacz Część 8.1/8.6 (przywracanie plików) i
+> `tenant-apply.md` dla mechanizmu. Jeśli krok 7.3 akurat zgłosił `DEGRADED` z powodu wolumenu (a nie
+> samej bazy) — dopiero WTEDY sięgnij po ręczną kopię niżej, zanim pójdziesz do 7.6:
 
 ```bash
 docker run --rm -v tenant-nazwaklienta_storage-app-public:/data \
@@ -700,7 +712,7 @@ ssh root@srv1342834.hstgr.cloud 'certbot certificates --cert-name registrolabs.c
 |---|---|---|---|
 | Faktury/płatności/wypożyczenia (anonimizowane, jeśli `purge` zdążył przejść) | Wyłącznie w `mysqldump` z kroku 7.3, wewnątrz `/opt/registro/tenant-backups/nazwaklienta/repo` na serwerze | **6 lat od zamknięcia** (`legal_records_years`, Art. 112 VAT) | Po kroku 7.6 to jedyna kopia — żywa baza już nie istnieje |
 | To samo, jeśli `purge` NIE zdążył przejść przed 7.6 (patrz 7.2) | Ten sam backup | 6 lat, ale **z danymi osobowymi wciąż czytelnymi** | Anonimizacja nigdy nie ruszyła dla tej organizacji — świadomy kompromis, nie błąd |
-| Pliki klienta (zdjęcia itp.) | Tylko jeśli zrobiłeś ręczną kopię w kroku 7.6 | Brak automatyzmu | `tenant-backup.sh` ich nie obejmuje w ogóle |
+| Pliki klienta (zdjęcia, logo, eksporty RODO) | W TYM SAMYM snapshocie restica co `mysqldump` z kroku 7.3, o ile ten krok zakończył się `OK` (nie `DEGRADED`) | Tyle samo co baza — jeden snapshot, jedna retencja | `tenant-backup.sh`/`apply.sh` archiwizują `storage-app-public`/`storage-app-private` razem z bazą od Fazy 2 planu dwóch maszyn (patrz Część 8.6) |
 
 **Nazwana, nierozwiązana luka: nic w kodzie nie chroni `/opt/registro/tenant-backups/nazwaklienta`
 przed przedwczesnym usunięciem.** Nie ma retention locka, nie ma automatycznego hard-delete po 6
@@ -720,11 +732,13 @@ co faktycznie zostało uruchomione, nie teoria.
 
 ## 8.1 — Czym JEST i czym NIE JEST ten backup
 
-`tenant-backup.sh`/`apply.sh` backupują **wyłącznie jeden plik: zrzut `mysqldump` całej bazy tego
-klienta.** Restic go kompresuje, deduplikuje i przechowuje pod `/opt/registro/tenant-backups/<slug>/repo`.
-To, co wraca z restica, to **plik `.sql`, nie działająca baza danych** — trzeba go jeszcze wczytać do
-MySQL (krok 8.4). Pliki użytkownika (`storage-app-public`, `storage-app-private`) **nie są objęte
-tym mechanizmem w ogóle** — patrz 7.8.
+`tenant-backup.sh`/`apply.sh` backupują **jeden snapshot restica zawierający TRZY rzeczy**: zrzut
+`mysqldump` całej bazy tego klienta, oraz wolumeny `storage-app-public` i `storage-app-private`
+(zdjęcia sprzętu, logo, eksporty RODO — od Fazy 2 planu dwóch maszyn; wcześniej te dwa wolumeny nie
+były objęte niczym, patrz 7.8). Restic kompresuje i deduplikuje wszystko trzy do jednego repo pod
+`/opt/registro/tenant-backups/<slug>/repo`. To, co wraca z restica dla bazy, to **plik `.sql`, nie
+działająca baza danych** — trzeba go jeszcze wczytać do MySQL (krok 8.4). Pliki użytkownika wracają
+jako katalog/archiwum — krok 8.6.
 
 **Powtórka z Części 6:** repozytorium i jego hasło leżą na tym samym serwerze co dane źródłowe. To
 jest redundancja dyskowa (chroni przed „ktoś przypadkiem zrobił `DROP TABLE`"), **nie disaster
@@ -742,13 +756,15 @@ ssh deploy@srv1342834.hstgr.cloud '
 Zobaczysz tabelę: ID snapshota, data, tagi (`slug=...`, `scheduled` dla cron, brak `scheduled` dla
 ręcznego/`apply`-owego). ID najnowszego snapshota lub słowo `latest` — oba działają w krokach niżej.
 
-## 8.3 — Przywrócenie pliku (jedyny plik w tym repo = "cały" backup)
+## 8.3 — Przywrócenie bazy danych (jeden z TRZECH wpisów w tym snapshocie)
 
 > `restic dump` strumieniuje zawartość pliku z backupu prosto na stdout — nie trzeba nic
 > rozpakowywać na dysk osobno. Działa identycznie dla `latest` i dla konkretnego ID snapshota.
 
-> Krok 1: znajdź dokładną ścieżkę pliku wewnątrz snapshota — to plik tymczasowy z `mktemp`
-> (`tenant-backup.sh`/`apply.sh` obie go tak tworzą), więc nazwa jest za każdym razem inna.
+> Krok 1: znajdź dokładną ścieżkę pliku `.sql` wewnątrz snapshota — to plik tymczasowy z `mktemp`
+> (`tenant-backup.sh`/`apply.sh` obie go tak tworzą), więc nazwa jest za każdym razem inna. `restic ls
+> latest` pokaże też `storage-app-public`/`storage-app-private` w osobnym, też tymczasowym katalogu
+> (`<slug>-backup-files-XXXXXX/`) — to jest krok 8.6, nie ten.
 
 ```bash
 ssh deploy@srv1342834.hstgr.cloud '
@@ -855,6 +871,113 @@ projektu tego repo) + jednorazowe repo restic w katalogu roboczym poza projektem
 Żaden z powyższych kroków nie dotknął `registro-app`/`registro-mysql` (kontenerów deweloperskich
 tego repo) ani serwera produkcyjnego.
 
+## 8.6 — Przywrócenie plików klienta (`storage-app-public`/`storage-app-private`)
+
+> Te dwa wolumeny lądują w TYM SAMYM snapshocie co zrzut bazy (krok 8.3) — jeden ID snapshota, nie
+> trzeba szukać drugiego, bliskiego w czasie. `restic ls latest` (krok 8.2/8.3) pokaże katalog
+> `<slug>-backup-files-XXXXXX/storage-app-public` i `.../storage-app-private` obok pliku `.sql`.
+
+> `restic dump` obsługuje też CAŁE katalogi, nie tylko pojedyncze pliki — z `--archive tar` (lub
+> `zip`) strumieniuje je jako archiwum na stdout, zamiast pojedynczego pliku. Działa identycznie do
+> kroku 8.3, tylko z dodatkową flagą.
+
+**Krok 1 — TYLKO podgląd, na host, żeby zweryfikować co jest w backupie.** Ten katalog jest
+jednorazowy i wyłącznie do oglądania — jego właściciel na hoście NIE MA znaczenia i NIE jest tym,
+co trafi do wolumenu (patrz krok 2):
+
+```bash
+ssh deploy@srv1342834.hstgr.cloud '
+  export RESTIC_REPOSITORY=/opt/registro/tenant-backups/nazwaklienta/repo
+  export RESTIC_PASSWORD_FILE=/opt/registro/tenant-backups/nazwaklienta/password
+  restic dump latest /tmp/nazwaklienta-backup-files-AbCdEf/storage-app-public --archive tar' \
+  > /tmp/nazwaklienta-storage-app-public.tar
+mkdir -p /tmp/nazwaklienta-restored-public
+tar -xf /tmp/nazwaklienta-storage-app-public.tar -C /tmp/nazwaklienta-restored-public
+find /tmp/nazwaklienta-restored-public -type f | head
+```
+
+**Krok 2 — wgranie z powrotem do wolumenu (co faktycznie zobaczy aplikacja).** NIE użwaj kopii z
+kroku 1 dla tego — strumieniuj z restica prosto do wolumenu przez jeden uprzywilejowany kontener,
+tą samą zasadą co backup (`tenant-apply.md` → `stage_volume()`): `cp`/`tar -x` jako zwykły,
+nieuprzywilejowany operator SSH (`deploy`, nie root) nie potrafi ustawić właściciela na UID 1000
+(`laravel`, ADR-013) — plik wychodzi spod `tar -x` własnością TEGO, kto go rozpakował (`deploy`,
+zwykle inny UID), a proces aplikacji, który potem próbuje w te pliki pisać (nowe wgrania w tym samym
+katalogu, nadpisanie, usunięcie), dostaje `Permission denied`, bo nie jest ani właścicielem, ani w
+jego grupie. Root wewnątrz kontenera obchodzi to przy rozpakowywaniu, a `chown -R 1000:1000` na
+końcu TEGO SAMEGO uprzywilejowanego `docker run` przestawia własność na dokładnie ten UID, którego
+oczekuje aplikacja — niezależnie od tego, jakim userem operator jest zalogowany po SSH:
+
+```bash
+ssh deploy@srv1342834.hstgr.cloud '
+  export RESTIC_REPOSITORY=/opt/registro/tenant-backups/nazwaklienta/repo
+  export RESTIC_PASSWORD_FILE=/opt/registro/tenant-backups/nazwaklienta/password
+  restic dump latest /tmp/nazwaklienta-backup-files-AbCdEf/storage-app-public --archive tar' \
+| ssh deploy@srv1342834.hstgr.cloud '
+  docker run --rm -i --user 0:0 -v tenant-nazwaklienta_storage-app-public:/dest \
+    debian:bookworm-slim sh -c "tar -x -C /dest --strip-components=3 && chown -R 1000:1000 /dest"'
+```
+
+`--strip-components=3` drops the snapshot's own leading `tmp/<slug>-backup-files-XXXXXX/storage-app-public/`
+prefix (three path segments, fixed by `mktemp`'s own naming convention in `tenant-backup.sh`/
+`apply.sh` — see that file), so only the CONTENT of the volume lands directly under `/dest`. Powtórz
+dla `storage-app-private` (druga ścieżka z tego samego `restic ls latest`).
+
+**Restic wspiera też `restic restore latest --target <katalog> --include <ścieżka>`** jako
+alternatywę dla kroku 1 (podgląd na host) — nie zmienia nic w kroku 2, który zawsze idzie przez
+root+`chown`, niezależnie od tego, którym poleceniem odtworzyłeś podgląd.
+
+**Zweryfikowane end-to-end 2026-08-10** (patrz 8.7, punkt dodatkowy): odtworzono do ŚWIEŻEGO
+wolumenu dokładnie tą metodą (root-extract + `chown -R 1000:1000`), potem uruchomiono jednorazowy
+kontener DZIAŁAJĄCY JAKO UID 1000 (ten sam, którego używa `laravel` w obrazie produkcyjnym) i
+potwierdzono, że potrafi zapisać NOWY plik do przywróconego katalogu — nie tylko go odczytać. Bez
+`chown` ten sam zapis kończy się `Permission denied` (zweryfikowane oboma wariantami wprost).
+
+## 8.7 — Dowód, że backup plików działa: co faktycznie zostało uruchomione (2026-08-10)
+
+Osobno od 8.5 (który testował wyłącznie bazę), zweryfikowano end-to-end wolumeny — jednorazowy
+wolumen docker + jednorazowe repo restic, poza projektem, nigdy nie dotykając serwera ani bazy
+deweloperskiej:
+
+1. Utworzono wolumen, wgrano do niego plik tekstowy i plik binarny (4 KiB losowych danych) jako
+   UID 1000 (ten sam UID co `laravel` w obrazie produkcyjnym, ADR-013), zapisano ich sumy `sha256`.
+2. Uruchomiono DOKŁADNIE `stage_volume()` wyjęte z `tenant-backup.sh` (nie przepisane na nowo) —
+   skopiowało wolumen do katalogu na hoście przez jednorazowy kontener z `--user 0:0`.
+3. **Znaleziona i naprawiona w trakcie tej walidacji usterka projektowa:** `cp -a /src/. /dest/`
+   (GNU coreutils) nie tylko kopiuje zawartość `/src` DO `/dest` — nadpisuje też WŁASNE
+   uprawnienia/właściciela `/dest` metadanymi źródła (`root:root`, bo katalog wolumenu sam jest
+   root-owned). Bez poprawki katalog docelowy (utworzony wcześniej przez `deploy`) cichcem zmieniał
+   właściciela na roota, a późniejsze `rm -rf` przez `deploy` (bez sudo na tej maszynie) kończyło się
+   `Permission denied` — sprzątanie po backupie zaczynało się psuć od DRUGIEGO uruchomienia. Fix:
+   `chown -R $(id -u):$(id -g) /dest` jako druga komenda w tym samym uprzywilejowanym `docker run`,
+   zanim kontener się kończy. Zweryfikowano oba warianty wprost (bez i z `chown`) — bez niego
+   `rm -rf` przez zwykłego użytkownika kończyło się błędem; z nim — nie.
+4. `restic backup dump.sql <skopiowany-katalog> --host tenant-drill ...` — jeden snapshot, oba wpisy
+   widoczne w `restic ls latest`.
+5. **Zniszczono oryginalny wolumen**: `docker volume rm -f`, potwierdzono `docker volume inspect`
+   zwraca błąd (nie istnieje).
+6. Przywrócono OBOMA sposobami: `restic restore latest --target ...` i osobno `restic dump latest
+   <ścieżka> --archive tar` rozpakowane ręcznie — **sumy `sha256` obu plików identyczne z krokiem 1**
+   w obu wariantach.
+7. **Osobno zweryfikowano fail-safe przeciwko cichemu tworzeniu wolumenu**: wywołano `stage_volume()`
+   z nazwą wolumenu, który nigdy nie istniał. `docker volume inspect` (krok PRZED jakimkolwiek `docker
+   run -v`) zwrócił błąd, funkcja zakończyła się kodem 1 BEZ wywołania `docker run` w ogóle —
+   `docker volume ls` po teście potwierdził, że żaden nowy wolumen o tej nazwie nie powstał (dokładnie
+   ten bug, przed którym ten krok ma chronić: `docker run -v nieistniejący:/sciezka` cichcem tworzy
+   pusty wolumen zamiast błędu).
+8. **Znaleziona w przeglądzie infrastrukturalnym, naprawiona i zweryfikowana wprost:** kroki 1-7
+   dowodzą tylko, że przywrócone bajty są IDENTYCZNE z oryginałem — nie dowodzą, że aplikacja może
+   ich potem UŻYWAĆ. Odtworzono ten sam plik do ŚWIEŻEGO wolumenu, symulując realny serwer, gdzie
+   `deploy` NIE jest UID 1000 (użyto jawnie UID 1002, przykład z ADR-010) — staging przed backupem
+   przestawiał więc właściciela na 1002:1002, nie na 1000 jak app oczekuje (ADR-013). Odtworzenie BEZ
+   końcowego `chown -R 1000:1000` (sam root-extract z `tar`) zostawiało pliki 1002:1002 — kontener
+   uruchomiony JAKO UID 1000 (realne `laravel`) dostawał `Permission denied` przy próbie zapisu
+   nowego pliku. Z `chown -R 1000:1000` jako ostatnim krokiem tego samego uprzywilejowanego
+   `docker run` — ten sam zapis się udawał, i dodatkowo potwierdzono odczyt wcześniej przywróconej
+   zawartości. Stąd Część 8.6 wymaga TEGO SAMEGO `chown` po stronie przywracania, nie tylko backupu.
+
+Żaden z powyższych kroków nie dotknął serwera produkcyjnego ani deweloperskiej bazy/kontenerów tego
+repo.
+
 ---
 
 # Czego ten dokument jeszcze nie umie
@@ -875,8 +998,10 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
   snapshoty backupu (sprzed zamknięcia) zawierają nieanonimizowane dane osobowe na zawsze, bo
   anonimizacja dotyka tylko żywej bazy.
 - ~~Nie ma tu przywracania z backupu~~ — naprawione: Część 8, przetestowane end-to-end 2026-08-09
-  (patrz 8.5). Backup obejmuje wyłącznie zrzut bazy danych — pliki klienta
-  (`storage-app-public`/`storage-app-private`) nie są nim objęte, patrz 7.6/7.8.
+  (patrz 8.5).
+- ~~Pliki klienta (`storage-app-public`/`storage-app-private`) nie są objęte backupem w ogóle~~ —
+  naprawione (Faza 2 planu dwóch maszyn): objęte tym samym snapshotem restica co baza, przetestowane
+  end-to-end 2026-08-10 (patrz 7.8, 8.1, 8.6, 8.7).
 - **Poczta wychodzi z prywatnego adresu Gmail.** Klient zobaczy `Registro <patryk3580@gmail.com>`.
   Do naprawienia przy pierwszym prawdziwym kliencie.
 
@@ -900,3 +1025,4 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
 |---|---|
 | 2026-08-09 | Utworzony. Części 1 i 2 niewykonane na serwerze. |
 | 2026-08-09 | Krok 4.1 zastąpiony realną komendą (`registro:password-setup-link`, nowa, przetestowana). Dodano Część 7 (usunięcie klienta) i Część 8 (przywracanie z backupu, przetestowane end-to-end). |
+| 2026-08-10 | Faza 2 planu dwóch maszyn: `tenant-backup.sh`/`apply.sh` obejmują teraz `storage-app-public`/`storage-app-private` w tym samym snapshocie co bazę (7.6, 7.8, 8.1, nowa Część 8.6/8.7, przetestowane end-to-end). Krok 7.5 zaktualizowany — zatrzymany kontener dedykowanego stacka już nie zamraża certyfikatu dla innych tenantów (`sync-certificate.sh` czyta `TENANT_HOSTS` z `.env`, nie z żywego kontenera). |

@@ -600,7 +600,10 @@ last login session for that user closes, which is exactly the session
 
 `/opt/registro/tenant-backups/<slug>/{repo,password}` — one directory per
 tenant, `password` mode 600 owned by `deploy` (the same user `apply.sh` runs
-as; restic needs no elevated privilege to dump-then-back-up a SQL file).
+as; restic needs no elevated privilege to dump-then-back-up a SQL file --
+staging the two storage volumes into that same snapshot DOES need root,
+scoped to a throwaway `docker run --user 0:0` per volume, see `tenant-backup.sh`
+above -- the restic invocation itself still runs as `deploy`).
 `RESTIC_REPOSITORY` defaults to the local `repo` path but is overridable via
 environment (`RESTIC_REPOSITORY`) if a real remote backend (S3-compatible,
 B2, SFTP to a second host) is ever wired in later — no script change needed,
@@ -645,12 +648,65 @@ state** — not just read for plausibility. See "What was actually run."
 Standalone wrapper around the exact same dump-then-restic-backup logic
 `apply.sh`'s own final step uses, factored out so cron can run it *between*
 releases — a tenant's data changes every day; `apply` only backs up at release
-time. Deliberately its own ~60-line file rather than a shared "source this"
-library: the two copies are small enough that duplicating them is a smaller
-risk than making `apply.sh` depend on an external file that could drift from
-what it actually needs mid-run, with the maintenance-mode trap and lock
-already held. Not installed into cron by this task (no server exists to
-install it on) — the runbook below documents the line to add per tenant.
+time. Deliberately its own file rather than a shared "source this" library:
+the two copies are small enough that duplicating them is a smaller risk than
+making `apply.sh` depend on an external file that could drift from what it
+actually needs mid-run, with the maintenance-mode trap and lock already held.
+Not installed into cron by this task (no server exists to install it on) —
+the runbook below documents the line to add per tenant.
+
+**Two-machines plan, Faza 2 (2026-08-10): the snapshot also covers the two
+storage volumes, not just the database.** `storage-app-public`/
+`storage-app-private` (client logos, equipment photos, portfolio images, CMS
+block images, GDPR export ZIPs) previously had no backup mechanism at all —
+the only thing that existed was a `tar` command an operator had to remember,
+in `instalacja-tenanta-od-zera.md`. Both scripts now stage those two volumes
+into a plain host directory (via a throwaway container on the tenant's own
+already-pulled image, `docker run -v <volume>:/src:ro`) and pass the staged
+paths to the SAME `restic backup` invocation as the SQL dump, so a restore
+means one snapshot ID, not two close-in-time ones. Two things had to be
+gotten right, both found by actually running this against a real Docker
+volume, not by inspection:
+
+- **`docker run -v <name>:/path` silently CREATES an empty volume when the
+  name does not exist**, instead of erroring — a missing/renamed volume would
+  otherwise back up as "successfully" empty, with nobody noticing until a
+  restore came back with nothing in it. Guarded with `docker volume inspect`
+  BEFORE the mount, proven to fire: called against a volume name that was
+  never created, confirmed the function returns non-zero AND that
+  `docker volume ls` shows no phantom volume was created as a side effect.
+- **GNU `cp -a /src/. /dest/` does not only copy files INTO the pre-existing
+  `/dest`, it also re-stamps `/dest`'s OWN ownership to match `/src`'s top
+  level** (root:root, since a Docker volume's own root directory is
+  root-owned). The staging container runs as `--user 0:0` (root) because the
+  volume's files are owned by the image's fixed `laravel` user (UID 1000,
+  ADR-013) and the host-created staging directory does not grant that UID
+  write access — but without a trailing `chown -R $(id -u):$(id -g) /dest`
+  inside the SAME privileged `docker run`, the staging directory itself
+  silently flips to root-owned, and the non-root user running this script
+  (no sudo on this box) gets `Permission denied` cleaning it up on every
+  subsequent run. Reproduced both ways (without the `chown`, cleanup failed;
+  with it, cleanup succeeded) before shipping.
+
+A files-staging failure for ONE volume does not drop the database or the
+OTHER volume from the snapshot — `RESTIC_TARGETS` is built incrementally and
+`restic backup` runs with whatever succeeded, only reported as a failure
+(`DEGRADED` in `apply.sh`, non-zero exit in `tenant-backup.sh`) afterwards.
+
+**The ownership fix above is a BACKUP-side fix; the restore side needed its
+own, found by infrastructure review, not assumed to follow automatically.**
+`instalacja-tenanta-od-zera.md`'s restore procedure (8.6) streams
+`restic dump ... --archive tar` straight into a root-privileged `docker run`
+that extracts AND `chown -R 1000:1000`s in the same command, the same
+precedent as the backup side. Without that final `chown`, restored files
+keep whatever UID `deploy` happened to be on the machine that made the
+backup (not necessarily 1000) — a UID-1000 process (the real app, ADR-013)
+can then read them but not write, delete, or overwrite them. Reproduced with
+a deliberately different simulated `deploy` UID (1002, ADR-010's own real
+example) so the sandbox's own coincidental host UID couldn't mask the bug:
+without the restore-side `chown`, a UID-1000 write into the restored tree
+failed with `Permission denied`; with it, the same write succeeded and the
+pre-existing restored content was still readable.
 
 ## Manual steps an operator must perform
 

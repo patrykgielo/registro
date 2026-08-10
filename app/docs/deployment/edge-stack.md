@@ -275,16 +275,25 @@ interaction on a real box, actual certificate rendering via `sed` against a real
 Was hardcoded to `docker exec registro-nginx`. Now reads `NGINX_RELOAD_CONTAINER` from `.env`,
 defaulting to `registro-nginx` when unset — **today's live single-stack deployment needs zero `.env`
 changes and behaves identically.** Once the edge is actually the thing holding the ACME webroot and
-terminating TLS (a later cutover, not part of this PR), set:
+terminating TLS, this key becomes:
 
 ```
 NGINX_RELOAD_CONTAINER=registro-edge-nginx
 ```
 
-in the server's `.env`, and the next cron run retargets itself with no script edit. **Not written by
-`apply`** — the legacy-to-edge cutover is a separate, one-time, currently-unscheduled operation (see
-"Cutover sequencing" below), not part of attaching a new dedicated tenant, which is all `apply`
-performs today.
+**Written by `apply`'s own edge-sync step (task 6, stack-per-tenant epic, Faza 2 of the two-machines
+plan) — not a manual step anymore.** The value is read from `docker-compose.edge.yml`'s own
+`container_name`, never hardcoded a second time. It is written CONDITIONALLY, gated on the running
+edge-nginx container's actual bind mount (`docker inspect` on its
+`/etc/nginx/conf.d/default.conf` mount source), not on the `EDGE_NGINX_CONF` env var alone -- the
+documented manual cutover below (`EDGE_NGINX_CONF=edge-tls.local.conf docker compose ... up -d`)
+sets that var only for the one command performing the cutover, not persisted into `.env` anywhere a
+later `apply` run could read it back from, so gating on it directly would silently never fire again
+after that one command. `apply`'s edge-sync step runs on EVERY apply, cutover or not -- writing the
+var unconditionally there would have been exactly as wrong as never writing it: the edge answers
+plain HTTP only (`EDGE_NGINX_CONF`'s own default, `edge.conf`) until the cutover below has actually
+happened, and pointing the reload at it before that would mean certbot renews correctly while
+NEITHER container actually gets reloaded with the new certificate.
 
 **Known gap, fixed:** the *hostname source* used to query only the legacy shared stack's `app`
 container via `docker-compose.prod.yml` (`DESIRED=...tenants:hostnames`), which was correct as long
@@ -293,20 +302,44 @@ per-tenant stacks (task 4), their hostnames live in *their own* databases and we
 because `certbot --expand` reissues against exactly the list computed, any SAN an operator added for
 a dedicated tenant by hand was silently stripped on the next 15-minute cron run. `sync-certificate.sh`
 now also enumerates every stack under `STACKS_ROOT` (`/opt/stacks`, overridable via
-`REGISTRO_STACKS_ROOT`) and unions their names in. The source per dedicated stack is `TENANT_HOSTS`
-(read live from the container's own environment via `docker compose exec`), not another
-`tenants:hostnames` call — that command's own "baseDomain + org-slug.baseDomain" logic is written for
-the legacy shared-tenant architecture and would emit a broken double-subdomain name
+`REGISTRO_STACKS_ROOT`) and unions their names in. The source per dedicated stack is `TENANT_HOSTS`,
+not another `tenants:hostnames` call — that command's own "baseDomain + org-slug.baseDomain" logic is
+written for the legacy shared-tenant architecture and would emit a broken double-subdomain name
 (`acme.acme.registrolabs.com`) if pointed at a dedicated stack, since `apply.sh` already sets that
 stack's `APP_DOMAIN`/org slug to the tenant's own primary host. `TENANT_HOSTS` is already the exact
 allowlist `ResolveTenant`/`TrustedTenantHosts` enforce for that container, so it needs no
-recomputation. Fail-safe by design: a stack directory with no compose file is skipped quietly (not
-provisioned yet); a stack that exists but cannot be queried (container down, broken `.env`, compose
-interpolation failure, timeout) aborts the **entire** run before anything touches certbot, leaving the
-live certificate exactly as it was — see the script's own comments for the full reasoning and
-`scripts/server/sync-certificate.sh`'s validation notes in this task's PR description for the four
-scenarios actually exercised (no `/opt/stacks`, dotdir + junk directory both skipped, a healthy stack's
-names unioned in, an unqueryable stack aborting the run with the cert list provably untouched).
+recomputation.
+
+**Two-machines plan, Faza 2 (2026-08-10): both the legacy source AND the dedicated-stack source
+changed shape again**, independently of the fix above:
+
+- **Legacy source:** originally an unconditional `tenants:hostnames` call that `die()`d if it
+  returned nothing. That was correct as long as every machine ran the legacy stack, but a fresh
+  PreProd box (two-machines plan, checkout present, legacy containers never started) legitimately
+  contributes ZERO legacy names — not an error. Now gated on `docker compose ps -q app`: empty means
+  "nothing running here" (checkout absent, container stopped, never started — all legitimate, zero
+  names, continue), non-empty but the subsequent `tenants:hostnames` call still empty/failing means
+  "running but broken" (still a hard abort, unchanged).
+- **Dedicated-stack source:** originally read live from the container's own environment via `docker
+  compose exec`, which doubled as the "is this stack reachable" probe the fail-safe needed. Correct
+  for "one always-on stack per client"; wrong once UAT started hosting prospect projects that get
+  created, torn down, and left stopped between sessions — "directory present, container down" became
+  a NORMAL state there, and the fail-safe (rightly) treated it as indistinguishable from "broken",
+  freezing renewal for every OTHER tenant over one sleeping stack. Now read from the stack's own
+  `.env` ON DISK — the identical value `apply.sh` already wrote there, readable whether or not the
+  container happens to be running.
+
+Fail-safe by design, for both sources: a stack directory with no compose file is skipped quietly (not
+provisioned yet); a stack that exists but whose `.env` cannot be read (missing, unreadable, no
+`TENANT_HOSTS` key) aborts the **entire** run before anything touches certbot, leaving the live
+certificate exactly as it was; a `DESIRED` list that ends up empty after ALL sources (legacy,
+dedicated stacks, `www`) also aborts rather than asking certbot for zero names. See the script's own
+comments for the full reasoning and this task's validation notes for the seven scenarios actually
+exercised in a sandbox (no `/opt/stacks`; dotdir + junk directory both skipped; no legacy stack, only
+dedicated stacks, certbot called with the right list; legacy running but its query failing, certbot
+never called; a dedicated stack's container stopped but `.env` present, hosts still included; a
+dedicated stack's `.env` missing, certbot never called; `NGINX_RELOAD_CONTAINER` written idempotently
+across three `apply` runs).
 
 ## Cutover sequencing (documented, not performed)
 

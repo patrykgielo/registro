@@ -1012,9 +1012,81 @@ fi
     } >"${EDGE_TENANTS_OVERRIDE}.tmp"
     mv -f "${EDGE_TENANTS_OVERRIDE}.tmp" "$EDGE_TENANTS_OVERRIDE"
 
+    # Container name is READ from docker-compose.edge.yml, not hardcoded --
+    # a rename of that service only needs to change in the one file that
+    # already owns it. Anchored to the edge-nginx SERVICE block specifically
+    # (grep the service line, then the first container_name AFTER it),
+    # rather than "the first container_name in the file" -- correct today
+    # because this file happens to define only one service, but a second
+    # service defined ABOVE edge-nginx with its own container_name would
+    # silently pick the wrong value under the looser match.
+    EDGE_NGINX_CONTAINER="$(awk '/^[[:space:]]*edge-nginx:/{f=1} f && /container_name:/{print $2; exit}' "$EDGE_COMPOSE_FILE")"
+    [ -n "$EDGE_NGINX_CONTAINER" ] \
+        || die "could not read edge-nginx's container_name from ${EDGE_COMPOSE_FILE}" 3
+
+    # CRITICAL, found by infrastructure review and reproduced on a throwaway
+    # compose project before this comment was written: docker-compose.edge.yml
+    # mounts nginx's config through `${EDGE_NGINX_CONF:-edge.conf}`. The
+    # documented manual cutover (edge-stack.md's "Cutover sequencing") sets
+    # that var ONLY for the one `docker compose ... up -d edge-nginx` command
+    # that performs it -- it is never persisted into .env anywhere a LATER
+    # invocation could read it back from. This step's own `up -d edge-nginx`
+    # below runs on EVERY apply, for every tenant, in a process where that
+    # var is unset -- so without this block, the FIRST apply after any
+    # cutover silently recreates edge-nginx back onto the bootstrap
+    # edge.conf, dropping TLS termination for every tenant behind the edge,
+    # with no die() and nothing but a log line that reads as informational.
+    # Fix: read what the CURRENTLY RUNNING container is actually mounted
+    # with (ground truth, survives however EDGE_NGINX_CONF got set the first
+    # time) and re-export that exact value for this invocation, so `up -d`
+    # recreates the container with the SAME config it already had. A
+    # container that isn't running yet (first-ever bring-up) has nothing to
+    # preserve -- EDGE_NGINX_CONF stays unset, which is the correct
+    # bootstrap default (edge.conf).
+    EDGE_NGINX_CURRENT_SOURCE="$(docker inspect "$EDGE_NGINX_CONTAINER" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/nginx/conf.d/default.conf"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+    if [ -n "$EDGE_NGINX_CURRENT_SOURCE" ]; then
+        export EDGE_NGINX_CONF
+        EDGE_NGINX_CONF="$(basename "$EDGE_NGINX_CURRENT_SOURCE")"
+        log "Edge currently mounted with ${EDGE_NGINX_CONF} -- preserving it across this recreation"
+    fi
+
     log "Reloading edge..."
     docker compose -f "$EDGE_COMPOSE_FILE" -f "$EDGE_TENANTS_OVERRIDE" up -d edge-nginx \
         || die "failed to reload the edge with ${SLUG} attached" 3
+
+    # sync-certificate.sh reads NGINX_RELOAD_CONTAINER from THIS (legacy)
+    # .env and its own comment says apply is "expected to write this var
+    # itself once it performs that cutover" -- but this step runs on EVERY
+    # apply, cutover or not, and the edge answers plain HTTP only
+    # (EDGE_NGINX_CONF's own default, edge.conf) until the documented manual
+    # cutover has actually happened. Writing this unconditionally would be
+    # exactly the false claim this step exists to prevent: certbot would
+    # keep renewing correctly, but the reload would target a container not
+    # actually serving TLS, while the one that IS (registro-nginx, still on
+    # the old cert) is never reloaded -- the identical symptom as leaving
+    # the var unset, just pointed at a different wrong container.
+    #
+    # Re-inspected AFTER `up -d` (not reused from EDGE_NGINX_CURRENT_SOURCE
+    # above) so this reads the container's ACTUAL post-recreation state --
+    # the block above only preserves a cutover that already happened; this
+    # is what proves it survived this specific run.
+    EDGE_NGINX_CONF_SOURCE="$(docker inspect "$EDGE_NGINX_CONTAINER" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/nginx/conf.d/default.conf"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+    if printf '%s' "$EDGE_NGINX_CONF_SOURCE" | grep -q 'edge-tls\.local\.conf$'; then
+        # Idempotent: replace the existing line if present, append only if
+        # not -- running apply for every tenant on every release must never
+        # accumulate duplicate NGINX_RELOAD_CONTAINER lines in this shared
+        # .env.
+        if grep -q '^NGINX_RELOAD_CONTAINER=' .env; then
+            sed -i "s|^NGINX_RELOAD_CONTAINER=.*|NGINX_RELOAD_CONTAINER=${EDGE_NGINX_CONTAINER}|" .env
+        else
+            echo "NGINX_RELOAD_CONTAINER=${EDGE_NGINX_CONTAINER}" >>.env
+        fi
+        log "Edge is terminating TLS (${EDGE_NGINX_CONF_SOURCE}) -- NGINX_RELOAD_CONTAINER set to ${EDGE_NGINX_CONTAINER} in ${LEGACY_APP_DIR}/.env"
+    else
+        log "Edge is not yet terminating TLS (config source: ${EDGE_NGINX_CONF_SOURCE:-unknown}) -- leaving NGINX_RELOAD_CONTAINER untouched"
+    fi
 ) || exit $?
 
 ###############################################################################
@@ -1172,12 +1244,48 @@ if [ "$BACKUP_FAILED" != true ] && command -v restic >/dev/null 2>&1; then
         log "ERROR: final backup dump failed or was truncated"
         BACKUP_FAILED=true
     else
+        # --- storage volumes -------------------------------------------------
+        #
+        # Same staging + guard as tenant-backup.sh's own stage_volume() --
+        # duplicated rather than sourced, same reasoning as this whole step's
+        # own header comment on why apply.sh does not depend on an external
+        # file. See that script for the full "why root, why chown back, why
+        # one snapshot" reasoning; not repeated here.
+        FINAL_STAGE_DIR="$(mktemp -d "/tmp/${SLUG}-backup-files-XXXXXX")"
+        stage_volume() {
+            local vol="$1" dest="$2"
+            docker volume inspect "$vol" >/dev/null 2>&1 || {
+                log "ERROR: volume ${vol} does not exist -- refusing to back it up as an empty directory"
+                return 1
+            }
+            mkdir -p "$dest"
+            docker run --rm --user 0:0 \
+                -v "${vol}:/src:ro" -v "${dest}:/dest" "ghcr.io/patrykgielo/registro:${TAG}" \
+                sh -c "cp -a /src/. /dest/ && chown -R $(id -u):$(id -g) /dest" \
+                >/dev/null 2>>"$LOG_FILE" || {
+                log "ERROR: staging volume ${vol} failed"
+                return 1
+            }
+        }
+
+        RESTIC_TARGETS=("$FINAL_DUMP")
+        if stage_volume "${TENANT_PREFIX}_storage-app-public" "${FINAL_STAGE_DIR}/storage-app-public"; then
+            RESTIC_TARGETS+=("${FINAL_STAGE_DIR}/storage-app-public")
+        else
+            BACKUP_FAILED=true
+        fi
+        if stage_volume "${TENANT_PREFIX}_storage-app-private" "${FINAL_STAGE_DIR}/storage-app-private"; then
+            RESTIC_TARGETS+=("${FINAL_STAGE_DIR}/storage-app-private")
+        else
+            BACKUP_FAILED=true
+        fi
+
         log "Backing up to restic (host=tenant-${SLUG})..."
         # Output captured, not streamed straight to the log -- so it can be
         # inspected for the "repository already locked" shape below without
         # a second restic invocation. `set -e` is safe here: the assignment
         # is wrapped in `||`, same fix as PROVISION_STATUS above.
-        BACKUP_OUTPUT="$(restic backup "$FINAL_DUMP" --host "tenant-${SLUG}" \
+        BACKUP_OUTPUT="$(restic backup "${RESTIC_TARGETS[@]}" --host "tenant-${SLUG}" \
             --tag "slug=${SLUG}" --tag "apply=${TAG}" 2>&1)" || {
             echo "$BACKUP_OUTPUT" >>"$LOG_FILE"
             BACKUP_FAILED=true
@@ -1197,6 +1305,7 @@ if [ "$BACKUP_FAILED" != true ] && command -v restic >/dev/null 2>&1; then
             fi
         }
         rm -f "$FINAL_DUMP"
+        rm -rf "$FINAL_STAGE_DIR"
         [ "$BACKUP_FAILED" = true ] || log "Backup complete"
     fi
 fi
