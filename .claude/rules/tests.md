@@ -167,6 +167,32 @@ $this->assertEquals($expected, $errorMessage);
 - Chromium is baked into the image at `/opt/playwright-browsers` (`PLAYWRIGHT_BROWSERS_PATH`), NOT `~/.cache` — `.:/var/www` would shadow anything under the project dir, and a container-local install dies on the next `build`. The version is derived from `package.json` at build time, so **bumping `playwright` there requires `docker compose build app`** — skip it and you get a misleading "Executable doesn't exist", not a version warning.
 - **pest#1734 workaround (open upstream, no vendor patch):** `LaravelHttpServer` builds every request from a hardcoded `127.0.0.1` URL — the SERVER bag never gets the real tenant Host, only the HEADERS bag does. Livewire's `PersistentMiddleware::makeFakeRequest()` rebuilds headers FROM the server bag on every `/livewire/update`, so `ResolveTenant` sees `127.0.0.1` and redirects to root. Fixed by `App\Http\Middleware\Testing\PestBrowserHostBugWorkaround`, prepended to the GLOBAL stack ONLY under `APP_ENV=testing` (`bootstrap/app.php`) — dead everywhere else. Mechanism in the class docblock. Delete both once pest/pest#1734 ships upstream.
 
+## Shell tests (`scripts/server/**`)
+
+`scripts/server/*.sh` (apply/deploy/sync-certificate/tenant-check/tenant-backup)
+have their own suite, separate from PHPUnit — plain bash, no bats (not
+installed, and this project forbids adding a new package-manager dependency
+for it). Run with:
+
+```bash
+bash tests/shell/run.sh
+```
+
+Runs in well under a second, offline, no real Docker daemon/server/network —
+every `docker`/`certbot`/`su`/`git`/`restic` call is a fake executable on
+`PATH` that records its own invocation to a call log the test then asserts
+on (see `tests/shell/lib/harness.sh`'s own header for the full reasoning,
+including why extraction-from-the-real-file is used for functions that live
+inside a script with top-level `set -euo pipefail` and cannot run standalone).
+
+**A fixed shell bug in `scripts/server/**` gets a test in `tests/shell/cases/`
+in the same change** — same rule as a PHP bug getting a regression test.
+Assert on observable behavior (which command ran, with which arguments, what
+was written to disk, what exit code) — never grep the script for a string; a
+grep passes even when the behavior is broken and breaks on innocent
+refactors. Full catalog of what's pinned today:
+`app/docs/deployment/tenant-apply.md` → "Permanent regression suite".
+
 ## Laravel Pint (Code Style)
 
 **CRITICAL:** All code MUST pass Pint before commit.

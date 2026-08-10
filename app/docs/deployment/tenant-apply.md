@@ -24,7 +24,9 @@ Provisioning](../features/tenant-stack-provisioning.md) (task 2/1 —
 `registro:tenant-provision`/`registro:tenant-provisioned`, which `apply` calls
 rather than duplicating), `scripts/server/deploy.sh` (the legacy stack's own
 forced-command entry point — `apply` is a sibling verb, not an extension of
-that file), `.claude/rules/ci-cd-troubleshooting.md`.
+that file), `.claude/rules/ci-cd-troubleshooting.md`, `tests/shell/` (the
+permanent regression suite pinning eight of the bugs below — see "Permanent
+regression suite" further down).
 
 ---
 
@@ -266,6 +268,50 @@ a genuine `assertConsistent()` failure prints one of four specific
 only the benign case prints exactly the single line `not-provisioned`.
 `apply.sh` captures both, and only `die`s when the output is *not* that exact
 line.
+
+## Permanent regression suite
+
+Every bug catalogued on this page (and on `edge-stack.md`, and in
+`ci-cd-troubleshooting.md`) was, until 2026-08-10, found and proven fixed in a
+**throwaway** validation sandbox — fake `docker`/`certbot`/`su`/`git`/`restic`
+on `PATH`, torn down at the end of the session. Nothing accumulated, so a
+later change could silently break what an earlier one had already proved —
+which is exactly what happened once: a volume backup proven working in one PR
+turned out never to have worked, caught two PRs later only because a human
+happened to re-read an old validation report.
+
+`tests/shell/` (`bash tests/shell/run.sh`, documented in
+`.claude/rules/tests.md`) turns eight of those sandboxes into a permanent,
+committed suite instead — the same fake-executable-on-`PATH` pattern, kept
+around so a regression shows up as a failing test on the next run, not as a
+report nobody re-reads. It pins:
+
+1. `stage_volume()` must pass `--entrypoint` (`apply.sh`, `tenant-backup.sh`)
+   — "`stage_volume()` bug found during Faza 3 validation" below.
+2. `force_clear_flag()` must never invoke `docker compose` (`apply.sh`,
+   `deploy.sh`) — `ci-cd-troubleshooting.md`'s "docker compose run w
+   forced-command recovery path".
+3. `sync-certificate.sh`: an unprobeable legacy stack aborts, never
+   contributes zero names silently.
+4. `sync-certificate.sh`: a stopped tenant stack with a readable `.env` still
+   contributes its hosts.
+5. `sync-certificate.sh`: no empty element ever reaches certbot's `-d` list.
+6. `apply.sh`'s edge-sync preserves the running edge's `EDGE_NGINX_CONF`
+   across recreation ("Infrastructure review" #1 below).
+7. `apply.sh`'s lock/log/state live outside `STACK_DIR` (bug #2 above).
+8. `apply.sh`'s `registro:tenant-provisioned --assert` treats a benign
+   `not-provisioned` result as non-fatal (bug #4/"The `--assert` surprise"
+   above).
+
+Plus two cheap bonus pins: `tenant-check.sh` never reports `.state/` as an
+orphan tenant directory (bug #6 above), and `apply.sh`'s
+`NGINX_RELOAD_CONTAINER` write is idempotent across repeated runs.
+
+**Rule going forward:** a shell bug found and fixed in `scripts/server/**`
+gets a test in `tests/shell/cases/` in the same change, the same way a PHP
+bug gets a regression test in `tests/Feature`/`tests/Unit`. See
+`tests/shell/lib/harness.sh`'s own header for why plain bash (no bats) and
+why fakes-on-`PATH` rather than a real Docker daemon.
 
 ## Infrastructure review — six more fixes
 
