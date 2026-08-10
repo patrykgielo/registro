@@ -708,6 +708,55 @@ without the restore-side `chown`, a UID-1000 write into the restored tree
 failed with `Permission denied`; with it, the same write succeeded and the
 pre-existing restored content was still readable.
 
+## `stage_volume()` bug found during Faza 3 validation (two-machines plan): backups of both
+## storage volumes were silently empty against the real image
+
+Found by actually running the migration drill in `instalacja-tenanta-od-zera.md`'s Część 9.6, not
+by inspection -- the same "found by running it" pattern as every other entry in this document.
+Neither `apply.sh`'s own copy of `stage_volume()` nor `tenant-backup.sh`'s ever passed
+`--entrypoint` to `docker run`. This project's own image (`ghcr.io/patrykgielo/registro`) ships
+`docker/entrypoint.sh`, which unconditionally refuses to run as anyone but the `laravel` user:
+
+```
+🔍 Validating container configuration...
+❌ CRITICAL: Running as 'root' but expected 'laravel'
+```
+
+`--user 0:0` (needed so the container can read root-owned volume internals and `chown` the staging
+directory back afterward -- see the section above) never reached the `cp -a`/`chown` command at
+all: the entrypoint's own `whoami` check killed the container FIRST, on every invocation, silently.
+`docker run` itself reports success (a container started, ran, and exited -- just with exit code 1
+and nothing copied), and the surrounding `stage_volume()` DOES catch that failure (`|| { log
+"ERROR..."; return 1; }`) -- so this was never a crash. It was `apply.sh`'s final step reporting
+`DEGRADED` (or `tenant-backup.sh` exiting 3) on every single run, for every tenant, for as long as
+this code existed unexercised against the real image -- easy to read as "restic isn't installed
+yet" noise rather than "the storage volumes have never once made it into a snapshot."
+
+**Fix, identical shape in both files:** `--entrypoint sh` on the `docker run` invocation, and the
+command split into `-c "..."` (now the argument to `sh` itself, not part of a `sh -c "..."` CMD
+that never got interpreted, since the image's own entrypoint no longer intercepts it). Verified
+directly, before and after: same volume, same command shape, `❌ CRITICAL` reproduced with the
+original code, `cp -a`/`chown` actually executing (confirmed by `sha256sum` matching source
+content, and by ownership landing on the invoking user, not root) with the fix.
+
+**Why Faza 2's own validation (edge-stack.md/this doc, 2026-08-09/10) didn't catch this:** that
+work exercised `stage_volume()` as an isolated function against *a* Docker volume, not necessarily
+against a container built from THIS project's own `Dockerfile`/`entrypoint.sh` -- a generic
+image would never hit this guard. Faza 3's drill was the first time this exact function ran with
+the real, entrypoint-guarded `ghcr.io/patrykgielo/registro` image as the staging container, which
+is what every real `apply`/cron backup on the actual server has always used.
+
+## Faza 3 (two-machines plan) -- moving a tenant between machines
+
+Full procedure, decision (documented runbook, not a cross-machine orchestrator -- see that
+section's own header for why), and the six-point end-to-end validation live in
+`instalacja-tenanta-od-zera.md`'s **Część 9**, not duplicated here. What's relevant to `apply.sh`
+specifically: the migration's first apply on the destination machine passes an explicit `[hosts]`
+argument and deliberately omits `--name`/`--owner-email`/`--owner-name` -- see "One tenant, one
+domain" above for the `[hosts]` mechanism, and Część 9.4/9.6 for why omitting the owner flags is
+what stops this from provisioning a second, fabricated organization on top of the one about to be
+restored from backup.
+
 ## Manual steps an operator must perform
 
 1. **Once, at server-setup time** (already automated by the
