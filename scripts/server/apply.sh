@@ -1259,9 +1259,16 @@ if [ "$BACKUP_FAILED" != true ] && command -v restic >/dev/null 2>&1; then
                 return 1
             }
             mkdir -p "$dest"
-            docker run --rm --user 0:0 \
+            # --entrypoint sh: this image's own docker/entrypoint.sh refuses to run as
+            # anyone but the `laravel` user (EXPECTED_USER check) -- found by actually
+            # running this against the real image, not a stand-in. Without the override,
+            # --user 0:0 above never reaches `cp`/`chown` at all: the entrypoint's own
+            # `whoami` check kills the container first, so `docker run` "succeeds" at
+            # starting a container that exits 1 before doing any work, and every backup
+            # silently produced an empty snapshot for both storage volumes.
+            docker run --rm --user 0:0 --entrypoint sh \
                 -v "${vol}:/src:ro" -v "${dest}:/dest" "ghcr.io/patrykgielo/registro:${TAG}" \
-                sh -c "cp -a /src/. /dest/ && chown -R $(id -u):$(id -g) /dest" \
+                -c "cp -a /src/. /dest/ && chown -R $(id -u):$(id -g) /dest" \
                 >/dev/null 2>>"$LOG_FILE" || {
                 log "ERROR: staging volume ${vol} failed"
                 return 1

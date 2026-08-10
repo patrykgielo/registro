@@ -464,3 +464,44 @@ zamiast, nie warunkuj bramki na subkomendzie Compose, która i tak zawsze interp
 Osobno: gdy walidujesz mechanizm ownership/permission w piaskownicy, sprawdź NAJPIERW czy UID hosta
 testowego przypadkiem nie zgadza się z UID, którego bug dotyczy — zbieżność cicho unieważnia test
 (złapane i naprawione dwa razy w tej samej sesji, patrz też incydent bezpośrednio powyżej).
+
+---
+
+## Incydent (Faza 3 planu dwóch maszyn, znaleziony przez realną migrację, nie inspekcję):
+## `stage_volume()` cicho tworzyło PUSTY backup obu wolumenów storage na prawdziwym obrazie
+
+`apply.sh`'s własny finalny krok backupu i cały `tenant-backup.sh` wołają `docker run --user 0:0
+-v <wolumen>:/src:ro ... "ghcr.io/patrykgielo/registro:<tag>" sh -c "cp -a /src/. /dest/ && chown
+..."` — **bez `--entrypoint`**. Ten obraz ma własny `docker/entrypoint.sh`, który odmawia startu
+jako ktokolwiek inny niż `laravel` (`EXPECTED_USER` check, `❌ CRITICAL: Running as 'root' but
+expected 'laravel'`) — `--user 0:0` nigdy nie docierał do `cp`/`chown`, entrypoint zabijał kontener
+najpierw. `docker run` samo w sobie "kończyło się sukcesem" (kontener wystartował i wyszedł — tylko
+z kodem 1, nic nie skopiowane), a otaczający `stage_volume()` tę porażkę łapał (`return 1`) —
+skutek widoczny operatorowi to `DEGRADED` na KAŻDYM apply, dla KAŻDEGO tenanta, odkąd ten kod
+istniał nietestowany przeciw prawdziwemu obrazowi — łatwe do przeczytania jako "restic jeszcze nie
+zainstalowany", nie jako "wolumeny storage nigdy nie trafiły do snapshota".
+
+**Naprawa:** `--entrypoint sh` + rozbicie komendy na `-c "..."` (teraz argument DLA `sh`, nie część
+CMD, którego i tak nikt nie interpretował) — identyczny, jednowierszowy fix w obu plikach.
+Zweryfikowane wprost przed i po: to samo `❌ CRITICAL` reprodukowane na oryginalnym kodzie; po
+naprawie `cp -a`/`chown` faktycznie wykonane, `sha256sum` zgodna z oryginałem.
+
+**Dlaczego wcześniejsza walidacja Fazy 2 (2026-08-09/10, ten sam plik, incydent "4 poprawki
+blokujące... realny wolumen Dockera" wyżej) tego nie złapała:** ten test uruchomił
+`stage_volume()` jako izolowaną funkcję przeciw JAKIEMUŚ wolumenowi Dockera, najwyraźniej nie
+przeciw kontenerowi zbudowanemu z WŁASNEGO `Dockerfile`/`entrypoint.sh` tego projektu — generyczny
+obraz nigdy nie trafiłby na ten guard. Walidacja Fazy 3 (pełna migracja tenanta między dwiema
+symulowanymi maszynami) była pierwszym razem, gdy ta dokładna funkcja pobiegła z prawdziwym,
+entrypoint-guarded obrazem `ghcr.io/patrykgielo/registro` jako kontenerem stagingowym — dokładnie
+tym, którego używa każdy realny `apply`/cron backup na prawdziwym serwerze.
+
+Pełny opis + cała walidacja migracji (6 punktów, `audit_logs`/`APP_KEY` przeżywa przeniesienie,
+niezależna alokacja portów/podsieci na maszynie docelowej): `app/docs/deployment/
+instalacja-tenanta-od-zera.md` → Część 9, `app/docs/deployment/tenant-apply.md` →
+"`stage_volume()` bug found during Faza 3 validation".
+
+**Zasada:** izolowany test funkcji, który podstawia inny obraz/kontener niż ten, którego produkcja
+faktycznie używa, może przejść, mimo że funkcja jest złamana przeciw prawdziwemu artefaktowi. Gdy
+kod robi `docker run` na WŁASNYM obrazie projektu (nie na `alpine`/`debian`/generycznym helperze) —
+walidacja MUSI użyć tego samego, realnie zbudowanego obrazu, z jego prawdziwym entrypointem,
+inaczej test dowodzi tylko, że powłoka wewnątrz działa, nie że cała ścieżka `docker run` działa.

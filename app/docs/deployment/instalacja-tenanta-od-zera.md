@@ -1007,6 +1007,296 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
 
 ---
 
+# CZĘŚĆ 9 — Przeniesienie klienta między maszynami / zmiana domeny (S3, S4, S8)
+
+Faza 3 planu dwóch maszyn (`~/.claude/plans/dwie-maszyny-uat-preprod.md`). Jedna procedura na trzy
+scenariusze, bo różnią się tylko ostatnim krokiem:
+
+- **S3** — klient zostaje u nas: PreProd dostaje domenę klienta, **ta sama maszyna, ta sama baza**.
+- **S4** — klient jedzie na swój VPS: stack przenosi się na maszynę, której nie kontrolujemy.
+- **S8** — maszyna padła: stack odtwarzany jest na nowej maszynie z backupu.
+
+**Ta procedura jest opisem kroków, nie skryptem.** Rozważone i odrzucone: automat przechodzący
+przez granicę SSH między dwiema maszynami, z których jednej możemy nie kontrolować (S4) albo która
+może już nie istnieć (S8). Taki automat psuje się w sposób, którego nikt nie zdiagnozuje o 2 w
+nocy. Zamiast tego — kompozycja już istniejących, już przetestowanych elementów: `apply.sh`
+(jawny argument `[hosts]`), backup/restore restica (Część 8, już przetestowany end-to-end), i
+zwykłe `scp`/`rsync` operatora między maszynami, których żaden skrypt tego repo nie orkiestruje.
+Kroki destrukcyjne i weryfikacyjne są oznaczone wprost, tak jak w Części 7/8.
+
+## 9.0 — Dwie ścieżki, nie trzy
+
+**Ścieżka A (S3): sama zmiana domeny, ta sama maszyna.** Baza, wolumeny, kontenery — nic się nie
+przenosi, bo to wciąż ten sam MySQL. Jedyna zmiana to `TENANT_HOSTS`/`APP_URL`/`APP_DOMAIN` i
+certyfikat. Zobacz 9.3.
+
+**Ścieżka B (S4/S8): nowa maszyna.** Dane muszą fizycznie się przenieść — dump bazy i oba wolumeny
+storage, dokładnie to, co Część 8 już umie przywracać. Zobacz 9.4. S4 i S8 różnią się tylko tym,
+skąd bierzesz backup (S4: żywa maszyna źródłowa, `tenant-backup.sh`/`apply.sh` mogą zrobić świeży
+przed przeniesieniem; S8: maszyna nie istnieje, jedyne co masz to ostatni backup, który przeżył —
+patrz 9.7, luka R2) i jaką domenę wpisujesz (S4: domena klienta; S8: zwykle ta sama domena co
+wcześniej, tylko wskazująca na nową maszynę).
+
+## 9.1 — Trzy kategorie: co się kopiuje, co się regeneruje, co się przepisuje
+
+**Kopiowane dosłownie — zmiana czegokolwiek z tej listy niszczy dane:**
+
+- **`.env.secrets` w całości.** `APP_KEY` szyfruje `audit_logs` (`EncryptedJsonCast`) —
+  regeneracja czyni każdy istniejący zaszyfrowany rekord trwale nieczytelnym, bez ścieżki
+  odzyskania. `apply.sh` już odmawia nadpisania tego pliku, kiedy istnieje (patrz jego własny
+  komentarz przy `SECRETS_FILE`) — ta procedura to wykorzystuje, nie obchodzi.
+- **`.env.bak-manual`**, jeśli istnieje — sekrety biznesowe (mail, SMS, mapy, płatności), których
+  `apply.sh` nie potrafi wymyślić samo. `apply.sh` dokleja tę zawartość do wygenerowanego `.env`
+  przy każdym uruchomieniu (patrz jego komentarz tuż przed doklejeniem) — bez skopiowania tego
+  pliku, klient wyląduje na docelowej maszynie bez działającej poczty/SMS/płatności.
+
+**Wniosek o `DB_PASSWORD`/`DB_ROOT_PASSWORD`/`REDIS_PASSWORD` — zależnie od METODY:**
+
+Te trzy wartości są tym, co faktycznie trzyma w sobie wolumen MySQL i AOF Redisa. Ta procedura
+(9.4) przenosi dane wyłącznie przez **dump + przywrócenie** (dokładnie mechanizm Części 8, już
+przetestowany) — **nigdy** przez fizyczne przeniesienie surowego wolumenu `mysql_data`/
+`redis_data`. To rozstrzyga pytanie: przy dump+restore docelowa maszyna zawsze startuje ze
+**świeżym, pustym** wolumenem MySQL/Redis, który inicjalizuje się z hasłami z `.env.secrets` w
+momencie, gdy jest pusty — niezależnie od tego, czy te hasła są identyczne z maszyną źródłową, czy
+nowo wygenerowane. Sam `mysqldump`/przywrócenie łączy się potem przez klienta `mysql` używającego
+DOKŁADNIE tych haseł, więc **nie muszą** być takie same jak na źródle.
+
+**Gdyby ktoś kiedyś przenosił surowy wolumen `mysql_data`/`redis_data` bezpośrednio** (`docker
+volume` eksport/rsync katalogu wolumenu — **czego ta procedura nie robi i czego dziś nic w tym
+repo nie wspiera**), byłoby odwrotnie: MySQL/Redis czytają `MYSQL_ROOT_PASSWORD`/`requirepass`
+tylko przy inicjalizacji PUSTEGO wolumenu, więc przeniesiony, już zainicjalizowany wolumen
+IGNORUJE nowe wartości z `.env.secrets` — hasła musiałyby wtedy przenieść się bajt w bajt razem z
+wolumenem, inaczej aplikacja nie połączy się z własną bazą. **Ta procedura tego nie robi**, więc
+`.env.secrets`' `DB_PASSWORD`/`DB_ROOT_PASSWORD`/`REDIS_PASSWORD` mogą swobodnie być inne na
+docelowej maszynie niż na źródłowej — jedyna wartość z tego pliku, która MUSI przeżyć bajt w bajt,
+to `APP_KEY`. W praktyce prościej i tak skopiować cały plik (patrz wyżej) — ale to z powodu
+`APP_KEY`, nie haseł bazy.
+
+**Regeneruje się na nowej maszynie — kopiowanie tego byłoby błędem:** porty (`HTTP_PORT_V4`/
+`HTTPS_PORT_V4` — `allocate_ports()` skanuje TĘ maszynę), podsieć `/29` (`allocate_subnet()` —
+skanuje sieci Dockera TEJ maszyny), `TRUSTED_PROXIES_CIDR` (pochodna tej samej podsieci), config
+nginxa tenanta, vhost brzegu, linia certyfikatu (`CERT_DIR` tej maszyny, z `.env` stacka legacy),
+ścieżka repozytorium restic (`/opt/registro/tenant-backups/<slug>/repo` na NOWEJ maszynie — nowe,
+puste repo, nie kontynuacja starego; stary backup zostaje osobno, patrz 9.4 krok 7).
+
+**Przepisuje się pod nową domenę:** `APP_URL`, `APP_DOMAIN`, `TENANT_HOSTS` — wszystkie trzy pisze
+`apply.sh` samo, gdy dostanie jawny argument `[hosts]`.
+
+## 9.2 — Pułapka: `apply.sh` regeneruje `.env` w całości przy KAŻDYM uruchomieniu
+
+`apply.sh` nie ma trybu "zmień tylko domenę, zostaw resztę" — cały `.env` (poza
+`REGISTRO_VERSION` i doklejonym `.env.bak-manual`) jest tworzony od zera przy każdym apply, z
+argumentu `[hosts]` tego konkretnego wywołania. **Jeśli kolejny, rutynowy `apply` (wydanie nowej
+wersji, miesiące później) pominie argument `[hosts]`, domena cicho wraca do wartości domyślnej tej
+maszyny** (`<slug>.<APP_DOMAIN maszyny>`) — bez błędu, bez ostrzeżenia, `apply-status` dalej czyta
+`OK`. Zweryfikowane wprost w 9.6: identyczny `apply` bez `[hosts]` po migracji cicho nadpisał
+`migdrillmoved.registrolabs.com` z powrotem na `migdrill.registrolabs.com`.
+
+**Zasada operacyjna, nie tylko techniczna: każdy przyszły `apply` dla tenanta po migracji/zmianie
+domeny MUSI dalej podawać ten sam, pełny `[hosts]`.** Zapisz go tam, gdzie go zobaczysz przy
+następnym wydaniu (np. w notatce operatora przy tym kliencie) — nie polegaj na pamięci.
+
+## 9.3 — Ścieżka A: sama zmiana domeny, ta sama maszyna (S3)
+
+1. Klient wskazuje swoją domenę na TĘ maszynę (A/AAAA/CNAME na ten sam adres IP co dzisiejsza
+   domena PreProd). Musi już rozwiązywać się, zanim pójdziesz dalej — `apply.sh`'s `check_dns()`
+   i tak to wymusi.
+2. ```bash
+   ssh deploy@<ta-maszyna> '/opt/registro/apply.sh nazwaklienta v0.14.0 klient.pl'
+   ```
+   Ten sam `apply`, jedyna różnica to jawny `[hosts]` zamiast pominięcia go. Porty, podsieć,
+   `TRUSTED_PROXIES_CIDR`, dane — wszystko zostaje, bo to ten sam `STACK_DIR`/sieć/wolumeny (patrz
+   `allocate_ports()`/`allocate_subnet()` w 9.1: obie CZYTAJĄ istniejącą wartość z `.env`/sieci,
+   zamiast alokować od nowa, gdy już istnieje).
+3. Poczekaj na najbliższy przebieg `sync-certificate.sh` (≤15 min, patrz krok 2.5) albo uruchom go
+   ręcznie jako root, żeby nie czekać — certyfikat rozszerzy się o `klient.pl`. **Stara nazwa
+   (`nazwaklienta.registroapps.com`) znika z `TENANT_HOSTS` w tym samym momencie** (argument
+   `[hosts]` PODMIENIA całą listę, nie dokleja) — jeśli chcesz okno przejściowe, w którym obie
+   nazwy działają, podaj obie, przecinkiem: `nazwaklienta v0.14.0 nazwaklienta.registroapps.com,klient.pl`.
+4. Zweryfikuj jak w 9.5 (punkty 4-6 nie dotyczą — nic się nie przeniosło; punkty 1-2 owszem, pod
+   nowym adresem).
+
+## 9.4 — Ścieżka B: przeniesienie na inną maszynę (S4/S8)
+
+**Krok 1 — ostatni backup na maszynie źródłowej** (S4 tylko — S8 nie ma już źródła, przejdź do
+kroku 2 z tym, co przetrwało, patrz 9.7):
+```bash
+ssh deploy@<maszyna-źródłowa> '/opt/registro/tenant-backup.sh nazwaklienta'
+```
+
+**Krok 2 — skopiuj poza hostem, zanim cokolwiek innego.** Dwa niezależne transfery, oba przez
+kanał, który operator już ma (scp, rsync, cokolwiek poza tym repo — celowo nieautomatyzowane, patrz
+nagłówek tej części):
+```bash
+scp deploy@<źródło>:/opt/stacks/nazwaklienta/.env.secrets ./nazwaklienta.env.secrets
+scp deploy@<źródło>:/opt/stacks/nazwaklienta/.env.bak-manual ./nazwaklienta.env.bak-manual  # jeśli istnieje
+rsync -a deploy@<źródło>:/opt/registro/tenant-backups/nazwaklienta/ ./nazwaklienta-backup/
+```
+`nazwaklienta-backup/` zawiera `repo/` (dane restica, root-owned wewnątrz — normalne, patrz 8.5) i
+`password`. **To jest jedyna kopia tych danych poza maszyną źródłową w tym momencie** — sprawdź, że
+`rsync` faktycznie się powiódł, zanim pójdziesz dalej.
+
+**Krok 3 — na maszynie docelowej, sklonuj PRZED pierwszym `apply`, nie po.** Pułapka: `apply.sh`
+klonuje tylko wtedy, gdy `${STACK_DIR}/.git` nie istnieje, a `git clone` odmawia klonowania do
+NIEPUSTEGO katalogu — jeśli wgrasz `.env.secrets` jako pierwszy plik w świeżym `/opt/stacks/
+nazwaklienta/`, `apply.sh`'s własny `git clone` padnie na "destination path already exists and is
+not an empty directory". Klonuj ręcznie najpierw, dokładnie tak jak zrobiłby to `apply.sh`:
+```bash
+ssh deploy@<maszyna-docelowa> 'git clone https://github.com/patrykgielo/registro.git /opt/stacks/nazwaklienta'
+```
+
+**Krok 4 — wgraj sekrety, TERAZ, do już sklonowanego katalogu:**
+```bash
+scp ./nazwaklienta.env.secrets deploy@<docelowa>:/opt/stacks/nazwaklienta/.env.secrets
+ssh deploy@<docelowa> 'chmod 600 /opt/stacks/nazwaklienta/.env.secrets'
+scp ./nazwaklienta.env.bak-manual deploy@<docelowa>:/opt/stacks/nazwaklienta/.env.bak-manual  # jeśli istnieje
+```
+
+**Krok 5 — pierwszy `apply` na maszynie docelowej, BEZ flag `--name`/`--owner-*`.** To
+jest to, co odróżnia ten `apply` od zwykłego nowego-klienta provisioningu: `.env.secrets` już
+istnieje (odczytane, nigdy nieregenerowane — patrz 9.1), więc infrastruktura startuje na
+migrowanych sekretach, ale baza jest na razie PUSTA (świeży wolumen, migracje przechodzą na czystym
+schemacie). Pominięcie flag właściciela jest celowe — `apply.sh` sam to rozpozna i NIE odpali
+`registro:tenant-provision` (który stworzyłby drugą, fałszywą organizację):
+```bash
+ssh deploy@<docelowa> '/opt/registro/apply.sh nazwaklienta v0.14.0 klient.pl'
+```
+Log powinien pokazać dokładnie: `Not yet provisioned and no --name/--owner-email/--owner-name
+given -- infra is up, organization is not.` — to jest oczekiwany, POŚREDNI stan, nie błąd.
+
+**Krok 6 — przywróć bazę.** Dokładnie Część 8.3/8.4, z jedną zmianą: `RESTIC_REPOSITORY`/
+`RESTIC_PASSWORD_FILE` wskazują na przeniesiony katalog (`./nazwaklienta-backup/repo` /
+`./nazwaklienta-backup/password`), nie na `/opt/registro/tenant-backups/...` na maszynie, która go
+nie ma. `restic ls latest`/`restic dump` mogą działać z DOWOLNEJ maszyny mającej dostęp do repo i
+hasła — nie muszą biec na docelowej maszynie, ale samo wczytanie do MySQL (`mysql -uroot -p...`)
+musi, bo to tamtejszy kontener `mysql`.
+
+**Krok 7 — przywróć pliki.** Dokładnie Część 8.6 (root-extract + `chown -R 1000:1000`), dwa razy —
+`storage-app-public` i `storage-app-private` — z tego samego przeniesionego repo co krok 6.
+
+**Krok 8 — zweryfikuj.** Wszystkie sześć punktów z 9.5, bez wyjątków, zanim oddasz klientowi.
+
+## 9.5 — Weryfikacja obowiązkowa, sześć punktów
+
+Żaden z nich nie jest opcjonalny — patrz 9.6 dla dokładnych komend i wyników, które faktycznie to
+potwierdziły.
+
+1. **Przeniesiony tenant odpowiada, a właściciel loguje się.** `curl` na `/up` z właściwym
+   `Host:` (jak w kroku 2.4), i realne hasło właściciela faktycznie pasuje do przywróconego hasha
+   (`Hash::check` albo prawdziwe logowanie przez formularz).
+2. **`audit_logs` zapisane PRZED przeniesieniem są czytelne PO nim.** To jest dowód, że `APP_KEY`
+   przeżył — jeśli którykolwiek stary wiersz rzuca błędem odszyfrowania przy odczycie, `.env.secrets`
+   nie zostało skopiowane poprawnie (albo w ogóle) i trzeba zatrzymać się TERAZ, nie oddawać
+   klienta.
+3. **Wgrane pliki są obecne I zapisywalne przez aplikację** — nie tylko obecne. Test: aplikacja
+   (kontener działający jako UID 1000) faktycznie zapisuje nowy plik do przywróconego katalogu, nie
+   tylko go odczytuje.
+4. **Porty, podsieć i `TRUSTED_PROXIES_CIDR` docelowej maszyny są jej własne**, nie skopiowane ze
+   źródła. Porównaj `docker network inspect tenant-<slug>-edge` (prawda) z `.env`'s
+   `TRUSTED_PROXIES_CIDR` (deklaracja) — muszą się zgadzać, i muszą różnić się od maszyny
+   źródłowej (chyba że przypadkiem wylosowały ten sam wolny oktet niezależnie — samo w sobie nie
+   jest błędem, dopóki `docker network inspect` na docelowej maszynie potwierdza wartość
+   niezależnie).
+5. **`tenant-check.sh` milczy** na docelowej maszynie dla tego slugu.
+6. **Ponowny `apply` z TYM SAMYM `[hosts]` nie cofa zmiany domeny.** Uruchom go jeszcze raz,
+   identycznie, i sprawdź `TENANT_HOSTS`/`APP_URL` w `.env` — muszą zostać takie same. (Nie myl
+   tego z pułapką z 9.2 — to jest test POPRAWNEGO powtórzenia, nie testu pominięcia argumentu.)
+
+## 9.6 — Dowód, że to działa: co faktycznie zostało uruchomione (2026-08-10)
+
+Dwa katalogi `/opt/stacks` w piaskownicy (`REGISTRO_STACKS_ROOT` na dwie niezależne ścieżki,
+symulujące dwie maszyny), dwa niezależne checkouty `LEGACY_APP_DIR`, prawdziwy lokalny `docker
+build` tego brancha, throwaway `git` origin, throwaway tag. Nic nie dotknęło serwera produkcyjnego,
+deweloperskiej bazy ani działających kontenerów deweloperskich tego repo (`registro-app`/
+`registro-mysql`/`registro-redis` — potwierdzone `Up`/`healthy` przed i po).
+
+1. Sprowizjonowano tenanta `migdrill` na symulowanej maszynie źródłowej (`migdrill.registrolabs.com`
+   — wildcard DNS `*.registrolabs.com` rozwiązuje realnie, więc `check_dns()` przechodzi bez
+   żadnego fake'a). Ustawiono realne hasło właściciela, zapisano jeden wiersz `audit_logs` z
+   unikalnym znacznikiem w `new_values` (`MIGRATION-PROOF-2026-08-10-XYZ`), wgrano po jednym pliku
+   do `storage-app-public` i `storage-app-private` z zapisanymi sumami `sha256`.
+2. **Znaleziona i naprawiona w trakcie tej walidacji, przed jakąkolwiek migracją: `stage_volume()`
+   w OBU `apply.sh` i `tenant-backup.sh` nigdy nie ustawiały `--entrypoint`** przy `docker run` na
+   prawdziwym obrazie `ghcr.io/patrykgielo/registro`. Ten obraz ma własny `docker/entrypoint.sh`,
+   który odmawia startu jako ktokolwiek inny niż `laravel` (`EXPECTED_USER` check) — `--user 0:0`
+   nigdy nie docierał do `cp`/`chown`, bo entrypoint zabijał kontener najpierw, `docker run`
+   "kończył się sukcesem" startując kontener, który wyszedł z kodem 1 bez zrobienia niczego.
+   Skutek na żywej maszynie: **backup obu wolumenów storage tworzył pusty snapshot**. Nie było to
+   ciche w sensie „bez żadnego sygnału" — `apply.sh` ustawiał `BACKUP_FAILED`, czyli status
+   `DEGRADED` i wyjście 5, a `tenant-backup.sh` kończył się kodem 3 z wpisem `ERROR`. Ciche było
+   coś gorszego: **sam zrzut bazy szedł poprawnie**, więc snapshot istniał i wyglądał na dobry, a
+   komunikat łatwo przeczytać jako szum przy skądinąd udanym wdrożeniu. Dowiedziałbyś się przy
+   odtwarzaniu. Zreprodukowane wprost: `docker run --user 0:0 -v
+   wolumen:/src:ro ... obraz sh -c "cp -a ..."` → `❌ CRITICAL: Running as 'root' but expected
+   'laravel'`, wyjście 1, `/dest` puste. Naprawa: `--entrypoint sh` + `-c "..."` zamiast `sh -c
+   "..."` jako CMD — ten sam, jednowierszowy fix w obu plikach. Zweryfikowane po naprawie: ten sam
+   wolumen, ta sama komenda, `cp -a`/`chown` faktycznie wykonane, suma `sha256` zgodna. Prawdopodobny
+   powód, czemu to przeszło przez walidację Fazy 2 (8.7): tamten test funkcji `stage_volume()` w
+   izolacji najwyraźniej użył innego obrazu niż realny, entrypoint-guarded `registro`.
+3. Po naprawie: pełny `apply` na maszynie źródłowej zakończył się `OK` z realnym backupem
+   (`Backup complete`), snapshot restica zawierał dump `.sql` I oba wolumeny storage (`restic ls
+   latest` pokazał znacznik plik po pliku, w tym `migration-drill/marker.txt`).
+4. **Zniszczono maszynę źródłową**, dosłownie: `docker compose down -v` na stacku, `docker network
+   rm` na sieci brzegu tego tenanta, `docker compose down` na jego brzegu — zero kontenerów,
+   wolumenów, sieci tego slugu pozostało. To jest jedyny sposób, żeby uczciwie przetestować "druga
+   maszyna" na jednym Dockerze: ten sam slug na dwóch żywych stackach jednocześnie koliduje po
+   nazwach kontenerów/wolumenów (Compose nazywa je po `TENANT_PREFIX`, nie po katalogu projektu) —
+   znalezione przy pierwszej próbie ("Already provisioned and consistent" na "świeżej" maszynie
+   docelowej okazało się czytaniem NADAL ŻYWYCH kontenerów źródła), naprawione przez pełne zdjęcie
+   źródła przed startem celu, dokładnie jak realny S4/S8.
+5. Skopiowano `.env.secrets` (potwierdzone `diff`: identyczne bajt w bajt) i katalog backupu
+   (`repo/` + `password`, przez pomocniczy kontener root, jak w 8.5/8.7 — pliki restica są
+   root-owned) na symulowaną maszynę docelową. `restic check --read-data-subset=100%` na
+   PRZENIESIONEJ kopii repo: `no errors were found`.
+6. Ręczny `git clone` PRZED pierwszym `apply` (krok 9.4.3), potem `apply` z nowym `[hosts]`
+   (`migdrillmoved.registrolabs.com`) i BEZ flag właściciela — log potwierdził dokładnie:
+   `Not yet provisioned and no --name/--owner-email/--owner-name given -- infra is up, organization
+   is not.` Alokacja portu na docelowej maszynie: `18090`, różna od źródłowej `18080` —
+   niezależna, nie skopiowana.
+7. Przywrócono bazę (Część 8.4, dokładna komenda) i oba wolumeny (Część 8.6, dokładna komenda) z
+   PRZENIESIONEJ kopii repo.
+8. **Wszystkie sześć punktów 9.5 zweryfikowane wprost, na przywróconym stanie:**
+   - `Hash::check('DrillPass!2026', ...)` → `true`.
+   - `App\Models\AuditLog::count()` → `2` (ten sam co na źródle); najnowszy wiersz odszyfrował się
+     do dokładnie `{"guard":"web","remember":false,"migration_drill_marker":"MIGRATION-PROOF-2026-08-10-XYZ"}`
+     — bajt w bajt to, co zapisano PRZED przeniesieniem.
+   - `sha256sum` obu przywróconych plików (`storage-app-public`/`storage-app-private`) identyczne
+     z sumami zapisanymi PRZED przeniesieniem. Kontener aplikacji (realny UID 1000) zapisał NOWY
+     plik do przywróconego `storage-app-public` i odczytał go z powrotem — nie tylko odczyt.
+   - `.env` docelowej: `HTTP_PORT_V4=127.0.0.1:18090`, `TRUSTED_PROXIES_CIDR=10.90.2.0/29`
+     potwierdzone zgodne z `docker network inspect tenant-migdrill-edge` na TEJ maszynie — źródłowa
+     miała `18080`/inną (choć numerycznie ten sam oktet `/29` przypadkiem, bo obie skanowały od
+     tego samego wolnego punktu startowego w niezależnych piaskownicach — nie kolizja, niezależne
+     obliczenie potwierdzone osobno na każdej).
+   - `tenant-check.sh migdrill` na docelowej maszynie: **exit 0, cisza**.
+   - Ponowny `apply` z tym samym `[hosts]`: `TENANT_HOSTS`/`APP_URL` niezmienione po ponownym
+     uruchomieniu.
+9. **Pułapka z 9.2 zreprodukowana wprost, celowo, jako negatywny test:** ten sam `apply`
+   uruchomiony bez `[hosts]` — zakończył się `OK`, ale `.env` cicho wrócił do
+   `migdrill.registrolabs.com` (domyślna wartość maszyny, `<slug>.APP_DOMAIN`), tracąc
+   `migdrillmoved.registrolabs.com` bez żadnego ostrzeżenia. Naprawione z powrotem kolejnym `apply`
+   z jawnym `[hosts]`.
+10. Posprzątano: wszystkie kontenery/wolumeny/sieci obu symulowanych maszyn usunięte, throwaway
+    obraz i tag `ghcr.io/patrykgielo/registro:v9.9.9` usunięte, cały katalog piaskownicy usunięty
+    (przez pomocniczy kontener, bo część plików backupu restica jest root-owned — ten sam wzorzec
+    co 8.5). `./vendor/bin/pint --test` (777 plików) i pełne `php artisan test` po zmianie:
+    1 failed (`TenantFeatureTest`, niezwiązany, ten sam co baseline) / 5 skipped / 1068 passed —
+    identyczne z baseline sprzed tej sesji.
+
+## 9.7 — S8 dziś: mechanicznie gotowe, operacyjnie NIE, dopóki R2 nie jest domknięte
+
+**Ta procedura odtwarza tenanta na nowej maszynie, JEŚLI masz kopię backupu poza maszyną, która
+padła.** To duże "jeśli": repozytorium restica i jego hasło leżą dziś **na tej samej maszynie, którą
+backupują** (`/opt/registro/tenant-backups/<slug>/`, patrz Część 6 i R2 w planie dwóch maszyn). Jeśli
+ta maszyna umiera bez ŻADNEJ wcześniejszej ręcznej kopii `tenant-backups/<slug>/` gdzieś indziej —
+**nie ma z czego odtwarzać**, ta procedura nie ma wejścia. S4 (klient ma czas, źródło żyje) działa
+dziś bez zastrzeżeń. S8 (maszyna padła bez ostrzeżenia) działa wyłącznie dla tenantów, dla których
+ktoś wcześniej ręcznie wyniósł `tenant-backups/<slug>/` poza tę maszynę (`rsync`/`scp` okresowy, poza
+tym repo — nic tego dziś nie automatyzuje). Domknięcie: zdalny `RESTIC_REPOSITORY` i hasło poza
+maszyną, dla każdego tenanta, zanim S8 stanie się czymś więcej niż teorią.
+
+---
+
 ## Dokumenty szczegółowe
 
 | temat | plik |
@@ -1016,6 +1306,7 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
 | Compose per tenant, prefiksy, twardnienie | `tenant-compose-stack.md` |
 | Komenda `registro:tenant-provision` | `../features/tenant-stack-provisioning.md` |
 | Przenosiny domeny i ich pułapki | `domain-migration-registrolabs.md` |
+| `stage_volume()` entrypoint bug (Część 9.6), `sync-certificate.sh` fixes | `tenant-apply.md`, `edge-stack.md` |
 
 ---
 
@@ -1026,3 +1317,4 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
 | 2026-08-09 | Utworzony. Części 1 i 2 niewykonane na serwerze. |
 | 2026-08-09 | Krok 4.1 zastąpiony realną komendą (`registro:password-setup-link`, nowa, przetestowana). Dodano Część 7 (usunięcie klienta) i Część 8 (przywracanie z backupu, przetestowane end-to-end). |
 | 2026-08-10 | Faza 2 planu dwóch maszyn: `tenant-backup.sh`/`apply.sh` obejmują teraz `storage-app-public`/`storage-app-private` w tym samym snapshocie co bazę (7.6, 7.8, 8.1, nowa Część 8.6/8.7, przetestowane end-to-end). Krok 7.5 zaktualizowany — zatrzymany kontener dedykowanego stacka już nie zamraża certyfikatu dla innych tenantów (`sync-certificate.sh` czyta `TENANT_HOSTS` z `.env`, nie z żywego kontenera). |
+| 2026-08-10 | Faza 3 planu dwóch maszyn: nowa Część 9 — przeniesienie klienta między maszynami / zmiana domeny (S3/S4/S8), przetestowana end-to-end (9.6). Przy okazji znaleziony i naprawiony realny bug: `stage_volume()` w `apply.sh`/`tenant-backup.sh` nigdy nie ustawiały `--entrypoint`, więc backup obu wolumenów storage tworzył pusty snapshot na prawdziwym obrazie (zgłaszane jako DEGRADED, łatwe do przeoczenia, bo zrzut bazy szedł poprawnie) (ten obraz ma własny entrypoint odmawiający startu jako root). |

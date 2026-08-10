@@ -32,6 +32,22 @@ publiczny bind z DRUGIEGO pliku, `docker-compose.legacy-public-ports.override.ym
 `docker compose run`/`config` w forced-command recovery path gdy plik ma `${VAR:?}` — patrz
 `ci-cd-troubleshooting.md`. Pełny opis i kroki operatora: `app/docs/deployment/tenant-compose-stack.md`.
 
+## Przenoszenie tenanta między maszynami (Faza 3, dwie maszyny)
+
+Jedna procedura na zmianę domeny (ta sama maszyna) i przeniesienie na inną maszynę — nie skrypt,
+świadomie (granica SSH do maszyny, której możemy nie kontrolować albo która już nie istnieje).
+Pełna procedura + 6-punktowa weryfikacja: `app/docs/deployment/instalacja-tenanta-od-zera.md` →
+Część 9. `.env.secrets` (zwłaszcza `APP_KEY` — szyfruje `audit_logs`) kopiuje się ZAWSZE bajt w
+bajt; `DB_PASSWORD`/`DB_ROOT_PASSWORD`/`REDIS_PASSWORD` mogą być inne na maszynie docelowej, bo
+migracja idzie przez dump+restore, nie przez surowy wolumen MySQL/Redis. Pułapka: `apply.sh`
+regeneruje `.env` w całości na KAŻDYM uruchomieniu — pominięcie `[hosts]` przy kolejnym release
+cicho cofa zmianę domeny, bez błędu.
+
+`docker run` na WŁASNYM obrazie projektu (`ghcr.io/patrykgielo/registro`) zawsze wymaga
+`--entrypoint sh` — obraz ma własny `docker/entrypoint.sh` odmawiający startu jako root. Bez tego
+`stage_volume()` w `apply.sh`/`tenant-backup.sh` cicho tworzyło pusty backup obu wolumenów storage
+(znalezione 2026-08-10, patrz `ci-cd-troubleshooting.md`).
+
 ## Critical Variables
 
 ```bash
