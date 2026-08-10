@@ -9,8 +9,13 @@
 # the full procedure and its preconditions):
 #
 #   1. cp _example.conf.disabled acme.conf
-#   2. Replace every SLUG with acme and CERT_DOMAIN with the live certificate
-#      directory (same value edge-tls.local.conf itself was rendered with).
+#   2. Replace every SLUG with acme, CERT_DOMAIN with the live certificate
+#      directory (same value edge-tls.local.conf itself was rendered with),
+#      and TENANT_SERVER_NAMES with this stack's own space-separated host
+#      list (apply.sh's HOSTS, comma-to-space converted -- one hostname by
+#      default, <slug>.<this machine's own domain>, see apply.sh's own
+#      APP_DOMAIN read for where that comes from; more only if apply.sh's
+#      [hosts] argument named more).
 #   3. mkdir -p ../tenant-pages/acme && cp ../tenant-pages/_default/*.html ../tenant-pages/acme/
 #   4. Add the `tenant-acme-edge` network to docker-compose.edge.yml (top-level
 #      `networks:` AND `services.edge-nginx.networks`) -- declared `external:
@@ -27,7 +32,14 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
-    server_name SLUG.registrolabs.com SLUG.registroapps.com;
+    # One tenant answers on exactly one domain -- see apply.sh's own HOSTS
+    # default for why this is not a hardcoded pair: each machine (UAT vs
+    # PreProd, in the two-machines plan) has its own domain, and a tenant
+    # provisioned on one must never carry the other machine's name here --
+    # Let's Encrypt validates every SAN on a certificate over HTTP-01, and a
+    # name pointing at the OTHER machine fails validation and takes the
+    # WHOLE certificate order down with it, not just that one name.
+    server_name TENANT_SERVER_NAMES;
 
     # Same certificate as the default_server fallback in edge-tls.conf today
     # (the multi-SAN HTTP-01 one) -- nginx requires an ssl_certificate on

@@ -264,3 +264,42 @@ stacka NIE został wywołany ani razu.
 **Zasada:** przy REUŻYWANIU istniejącej komendy/mechanizmu w NOWYM kontekście (inna architektura,
 inny model danych) — prześledź co faktycznie policzy, zanim się do niej podłączysz. "Ta sama
 komenda" nie znaczy "ten sam poprawny wynik", jeśli założenia kontekstu się zmieniły.
+
+---
+
+## Incydent (znaleziony przez analizę planu dwóch maszyn, przed shippingiem): `apply.sh` domyślnie
+## doklejał OBIE domeny każdemu tenantowi — wywaliłoby certyfikat na całej maszynie
+
+Faza 1 planu `dwie-maszyny-uat-preprod.md`. `apply.sh` miał `EDGE_DOMAINS=(registrolabs.com
+registroapps.com)` na sztywno i domyślny `[hosts]` = `<slug>.registrolabs.com,<slug>.registroapps.com`
+— **każdy** tenant dostawał obie domeny, także w `server_name` szablonu brzegu
+(`tenants.d/_example.conf.disabled`, ta sama para wpisana na sztywno, „musi być zgodne z EDGE_DOMAINS
+ręcznie" wprost w komentarzu). Nieszkodliwe przy jednej maszynie. W modelu docelowym
+(`registrolabs.com` = UAT, `registroapps.com` = PreProd, osobne maszyny) w dniu, w którym
+`*.registroapps.com` zacznie wskazywać na drugą maszynę, walidacja HTTP-01 tej nazwy dla tenanta
+stojącego na UAT trafia w maszynę bez pliku wyzwania — Let's Encrypt odrzuca **całe** zamówienie przy
+jednej niewalidującej się nazwie, więc odnowienie certyfikatu przestaje działać dla **wszystkich**
+tenantów na UAT naraz, cicho, do wygaśnięcia.
+
+**Naprawa:** domena to własność MASZYNY, nie wywołania. `apply.sh` już czyta `CERT_DIR` z `.env`
+legacy checkoutu (`${LEGACY_APP_DIR}/.env`) — ten sam precedens zastosowany do domeny: gdy `[hosts]`
+nie podano, czyta `APP_DOMAIN` z tego samego pliku (`deploy-init.sh` już o to pyta i już to zapisuje,
+dla routingu poddomen legacy stacka — żadnego nowego klucza do skonfigurowania). Brak `APP_DOMAIN` =
+odmowa natychmiast, przed jakimkolwiek dotknięciem dysku/Dockera, z komunikatem wprost nazywającym co
+ustawić. Jawny argument `[hosts]` nadal nadpisuje w całości. Szablon brzegu: `server_name` zamieniony
+z pary na sztywno na jeden placeholder (`TENANT_SERVER_NAMES`), podstawiany przez `apply.sh` z
+`HOSTS` tego konkretnego stacka (przecinki → spacje) — koniec ręcznej synchronizacji stałej z
+szablonem.
+
+Zweryfikowane end-to-end w piaskownicy (throwaway git origin, realny lokalny `docker build`, realny
+`docker compose` — bez dotykania serwera/dev-bazy/Let's Encrypt): domyślny tenant dostał dokładnie
+jedną nazwę w `TENANT_HOSTS` i w wyrenderowanym `server_name`; jawny dwuelementowy `[hosts]` dał
+dokładnie te dwie nazwy w obu miejscach; legacy `.env` bez `APP_DOMAIN` odmówił natychmiast z
+poprawnym komunikatem; `tenant-check.sh` przeszedł cicho; wyrenderowany vhost przeszedł `nginx -t`
+w kontenerze `nginx:1.25-alpine` z throwaway self-signed certyfikatem. Pełny opis:
+`app/docs/deployment/tenant-apply.md` → „One tenant, one domain".
+
+**Zasada:** wartość należąca do MASZYNY (domena, katalog certyfikatu) nie powinna być ani stałą
+wpisaną na sztywno w skrypcie, ani argumentem powtarzanym przy każdym wywołaniu — czytaj ją z
+`.env` instalacji, tym samym mechanizmem co już istniejące wartości tego typu (`CERT_DIR`), zamiast
+wymyślać nowy.

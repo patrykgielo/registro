@@ -213,7 +213,8 @@ wersji.
 
 ### 2.1 — Wybierz slug
 
-Slug to nazwa techniczna klienta, widoczna w adresie: `<slug>.registrolabs.com`.
+Slug to nazwa techniczna klienta, widoczna w adresie: `<slug>.<domena tej maszyny>` —
+dziś `<slug>.registrolabs.com`, bo to jest domena tej maszyny (patrz niżej).
 
 **Slug trafia do publicznych logów Certificate Transparency.** Każdy może je przeglądać. Jeśli
 klient nie chce, żeby świat wiedział, że z Ciebie korzysta — użyj neutralnego sluga.
@@ -225,9 +226,17 @@ Dozwolone: małe litery, cyfry, myślnik. Bez polskich znaków, bez kropek.
 > Jedna komenda instaluje całego klienta. `--foreground` sprawia, że **widzisz to na żywo** —
 > a o to Ci chodzi przy pierwszym razie. Bez tej flagi proces odczepia się od terminala.
 
+> **Bez trzeciego argumentu (`[hosts]`)** — celowo, poniżej. Domena, na której odpowie klient,
+> to **właściwość tej maszyny**, nie coś, co operator wpisuje przy każdym wywołaniu. `apply.sh`
+> czyta ją z `APP_DOMAIN` w `.env` legacy checkoutu (tej samej wartości, którą
+> `docker-compose.prod.yml` już wymaga do wystartowania — nic nowego do skonfigurowania na tej
+> maszynie) i buduje `<slug>.<APP_DOMAIN>` sam. Podanie `[hosts]` ręcznie nadal działa i
+> **nadpisuje** ten domyślny wybór całkowicie — to jest droga dla własnej domeny klienta
+> (Część 3+, jeszcze nieopisana), nie coś do rutynowego używania tutaj. Jeśli `APP_DOMAIN` nie
+> jest ustawione w `.env`, komenda odmawia z komunikatem, co ustawić — nie zgaduje.
+
 ```bash
 ssh -t deploy@srv1342834.hstgr.cloud '/opt/registro/apply.sh nazwaklienta v0.13.0-rc9 \
-  nazwaklienta.registrolabs.com \
   --name="Pełna Nazwa Sp. z o.o." \
   --owner-email=wlasciciel@example.com \
   --owner-name="Jan Kowalski" \
