@@ -4,17 +4,19 @@
 `scripts/server/tenant-backup.sh`, and the `setup-production-server.sh` additions
 (`dnsutils`/`restic`, `/opt/stacks`, `/opt/registro/tenant-backups`, `loginctl
 enable-linger`, the two new cron entries) that support them.
-**Last verified:** 2026-08-08, two rounds — an initial full local dry run
+**Last verified:** 2026-08-10, three rounds — an initial full local dry run
 against two independently provisioned tenant stacks (real image, real
-migrations), then a second infrastructure-review pass that found six more
+migrations), a second infrastructure-review pass that found six more
 problems (signal-safety of the status file, maintenance-mode fail-open on
 two isolation-risk checks, a migrate-retry overclaim, restic lock
 contention, backup-failure status conflation, and a port-allocation race —
-see "Infrastructure review — six more fixes" below), all fixed and
+see "Infrastructure review — six more fixes" below), and a third pass (Faza 1
+of the two-machines plan, see "One tenant, one domain" below) that removed
+the hardcoded two-domain default and re-verified end to end. All fixed and
 individually reproduced against real Docker/restic state except the
 port-allocation race under genuine concurrent load (noted as such in its own
-section). See "What was actually run" below for both rounds. **Not deployed
-anywhere** — no server has `/opt/stacks` yet.
+section). See "What was actually run" below for all three rounds. **Not
+deployed anywhere** — no server has `/opt/stacks` yet.
 **Related:** [Tenant Compose Stack](tenant-compose-stack.md) (task 4 — the
 per-tenant compose file `apply` reconciles), [Edge Stack](edge-stack.md) (task 5
 — the ingress `apply`'s edge-sync step attaches to), [Tenant-Stack
@@ -121,6 +123,58 @@ task's control — is that this tenant's own nginx hop sets `HTTP_X_TENANT` from
 the real rendered slug, not the placeholder. **Residual, stated plainly:** this
 does not prove the edge correctly proxies to this tenant end-to-end over HTTPS
 with a valid certificate within that first 15-minute window.
+
+## One tenant, one domain
+
+Faza 1 of the two-machines plan (`~/.claude/plans/dwie-maszyny-uat-preprod.md`). The problem it
+closes: `apply.sh` used to default `[hosts]` to a **hardcoded pair**,
+`<slug>.registrolabs.com,<slug>.registroapps.com`, and the edge vhost template
+(`tenants.d/_example.conf.disabled`) carried that same pair literally in its `server_name` line —
+kept in sync with the constant by hand, per that constant's own former comment. Harmless on one
+machine. Once a second machine exists and `*.registroapps.com`'s wildcard DNS points at it, a
+tenant provisioned on the FIRST machine still asks for a certificate covering
+`<slug>.registroapps.com` — HTTP-01 validation for that name lands on the other box, which has no
+challenge file for it, and Let's Encrypt rejects the **whole** certificate order over that one
+failed name. Every tenant's renewal on the first machine breaks at once, silently, until expiry.
+
+**The fix: the domain is a property of the machine, not of the invocation.** `apply.sh` no longer
+carries a domain constant at all. When `[hosts]` is omitted, it reads `APP_DOMAIN` from the
+LEGACY checkout's own `.env` (`${LEGACY_APP_DIR}/.env`) — the exact same precedent `CERT_DIR`
+already established (read from the same file, for the same reason: a value that belongs to this
+installation, not something an operator retypes per tenant and can get wrong). `APP_DOMAIN` is not
+a new key to configure either — `deploy-init.sh`'s `create_env_file` already prompts for it and
+writes it, for the legacy stack's own subdomain routing (`config/app.php`'s `baseDomain`). The live
+UAT machine already has `APP_DOMAIN=registrolabs.com` in that file, so it needs **no** new
+configuration to keep working correctly under the new default.
+
+If `APP_DOMAIN` is absent (unset, or set to an empty value) and no explicit `[hosts]` argument was
+given, `apply.sh` refuses immediately — before DNS/disk preconditions, before the lock, before
+anything touches disk or Docker — naming the exact file to fix:
+
+```
+ERROR: APP_DOMAIN not set in /var/www/registro/.env -- this machine's domain must be configured
+(run deploy-init.sh on the legacy stack) before a tenant can be provisioned without an explicit
+[hosts] argument
+```
+
+An explicit `[hosts]` argument still works exactly as before and is not affected by any of this —
+it is the intended path for a client's own domain later (Faza 3 of the two-machines plan).
+
+The edge vhost template's `server_name` line changed from two hardcoded domains to a single
+placeholder, `TENANT_SERVER_NAMES`, substituted by `apply.sh`'s own edge-sync step with this
+stack's own `HOSTS` (comma-to-space converted — nginx wants a space-separated list). This is what
+ends the "kept in sync by hand" coupling the old constant's comment warned about: `server_name` now
+carries exactly what THIS stack's own `.env` says, never a second hardcoded domain, whether that is
+one hostname (the default) or several (an explicit `[hosts]` override).
+
+**Verified end to end** in a sandboxed clone (throwaway git origin, a locally built image, real
+`docker compose`, nothing touching the live server, dev database, or Let's Encrypt): a
+default-hosts tenant got exactly one name in `TENANT_HOSTS` and in the rendered `server_name`;
+an explicit two-host `[hosts]` argument produced exactly those two names in both places; a legacy
+`.env` with no `APP_DOMAIN` failed immediately with the message above; `tenant-check.sh` passed
+silently against the resulting stack; and the rendered vhost passed `nginx -t` in a throwaway
+`nginx:1.25-alpine` container against a throwaway self-signed certificate — the same pattern
+`edge-stack.md`'s own validation already used.
 
 ## Bugs this task's own validation found and fixed
 

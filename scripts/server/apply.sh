@@ -26,9 +26,13 @@
 #   /opt/registro/apply.sh <slug> <tag> [hosts] [--name=... --owner-email=...
 #       --owner-name=... --industry=...] [--foreground]
 #
+# [hosts], when omitted, defaults to <slug>.<this machine's domain> -- see the
+# APP_DOMAIN read further down for where "this machine's domain" comes from
+# and why it is not a second hardcoded pair.
+#
 # Examples:
 #   /opt/registro/apply.sh acme v1.4.0
-#   /opt/registro/apply.sh acme v1.4.0 acme.registrolabs.com,acme.registroapps.com \
+#   /opt/registro/apply.sh acme v1.4.0 acme.example-client.com \
 #       --name="Acme Sp. z o.o." --owner-email=owner@acme.pl --owner-name="Jan Kowalski"
 #
 # Detaches from the SSH session via `systemd-run --user` (see the block below
@@ -74,10 +78,6 @@ readonly TENANT_NETWORK_OVERRIDE="docker-compose.tenant-network.override.yml"
 readonly BACKUP_ROOT="${REGISTRO_BACKUP_ROOT:-/opt/registro/tenant-backups}"
 readonly MIN_FREE_MB=2048
 readonly PRE_APPLY_DUMPS_KEEP=5
-# Must match docker/nginx/edge/tenants.d/_example.conf.disabled's server_name
-# line. Not derived from anywhere machine-readable -- if that template's
-# domains ever change, this constant has to change with it by hand.
-readonly EDGE_DOMAINS=(registrolabs.com registroapps.com)
 # Base host port for the FIRST tenant on a box; each subsequent tenant gets
 # the next free pair. See allocate_ports() for why a per-tenant stack cannot
 # reuse docker-compose.prod.yml's own 127.0.0.1:80 default the moment a SECOND
@@ -147,7 +147,7 @@ Usage: apply.sh <slug> <tag> [hosts] [options]
   <slug>   Organization slug, e.g. acme (same rules as ValidOrganizationSlug)
   <tag>    Image tag, vMAJOR.MINOR.PATCH[-suffix] -- same format deploy.sh accepts
   [hosts]  Comma-separated hostnames, no scheme/port. Defaults to
-           <slug>.registrolabs.com,<slug>.registroapps.com
+           <slug>.<this machine's domain> -- see APP_DOMAIN below
 
 Options (only consumed on first-time provisioning -- see "Seeds" below):
   --name=NAME                Organization display name
@@ -188,7 +188,24 @@ done
     || die "invalid tag '$TAG' -- expected vMAJOR.MINOR.PATCH[-suffix]" 1
 
 if [ -z "$HOSTS" ]; then
-    HOSTS="${SLUG}.${EDGE_DOMAINS[0]},${SLUG}.${EDGE_DOMAINS[1]}"
+    # One machine, one domain -- see the two-machines plan's B1 for why a
+    # hardcoded pair here is actively dangerous: the moment a second
+    # machine's wildcard DNS exists, defaulting to both domains asks Let's
+    # Encrypt to validate a name that resolves to the OTHER box, and it
+    # rejects the WHOLE certificate order when any single name fails to
+    # validate. The domain is a property of THIS machine, not of this
+    # invocation, so it is read the same way CERT_DIR already is further
+    # down (the edge-sync step) -- from the legacy checkout's own .env, not
+    # a second hardcoded constant to keep in sync by hand. APP_DOMAIN
+    # already lives there: deploy-init.sh's create_env_file already prompts
+    # for it and writes it, for the legacy stack's own subdomain routing
+    # (config/app.php's baseDomain) -- this reuses that exact value rather
+    # than inventing a new key, so the live UAT machine (APP_DOMAIN already
+    # set to registrolabs.com) needs no new configuration to keep working.
+    EDGE_DOMAIN="$(grep -m1 '^APP_DOMAIN=' "${LEGACY_APP_DIR}/.env" 2>/dev/null | cut -d= -f2- || true)"
+    [ -n "$EDGE_DOMAIN" ] \
+        || die "APP_DOMAIN not set in ${LEGACY_APP_DIR}/.env -- this machine's domain must be configured (run deploy-init.sh on the legacy stack) before a tenant can be provisioned without an explicit [hosts] argument" 2
+    HOSTS="${SLUG}.${EDGE_DOMAIN}"
 fi
 IFS=',' read -r -a HOST_ARRAY <<<"$HOSTS"
 PRIMARY_HOST="${HOST_ARRAY[0]}"
@@ -942,11 +959,28 @@ fi
     mkdir -p "docker/nginx/edge/tenant-pages/${SLUG}"
     cp -n "docker/nginx/edge/tenant-pages/_default/"*.html "docker/nginx/edge/tenant-pages/${SLUG}/" 2>/dev/null || true
 
+    # nginx server_name wants a space-separated list; HOSTS/TENANT_HOSTS is
+    # comma-separated everywhere else (matching config/app.php's own
+    # TrustedTenantHosts parsing) -- converted only here, at the render
+    # boundary. This is what makes server_name carry EXACTLY this stack's own
+    # HOSTS (one name by default, more only if an explicit [hosts] argument
+    # asked for it) instead of a second hardcoded domain pair that had to be
+    # kept in sync with apply.sh by hand.
+    # SAFETY DEPENDS ON ORDERING, and nothing here enforces it: every element of
+    # HOSTS has already had to resolve through check_dns() long before this
+    # point. That is the only reason a malformed value (trailing comma, empty
+    # element, stray whitespace, an injected nginx directive) cannot reach this
+    # substitution and produce a broken vhost that only surfaces later, after
+    # apply has already reported success -- apply never runs `nginx -t` itself.
+    # Move the render before check_dns, or add a [hosts] path that skips it, and
+    # this gap reopens silently.
     VHOST="docker/nginx/edge/tenants.d/${SLUG}.conf"
+    SERVER_NAMES="${HOSTS//,/ }"
     sed -e "s/SLUG/${SLUG}/g" -e "s/CERT_DOMAIN/${CERT_DIR}/g" \
+        -e "s/TENANT_SERVER_NAMES/${SERVER_NAMES}/g" \
         docker/nginx/edge/tenants.d/_example.conf.disabled >"${VHOST}.tmp" \
         || die "failed to render ${VHOST}" 3
-    if grep -qE '\bSLUG\b|CERT_DOMAIN' "${VHOST}.tmp"; then
+    if grep -qE '\bSLUG\b|CERT_DOMAIN|TENANT_SERVER_NAMES' "${VHOST}.tmp"; then
         rm -f "${VHOST}.tmp"
         die "rendered edge vhost still contains a placeholder -- _example.conf.disabled changed shape" 3
     fi

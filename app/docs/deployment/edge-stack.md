@@ -123,10 +123,15 @@ stack whose nginx container this can actually reach.
    ```bash
    cp docker/nginx/edge/tenants.d/_example.conf.disabled docker/nginx/edge/tenants.d/<slug>.conf
    ```
-   Replace every `SLUG` with the tenant's slug and `CERT_DOMAIN` with the same value
-   `edge-tls.local.conf` was rendered with. This file is **gitignored** (`.gitignore`) — it names a
+   Replace every `SLUG` with the tenant's slug, `CERT_DOMAIN` with the same value
+   `edge-tls.local.conf` was rendered with, and `TENANT_SERVER_NAMES` with this tenant's own
+   space-separated host list (one hostname, `<slug>.<this machine's domain>`, unless `apply` was
+   given an explicit `[hosts]` argument — see `tenant-apply.md`'s "One tenant, one domain" section;
+   never a second hardcoded domain). This file is **gitignored** (`.gitignore`) — it names a
    live customer subdomain, which doesn't belong in this repo's history any more than
    `app.prod-tls.local.conf`'s certificate path does.
+   In practice `apply.sh`'s own edge-sync step does this rendering automatically on every apply —
+   this manual copy is the fallback for attaching a tenant by hand.
 
 2. **Seed the service page.**
    ```bash
