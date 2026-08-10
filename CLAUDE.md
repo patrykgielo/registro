@@ -46,7 +46,7 @@ Rules are organized in TIERs:
 
 **Repo:** `patrykgielo/registro`
 
-**Note:** CI/CD workflows are disabled (workflow_dispatch only). No staging/production servers configured yet.
+**Note:** CI/CD workflows are disabled (workflow_dispatch only). **UAT is live** — `srv1342834.hstgr.cloud`, app domain `registrolabs.com`. PreProd (`registroapps.com`) is a machine not yet bought. See `app/docs/deployment/instalacja-tenanta-od-zera.md`.
 
 ---
 

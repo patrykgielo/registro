@@ -1,6 +1,8 @@
 # Deployment Rules - CRITICAL
 
-**No staging/production servers.** Local only via Docker Compose. All GitHub Actions: `workflow_dispatch` only.
+**UAT zyje**: `srv1342834.hstgr.cloud`, domena aplikacji `registrolabs.com`, jeden tenant.
+PreProd (`registroapps.com`) — maszyna niekupiona. Patrz sekcja o dwoch maszynach nizej.
+All GitHub Actions: `workflow_dispatch` only.
 
 ---
 

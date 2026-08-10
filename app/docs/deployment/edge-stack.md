@@ -83,21 +83,25 @@ renews for the legacy stack, one certificate carrying every live tenant hostname
 over HTTP-01. `edge-tls.conf`'s `CERT_DOMAIN` placeholder points at it, exactly like
 `app.prod-tls.conf` does today.
 
-**The wildcard (`*.registrolabs.com`, `*.registroapps.com`) is deliberately not implemented here.**
-Both domains are parked on Hostinger's nameservers, and Hostinger is supported by neither certbot's
-DNS plugins nor acme.sh's dnsapi (checked directly against both plugin lists). Getting a wildcard
-means either moving the nameservers to Cloudflare (`certbot-dns-cloudflare`) or writing custom
-`--manual-auth-hook`/`--manual-cleanup-hook` scripts against Hostinger's REST API — both are
-outward-facing changes to live domains and are the domain owner's call, not something to invent
-speculative hook code for here.
+**The wildcard is deliberately not implemented here.** Two-machines plan (Faza 4,
+`~/.claude/plans/dwie-maszyny-uat-preprod.md`): each machine now terminates TLS for exactly **one**
+domain — `*.registrolabs.com` on UAT (`srv1342834`, live), `*.registroapps.com` on the
+not-yet-purchased PreProd box — so this section describes a single machine's own edge, not one edge
+juggling both. Both domains' nameservers are Hostinger's, and Hostinger is supported by neither
+certbot's DNS plugins nor acme.sh's dnsapi (checked directly against both plugin lists). Getting a
+wildcard for either domain means either moving that domain's nameservers to Cloudflare
+(`certbot-dns-cloudflare`) or writing custom `--manual-auth-hook`/`--manual-cleanup-hook` scripts
+against Hostinger's REST API — both are outward-facing changes to a live domain and are the domain
+owner's call, not something to invent speculative hook code for here.
 
-When a wildcard does arrive, **only `edge-tls.conf`'s certificate block changes**: two
-`ssl_certificate`/`ssl_certificate_key` pairs (one per apex domain), and every per-tenant vhost in
-`tenants.d/` stops needing its own `ssl_certificate` lines (they only exist today because nginx
-requires one on every `listen ... ssl` block that isn't the matching `default_server`). Nothing about
-the `proxy_pass`/`resolver` pattern, `error_page`, the per-tenant network model, or the 444 fallback
-changes. This is why the certificate is a `CERT_DOMAIN` placeholder rendered at deploy time rather
-than baked into the tracked config — the render step is the one place that has to change later.
+When a wildcard does arrive for a given machine's own domain, **only that machine's `edge-tls.conf`
+certificate block changes**: one `ssl_certificate`/`ssl_certificate_key` pair (replacing the
+`CERT_DOMAIN` placeholder), and every per-tenant vhost in `tenants.d/` stops needing its own
+`ssl_certificate` lines (they only exist today because nginx requires one on every `listen ... ssl`
+block that isn't the matching `default_server`). Nothing about the `proxy_pass`/`resolver` pattern,
+`error_page`, the per-tenant network model, or the 444 fallback changes. This is why the certificate
+is a `CERT_DOMAIN` placeholder rendered at deploy time rather than baked into the tracked config —
+the render step is the one place that has to change later.
 
 **New tenants stop touching ACME entirely once the wildcard lands** — the 15-minute warning window
 and the per-tenant-name leak into public Certificate Transparency logs (both documented in
@@ -267,8 +271,12 @@ the tracked templates:
 **What was not validated, and why:** actual TLS termination against real client browsers, actual
 proxying to a real tenant nginx container (none exists — that's task 4), actual firewall/`ufw-docker`
 interaction on a real box, actual certificate rendering via `sed` against a real `CERT_DIR` value
-(exercised with a throwaway string instead), and anything involving the real
-`registrolabs.com`/`registroapps.com` DNS (not yet pointed at anything).
+(exercised with a throwaway string instead), and — at the time this validation ran (2026-08-08) —
+anything involving the real `registrolabs.com`/`registroapps.com` DNS, which was not yet pointed at
+anything. As of the two-machines plan (Faza 0, 2026-08-10), `registrolabs.com` now has live A/AAAA
+records and a real certificate on the UAT box (`domain-migration-registrolabs.md`); `registroapps.com`
+remains registered but still parked at Hostinger, pointing at nothing of ours, until Faza 4 stands up
+PreProd.
 
 ## `scripts/server/sync-certificate.sh` — reload target
 
