@@ -16,7 +16,8 @@ STOP → agent → implementuj
 | Laravel/PHP, Filament (logic) | `laravel-senior-architect` |
 | Frontend, Blade, Tailwind, UI | `frontend-ui-architect` |
 | Testy, PHPUnit, TDD | `test-engineer` |
-| CI/CD, Docker | `devops-engineer` |
+| Skrypty, Docker, nginx, certy, CI, serwer | `registro-devops-engineer` (pisze) |
+| Review infrastruktury | `devops-engineer` (read-only) |
 | Security, OWASP | `agent-security-audit-specialist` |
 | Web research, docs | `web-research-specialist` |
 | Code review (po implementacji) | `code-reviewer` (OBOWIĄZKOWY) |
@@ -38,10 +39,6 @@ STOP → agent → implementuj
 | Frontend nowy | `web-research-specialist` → `frontend-ui-architect` |
 | Frontend modyfikacja | `Explore` → `frontend-ui-architect` |
 | Security | `agent-security-audit-specialist` |
-
-## Agent Teams
-
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — max 3 teammates równolegle.
 
 ## Weryfikacja NIE dotyka dev-bazy
 
