@@ -35,8 +35,8 @@ use Spatie\Permission\Models\Role;
 |
 | Across this order's lifecycle (paid -> confirmed -> in_progress ->
 | completed), there are still THREE separate, unrelated things going on —
-| kept from the original investigation because two of them are still true
-| after the fix below:
+| kept from the original investigation because they explain why each step
+| below asserts what it does:
 |
 | 1. paid: FakePaymentController calls `$order->status()->transitionTo('paid')`
 |    directly. The ONLY place in the app that dispatches `event(new
@@ -60,13 +60,15 @@ use Spatie\Permission\Models\Role;
 |    ("Zamówienie potwierdzone") for an action that actually succeeded — no
 |    more silent false-negative error toast.
 |
-| 3. in_progress / completed: OrderStatusStateMachine::afterTransitionHooks()
-|    only defines hooks for 'confirmed' and 'cancelled' — handing over and
-|    getting equipment back never even attempt an email. This is a
-|    deliberate, pre-existing gap in the code as it stands today (no hook
-|    exists to fire), untouched by this fix, and NOT what this test is
-|    about — see the final assertion's comment for why it must survive
-|    unchanged.
+| 3. in_progress / completed: FORMERLY a gap, NOW FIXED (feature/handover-return-emails).
+|    OrderStatusStateMachine::afterTransitionHooks() used to define hooks
+|    only for 'confirmed' and 'cancelled' — handing over and getting
+|    equipment back never even attempted an email, so a customer who
+|    physically returned equipment had no record of that from us at all.
+|    'in_progress' now dispatches OrderHandedOver -> OrderHandedOverNotification
+|    and 'completed' now also dispatches OrderReturned -> OrderReturnedNotification
+|    (alongside the pre-existing completed_at write, same null-guard). See
+|    the final assertion's comment for the updated end state.
 |
 */
 
@@ -75,7 +77,7 @@ afterEach(function () {
     app('url')->useAssetOrigin("http://127.0.0.1:{$port}");
 });
 
-it('emails the customer for confirmed, but still not for paid (dev bypass) or in_progress/completed (no hook)', function () {
+it('emails the customer for confirmed, handed over and returned, but still not for paid (dev bypass)', function () {
     Cache::flush();
 
     Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
@@ -244,9 +246,8 @@ it('emails the customer for confirmed, but still not for paid (dev bypass) or in
     expect($confirmedEmail->error_message)->toBeNull();
 
     // --- Step 5: handover + return through the same real admin actions ---
-    // REASON #3 (file docblock): no hook exists for these transitions at all —
-    // untouched by this fix — so these two simply succeed with no email ever
-    // attempted, same as before.
+    // REASON #3 (file docblock): both transitions now dispatch their own event
+    // and notification, exactly like Step 4's confirm did.
     $page->click('Wydano klientowi')
         ->wait(2)
         ->click('.fi-modal-footer-actions button[type="submit"]')
@@ -254,6 +255,14 @@ it('emails the customer for confirmed, but still not for paid (dev bypass) or in
 
     $order->refresh();
     expect($order->status)->toBe('in_progress');
+
+    $handedOverEmail = EmailSend::where('template_key', 'order-handed-over')
+        ->where('recipient_email', $customer->email)
+        ->first();
+
+    expect($handedOverEmail)->not->toBeNull();
+    expect($handedOverEmail->status)->not->toBe('failed');
+    expect($handedOverEmail->error_message)->toBeNull();
 
     $page->click('Sprzęt zwrócony')
         ->wait(2)
@@ -263,18 +272,26 @@ it('emails the customer for confirmed, but still not for paid (dev bypass) or in
     $order->refresh();
     expect($order->status)->toBe('completed');
 
-    // --- Step 6: the full lifecycle, end to end — exactly one email, two gaps left ---
+    $returnedEmail = EmailSend::where('template_key', 'order-returned')
+        ->where('recipient_email', $customer->email)
+        ->first();
+
+    expect($returnedEmail)->not->toBeNull();
+    expect($returnedEmail->status)->not->toBe('failed');
+    expect($returnedEmail->error_message)->toBeNull();
+
+    // --- Step 6: the full lifecycle, end to end — three emails, one gap left ---
     // OrderStatusStateMachine::afterTransitionHooks() (app/StateMachines/OrderStatusStateMachine.php)
-    // only hooks 'confirmed' and 'cancelled' — the customer is never emailed
-    // that their equipment was handed over or that the return was accepted
-    // (REASON #3), and the dev payment bypass never dispatches OrderPaid at all
-    // (REASON #1). Neither is touched by this fix. So the single order-confirmed
-    // row from Step 4 is the ONLY email this exact flow produces end to end —
-    // not zero (the bug this file used to document), not four (REASONS #1 and
-    // #3 are real, separate gaps, not this bug). This assertion documents that
-    // end state; it does NOT endorse REASONS #1/#3. If someone later wires
-    // emails for any of those steps, this assertion starts failing and THIS
-    // TEST must be updated deliberately — do not delete it to make the suite
-    // green.
-    expect(EmailSend::count())->toBe(1);
+    // now hooks 'confirmed', 'in_progress', 'completed' and 'cancelled' — the
+    // customer is emailed at every admin-driven step of the lifecycle. The
+    // dev payment bypass still never dispatches OrderPaid at all (REASON #1,
+    // untouched by this fix — a real webhook does). So confirmed + handed-over
+    // + returned is the full email trail this exact flow produces end to
+    // end — not one (the gap this file used to document for in_progress/completed),
+    // not four (REASON #1 is a real, separate, dev-tooling-only gap, not this
+    // bug). This assertion documents that end state; it does NOT endorse
+    // REASON #1. If someone later wires an email for the dev payment bypass
+    // too, this assertion starts failing and THIS TEST must be updated
+    // deliberately — do not delete it to make the suite green.
+    expect(EmailSend::count())->toBe(3);
 });

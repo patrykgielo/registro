@@ -441,6 +441,84 @@ Best regards, The {{app_name}} Team',
                 'active' => true,
             ],
 
+            // 20. Order Handed Over - Customer Notification (Polish)
+            [
+                'key' => TemplateKey::ORDER_HANDED_OVER->value,
+                'language' => 'pl',
+                'subject' => 'Potwierdzenie wydania sprzętu — zamówienie #{{order_number}}',
+                'html_body' => '<h1>Sprzęt został Ci wydany</h1><p>Cześć {{customer_name}},</p><p>Potwierdzamy, że sprzęt z zamówienia numer <strong>#{{order_number}}</strong> został Ci przekazany:</p>{{items_list_html}}<p>Zachowaj tę wiadomość — to potwierdzenie odbioru sprzętu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Sprzęt został Ci wydany. Cześć {{customer_name}}, Potwierdzamy, że sprzęt z zamówienia nr #{{order_number}} został Ci przekazany.
+
+{{items_list_text}}
+
+Zachowaj tę wiadomość — to potwierdzenie odbioru sprzętu.
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+            // 20. Order Handed Over - Customer Notification (English)
+            [
+                'key' => TemplateKey::ORDER_HANDED_OVER->value,
+                'language' => 'en',
+                'subject' => 'Handover Confirmation — Order #{{order_number}}',
+                'html_body' => '<h1>Your equipment has been handed over</h1><p>Hello {{customer_name}},</p><p>We confirm the equipment from order <strong>#{{order_number}}</strong> has been handed over to you:</p>{{items_list_html}}<p>Keep this email — it is your confirmation of receipt.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Your equipment has been handed over. Hello {{customer_name}}, We confirm the equipment from order #{{order_number}} has been handed over to you.
+
+{{items_list_text}}
+
+Keep this email — it is your confirmation of receipt.
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+
+            // 21. Order Returned - Customer Notification (Polish)
+            [
+                'key' => TemplateKey::ORDER_RETURNED->value,
+                'language' => 'pl',
+                'subject' => 'Potwierdzenie zwrotu sprzętu — zamówienie #{{order_number}}',
+                'html_body' => '<h1>Dziękujemy za zwrot sprzętu</h1><p>Cześć {{customer_name}},</p><p>Potwierdzamy, że sprzęt z zamówienia numer <strong>#{{order_number}}</strong> został przez nas odebrany, a wypożyczenie zostało zakończone:</p>{{items_list_html}}<p>Zachowaj tę wiadomość — to potwierdzenie przyjęcia zwrotu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Dziękujemy za skorzystanie z naszych usług!</p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Dziękujemy za zwrot sprzętu. Cześć {{customer_name}}, Potwierdzamy, że sprzęt z zamówienia nr #{{order_number}} został przez nas odebrany, a wypożyczenie zostało zakończone.
+
+{{items_list_text}}
+
+Zachowaj tę wiadomość — to potwierdzenie przyjęcia zwrotu.
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+            // 21. Order Returned - Customer Notification (English)
+            [
+                'key' => TemplateKey::ORDER_RETURNED->value,
+                'language' => 'en',
+                'subject' => 'Return Confirmation — Order #{{order_number}}',
+                'html_body' => '<h1>Thank you for returning your equipment</h1><p>Hello {{customer_name}},</p><p>We confirm the equipment from order <strong>#{{order_number}}</strong> has been received back and the rental is now complete:</p>{{items_list_html}}<p>Keep this email — it is your confirmation that the return was accepted.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Thank you for choosing our services!</p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Thank you for returning your equipment. Hello {{customer_name}}, We confirm the equipment from order #{{order_number}} has been received back and the rental is now complete.
+
+{{items_list_text}}
+
+Keep this email — it is your confirmation that the return was accepted.
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+
             // 19. Admin New Order - Admin/Org Owner Notification (Polish)
             [
                 'key' => TemplateKey::ADMIN_NEW_ORDER->value,
@@ -529,6 +607,6 @@ Best regards, The {{app_name}} Team',
             );
         }
 
-        $this->command->info('✓ Email templates seeded successfully (38 templates)');
+        $this->command->info('✓ Email templates seeded successfully (42 templates)');
     }
 }

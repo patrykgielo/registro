@@ -199,6 +199,21 @@ udanej próby.
 **Pisząc nową ścieżkę wysyłki: nie kopiuj `if ($existing) return $existing;`.** Użyj
 `isRetryable()`.
 
+## `event()` w afterTransitionHooks() nie jest transakcyjny (pre-existing, 2026-08-12)
+
+`OrderStatusStateMachine::transitionTo()` (kod vendora) zapisuje `status` + `state_histories`,
+DOPIERO POTEM woła `afterTransitionHooks()` jako **osobny, późniejszy zapis** — nie w tej samej
+transakcji DB. `event(new OrderConfirmed/OrderHandedOver/OrderReturned/OrderCancelled(...))`
+w tych hookach kolejkuje job (`SendQueuedNotifications`) **synchronicznie** — push do brokera
+(Redis) dzieje się inline, w tym samym stack call co hook. Gdy broker jest nieosiągalny, push
+rzuca wyjątek, który wypada z `afterTransitionHooks()` prosto do `try/catch` w
+`OrderResource`/`EditOrder` — admin widzi "Nie można zmienić statusu", mimo że status + kolumna
+znacznika czasu **już się zapisały** chwilę wcześniej. Pre-existing dla `confirm`/`cancel`,
+`feature/handover-return-emails` tylko podwaja powierzchnię (dwie kolejne dyspozycje eventów w
+tym samym niezatransakcjonowanym miejscu), nie wprowadza problemu. Pełny opis:
+`app/docs/features/cart-order-system.md` → "Known limitation — status write and timestamp write
+are not atomic".
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
@@ -208,6 +223,9 @@ udanej próby.
 - `UserRegisteredNotification` - rejestracja
 - `PasswordResetNotification` - reset hasła
 - `AdminCreatedUserNotification` - setup hasła dla admin-created users
+- `OrderPaidNotification`, `OrderConfirmedNotification`, `OrderHandedOverNotification`,
+  `OrderReturnedNotification`, `OrderCancelledNotification` - cykl życia zamówienia (wynajem);
+  patrz `app/docs/features/order-notifications.md`
 
 **Standard MailChannel (MailMessage):**
 - `DataExportCompletedNotification` - eksport danych RODO
