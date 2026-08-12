@@ -12,16 +12,17 @@ paths:
 
 ### Bug: omitClaudeMd:true — built-in subagenci tracą CLAUDE.md
 
-**GitHub Issue #40459** — bez oficjalnej naprawy (stan: 2026-05-08)
+**GitHub Issue #40459** — zamknięty jako *not planned* (zweryfikowane 2026-08-12), czyli to potwierdzone bieżące zachowanie produktu, nie coś obalonego ani czekającego na fix.
 
-Od v2.1.84 built-in subagenci (`Explore`, `Plan`) mają `omitClaudeMd: true` hardcoded.
-Nie widzą naszego CLAUDE.md — nie znają FILESYSTEM_DISK, user model, git workflow.
+Od v2.1.84 built-in subagenci (`Explore`, `Plan`) mają `omitClaudeMd: true` hardcoded, wzmocnione flagą `tengu_slim_subagent_claudemd` (default true). Nie widzą naszego CLAUDE.md — nie znają FILESYSTEM_DISK, user model, git workflow.
 
-**Workaround:** Krytyczne reguły zduplikowane na początku body każdego `.claude/agents/*.md`.
+**Zakres: TYLKO agenci wbudowani.** Nasi właśni agenci z `.claude/agents/` ładują CLAUDE.md normalną ścieżką i ten bug ich nie dotyczy. Do 2026-08-12 ten plik twierdził inaczej i uzasadniał tym dublowanie reguł w każdym agencie — błędne przypisanie. Uzasadnieniem dublowania jest #7515 poniżej, nie ten bug.
 
 ### Bug: system_prompt body partially ignored (Issue #7515)
 
-Krytyczne reguły **muszą być na początku body** (pierwsze co widzi model).
+**Zamknięty jako *not planned*** (zgłoszony 2025-09-12, zweryfikowane 2026-08-12) — Anthropic nie zamierza tego zmieniać, więc traktuj jako trwałe zachowanie. Prompt wykonawczy subagenta bywa generowany z samej pary `name` + `description`, z pominięciem ciała system_promptu.
+
+**To jest jedyny powód, dla którego krytyczne reguły idą na początek body** każdego `.claude/agents/*.md` — pierwsze, co model widzi, jeśli w ogóle zobaczy resztę.
 
 ### Bug: Claude stops calling subagents (Issue #8558)
 

@@ -79,6 +79,20 @@ success.
 the exit code of the command you ran. Read back the served certificate, curl the endpoint, inspect
 the mount. Commands report on what they attempted.
 
+## Before any command that touches the live server
+
+Roughly 70% of outages come from changes to a running system, so the gate belongs at the command,
+not at the task. Before you run one against UAT, state three things and wait:
+
+1. **Blast radius** — one tenant's containers, the shared edge nginx / certificate, or the host.
+   The edge and the certificate are shared: a change there is every tenant at once.
+2. **The rollback** — the actual command that undoes this one, written out before you run anything.
+3. **What you cannot undo.** DDL is not atomic in MySQL, a dropped column is gone, and a certificate
+   order that burns the rate limit cannot be retried for a week.
+
+If there is no rollback for step 2, that is not a reason to proceed carefully — it is the point at
+which you stop and hand the decision to a human, naming what is unrecoverable.
+
 ## Traps in this environment, all of which have bitten us
 
 **Docker / Compose**
