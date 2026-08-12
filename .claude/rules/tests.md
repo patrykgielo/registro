@@ -178,7 +178,16 @@ for it). Run with:
 bash tests/shell/run.sh
 ```
 
-Runs in well under a second, offline, no real Docker daemon/server/network —
+Runs in ~5 s, offline. Nearly all of it is one case: `19_nginx_*` is the sole
+case that starts a real container (`nginx:1.25-alpine`, `--network none`,
+`nginx -t`), because the property it guards — nginx still starts when no
+upstream container exists — is not decidable by inspecting the file. Its
+predecessor was a regex, and a regex pins the *spelling* of today's bug, not
+the property: a space before the semicolon slipped through, and so did an
+`upstream {}` block, which the recommended `resolver`+variable fix cannot even
+repair (`resolve=` is nginx-plus only). Both variants were verified fatal.
+
+Every other case is offline and instant, with no real Docker daemon/server/network —
 every `docker`/`certbot`/`su`/`git`/`restic` call is a fake executable on
 `PATH` that records its own invocation to a call log the test then asserts
 on (see `tests/shell/lib/harness.sh`'s own header for the full reasoning,
