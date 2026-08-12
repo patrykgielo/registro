@@ -48,7 +48,12 @@ blocking inventory until its TTL expired, with no compensation.
   completing while this one was blocked on the network call).
 - Reconciliation (successful or blocked) sends `PaymentReconciliationAlertNotification` to all
   super-admins — proportionate content (order number, status, no PII/payment-card data), correctly
-  not `ShouldBeUnique` on the multi-recipient send (this codebase's documented fan-out lesson).
+  not `ShouldBeUnique` on the multi-recipient send.
+
+  > **Correction 2026-08-12:** the "fan-out lesson" this cited never happened — `ShouldBeUnique` is
+  > inert on notifications in Laravel 12.60.2 and could not have dropped anyone's mail. Verified in
+  > the framework source and empirically (5 recipients → 5 deliveries). Leaving it off is still
+  > right, just not for the stated reason. See `.claude/rules/notifications.md`.
 - `CheckoutController::submit()` now compensates a `registerTransaction()` failure: cancels the
   just-created order (`OrderService::cancel(..., notify: false)` — a new parameter added after
   review found the naive fix fired a confusing customer-facing "order cancelled" email

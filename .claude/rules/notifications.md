@@ -9,33 +9,26 @@ paths:
 
 ```php
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 
-class AppointmentConfirmation extends Notification implements ShouldQueue, ShouldBeUnique
+class AppointmentConfirmation extends Notification implements ShouldQueue
 {
     use Queueable;
 }
 ```
 
-## ⚠️ ShouldBeUnique + wielu odbiorców = fan-out bug (Incident 2026-06-30)
+## ⚠️ `ShouldBeUnique` na notyfikacji NIC NIE ROBI (Laravel 12.60.2)
 
-**NIE używaj `ShouldBeUnique` gdy ta sama notyfikacja idzie do WIELU odbiorców jednym `Notification::send($collection, …)`.**
+**Zweryfikowane 2026-08-12 w źródle frameworka i empirycznie. Deklaracja jest martwa — nie szkodzi, ale nie chroni.**
 
-Laravel dispatchuje **jeden `SendQueuedNotifications` job per notifiable**, a wszystkie współdzielą **jeden** klucz locka (`uniqueId()` jest notifiable-agnostyczny). Tylko pierwszy job zdobywa lock — reszta jest **cicho odrzucana**. Efekt: z N super-adminów mail dostaje **tylko 1**.
+`NotificationSender::queueNotification()` robi `$this->bus->dispatch(SendQueuedNotifications…)` — bezpośredni `Bus::dispatch` na opakowaniu, które implementuje wyłącznie `ShouldQueue`. Lock zakłada **tylko** `PendingDispatch::__destruct()`, czyli ścieżka `Job::dispatch()`, której notyfikacje nigdy nie używają. `Bus\Dispatcher` w ogóle nie zna tego interfejsu, a `InteractsWithUniqueJobs` służy do ZWALNIANIA locka i sprawdza opakowanie, nie notyfikację.
 
-```php
-// ❌ ŹLE — z 5 super-adminami tylko 1 dostanie mail
-class OrganizationClosureRequestedNotification extends Notification implements ShouldQueue, ShouldBeUnique
-{
-    public function uniqueId(): string { return 'closure:'.$this->org->id; } // wspólny dla wszystkich odbiorców!
-}
-Notification::send(User::role('super-admin')->get(), new OrganizationClosureRequestedNotification($org));
+**Dowód:** 5 odbiorców przez jedno `Notification::send($collection, …)` z `uniqueId()` niezależnym od odbiorcy → **5 dostarczeń**, na prawdziwej kolejce `sync` i prawdziwym cache.
 
-// ✅ DOBRZE — bez ShouldBeUnique; deduplikację rób na poziomie AKCJI (atomowy guard)
-class OrganizationClosureRequestedNotification extends Notification implements ShouldQueue { /* … */ }
-```
+**Co z tego wynika:** 23 klasy w `app/Notifications/` deklarują ten interfejs i żadna nic z niego nie ma. Te wysyłane mailem chroni deduplikacja po `message_key` w `EmailService` (patrz niżej) — **to jest jedyny działający mechanizm**. Notyfikacje niemailowe nie mają żadnego.
 
-**Zasada:** `ShouldBeUnique` jest dla notyfikacji **1-odbiorczych** powiązanych z encją (np. potwierdzenie do jednego klienta). Dla broadcastu do roli/zespołu — **wyłącz** i zapobiegaj duplikatom u źródła (atomowy `whereNull(...)->update(...)`, flaga stanu). Ref: `app/Notifications/OrganizationClosureRequestedNotification.php`.
+**Nie dodawaj `ShouldBeUnique` do nowych notyfikacji** — sugeruje ochronę, której nie ma. Deduplikację rób u źródła: atomowy guard w akcji (`whereNull(...)->update(...)`, flaga stanu) albo `message_key` w `EmailService`.
+
+**Sprostowanie:** wcześniejsza wersja tej reguły opisywała „Incident 2026-06-30 — fan-out bug", w którym `ShouldBeUnique` miał sprawić, że z pięciu super-adminów maila dostaje jeden. **Ten incydent nigdy się nie wydarzył.** `OrganizationClosureRequestedNotification` powstał w commicie `b2d79f9` od razu bez tego interfejsu — nikt nigdy go z niczego nie zdejmował (`git log -S` po całej historii `app/Notifications/`: zero usunięć). Był to przewidywany, nie zaobserwowany tryb awarii, zapisany jako kronika incydentu — i przewidywanie było błędne, bo Laravel 12.60.2 wszedł miesiąc WCZEŚNIEJ (2026-05-23). Jeśli kiedyś realnie zaobserwujesz „tylko 1 z N dostał maila", przyczyna jest gdzie indziej — zacznij od tego, czy kolekcja odbiorców nie jest pusta albo jednoelementowa (`User::role('super-admin')->get()` na stacku tenanta zwraca **pustą** kolekcję).
 
 ## Uniqueness (CRITICAL - prevent duplicates)
 
