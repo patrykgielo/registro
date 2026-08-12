@@ -42,25 +42,23 @@ STOP → agent → implementuj
 
 ## Weryfikacja NIE dotyka dev-bazy
 
-Agent sprawdzający swoją pracę używa `php artisan test` (SQLite z `.env.testing`). Tinker **tylko do
-odczytu**. Zapis do dev-MySQL w trakcie weryfikacji jest zabroniony — także „na chwilę, zaraz cofnę".
+Tinker **tylko do odczytu**. Zapis do dev-MySQL zabroniony — także „na chwilę, zaraz cofnę".
 
-Incydent 2026-08-07: audytor bezpieczeństwa pobrał „pierwszego użytkownika z bazy" jako aktora testowego,
-trafił na realnego super-admina, dopisał mu rolę i zostawił osierocone rekordy fabryki. Cofnął, ale nie
-wszystko — sierotę znalazłem dopiero przy ręcznym sprawdzeniu.
+**Gdy musisz zobaczyć realną wartość:** tymczasowy `fwrite(STDERR, ...)` w teście i
+`docker compose exec -T app php artisan test` (SQLite). Nigdy `tinker --execute` z `factory()->create()`
+— zagnieżdżone fabryki tworzą więcej wierszy, niż widzisz.
+
+**Sprzątanie agenta weryfikuj LICZNIKIEM, nie jego raportem.** Dwa razy raport brzmiał „usunąłem
+wszystko" i dwa razy zostawała sierota: 2026-08-07 (audytor dopisał rolę realnemu super-adminowi),
+2026-08-12 (fabryka zrobiła DWÓCH userów w tej samej sekundzie, agent skasował jednego). Policz
+wiersze przed i po oraz `WHERE created_at >= NOW() - INTERVAL 3 HOUR` po wszystkich tabelach.
 
 ## Bounded Retry — Auto-Fix Loops
 
-Jeśli agent (dowolny) próbuje naprawić TEN SAM błąd/test 3 razy bez postępu
-(identyczny błąd, brak zmiany w diffie) → STOP, zgłoś człowiekowi, NIE
-kontynuuj czwartej próby automatycznie. Nie licz "prób" per plik czy funkcja
-— licz per konkretny, powtarzający się błąd.
+Ten SAM błąd/test 3 razy bez postępu (identyczny błąd, brak zmiany w diffie) → STOP, zgłoś
+człowiekowi. Licz per konkretny błąd, nie per plik. Inny próg niż `feedback_stop_and_research`
+(2 próby na NIEZDIAGNOZOWANYM problemie → research): tu błąd jest ZNANY, więc eskalacja, nie research.
 
-To inny próg niż w `feedback_stop_and_research.md` (2 próby na NIEZDIAGNOZOWANYM
-problemie → research root cause). Tu chodzi o ZNANY, powtarzający się błąd w
-pętli auto-fix (np. Gate 5b w `/implement`) → eskalacja do człowieka, nie research.
+## ClickUp
 
-## ClickUp — ZAKAZ ticketów dla
-
-Optymalizacja Claude, konfiguracja AI, usprawnienia promptów/rules.
-ClickUp = tylko praca nad produktem.
+Tylko praca nad produktem. Zero ticketów o Claude, promptach, regułach.

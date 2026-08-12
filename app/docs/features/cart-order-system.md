@@ -43,6 +43,21 @@ pending_payment → paid → confirmed → in_progress → completed
 
 - `pending_payment` has `expires_at` TTL (20 min) — expired orders are cleaned up by scheduled job
 - Inventory is blocked by: `paid`, `confirmed`, `in_progress`, and non-expired `pending_payment`
+- Each transition stamps a timestamp column via `OrderStatusStateMachine::afterTransitionHooks()`
+  (`confirmed`/`cancelled` also dispatch domain events there) or at the call site
+  (`paid_at` in `Przelewy24Service`, `cancelled_at` in `OrderService::cancel()`):
+  `paid_at`, `cancelled_at`, `completed_at` — all null until their transition first fires.
+  They are **not** all write-once, and that asymmetry is intentional, not an oversight:
+  - `completed_at` IS write-once — `completed`'s only outgoing edge is `refunded` (terminal),
+    so nothing ever routes back into `in_progress`, and the hook's null-guard is
+    defense-in-depth for a path that isn't reachable through the public API today.
+  - `paid_at` and `cancelled_at` record the **latest** transition into their state and are
+    written unguarded, on purpose: `cancelled → paid` is a legal, exercised transition
+    (`OrderStatusStateMachine::transitions()`, gated by `validatorForTransition()` requiring a
+    verified `Payment` row) — a slow BLIK/bank confirmation can arrive after
+    `orders:cleanup-expired` already cancelled the order, and `paid`/`confirmed` orders can
+    both still be cancelled (`OrderService::cancel()`). Adding a null-guard to either would
+    silently break that reconciliation path.
 
 ---
 
@@ -171,6 +186,22 @@ See full details: `app/docs/features/checkout-legal-compliance.md`
 - Checkout submit exceptions logged server-side, generic error shown to user
 - Webhook: signature verification before processing
 - No raw exception messages exposed to users
+
+---
+
+## Known limitation — status write and timestamp write are not atomic (pre-existing)
+
+`OrderStatusStateMachine::transitionTo()` (vendor code) writes the `status` column and
+records the `state_histories` row itself, then calls `afterTransitionHooks()` as a
+**separate, later save** — not inside the same DB transaction. This is true for every
+transition, not just `completed`: if the `paid_at`/`cancelled_at`/`completed_at` write
+throws (hook, or the equivalent unguarded `->update()` at the `Przelewy24Service` /
+`OrderService::cancel()` call sites), the status change and its `state_histories` row are
+already committed — the Filament action reports failure, but the order's status has
+already moved. This shape predates the `completed_at` fix (2026-08) and is not introduced
+or worsened by it; fixing it (wrapping `transitionTo()` + the timestamp write in one
+transaction at each of the ~4 call sites) is a separate, cross-cutting change, not
+attempted here.
 
 ---
 

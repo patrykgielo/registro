@@ -104,6 +104,26 @@ class OrderStatusStateMachine extends StateMachine
                     event(new OrderCancelled($model, notify: $model->notifyOnCancel ?? true));
                 },
             ],
+            // Mirrors paid_at/cancelled_at (see Przelewy24Service, OrderService::cancel):
+            // completed_at was declared in the schema/fillable/casts but never written
+            // anywhere. Lives here rather than at the call site because 'completed' is
+            // reached from two independent Filament call sites (OrderResource row action
+            // and EditOrder header action) — a hook is the single source of truth instead
+            // of duplicating the write in both places.
+            //
+            // Idempotency: the state machine's own transitionTo() already no-ops when
+            // $to === currentState() (see StateMachine::transitionTo()), and the
+            // transitions() map only allows 'completed' to be reached from 'in_progress'
+            // — there is no path back into 'in_progress' from 'completed', so a genuine
+            // re-entry is not reachable today. The null-check is defense-in-depth against
+            // that assumption changing later, not a currently-exercised path.
+            'completed' => [
+                function (string $from, $model): void {
+                    if ($model->completed_at === null) {
+                        $model->update(['completed_at' => now()]);
+                    }
+                },
+            ],
         ];
     }
 }
