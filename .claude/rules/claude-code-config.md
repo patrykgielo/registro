@@ -12,16 +12,17 @@ paths:
 
 ### Bug: omitClaudeMd:true — built-in subagenci tracą CLAUDE.md
 
-**GitHub Issue #40459** — bez oficjalnej naprawy (stan: 2026-05-08)
+**GitHub Issue #40459** — zamknięty jako *not planned* (zweryfikowane 2026-08-12), czyli to potwierdzone bieżące zachowanie produktu, nie coś obalonego ani czekającego na fix.
 
-Od v2.1.84 built-in subagenci (`Explore`, `Plan`) mają `omitClaudeMd: true` hardcoded.
-Nie widzą naszego CLAUDE.md — nie znają FILESYSTEM_DISK, user model, git workflow.
+Od v2.1.84 built-in subagenci (`Explore`, `Plan`) mają `omitClaudeMd: true` hardcoded, wzmocnione flagą `tengu_slim_subagent_claudemd` (default true). Nie widzą naszego CLAUDE.md — nie znają FILESYSTEM_DISK, user model, git workflow.
 
-**Workaround:** Krytyczne reguły zduplikowane na początku body każdego `.claude/agents/*.md`.
+**Zakres: TYLKO agenci wbudowani.** Nasi właśni agenci z `.claude/agents/` ładują CLAUDE.md normalną ścieżką i ten bug ich nie dotyczy. Do 2026-08-12 ten plik twierdził inaczej i uzasadniał tym dublowanie reguł w każdym agencie — błędne przypisanie. Uzasadnieniem dublowania jest #7515 poniżej, nie ten bug.
 
 ### Bug: system_prompt body partially ignored (Issue #7515)
 
-Krytyczne reguły **muszą być na początku body** (pierwsze co widzi model).
+**Zamknięty jako *not planned*** (zgłoszony 2025-09-12, zweryfikowane 2026-08-12) — Anthropic nie zamierza tego zmieniać, więc traktuj jako trwałe zachowanie. Prompt wykonawczy subagenta bywa generowany z samej pary `name` + `description`, z pominięciem ciała system_promptu.
+
+**To jest jedyny powód, dla którego krytyczne reguły idą na początek body** każdego `.claude/agents/*.md` — pierwsze, co model widzi, jeśli w ogóle zobaczy resztę.
 
 ### Bug: Claude stops calling subagents (Issue #8558)
 
@@ -109,6 +110,7 @@ Sprawdzenie MCP kosztuje ~3,5 s, więc biegnie najwyżej raz na tydzień (znaczn
 | Agent | Model | Effort |
 |-------|-------|--------|
 | laravel-senior-architect | sonnet | high |
+| registro-devops-engineer | sonnet | high |
 | frontend-ui-architect | sonnet | high |
 | test-engineer | sonnet | high |
 | code-reviewer | sonnet | high |
@@ -116,6 +118,14 @@ Sprawdzenie MCP kosztuje ~3,5 s, więc biegnie najwyżej raz na tydzień (znaczn
 | frontend-quality-auditor | sonnet | medium |
 | content-strategist | sonnet | medium |
 | agent-security-audit-specialist | sonnet | — |
+| devops-engineer (review) | sonnet | medium |
+
+**Podział pisze/recenzuje.** `registro-devops-engineer` ma `Write`/`Edit` i jest jedynym agentem,
+który zmienia `scripts/**`, `docker-compose*.yml`, `docker/**`. `devops-engineer` **nie ma**
+`Write`/`Edit` — celowo, tak samo jak `code-reviewer` wobec `laravel-senior-architect`. Powstało
+2026-08-11, bo do tego dnia stary `devops-engineer` był read-only i całą infrastrukturę pisał
+`laravel-senior-architect` — agent PHP/Eloquent/Filamenta, bez ani jednej reguły o Dockerze,
+powłoce czy TLS. Wszystkie regresje warstwy wdrożeniowej wyszły spod niego.
 
 **Model discipline (regent0x zasada):** Opus = architektura + deep debug. Sonnet = 80% codziennej pracy. Nie używaj Opus do formatowania plików i rename.
 
@@ -128,6 +138,25 @@ Sprawdzenie MCP kosztuje ~3,5 s, więc biegnie najwyżej raz na tydzień (znaczn
 **Incydent 2026-08-05.** Firecrawl był wpisany jako `mcpServers` w `~/.claude/settings.json`. Klucz API ważny, pakiet sprawny — a serwer nie działał, bo **`mcpServers` nie jest prawidłowym kluczem `settings.json`** (schemat ma 142 właściwości, tej wśród nich nie ma). Blok był po cichu ignorowany, ośmiu agentów wskazywało na nierozwiązywalne narzędzia, a reguła twierdziła „Firecrawl = domyślne".
 
 **Zapobieganie:** serwery MCP dodawaj **wyłącznie** przez `claude mcp add` (zapisuje do `~/.claude.json` albo `.mcp.json`). Po dodaniu zweryfikuj `claude mcp list` — status musi brzmieć `✔ Connected`. Konfiguracja wklejona ręcznie do złego pliku nie zgłasza błędu.
+
+## Frontmatter agenta: prawdziwy newline zabija cały plik
+
+**Incydent 2026-08-11.** `design-system-guardian` i `commercial-estimate-specialist` **nie ładowały się w ogóle** — nie było ich na liście dostępnych agentów, przez nieznany czas, bez jednego komunikatu.
+
+Przyczyna: `description:` jako zwykły skalar, przerwany **prawdziwym** znakiem nowej linii. YAML kończy wtedy wartość, a następną linię (`Context: User completed a feature…`, `<commentary>`) czyta jako kolejny klucz najwyższego poziomu → cały frontmatter się wywala → agent wypada z rejestru.
+
+Co działa, a co nie:
+
+```yaml
+description: Tekst\n\n<example>\nContext: ...\n</example>   # OK — jedna linia, \n jako escape
+description: |                                              # OK — block scalar
+  Tekst
+  w wielu liniach
+description: Tekst                                          # ŹLE — plain scalar
+Context: ...                                                #        przerwany newlinem
+```
+
+Dwuznaczne `: ` w środku jednoliniowego skalara (`Context: User…`) Claude Code przepuszcza, mimo że PyYAML odrzuca — **nie waliduj tego PyYAML-em**, dostaniesz fałszywe alarmy na agentach, które działają. `cc-doctor` sprawdza to strukturalnie (check 1b): każda linia frontmatteru to klucz albo wcięta kontynuacja klucza bez wartości inline. Sprawdzone w obie strony — flaguje wersję sprzed naprawy, przepuszcza po naprawie.
 
 **Zasada ogólna:** żadna konfiguracja nie jest sprawna, dopóki nie została uruchomiona. To ta sama klasa błędu co osierocony kontener `registro-queue` — plik mówił jedno, rzeczywistość drugie.
 

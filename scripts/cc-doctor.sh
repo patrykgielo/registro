@@ -59,6 +59,66 @@ for f in "$PROJECT_DIR"/.claude/agents/*.md "$USER_DIR"/agents/*.md; do
 done
 
 ###############################################################################
+# 1b. Agent frontmatter must survive the loader
+#
+# A plain `description:` broken by a REAL newline ends the scalar; YAML then
+# reads the next line as a top-level key, the whole frontmatter fails, and the
+# agent is dropped from the registry with no error anywhere. Found 2026-08-11:
+# design-system-guardian and commercial-estimate-specialist had been dead this
+# way for an unknown length of time. Multi-line values are fine as block
+# scalars (`>-`, `|`); prose spanning bare lines is not.
+###############################################################################
+frontmatter_problems() {
+    python3 - "$@" <<'PY' 2>/dev/null
+import os, re, sys
+
+KEY = re.compile(r'^[A-Za-z_][A-Za-z0-9_-]*:(\s|$)')
+# A block scalar indicator is the ENTIRE rest of the line -- `>`, `|`, plus an
+# optional chomping/indentation indicator. `description: >500 tenants...` is a
+# plain scalar that merely starts with `>`, and must not buy indent permission.
+BLOCK = re.compile(r'^[>|][+-]?[0-9]?[+-]?$')
+
+for path in sys.argv[1:]:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except Exception:
+        continue
+    name = os.path.basename(path)[:-3]
+    if not text.startswith("---\n"):
+        print(f"{name}: no YAML frontmatter -- the agent will not load")
+        continue
+    end = text.find("\n---\n", 3)
+    if end < 0:
+        print(f"{name}: frontmatter is never closed by ---")
+        continue
+    # An indented line is legal only under a key that opened a block scalar
+    # (`>`/`|`) or that has no inline value at all (a list or nested mapping).
+    indent_ok = False
+    for n, line in enumerate(text[4:end].split("\n"), start=2):
+        if not line.strip():
+            continue
+        if line[0] in " \t":
+            if not indent_ok:
+                print(f"{name}: line {n} is indented under a key that takes an "
+                      f"inline value -- frontmatter stops parsing here")
+                break
+            continue
+        if not KEY.match(line):
+            print(f"{name}: line {n} is neither a key nor a continuation -- "
+                  f"frontmatter stops parsing here ({line.strip()[:48]!r})")
+            break
+        value = line.split(":", 1)[1].strip()
+        indent_ok = value == "" or bool(BLOCK.match(value))
+PY
+}
+
+while IFS= read -r problem; do
+    [ -n "$problem" ] || continue
+    finding "agent $problem"
+done <<<"$(frontmatter_problems "$PROJECT_DIR"/.claude/agents/*.md "$USER_DIR"/agents/*.md)"
+
+###############################################################################
 # 2. `mcpServers` must not appear in any settings file
 #
 # It is not part of the settings schema. Claude Code ignores the block without
