@@ -505,3 +505,122 @@ faktycznie używa, może przejść, mimo że funkcja jest złamana przeciw prawd
 kod robi `docker run` na WŁASNYM obrazie projektu (nie na `alpine`/`debian`/generycznym helperze) —
 walidacja MUSI użyć tego samego, realnie zbudowanego obrazu, z jego prawdziwym entrypointem,
 inaczej test dowodzi tylko, że powłoka wewnątrz działa, nie że cała ścieżka `docker run` działa.
+
+---
+
+## Incydent (znaleziony przez faktyczny drill, nie shipped): `tenant-restore.sh` — read side
+## backupu nie istniał; drill nie znalazł bugów w nowym skrypcie, ale znalazł dwie pułapki metodyki
+
+`scripts/server/tenant-restore.sh`, nowy. Do 2026-08-12 nic w repo nigdy nie CZYTAŁO snapshota
+restica — jedyna procedura przywracania była prozą w `instalacja-tenanta-od-zera.md` Część 8 do
+ręcznego przepisania. Pełny opis skryptu, tryby, i drill end-to-end (build lokalny obrazu, prawdziwy
+6-kontenerowy stack, backup → zniszczenie CAŁEGO stacka → `--restore-live` → weryfikacja
+`sha256sum`/odszyfrowania/własności): `app/docs/deployment/instalacja-tenanta-od-zera.md` → 8.0,
+8.7a; `app/docs/deployment/tenant-apply.md` → sekcja `tenant-restore.sh`.
+
+**Sam skrypt zadziałał poprawnie za pierwszym uruchomieniem na każdej testowanej ścieżce** (scratch
+restore, `--restore-live`, cztery bramki bezpieczeństwa, override `RESTIC_PASSWORD_FILE`) — żaden
+bug w `tenant-restore.sh` nie został znaleziony przez sam drill. Trzy testy (`tests/shell/cases/
+13-15`) i tak dodane, bo pinują WŁASNOŚCI będące całą obietnicą bezpieczeństwa tego skryptu
+(`--confirm-slug`, `--target-db` ≠ żywa baza, `chown -R 1000:1000`), nie regresje.
+
+**Dwie pułapki znalezione w METODYCE walidacji, obie skorygowane przed dowiedzeniem czegokolwiek:**
+
+1. **Model factory (`Organization::factory()`) nie działa na prawdziwym obrazie produkcyjnym.**
+   `Call to undefined function Database\Factories\fake()` — `fakerphp/faker` to zależność
+   `require-dev`, wycięta przez `composer install --no-dev` przy budowaniu obrazu. To POPRAWNE
+   zachowanie obrazu produkcyjnego, nie bug — ale znaczy, że każdy przyszły drill na TYM obrazie
+   musi zasadzać dane wprost przez `Model::create([...])` (z wszystkimi wymaganymi kolumnami,
+   `owner_id`, `auditable_type`/`auditable_id` itd.), nie przez fabryki, inaczej wygląda na zepsuty
+   model zamiast na oczekiwane ograniczenie środowiska.
+2. **Fake `id -u`/`id -g` na `PATH` NIE symuluje innego hosta-operatora dla `tenant-backup.sh`'s
+   `stage_volume()`.** Pierwsza próba dowiedzenia "backup pod innym UID operatora" podmieniła
+   binarkę `id`, żeby `$(id -u):$(id -g)` w skrypcie zwracało `1002` — ale sam PROCES basha nadal
+   biegł jako prawdziwy UID hosta (1000). Uprzywilejowany `docker run --user 0:0 ... chown -R
+   1002:1002 /dest` faktycznie przestawił własność katalogu stagingowego na 1002, a NASTĘPNY krok
+   skryptu (`rm -rf "$STAGE_DIR"` we własnym, nieuprzywilejowanym procesie, prawdziwy UID 1000) padł
+   `Permission denied` na każdym pliku — wyglądające jak realny bug w `tenant-backup.sh`, ale będące
+   artefaktem testu: w rzeczywistości `id -u` ZAWSZE prawdziwie zwraca UID wywołującego procesu,
+   więc `chown` na tę wartość nigdy nie może rozjechać się z uprawnieniami tego samego procesu.
+   Naprawa: nie fałszować `id`, tylko zbudować snapshot z zawartością OZNAKOWANĄ inną własnością
+   wprost (`docker run --user 0:0 ... chown -R 1002:1002` na źródle), niezależnie od PATH-owych
+   podmianek — to faktycznie testuje "co jeśli snapshot zawiera pliki z innym UID", bez fałszowania
+   tożsamości procesu, która musi zostać spójna dla testu żeby cokolwiek dowodzić.
+
+**Zasada:** brak znalezionych bugów w faktycznym uruchomieniu jest samo w sobie wynikiem wartym
+zapisania (nie "nic się nie stało, pomiń") — odróżnia "przetestowane i działa" od "nieprzetestowane".
+Przy próbie SYMULOWANIA innej tożsamości (UID, użytkownika) w teście powłoki: podmiana binarki
+zwracanej przez `$(polecenie)` zmienia tylko STRING, którego skrypt użyje w kolejnej komendzie — nie
+zmienia rzeczywistych uprawnień PROCESU, który tę komendę wykonuje. Jeśli oba muszą się zgadzać
+(jak `chown` na wartość z `id -u`, potem operacja na tym samym pliku przez ten sam proces), fałszowanie
+samego `id` tworzy rozjazd, którego produkcja nigdy nie zobaczy.
+
+---
+
+## Incydent (drugi przegląd tego samego dnia, cztery realne luki, wszystkie odtworzone w kodzie):
+## `tenant-restore.sh` — zielony drill dowiódł happy path, nie ścieżek awaryjnych
+
+Bezpośrednia kontynuacja incydentu powyżej. Pierwszy drill (ten sam dzień, 2026-08-12) przeszedł
+end-to-end i doprowadził do 15/15 zielonych testów — ale drugi, niezależny przegląd odtworzył
+CZTERY realne błędy w tej samej wersji skryptu, wszystkie w kodzie ścieżki `--restore-live`, żaden
+z nich widoczny w happy-pathowym drillu, bo żaden test nie pinował SEKWENCJI wywołań, tylko same
+bramki bezpieczeństwa (confirm-slug, target-db≠live, chown). Usunięcie CAŁEJ sekwencji trybu
+konserwacji z kodu i tak dawało 15/15 — dowód wprost, że zielony end-to-end nie jest tym samym co
+bezpieczne ścieżki awaryjne.
+
+1. **SEVERE — tryb konserwacji zagnieżdżony wyłącznie w bloku bazy danych.** Dwie konsekwencje:
+   `--restore-live --confirm-slug <slug> --skip-db` (zwykłe, udokumentowane wywołanie — guard
+   odmawia tylko przy OBU flagach `--skip-*` naraz) wypakowywało pliki prosto do żywych wolumenów
+   **bez żadnego trybu konserwacji w ogóle**; a na zwykłej ścieżce `artisan up` uruchamiał się
+   PRZED wypakowaniem wolumenów — aplikacja wracała na ruch z bazą odwołującą się do
+   zdjęć/logo/obrazów CMS wciąż w trakcie `tar -x`, dokładnie tej niespójności, przed którą ma
+   chronić jeden snapshot restica (patrz `tenant-backup.sh`'s własny nagłówek).
+2. **Nic nie bramkowało fazy plików awarią fazy bazy.** Nieudane wczytanie zrzutu logowało "app left
+   in maintenance mode… fix manually", ustawiało flagę awarii, i i tak leciało dalej do wypakowania
+   plików do żywych wolumenów.
+3. **Brak pułapek na sygnał.** Jedyny trap to `rm -f "$DUMP"` na EXIT, rozbrajany w połowie skryptu —
+   Ctrl-C, zerwane SSH albo timeout systemd w środku `artisan down`/wczytywania/`tar` zostawiały
+   tenanta w trybie konserwacji albo z połowicznie nadpisanym wolumenem, bez żadnego zapisu
+   tłumaczącego dlaczego. `apply.sh`'s `on_exit`/`on_signal` (patrz incydent wyżej w tym pliku,
+   "drugi przegląd infrastrukturalny") istnieje dokładnie po to, a `tenant-restore.sh` go nie miało.
+4. **`tenant-check.sh` mógł zgłosić fałszywie zdrowego tenanta.** `tenant-restore.sh` nigdy nie
+   pisało do `STATE_DIR/apply-status`, a `tenant-check.sh` ufa temu plikowi jako źródłu prawdy —
+   nieudany albo zabity live restore zostawiał tenanta zepsutego, podczas gdy status wciąż czytał
+   się jako `OK` z ostatniego udanego `apply`.
+
+**Naprawa:** JEDNO okno trybu konserwacji obejmuje OBIE fazy niezależnie od
+`--skip-db`/`--skip-files`; faza plików NIGDY nie startuje po awarii fazy bazy; `on_exit`/
+`on_signal` skopiowane z dokładnie tego samego wzorca co `apply.sh` (bezwarunkowy zapis `RUNNING`
+w momencie wejścia w tryb konserwacji, `FAILED` z powodem przy każdej awarii/sygnale, `OK` dopiero
+po pełnym sukcesie). **Jedna celowa różnica względem `apply.sh`:** `clear_maintenance()` w
+`tenant-restore.sh` NIGDY nie próbuje sam wywołać `artisan up` (w przeciwieństwie do `apply.sh`'s
+odpowiednika, który auto-leczy przerwaną migrację) — restore ma DWIE zależne fazy, a auto-leczenie
+na przerwaniu, które wylądowało między nimi, ryzykowałoby dokładnie tę samą niespójność co błąd #1.
+Człowiek potwierdzający ręcznie spójność bazy i plików przed wpisaniem `artisan up` jest tu
+świadomie bezpieczniejszym domyślnym zachowaniem niż auto-czyszczenie — uzasadnione tym, że
+`apply.sh`'s pojedynczy, niezależny krok migracji na auto-leczenie pozwala, a restore nie.
+
+**Trzy nowe testy pinujące SEKWENCJĘ, nie same bramki** (`tests/shell/cases/16-18`) — każdy
+dowiedziony czerwono-potem-zielono przez podstawienie DOKŁADNEJ starej (błędnej) wersji skryptu i
+potwierdzenie, że test wywraca się dokładnie na opisanym problemie (test 16 złapał `artisan up`
+przed plikami I brak zapisu `apply-status`; test 17 złapał brak `artisan down` przy `--skip-db`;
+test 18 złapał wypakowanie plików po awarii bazy I brak zapisu `FAILED`).
+
+**Druga, realna weryfikacja NAPRAWIONEJ wersji, nie tylko fejkami w `tests/shell/`** — dokładnie ta
+sama lekcja co przy fejkowaniu `id` w incydencie wyżej: fejki dowodzą, że skrypt WYSYŁA właściwe
+komendy we właściwej kolejności, nie że prawdziwy Docker/MySQL faktycznie tak się zachowa. Powtórzono
+CAŁY drill (nowy build obrazu, świeży `git worktree`, sześć kontenerów) przeciw poprawionej wersji:
+happy path pokazał w logu skryptu kolejność WPROST poprawną (baza → oba wolumeny → "Application is
+now live"), `apply-status` → `OK`; prawdziwa awaria auth MySQL (podmienione `DB_ROOT_PASSWORD` w
+`.env.secrets`, kontener wciąż z PRAWDZIWYM oryginalnym hasłem — realny `Access denied`, nie
+symulowany) zatrzymała restore z kodem 3, zero linii o wypakowywaniu plików w logu, `horizon`/
+`scheduler` nadal zatrzymane, `apply-status` → `FAILED`; przywrócenie poprawnego hasła i ponowienie
+TEJ SAMEJ komendy w pełni odzyskało stan (kod 0, `apply-status` → `OK`).
+
+**Zasada:** zielony end-to-end drill dowodzi, że happy path działa — nie dowodzi, że ścieżki
+awaryjne (awaria w połowie, sygnał, plik statusu czytany przez inny skrypt) są bezpieczne. Test
+pinujący SAMĄ BRAMKĘ (czy odmowa działa) i test pinujący SEKWENCJĘ (co się dzieje, gdy bramka
+przepuści, a coś DALEJ zawiedzie) to dwie różne własności — pierwszy nie zastępuje drugiego. Po
+naprawie znalezionej w REVIEW (nie w drillu) — powtórz przynajmniej skróconą wersję realnego drillu
+na poprawionym kodzie, nie tylko testy jednostkowe z fejkami: fejki potwierdzają KOLEJNOŚĆ wywołań,
+nie że prawdziwa infrastruktura tak zareaguje.

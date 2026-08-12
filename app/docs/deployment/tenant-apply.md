@@ -307,6 +307,29 @@ Plus two cheap bonus pins: `tenant-check.sh` never reports `.state/` as an
 orphan tenant directory (bug #6 above), and `apply.sh`'s
 `NGINX_RELOAD_CONTAINER` write is idempotent across repeated runs.
 
+`tenant-restore.sh` (added 2026-08-12, see its own section above) adds three more, none found as
+bugs during its own drill -- added because the properties they pin ARE the safety promise this
+script makes, not because the drill caught a regression:
+
+9. `--restore-live` refuses without a `--confirm-slug` matching the slug argument exactly, and
+   never touches `docker`/`restic` before refusing.
+10. The default (non-live) mode refuses a `--target-db` equal to the tenant's live `DB_DATABASE`,
+    and never runs `restic ls`/`restic dump` before refusing.
+11. `restore_files_live()` always `chown -R 1000:1000`s after extracting into a live volume.
+
+A second review the same day DID find real bugs (see `tenant-restore.sh`'s own section above,
+"That first drill only proved the happy path") -- three more pins, each proven red-then-green
+against the exact pre-fix script text, not a synthetic mutation:
+
+12. `--restore-live` wraps BOTH the database and files phases in ONE maintenance window, in the
+    correct order (`artisan down` → database → files → `artisan up`) -- caught the original bug
+    where `artisan up` ran before files were extracted.
+13. `--restore-live --skip-db` still enters maintenance mode before extracting files -- caught the
+    original bug where it extracted straight into live volumes with none at all.
+14. A failed database load aborts before touching files, leaves maintenance mode on, and writes a
+    `FAILED` `STATE_DIR/apply-status` -- caught the original bug where it fell through into
+    extracting files after the database load had already failed.
+
 **Rule going forward:** a shell bug found and fixed in `scripts/server/**`
 gets a test in `tests/shell/cases/` in the same change, the same way a PHP
 bug gets a regression test in `tests/Feature`/`tests/Unit`. See
@@ -784,6 +807,94 @@ example) so the sandbox's own coincidental host UID couldn't mask the bug:
 without the restore-side `chown`, a UID-1000 write into the restored tree
 failed with `Permission denied`; with it, the same write succeeded and the
 pre-existing restored content was still readable.
+
+## `tenant-restore.sh`
+
+The read side of the pair above -- until 2026-08-12, nothing in this repo ever read a restic
+snapshot back; the only restore procedure was prose in `instalacja-tenanta-od-zera.md` Część 8 for
+an operator to retype by hand. `tenant-restore.sh` is that procedure, made runnable, same standalone
+file reasoning as `tenant-backup.sh` above.
+
+**Safe by default, not by convention.** Without `--restore-live`, the script never touches the
+tenant's live database or live storage volumes: the database dump loads into a scratch database
+inside the tenant's OWN mysql container (default name `<DB_DATABASE>_restore_verify`, refuses if
+`--target-db` is set to the live `DB_DATABASE` itself), and the storage volumes extract to a plain
+host directory (`mktemp -d` by default), never into the live Docker volumes. `--restore-live`
+requires a SECOND flag, `--confirm-slug <slug>`, which must equal the slug argument byte-for-byte --
+guards against a pasted/looped command whose first argument silently changed doing the destructive
+thing to the wrong tenant. Pinned in `tests/shell/cases/13_tenant_restore_live_requires_confirm_slug.sh`
+and `14_tenant_restore_target_db_not_live.sh`.
+
+**The restore-side ownership gap (named in the section above, already found and fixed in the manual
+procedure on 2026-08-10) is fixed identically here, and independent of host UID by construction.**
+`restore_files_live()`'s `chown -R 1000:1000` is a literal, not `$(id -u):$(id -g)` -- unlike the
+BACKUP side's own chown (which deliberately targets the invoking host user, for a different reason:
+letting that same non-root user clean up the staging directory afterward, see above), the restore
+side always wants the fixed `laravel` UID regardless of who runs the script. This means the trap
+that bit earlier validation elsewhere in this project (a sandbox's host UID coincidentally equaling
+the app's UID masking a chown bug) cannot mask THIS particular fix -- verified directly anyway
+(`instalacja-tenanta-od-zera.md` 8.7a, point 7): a snapshot manufactured with content owned by UID
+1002 (not 1000), extracted twice into fresh volumes -- without the restore's `chown -R 1000:1000`, a
+UID-1000 write failed with `Permission denied`; with it, the same write succeeded.
+
+**Verified end-to-end 2026-08-12 against the real image and a real six-container stack** (not an
+extracted function, not a stand-in image) -- see `instalacja-tenanta-od-zera.md` 8.7a for the full
+run: seed real data (including an encrypted `audit_logs` row) → `tenant-backup.sh` unmodified →
+default scratch-mode restore while the stack stayed live (`sha256sum` match, live DB/app untouched,
+encrypted row decrypts) → four safety-guard checks (`--target-db` equal to live DB, `--restore-live`
+without/with-wrong `--confirm-slug`, `--restore-live` combined with `--target-db`) → full stack
+destroyed (`docker compose down -v`, fresh empty stack stood up in its place) → `--restore-live
+--confirm-slug` → app serves again, `sha256sum` match, ownership `1000:1000`, encrypted row decrypts
+through the live app itself, and a UID-1000 process could WRITE a new file into the restored tree,
+not just read the existing one.
+
+**That first drill only proved the happy path -- a second review the same day found four real gaps
+on `--restore-live`, all reproduced in code, not argued in the abstract:**
+
+1. Maintenance mode was scoped INSIDE the database block only, so (a) `--restore-live
+   --confirm-slug <slug> --skip-db` (an ordinary, documented invocation) extracted straight into
+   the live volumes with NO maintenance mode at all, and (b) on the normal path, `artisan up` ran
+   BEFORE the storage volumes were extracted -- a fully successful run could serve traffic against a
+   database referencing files still mid-`tar -x`.
+2. Nothing gated the files phase on the database phase failing -- a failed dump load logged "app
+   left in maintenance mode... fix manually" and fell straight through into extracting files into
+   the live volumes anyway.
+3. No signal traps -- the only trap was `rm -f "$DUMP"` on EXIT, disarmed midway through the
+   script. A Ctrl-C, dropped SSH, or systemd timeout mid-restore left the tenant in maintenance mode
+   or with a half-overwritten volume, nothing logged explaining why.
+4. `tenant-restore.sh` never wrote `STATE_DIR/apply-status`, which `tenant-check.sh` trusts as
+   ground truth -- a failed or killed live restore read as a healthy tenant because the last
+   *apply* had succeeded.
+
+**Fix:** ONE maintenance window (`artisan down` → stop horizon/scheduler) wraps BOTH phases
+regardless of `--skip-db`/`--skip-files`; the files phase never starts once the database phase has
+failed; `on_exit`/`on_signal` mirror `apply.sh`'s own pair exactly (unconditional `RUNNING` write the
+moment maintenance mode is entered, `FAILED` with a reason on any failure/signal, `OK` only on full
+success). Deliberately DIFFERENT from `apply.sh` in one place: `clear_maintenance()` here NEVER
+attempts to auto-heal (`apply.sh`'s does, on an interrupted migration) -- a restore has TWO
+dependent phases, and auto-clearing on an interrupt landing between them would risk exactly the
+same "serving inconsistent data" state item 1 above already proved was reachable. A human
+confirming both are consistent before typing `artisan up` by hand is the deliberately safer
+default here.
+
+Three new tests pin the CALL SEQUENCE, not just the guards (`tests/shell/cases/16-18`) -- each
+proven red-then-green by substituting the exact PRE-fix script text and confirming the test fails on
+precisely the described defect (test 16 caught `artisan up` before files; 17 caught the missing
+`artisan down` under `--skip-db`; 18 caught files extracting after a database-load failure), not on
+something incidental.
+
+**Re-verified for real a second time**, not only through `tests/shell/`'s fakes --
+`instalacja-tenanta-od-zera.md` 8.7c: the same real image/stack drill repeated against the fixed
+script. Happy path: the script's own log now shows the corrected order verbatim (`artisan down` →
+database restored → both volumes restored → "Application is now live") and `apply-status` reads
+`OK`. Failure path: `DB_ROOT_PASSWORD` corrupted in `.env.secrets` while the real mysql container
+kept its real, original password -- a genuine `Access denied`, not a simulated one -- and the run
+stopped with exit 3, zero file-extraction log lines, horizon/scheduler still `Exited`, and
+`apply-status` reading `FAILED`. Restoring the correct password and re-running the identical command
+recovered fully (exit 0, `apply-status` → `OK`, app serving). Not verified: a real SIGTERM/Ctrl-C
+mid-restore (the trap pair is logically identical to `apply.sh`'s own, whose SIGTERM reproduction is
+already documented in `ci-cd-troubleshooting.md`, but was not reproduced a second time for this
+script specifically), and `--restore-live` run from a real non-1000 host account.
 
 ## `stage_volume()` bug found during Faza 3 validation (two-machines plan): backups of both
 ## storage volumes were silently empty against the real image

@@ -469,6 +469,23 @@ serwerze, który backupujemy**. To jest redundancja dyskowa, **nie disaster reco
 serwer przepadnie, przepadnie z nim kopia. Domknięcie tego wymaga wskazania zdalnego magazynu
 i wyniesienia hasła poza maszynę.
 
+**`RESTIC_PASSWORD_FILE` jest nadpisywalne** (tak samo jak `RESTIC_REPOSITORY` już było) w
+`tenant-backup.sh`, `apply.sh` i `tenant-restore.sh` — domyślnie nadal wskazuje
+`/opt/registro/tenant-backups/<slug>/password`, zero zmiany na maszynie, która nic nie nadpisuje.
+To NIE jest samo w sobie disaster recovery — to tylko czyni je MOŻLIWYM. Prawdziwe domknięcie to
+czynność operatora, nie skryptu:
+
+1. Skopiuj `/opt/registro/tenant-backups/<slug>/password` do menedżera haseł (1Password/Bitwarden/
+   itp.) **poza tą maszyną**, dla każdego tenanta osobno (każdy ma własne repo i hasło).
+2. Jeśli serwer przepadnie i stawiasz odzyskiwanie na nowej maszynie z kopii samego `repo/`
+   (skopiowanego np. `rsync`-em wcześniej, poza tym backupem) — ustaw `RESTIC_PASSWORD_FILE` na
+   ścieżkę do hasła odtworzonego z menedżera haseł, zamiast liczyć na to, że plik `password` obok
+   `repo/` przetrwał razem z nim.
+3. Samo repozytorium (`repo/`) nadal wymaga OSOBNEGO planu wyniesienia poza maszynę (np. `rsync` do
+   drugiego hosta/S3-kompatybilnego magazynu) — to nie jest zrobione ani przez ten skrypt, ani przez
+   samo wyniesienie hasła. Bez tego kroku wyniesienie hasła samo w sobie nie daje disaster recovery,
+   tylko czyni bezużyteczną kopię hasła bez repo, do którego pasuje.
+
 ---
 
 # CZĘŚĆ 7 — Usunięcie klienta (offboarding)
@@ -730,6 +747,90 @@ anonimizacja `organizations:purge` dotyka tylko żywej bazy, nigdy historii back
 nie na serwerze produkcyjnym ani na deweloperskiej bazie. Dokładna sekwencja poleceń niżej to to,
 co faktycznie zostało uruchomione, nie teoria.
 
+## 8.0 — `tenant-restore.sh`: ta sama procedura, jako skrypt
+
+Do 2026-08-12 wszystko w tej Części 8 było prozą do ręcznego przepisania — nic w repo nigdy nie
+CZYTAŁO snapshota restica, tylko go zapisywało (`tenant-backup.sh`/`apply.sh`). `tenant-restore.sh`
+to ta sama sekwencja (8.2 → 8.4, 8.6) jako jeden skrypt, `scripts/server/tenant-restore.sh`, testowany
+end-to-end lokalnie tego samego dnia (patrz 8.7a niżej) — nie na serwerze.
+
+**Bezpieczny domyślnie.** Bez `--restore-live` skrypt NIGDY nie dotyka żywej bazy ani żywych
+wolumenów:
+
+```bash
+/opt/registro/tenant-restore.sh nazwaklienta [snapshot]
+```
+
+- baza → `DROP DATABASE IF EXISTS`/`CREATE DATABASE` + wczytanie zrzutu do **scratch-owej** bazy
+  wewnątrz TEGO SAMEGO kontenera mysql tenanta (domyślnie `<DB_DATABASE>_restore_verify`,
+  `--target-db NAZWA` żeby wybrać inną) — nigdy do żywej `DB_DATABASE`. Skrypt odmawia, jeśli
+  `--target-db` miałoby być równe żywej bazie.
+- pliki → wypakowane do katalogu na hoście (`--files-dir KATALOG`, domyślnie świeży `mktemp -d`,
+  wypisany na końcu) — NIGDY do żywego wolumenu Dockera.
+
+Weryfikuj bezpośrednio: `mysql ... <scratch-baza>` i pliki pod wypisanym katalogiem, potem usuń
+(`DROP DATABASE`, `rm -rf`) — skrypt sam niczego nie sprząta, żeby zostawić czas na inspekcję.
+
+**Destrukcyjnie, jawnie.** Przywrócenie do ŻYWEGO stacka (dokładnie 8.4 + 8.6, JEDNO okno trybu
+konserwacji obejmujące OBIE fazy, nie dwie niezależne) wymaga DWÓCH osobnych flag:
+
+```bash
+/opt/registro/tenant-restore.sh nazwaklienta latest --restore-live --confirm-slug nazwaklienta
+```
+
+`--confirm-slug` musi być BAJT W BAJT tym samym slugiem co pierwszy argument — złapane w testach
+(`tests/shell/cases/13_...sh`): bez tego albo z niezgodnym slugiem skrypt kończy się kodem 2, zanim
+dotknie `docker`/`restic`/`mysql` w ogóle. `--target-db`/`--files-dir` razem z `--restore-live` to
+błąd użycia (kod 1) — te dwie flagi są tylko dla trybu scratch.
+
+**Kolejność, dokładnie, i dlaczego to nie dwa niezależne kroki:** `artisan down` → `horizon`/
+`scheduler` stop → baza (jeśli nie `--skip-db`) → PIERO wtedy pliki (jeśli nie `--skip-files`,
+NIGDY jeśli baza zawiodła) → `horizon`/`scheduler` restart → `artisan up`. Aplikacja wraca na ruch
+DOPIERO gdy obie fazy (te, które miały biec) się powiodły — nigdy wcześniej. `--skip-db` NIE
+oznacza pominięcia trybu konserwacji — wchodzi w niego identycznie, bo samo wypakowanie plików do
+żywego wolumenu jest już żywą mutacją. Awaria fazy bazy danych NIGDY nie uruchamia fazy plików
+(przywracanie plików przeciw bazie, która nie została przywrócona, to osobny rodzaj
+niespójności) — a każda awaria w obu fazach zostawia aplikację w trybie konserwacji, `horizon`/
+`scheduler` zatrzymane, i **niczego nie czyści automatycznie** (żaden sygnał, żadna nieprzechwycona
+awaria) poza samym, w pełni udanym, sekwencyjnym zakończeniem skryptu — ponów komendę po naprawieniu
+przyczyny, albo wyczyść ręcznie dopiero po ręcznym potwierdzeniu, że baza i pliki są ze sobą spójne.
+
+`--restore-live` pisze do TEGO SAMEGO pliku co `apply.sh` (`STATE_DIR/apply-status`, ten sam, który
+czyta `tenant-check.sh`) — `RUNNING` w momencie wejścia w tryb konserwacji, `FAILED` z powodem przy
+każdej awarii/sygnale, `OK` dopiero po w pełni udanym przywróceniu. Bez tego zabity albo nieudany
+restore live czytałby się jako zdrowy tenant, bo ostatni `apply` się powiódł — dokładnie tak samo
+jak `apply.sh` samo już to rozwiązuje dla siebie (patrz Część 6). Nigdy nie pisane w trybie scratch
+(nic tam nie dotyka żywego stanu) ani przy wczesnej odmowie (zły `--confirm-slug`, brakujący plik w
+snapshocie) — te nigdy nie dotknęły tenanta, więc nie mają czego zgłaszać.
+
+**Znalezione i naprawione w przeglądzie infrastrukturalnym, PRZED shippingiem — nie w drillu
+poniżej.** Pierwsza wersja tego skryptu (przetestowana end-to-end 2026-08-12, patrz 8.7a) miała
+tryb konserwacji zagnieżdżony WYŁĄCZNIE wewnątrz bloku bazy danych — `artisan up` uruchamiał się
+PRZED wypakowaniem wolumenów, a `--restore-live --confirm-slug <slug> --skip-db` wypakowywał
+prosto do żywych wolumenów **bez żadnego trybu konserwacji w ogóle**. Zielony przebieg end-to-end w
+8.7a dowiódł, że happy path działa — nie dowiódł, że ścieżki awaryjne są bezpieczne (usunięcie
+całej sekwencji konserwacji z kodu i tak dawało 15/15 zielonych testów w tamtym momencie, bo żaden
+test nie pinował SEKWENCJI, tylko same bramki). Poprawione, zweryfikowane REALNYM przebiegiem
+DRUGI raz (nie tylko fejkami w `tests/shell/`) — patrz 8.7c niżej.
+
+**Luka własności naprawiona po stronie przywracania.** 8.6 niżej opisuje, dlaczego backup ma
+`chown -R $(id -u):$(id -g)` po `cp -a`, a przywracanie do 2026-08-12 nie miało ODPOWIEDNIKA wcale —
+przywrócone pliki mogły wylądować nienadające się do zapisu dla realnego UID aplikacji.
+`tenant-restore.sh`'s `--restore-live` kończy KAŻDE wypakowanie do wolumenu jawnym
+`chown -R 1000:1000 /dest` (ADR-013, stały UID `laravel`) w tym samym uprzywilejowanym `docker run`
+co samo `tar -x` — nie zależy od UID hosta operatora (w przeciwieństwie do backupu, który celowo
+chowna na UID SIEBIE SAMEGO, nie aplikacji, dla innego celu — sprzątania katalogu stagingowego).
+Zweryfikowane wprost (8.7a, punkt 5) z UMYŚLNIE innym UID w danych źródłowych niż 1000 — bez tego
+`chown` przywrócone pliki lądowały nienapisywalne dla realnego procesu aplikacji, z nim — zapis się
+udawał.
+
+**`RESTIC_PASSWORD_FILE` nadpisywalne** tak samo jak `RESTIC_REPOSITORY` — patrz Część 6.
+
+Reszta tej Części (8.2–8.7) opisuje TĘ SAMĄ sekwencję ręcznie, poleceniami restica wprost — zostaw
+jako dokumentację tego, co skrypt robi pod spodem, i jako ścieżkę dla operacji, których skrypt nie
+pokrywa (np. częściowe wypakowanie jednego pliku z 8.6's kroku 1, albo przywracanie na maszynę, na
+której `tenant-restore.sh` jeszcze nie istnieje).
+
 ## 8.1 — Czym JEST i czym NIE JEST ten backup
 
 `tenant-backup.sh`/`apply.sh` backupują **jeden snapshot restica zawierający TRZY rzeczy**: zrzut
@@ -978,6 +1079,154 @@ deweloperskiej:
 Żaden z powyższych kroków nie dotknął serwera produkcyjnego ani deweloperskiej bazy/kontenerów tego
 repo.
 
+## 8.7a — Dowód, że `tenant-restore.sh` działa: pełny drill end-to-end (2026-08-12)
+
+> **Sprostowanie (patrz 8.7b, ten sam dzień):** ten drill przeszedł na WERSJI skryptu, w której
+> tryb konserwacji był zagnieżdżony wyłącznie w bloku bazy danych — `artisan up` (punkt 6 niżej)
+> uruchamiał się w rzeczywistości PRZED wypakowaniem obu wolumenów, nie po. Zielony wynik end-to-end
+> dowiódł, że happy path DZIAŁA (dane poprawne, `sha256sum` się zgadza) — nie dowiódł, że ta
+> KOLEJNOŚĆ jest bezpieczna. Zostawione tutaj bez edycji jako dokładny zapis tego, co się WTEDY
+> stało — poprawiona kolejność i jej osobna, realna weryfikacja są w 8.7c.
+
+Osobno od 8.5/8.7 (które testowały restica gołymi poleceniami) — pierwsze uruchomienie skryptu
+SAMEGO, przeciw prawdziwemu obrazowi `ghcr.io/patrykgielo/registro` (zbudowanemu lokalnie z tego
+brancha) i prawdziwemu `docker-compose.prod.yml` (sześć kontenerów: app/mysql/redis/nginx/horizon/
+scheduler), w piaskownicy poza tym repo. Zero dotknięcia serwera produkcyjnego, zero dotknięcia
+deweloperskiej bazy tego repo — osobny projekt Compose (`TENANT_PREFIX=tenant-drill`), osobne
+wolumeny, usunięte na końcu.
+
+1. **Postawiono stack, zmigrowano, zasadzono realne dane**: organizację, wpis `audit_logs` z
+   zaszyfrowanym `new_values` (potwierdzono odszyfrowanie od razu po zapisie), i po jednym pliku
+   tekstowym + binarnym (4 KiB losowych danych) w `storage-app-public` I `storage-app-private`,
+   zapisanym jako UID 1000 (realny `laravel`). Zanotowano `sha256sum` każdego. `curl .../up` → 200.
+2. **`tenant-backup.sh` uruchomiony BEZ ZMIAN** (ten sam plik co produkcja) — jeden snapshot restica
+   z `.sql` + oboma katalogami wolumenów, dokładnie jak w 7.8/8.1.
+3. **Tryb domyślny (scratch, bez `--restore-live`)** uruchomiony PODCZAS gdy stack wciąż żył:
+   66 tabel wczytanych do `registro_restore_verify` (NIE do żywej `registro`), pliki wypakowane do
+   `mktemp -d` na hoście. Potwierdzone: żywa baza (`SELECT ... FROM organizations`) i żywa aplikacja
+   (`curl .../up` → 200) nietknięte. `sha256sum` przywróconych plików identyczna z krokiem 1.
+   Zaszyfrowany wiersz z `audit_logs` odczytany wprost ze scratch-owej bazy (surowy `SELECT` +
+   `Crypt::decryptString` w tinkerze tego samego kontenera `app`, ten sam `APP_KEY`) — odszyfrował
+   się poprawnie.
+4. **Cztery bramki bezpieczeństwa zweryfikowane wprost**: `--target-db registro` (równe żywej
+   bazie) → odmowa, kod 2; `--restore-live` bez `--confirm-slug` → odmowa, kod 2; `--restore-live
+   --confirm-slug <zły-slug>` → odmowa, kod 2; `--restore-live --target-db X` razem → odmowa, kod 1.
+5. **Zniszczono CAŁY stack**: `docker compose down -v` (wszystkie kontenery i wolumeny tego
+   PROJEKTU, `tenant-drill_*` — nie dotyczy dev-stacka tego repo, osobny projekt Compose). Nowy,
+   pusty stack postawiony w jego miejsce: 0 tabel, katalogi `storage/app/*` bez znacznika, `curl
+   .../up` → 500.
+6. **`tenant-restore.sh ... --restore-live --confirm-slug drill`** uruchomiony przeciw temu pustemu
+   stackowi: `artisan down` → wczytanie `.sql` do ŻYWEJ `registro` → `horizon`/`scheduler` restart →
+   `artisan up` → 66 tabel potwierdzonych. Oba wolumeny wypakowane do żywych nazwanych wolumenów
+   Dockera z `chown -R 1000:1000`. Po zakończeniu: `curl .../up` → 200, `sha256sum` obu plików
+   (tekstowego i binarnego, oba katalogi) identyczna z krokiem 1, właściciel w wolumenie `1000:1000`,
+   `audit_logs` odszyfrowany POPRZEZ ŻYWĄ aplikację (`AuditLog::find($id)->new_values`, nie surowym
+   SQL) — poprawny. Dodatkowo: proces działający JAKO UID 1000 (`docker compose exec -u laravel`)
+   zapisał NOWY plik do przywróconego katalogu — nie tylko odczytał istniejący.
+7. **Naprawa własności zweryfikowana NIEZALEŻNIE od zbieżności UID hosta z UID aplikacji** (pułapka
+   nazwana w Fazie 2 wyżej) — bo `chown -R 1000:1000` w `tenant-restore.sh` jest LITERAŁEM, nie
+   `$(id -u)`, więc UID hosta operatora nigdy nie mógł jej zamaskować. Zamiast tego zbudowano
+   osobny, kontrolowany snapshot z zawartością jawnie oznakowaną UID 1002 (przykład `deploy` z
+   ADR-010) i wypakowano go DWA razy do świeżych wolumenów: bez `chown -R 1000:1000` → proces UID
+   1000 dostawał `Permission denied` przy próbie zapisu; z `chown -R 1000:1000` (dokładnie to, co
+   robi skrypt) → zapis się udawał. Dowód negatywny i pozytywny, ten sam wolumen inaczej wypakowany.
+8. **`RESTIC_PASSWORD_FILE` nadpisywalne, zweryfikowane wprost**: domyślny plik hasła przeniesiony
+   poza `BACKUP_DIR`, zmienna środowiskowa wskazana na kopię gdzie indziej — `restic snapshots`
+   (krok uwierzytelnienia) przeszedł mimo braku pliku w domyślnej lokalizacji.
+9. **Trzy nowe błędy w `tenant-restore.sh` przechwycone jako testy** (`tests/shell/cases/13-15`,
+   dowiedzione czerwone-potem-zielone przez tymczasowe cofnięcie każdej poprawki) — nie znaleziono
+   ich w tym drillu (skrypt zadziałał poprawnie za pierwszym uruchomieniem na każdej z tych ścieżek),
+   dodane jako trwałe regresje, bo bezpieczeństwo tych trzech bramek (confirm-slug, target-db≠live,
+   chown 1000:1000) jest dokładnie tym, co ten cały dokument obiecuje operatorowi.
+10. **Posprzątano w całości**: `docker compose down -v`, `docker rmi` obrazu `drill-test`, `git
+    worktree remove`, katalog piaskownicy usunięty. `docker ps -a`/`docker volume ls`/`docker
+    network ls` potwierdziły brak pozostałości po nazwie `tenant-drill`/`drill`.
+
+**Niezweryfikowane w tym drillu, wprost:** ścieżka `--restore-live` na maszynie, gdzie `deploy` (host
+operatora) NIE jest UID 1000 — krok 7 dowodzi, że fix jest UID-niezależny logicznie (literał, nie
+`$(id -u)`), ale samo URUCHOMIENIE `tenant-restore.sh --restore-live` z prawdziwego konta `deploy`
+(a nie mojego własnego, UID 1000) nie zostało wykonane. Osobno: crona/`apply.sh`'s automatyczny
+backup w tle podczas trwającego `--restore-live` (lock restica) nie był testowany — `restic backup`
+bierze blokadę WSPÓLNĄ (patrz kronika Faza 2 wyżej), więc kolizja jest teoretycznie możliwa, ale
+nieprzetestowana tutaj.
+
+## 8.7b — Drugi przegląd tego samego dnia: cztery realne luki na ścieżce `--restore-live`
+
+Recenzja odtworzyła (nie tylko przeczytała) cztery problemy w wersji skryptu z 8.7a — wszystkie
+potwierdzone w kodzie, nie różnicą opinii:
+
+1. **SEVERE — tryb konserwacji był zagnieżdżony wyłącznie w bloku bazy danych.** Dwie konsekwencje,
+   obie realne: `--restore-live --confirm-slug <slug> --skip-db` (zwykłe, udokumentowane wywołanie —
+   guard odmawia tylko przy OBU flagach `--skip-*` naraz) wypakowywało pliki prosto do żywych
+   wolumenów **bez jakiegokolwiek trybu konserwacji**; a na zwykłej ścieżce `artisan up` uruchamiał
+   się PRZED wypakowaniem wolumenów (8.7a, punkt 6) — aplikacja wracała na ruch z bazą odwołującą
+   się do zdjęć/logo/obrazów CMS wciąż w trakcie `tar -x`, dokładnie tej niespójności, przed którą
+   ma chronić jeden snapshot restica.
+2. **Nic nie bramkowało fazy plików awarią fazy bazy.** Nieudane wczytanie zrzutu logowało "app left
+   in maintenance mode… fix manually", ustawiało `RESTORE_FAILED=true`, i i tak leciało dalej do
+   wypakowania plików do żywych wolumenów.
+3. **Brak pułapek na sygnał.** Jedyny trap to `rm -f "$DUMP"` na EXIT, rozbrajany w połowie skryptu —
+   Ctrl-C, zerwane SSH albo timeout systemd w środku `artisan down`/wczytywania/`tar` zostawiały
+   tenanta w trybie konserwacji albo z połowicznie nadpisanym wolumenem, bez żadnego zapisu
+   tłumaczącego dlaczego.
+4. **`tenant-check.sh` mógł zgłosić fałszywie zdrowego tenanta.** `tenant-restore.sh` nigdy nie
+   pisało do `STATE_DIR/apply-status`, a `tenant-check.sh` ufa temu plikowi jako źródłu prawdy —
+   nieudany albo zabity live restore zostawiał tenanta zepsutego, podczas gdy status wciąż czytał
+   się jako `OK` z ostatniego udanego `apply`.
+
+**Naprawa:** JEDNO okno trybu konserwacji (`artisan down` → `horizon`/`scheduler` stop) obejmuje OBIE
+fazy niezależnie od `--skip-db`/`--skip-files`; faza plików NIGDY nie startuje, jeśli faza bazy już
+zawiodła; `on_exit`/`on_signal` skopiowane z dokładnie tego samego wzorca co `apply.sh`
+(bezwarunkowy zapis `RUNNING` na `STATE_DIR/apply-status` w momencie wejścia w tryb konserwacji,
+`FAILED` z powodem przy każdej awarii/sygnale, `OK` dopiero po pełnym sukcesie) — patrz 8.0 dla
+pełnego opisu kolejności. Osobno: `tenant-restore.sh`'s własny `clear_maintenance()` CELOWO **nigdy**
+nie próbuje sam wywołać `artisan up` (w przeciwieństwie do `apply.sh`'s odpowiednika) — restore ma
+DWIE zależne fazy, a auto-leczenie na przerwaniu, które wylądowało między nimi, ryzykowałoby dokładnie
+tę samą niespójność co błąd #1. Człowiek potwierdzający ręcznie spójność bazy i plików przed wpisaniem
+`artisan up` jest tu świadomie bezpieczniejszym domyślnym zachowaniem niż auto-czyszczenie, które ma
+`apply.sh` (gdzie pojedynczy, niezależny krok migracji na to pozwala).
+
+Trzy nowe testy pinujące SEKWENCJĘ, nie same bramki (`tests/shell/cases/16-18`) — każdy dowiedziony
+czerwono-potem-zielono przez podstawienie DOKŁADNEJ starej (błędnej) wersji skryptu i potwierdzenie,
+że test się wywraca dokładnie na opisanym problemie (np. test 16 złapał `artisan up` PRZED plikami;
+test 17 złapał brak `artisan down` przy `--skip-db`; test 18 złapał wypakowanie plików po awarii
+bazy) — nie na czymś przypadkowym.
+
+## 8.7c — Realna, druga weryfikacja NAPRAWIONEJ wersji (2026-08-12, ten sam dzień)
+
+**Zielony przebieg w 8.7a dowiódł tylko happy path — nie ścieżek awaryjnych** (8.7b, wprost). Żeby
+nie powtórzyć tego samego błędu przy poprawce, poprawiona wersja została uruchomiona PONOWNIE
+przeciw prawdziwemu obrazowi i prawdziwemu stackowi (nie tylko przez `tests/shell/`'s fejki):
+
+1. Odtworzono dokładnie ten sam drill co 8.7a (nowy build `drill-test`, świeży `git worktree`,
+   sześć kontenerów, dane zasadzone, `tenant-backup.sh` bez zmian) — `curl .../up` → 200.
+2. **Happy path, prawdziwy przebieg:** `docker compose down -v` (cały projekt `tenant-drill_*`) →
+   świeży pusty stack → `tenant-restore.sh drill latest --restore-live --confirm-slug drill`. Log
+   skryptu pokazuje kolejność WPROST: `artisan down` → „Live database restored: 66 table(s)” →
+   „storage-app-public restored” → „storage-app-private restored” → „Application is now live.” —
+   pliki PRZED `artisan up`, nie po, tym razem naprawdę. `curl .../up` → 200, `sha256sum` obu
+   plików identyczna z oryginałem, `STATE_DIR/apply-status` czyta `OK drill-test … restored from
+   snapshot latest`.
+3. **Prawdziwa awaria fazy bazy, nie symulowana:** `DB_ROOT_PASSWORD` w `.env.secrets` podmienione
+   na złe (kontener mysql wciąż ma PRAWDZIWE, oryginalne hasło zaszyte przy starcie — to daje
+   realny `Access denied`, nie fejk). `tenant-restore.sh --restore-live` → `artisan down` udane →
+   wczytanie zrzutu PADA (prawdziwy błąd MySQL) → skrypt kończy się kodem 3 **bez jednej linii logu
+   o wypakowywaniu plików**. Potwierdzone NIEZALEŻNIE od logu: `horizon`/`scheduler` nadal
+   `Exited (137)`, `STATE_DIR/apply-status` czyta `FAILED … loading dump into live registro failed`.
+4. **Odzyskanie:** przywrócono poprawne `DB_ROOT_PASSWORD`, ponowiono DOKŁADNIE tę samą komendę —
+   pełny sukces, `curl .../up` → 200, `apply-status` → `OK`. Operator naprawiający przyczynę i
+   ponawiający komendę wraca do zdrowego stanu bez ręcznej interwencji poza samą naprawą hasła.
+5. Posprzątano w całości (`docker compose down -v`, `git worktree remove`, `docker rmi
+   drill-test`) — potwierdzone brak pozostałości `tenant-drill`/`drill` w `docker ps -a`/`volume
+   ls`/`network ls`.
+
+**Niezweryfikowane nadal, wprost:** prawdziwe zabicie sygnałem (SIGTERM/Ctrl-C) w trakcie
+`--restore-live` — `on_exit`/`on_signal` zweryfikowane logicznie (ten sam wzorzec co `apply.sh`,
+którego własna reprodukcja SIGTERM jest już udokumentowana w `ci-cd-troubleshooting.md`), ale NIE
+reprodukowane wprost dla `tenant-restore.sh` samego (wymagałoby wstrzykniętego opóźnienia jak przy
+oryginalnej reprodukcji `apply.sh`). Ścieżka `--restore-live` z realnego konta `deploy` (UID inny
+niż 1000) — wciąż niewykonana, jak w 8.7a.
+
 ---
 
 # Czego ten dokument jeszcze nie umie
@@ -998,7 +1247,10 @@ Uczciwa lista, żeby nie zaskoczyła Cię w trakcie:
   snapshoty backupu (sprzed zamknięcia) zawierają nieanonimizowane dane osobowe na zawsze, bo
   anonimizacja dotyka tylko żywej bazy.
 - ~~Nie ma tu przywracania z backupu~~ — naprawione: Część 8, przetestowane end-to-end 2026-08-09
-  (patrz 8.5).
+  (patrz 8.5). ~~Ręczne przywracanie było tylko prozą do przepisania, nic w repo nie CZYTAŁO
+  snapshota~~ — naprawione 2026-08-12: `scripts/server/tenant-restore.sh`, bezpieczny domyślnie
+  (tryb scratch), `--restore-live --confirm-slug` dla ścieżki destrukcyjnej, przetestowany
+  end-to-end (patrz 8.0, 8.7a).
 - ~~Pliki klienta (`storage-app-public`/`storage-app-private`) nie są objęte backupem w ogóle~~ —
   naprawione (Faza 2 planu dwóch maszyn): objęte tym samym snapshotem restica co baza, przetestowane
   end-to-end 2026-08-10 (patrz 7.8, 8.1, 8.6, 8.7).
@@ -1164,15 +1416,25 @@ ssh deploy@<docelowa> '/opt/registro/apply.sh nazwaklienta v0.14.0 klient.pl'
 Log powinien pokazać dokładnie: `Not yet provisioned and no --name/--owner-email/--owner-name
 given -- infra is up, organization is not.` — to jest oczekiwany, POŚREDNI stan, nie błąd.
 
-**Krok 6 — przywróć bazę.** Dokładnie Część 8.3/8.4, z jedną zmianą: `RESTIC_REPOSITORY`/
-`RESTIC_PASSWORD_FILE` wskazują na przeniesiony katalog (`./nazwaklienta-backup/repo` /
-`./nazwaklienta-backup/password`), nie na `/opt/registro/tenant-backups/...` na maszynie, która go
-nie ma. `restic ls latest`/`restic dump` mogą działać z DOWOLNEJ maszyny mającej dostęp do repo i
-hasła — nie muszą biec na docelowej maszynie, ale samo wczytanie do MySQL (`mysql -uroot -p...`)
-musi, bo to tamtejszy kontener `mysql`.
+**Krok 6+7 — przywróć bazę i pliki, w jednym poleceniu na docelowej maszynie.** Od 8.0,
+`tenant-restore.sh` respektuje `RESTIC_REPOSITORY`/`RESTIC_PASSWORD_FILE` jako override — ustaw je
+na przeniesiony katalog (`./nazwaklienta-backup/repo` / `./nazwaklienta-backup/password`), nie na
+`/opt/registro/tenant-backups/...` na maszynie, która go jeszcze nie ma, i uruchom **na docelowej
+maszynie** (musi biec tam, bo dotyka jej kontenera `mysql` i jej wolumenów):
 
-**Krok 7 — przywróć pliki.** Dokładnie Część 8.6 (root-extract + `chown -R 1000:1000`), dwa razy —
-`storage-app-public` i `storage-app-private` — z tego samego przeniesionego repo co krok 6.
+```bash
+ssh deploy@<docelowa> '
+  RESTIC_REPOSITORY=/opt/registro/nazwaklienta-backup/repo \
+  RESTIC_PASSWORD_FILE=/opt/registro/nazwaklienta-backup/password \
+  /opt/registro/tenant-restore.sh nazwaklienta latest --restore-live --confirm-slug nazwaklienta'
+```
+
+To zastępuje osobne kroki 6 (Część 8.3/8.4) i 7 (Część 8.6, root-extract + `chown -R 1000:1000`)
+jednym wywołaniem — sama procedura ręczna (8.3/8.4/8.6) zostaje jako opis tego, co się dzieje pod
+spodem, i jako ścieżka na maszynę, gdzie `tenant-restore.sh` jeszcze nie istnieje.
+`restic ls`/`restic dump` same w sobie mogą działać z DOWOLNEJ maszyny mającej dostęp do repo i
+hasła (przydatne do samej weryfikacji zawartości snapshota bez dotykania docelowego stacka) — ale
+to konkretne polecenie musi biec na docelowej maszynie w całości.
 
 **Krok 8 — zweryfikuj.** Wszystkie sześć punktów z 9.5, bez wyjątków, zanim oddasz klientowi.
 
@@ -1541,3 +1803,5 @@ część jako dobrze uzasadnioną hipotezę, nie jako dowód.
 | 2026-08-10 | Faza 2 planu dwóch maszyn: `tenant-backup.sh`/`apply.sh` obejmują teraz `storage-app-public`/`storage-app-private` w tym samym snapshocie co bazę (7.6, 7.8, 8.1, nowa Część 8.6/8.7, przetestowane end-to-end). Krok 7.5 zaktualizowany — zatrzymany kontener dedykowanego stacka już nie zamraża certyfikatu dla innych tenantów (`sync-certificate.sh` czyta `TENANT_HOSTS` z `.env`, nie z żywego kontenera). |
 | 2026-08-10 | Faza 3 planu dwóch maszyn: nowa Część 9 — przeniesienie klienta między maszynami / zmiana domeny (S3/S4/S8), przetestowana end-to-end (9.6). Przy okazji znaleziony i naprawiony realny bug: `stage_volume()` w `apply.sh`/`tenant-backup.sh` nigdy nie ustawiały `--entrypoint`, więc backup obu wolumenów storage tworzył pusty snapshot na prawdziwym obrazie (zgłaszane jako DEGRADED, łatwe do przeoczenia, bo zrzut bazy szedł poprawnie) (ten obraz ma własny entrypoint odmawiający startu jako root). |
 | 2026-08-10 | Faza 4 planu dwóch maszyn: nowa Część 10 — postawienie maszyny PreProd od zera, legacy-free (checkout jako katalog sterujący, minimalny `.env`, pierwszy certyfikat i przełączenie brzegu bez cutoveru, bo nie ma starego nginxa do zwolnienia), sizing zapisany jako decyzja. `setup-production-server.sh`'s domykający wydruk rozdzielony na ścieżki 3a (legacy)/3b (control-plane-only). **Nic z Części 10 nigdy nie zostało uruchomione** — maszyna nie istnieje. |
+| 2026-08-12 | Dodano `scripts/server/tenant-restore.sh` — do teraz Część 8 była prozą do ręcznego przepisania, nic w repo nie CZYTAŁO snapshota restica. Nowa Część 8.0 (opis), 8.7a (drill end-to-end: build lokalny obrazu, prawdziwy 6-kontenerowy stack, backup → zniszczenie CAŁEGO stacka (kontenery+wolumeny) → `--restore-live` → `sha256sum` identyczna, `audit_logs` odszyfrowany przez żywą aplikację, cztery bramki bezpieczeństwa zweryfikowane, naprawa własności dowiedziona NIEZALEŻNIE od zbieżności UID hosta z UID aplikacji). `RESTIC_PASSWORD_FILE` nadpisywalne (jak `RESTIC_REPOSITORY` już było) w `tenant-backup.sh`/`apply.sh`/`tenant-restore.sh` — Część 6 zaktualizowana z krokami do faktycznego domknięcia disaster recovery (kopia hasła poza maszyną). Krok 6+7 Części 9 skrócony do jednego wywołania skryptu. Trzy nowe testy `tests/shell/cases/13-15` (confirm-slug, target-db≠live, chown 1000:1000), wszystkie dowiedzione czerwone-potem-zielone. |
+| 2026-08-12 | Drugi przegląd tego samego dnia znalazł cztery realne luki w `tenant-restore.sh`'s `--restore-live`, wszystkie potwierdzone reprodukcją: tryb konserwacji zagnieżdżony tylko w bloku bazy (`artisan up` przed plikami; `--skip-db` wypakowywał pliki bez ŻADNEGO trybu konserwacji), brak bramki fazy plików na awarię fazy bazy, brak pułapek na sygnał, brak zapisu `STATE_DIR/apply-status` (fałszywie zdrowy tenant w `tenant-check.sh`). Naprawione: jedno okno konserwacji na obie fazy, gate na awarię, `on_exit`/`on_signal` wzorem `apply.sh` (`clear_maintenance()` celowo NIGDY nie auto-leczy — restore ma dwie zależne fazy, `apply.sh` ma jedną). Trzy nowe testy pinujące SEKWENCJĘ, nie same bramki (`tests/shell/cases/16-18`), każdy dowiedziony czerwono-potem-zielono przez podstawienie dokładnej starej wersji. Nowa Część 8.7b (opis luk) i 8.7c (druga, realna weryfikacja: happy path z poprawną kolejnością w logu, prawdziwa awaria auth MySQL potwierdzająca brak dotknięcia plików i status `FAILED`, odzyskanie przez ponowienie). |
