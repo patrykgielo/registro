@@ -624,3 +624,98 @@ przepuści, a coś DALEJ zawiedzie) to dwie różne własności — pierwszy nie
 naprawie znalezionej w REVIEW (nie w drillu) — powtórz przynajmniej skróconą wersję realnego drillu
 na poprawionym kodzie, nie tylko testy jednostkowe z fejkami: fejki potwierdzają KOLEJNOŚĆ wywołań,
 nie że prawdziwa infrastruktura tak zareaguje.
+
+## Incydent 2026-08-12: lokalny nginx nie startował bez kontenera `node` — literalny `proxy_pass`/`fastcgi_pass` do nazwy kontenera
+
+Obserwowane na żywo w tej sesji: `registro-node` (Vite dev server, `npm run dev`) wyszedł/nie
+działał; `registro-nginx` był w pętli restartów, `curl` na `https://registro.local:8444` zwracał
+exit 7 (connection refused). Log: `[emerg] host not found in upstream "registro-node"`.
+
+**Przyczyna:** `docker/nginx/default.conf` miało `proxy_pass https://registro-node:5173;` zapisane
+literalnie w dwóch lokacjach obsługujących Vite HMR (`/@vite/` i `~ ^/(resources|@id|node_modules)/`).
+nginx rozwiązuje literalny upstream w `proxy_pass`/`fastcgi_pass` RAZ, przy starcie/reload configu —
+brak kontenera w tym dokładnie momencie wywala start CAŁEGO pliku, nie tylko tych dwóch lokacji,
+bo wszystkie dzielą jeden `server {}`. To zderzało się wprost ze standardową zasadą tego projektu
+(`CLAUDE.md`): nigdy `npm run dev`, zawsze `docker compose exec -T app npm run build` — środowisko
+było niemożliwe do uruchomienia we własnej sankcjonowanej konfiguracji.
+
+Ten sam kształt błędu (osobny bug, nie ta sama linia) był w `docker/nginx/staging/app.staging.conf`:
+`fastcgi_pass app:9000;` literalnie — brak kontenera `app` przy starcie/reload wywalał cały plik,
+identyczny mechanizm jak wyżej, inny upstream.
+
+**Naprawa:** wzorzec już istniejący w repo (`docker/nginx/production/app.prod.conf`,
+`docker/nginx/edge/tenants.d/_example.conf.disabled`) — `resolver 127.0.0.11 valid=5s ipv6=off;`
+(Docker's embedded DNS) + `set $upstream_x host:port;` + `proxy_pass $upstream_x;`/
+`fastcgi_pass $upstream_x;`. Zmienna odracza rozwiązanie nazwy do czasu żądania: zatrzymany
+kontener 502-uje TYLKO własne lokacje, reszta configu wstaje normalnie. Jedna pułapka do
+sprawdzenia przy `proxy_pass`/`fastcgi_pass` z URI (nie tu, ale dla przyszłych podobnych fixów):
+nginx nie potrafi w czasie parsowania rozstrzygnąć, czy zmienna zawiera część URI, więc zawsze
+traktuje to jak "bez URI" — czyli oryginalny URI żądania leci bez zmian, dokładnie tak samo jak
+literalny `proxy_pass host:port;` bez ścieżki (potwierdzone: [nginx docs, ngx_http_proxy_module,
+sekcja proxy_pass](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass) — "if the
+address is specified without a URI, or it is not possible to determine the part of URI to be
+replaced, the full request URI is passed").
+
+`app.staging.conf` ma DODATKOWO `resolver 8.8.8.8 8.8.4.4 valid=300s;` na poziomie `server` — dla
+OCSP stapling, publiczny DNS, nie zna nazw kontenerów Dockera. `resolver` per-`location` nadpisuje
+`resolver` z `server` TYLKO w tej lokacji — więc drugi `resolver 127.0.0.11 ...;` poszedł do środka
+`location ~ \.php$`, zostawiając OCSP na publicznym DNS nietkniętym. Dodanie drugiego `resolver` w
+TYM SAMYM kontekście (co próbowałem najpierw w `default.conf`, gdzie już był jeden na poziomie
+`server`) kończy się `nginx: [emerg] "resolver" directive is duplicate` — złapane od razu przez
+`nginx -t`/rzeczywisty restart, nie zostawione w kodzie.
+
+**Zweryfikowane uruchomieniem, nie czytaniem:** `node` zatrzymany → `docker compose restart nginx`
+→ kontener wstał czysto (bez `[emerg]`, bez pętli restartów), `curl` na `/` → 200, HTML odwołuje się
+do `build/assets/...`, nie `@vite` (bo `public/hot` nie istniał — assety poprawnie zbudowane);
+pobranie realnego pliku CSS/JS z `build/assets/` → 200 z poprawnym `content-type`; `/@vite/client`
+→ 502, nginx nadal `Up` po tym żądaniu. `app`/`mysql`/`redis` NIE przebudowane (te same ID kontenerów
+przed i po). `app.staging.conf` zweryfikowany WYŁĄCZNIE przez `nginx -t` w jednorazowym kontenerze
+(bez certów Let's Encrypt, syntetyczny self-signed) — nie uruchomiony przeciw prawdziwemu ruchowi
+staging, bo taki serwer w tej sesji nie istniał do przetestowania.
+
+**Test — pierwsza wersja (grep) obalona w review, druga wersja (prawdziwy `nginx -t`) zastąpiła ją
+całkowicie:** pierwsza wersja `tests/shell/cases/19_nginx_no_hardcoded_proxy_upstream.sh` była
+statyczną analizą regexem `(proxy_pass|fastcgi_pass)\s+host:port;` nad całym drzewem
+`docker/nginx/**/*.conf*`. Review odtworzyło DWA obejścia, oba nadal wywalające nginx dokładnie jak
+oryginalny bug:
+1. Spacja przed średnikiem (`proxy_pass https://host:port ;`) — regex wymagał `:[0-9]+;` bez
+   spacji, więc formatowanie edytora go omijało.
+2. Blok `upstream nodeup { server host:port; }` + `proxy_pass http://nodeup;` — zero trafień
+   regexa. GORSZE niż pierwsze obejście: `resolve=` na linii `server` wewnątrz `upstream {}` to
+   funkcja WYŁĄCZNIE nginx-plus, więc sztuczka ze zmienną, którą ta reguła rekomenduje jako
+   naprawę, w ogóle nie da się tu zastosować — regex rekomendujący niedziałającą naprawę jest
+   gorszy niż brak checka.
+
+**Zasada (transferowalna, nie tylko dla tego pliku):** regex statyczny pinuje PISOWNIĘ dzisiejszego
+błędu, nie WŁASNOŚĆ. Obie luki były pisownią, której regex nie przewidział. Gdzie prawdziwa
+własność jest tanio wykonywalna (tu: `docker run --rm --network none ... nginx -t` — nginx albo
+startuje, albo nie), wykonaj ją naprawdę zamiast przybliżać tekstowym dopasowaniem.
+
+**Druga wersja — prawdziwe `nginx -t`:** case uruchamia `nginx:1.25-alpine` z `--network none`
+(deterministycznie nierozwiązywalny upstream, offline, niezależnie od tego, jakie kontenery akurat
+żyją na jakiejkolwiek sieci mostkowej) przeciw (1) obu prawdziwym, naprawionym plikom z repo —
+muszą wystartować czysto — oraz (2) trzem syntetycznym, znanym-złym kształtom (literał oryginalny,
+literał ze spacją, blok `upstream {}`) — każdy MUSI wywalić `nginx -t`. Dowiedzione
+czerwono-potem-zielono na PRAWDZIWYCH plikach z repo (nie tylko syntetykach): `git stash` obu
+naprawionych plików → FAIL, złapane dokładnie `default.conf` (`registro-node`) i
+`app.staging.conf` (`app`); `git stash pop` → PASS. Wszystkie trzy syntetyczne złe kształty →
+exit 1; naprawiona forma zmiennej → exit 0.
+
+**Koszt czasowy — świadomy kompromis, nie przeoczenie:** `tests.md` twierdzi, że cały pakiet
+działa "w dobrze poniżej sekundy, offline, bez prawdziwego demona Dockera". Ten JEDEN case łamie
+to twierdzenie: `--network none` i tak dziedziczy `/etc/resolv.conf` HOSTA (kopiowany przez Dockera
+nawet bez sieci), więc synchroniczny resolver libc dla literalnego upstreamu próbuje go realnie
+osiągnąć zanim podda — ~5,2 s na zły kształt z gołym `--network none`. Nadpisanie
+`/etc/resolv.conf` na `nameserver 127.0.0.1` + `options timeout:1 attempts:1` (adres loopback bez
+nasłuchującego procesu, szybka porażka zamiast pełnego cyklu timeoutu) tnie to do ~1,2 s na zły
+kształt. Cały case: ~4,5 s. Cały pakiet (18 pozostałych testów + ten): ~5,3 s zamiast <1 s.
+Uznane za wart tego kosztu, bo alternatywa (regex) dowiedziona jako przepuszczająca realne błędy,
+jeden z nich niemożliwy do naprawienia wzorcem, który regex by "wykrył jako nieobecny".
+
+**Sprawdzone dokumenty:** README.md i `docker-init.sh` (jedyna udokumentowana ścieżka "quick
+start") uruchamiają `docker compose up -d --build` bez wskazywania serwisów — `node` wstaje
+automatycznie, więc żaden udokumentowany happy path nie trafiał na ten bug wprost. Trafiał na niego
+deweloper, którego `node` już nie działał (crash `npm install`, ręczne `docker compose stop node`,
+albo — jak w tej sesji — kontener po prostu wyszedł) i który potem zrestartował/przebudował `nginx`.
+`composer run dev` to osobna, nie-Dockerowa ścieżka (`npx concurrently` + `php artisan serve` +
+`npm run dev` na hoście) — nie dotyka tego pliku w ogóle.
