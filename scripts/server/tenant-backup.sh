@@ -88,9 +88,14 @@ readonly REGISTRO_IMAGE="ghcr.io/patrykgielo/registro:${REGISTRO_IMAGE_TAG}"
 
 BACKUP_DIR="${BACKUP_ROOT}/${SLUG}"
 mkdir -p "$BACKUP_DIR"
-[ -f "${BACKUP_DIR}/password" ] || die "${BACKUP_DIR}/password missing -- this stack's backup repository was never initialized by apply.sh" 2
+# RESTIC_PASSWORD_FILE overridable same as RESTIC_REPOSITORY -- the default
+# keeps the password next to the repo it unlocks, on the same disk, which is
+# disk redundancy, not disaster recovery (see instalacja-tenanta-od-zera.md
+# Część 6/8.1: if this disk dies, the password dies with it). An operator who
+# has moved a copy elsewhere (password manager, second host) points here.
 export RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-${BACKUP_DIR}/repo}"
-export RESTIC_PASSWORD_FILE="${BACKUP_DIR}/password"
+export RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-${BACKUP_DIR}/password}"
+[ -f "$RESTIC_PASSWORD_FILE" ] || die "${RESTIC_PASSWORD_FILE} missing -- this stack's backup repository was never initialized by apply.sh" 2
 
 restic snapshots >/dev/null 2>&1 || die "restic repository at ${RESTIC_REPOSITORY} is not initialized -- run apply.sh first" 2
 

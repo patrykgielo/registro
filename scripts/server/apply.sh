@@ -1206,6 +1206,15 @@ done
 
 BACKUP_FAILED=false
 BACKUP_DIR="${BACKUP_ROOT}/${SLUG}"
+export RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-${BACKUP_DIR}/repo}"
+# Overridable same as RESTIC_REPOSITORY -- the default keeps the password
+# next to the repo it unlocks, on the same disk, which is disk redundancy,
+# not disaster recovery (instalacja-tenanta-od-zera.md Część 6/8.1: if this
+# disk dies, the password dies with it). An operator who has moved a copy
+# elsewhere (password manager, second host) points here; the default is
+# unchanged so a machine with no override keeps exactly today's behaviour.
+export RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-${BACKUP_DIR}/password}"
+
 # Guarded, not a bare `mkdir -p` -- found while testing the DEGRADED path:
 # an unwritable BACKUP_ROOT (permissions, a full disk, /opt/registro not
 # provisioned yet) previously died here UNCAUGHT, under `set -e`, before
@@ -1216,14 +1225,11 @@ BACKUP_DIR="${BACKUP_ROOT}/${SLUG}"
 if ! mkdir -p "$BACKUP_DIR" 2>>"$LOG_FILE"; then
     log "ERROR: could not create ${BACKUP_DIR} -- see ${LOG_FILE}"
     BACKUP_FAILED=true
-elif [ ! -f "${BACKUP_DIR}/password" ] \
-        && { ! openssl rand -base64 32 >"${BACKUP_DIR}/password" 2>>"$LOG_FILE" || ! chmod 600 "${BACKUP_DIR}/password"; }; then
-    log "ERROR: could not create ${BACKUP_DIR}/password -- see ${LOG_FILE}"
+elif [ ! -f "$RESTIC_PASSWORD_FILE" ] \
+        && { ! openssl rand -base64 32 >"$RESTIC_PASSWORD_FILE" 2>>"$LOG_FILE" || ! chmod 600 "$RESTIC_PASSWORD_FILE"; }; then
+    log "ERROR: could not create ${RESTIC_PASSWORD_FILE} -- see ${LOG_FILE}"
     BACKUP_FAILED=true
 fi
-
-export RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-${BACKUP_DIR}/repo}"
-export RESTIC_PASSWORD_FILE="${BACKUP_DIR}/password"
 
 if [ "$BACKUP_FAILED" = true ]; then
     :  # already logged above; skip straight to the pin/status step below
