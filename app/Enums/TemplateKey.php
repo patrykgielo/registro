@@ -54,6 +54,8 @@ enum TemplateKey: string
     case ORDER_PAID = 'order-paid';
     case ORDER_CONFIRMED = 'order-confirmed';
     case ORDER_CANCELLED = 'order-cancelled';
+    case ORDER_HANDED_OVER = 'order-handed-over';
+    case ORDER_RETURNED = 'order-returned';
     case ADMIN_NEW_ORDER = 'admin-new-order';
 
     // ── Rental lifecycle (Email only) ────────────────────────────
@@ -90,6 +92,8 @@ enum TemplateKey: string
             self::ORDER_PAID => 'Potwierdzenie zamówienia',
             self::ORDER_CONFIRMED => 'Zamówienie potwierdzone',
             self::ORDER_CANCELLED => 'Zamówienie anulowane',
+            self::ORDER_HANDED_OVER => 'Sprzęt wydany klientowi',
+            self::ORDER_RETURNED => 'Sprzęt zwrócony',
             self::ADMIN_NEW_ORDER => 'Nowe zamówienie (admin)',
             self::RENTAL_CANCELLED => 'Wypożyczenie anulowane',
             self::RENTAL_EXTENSION_REQUESTED => 'Wniosek o przedłużenie (admin)',

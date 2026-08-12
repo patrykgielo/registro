@@ -44,9 +44,12 @@ pending_payment → paid → confirmed → in_progress → completed
 - `pending_payment` has `expires_at` TTL (20 min) — expired orders are cleaned up by scheduled job
 - Inventory is blocked by: `paid`, `confirmed`, `in_progress`, and non-expired `pending_payment`
 - Each transition stamps a timestamp column via `OrderStatusStateMachine::afterTransitionHooks()`
-  (`confirmed`/`cancelled` also dispatch domain events there) or at the call site
+  (`confirmed`/`in_progress`/`cancelled` also dispatch domain events there, `completed` dispatches
+  one alongside its timestamp write) or at the call site
   (`paid_at` in `Przelewy24Service`, `cancelled_at` in `OrderService::cancel()`):
   `paid_at`, `cancelled_at`, `completed_at` — all null until their transition first fires.
+  `in_progress` deliberately has no timestamp column of its own — see
+  `app/docs/features/order-notifications.md` for why the `OrderHandedOver` event is its only record.
   They are **not** all write-once, and that asymmetry is intentional, not an oversight:
   - `completed_at` IS write-once — `completed`'s only outgoing edge is `refunded` (terminal),
     so nothing ever routes back into `in_progress`, and the hook's null-guard is
@@ -202,6 +205,19 @@ already moved. This shape predates the `completed_at` fix (2026-08) and is not i
 or worsened by it; fixing it (wrapping `transitionTo()` + the timestamp write in one
 transaction at each of the ~4 call sites) is a separate, cross-cutting change, not
 attempted here.
+
+**Related, same root cause:** the `event(new OrderConfirmed/OrderHandedOver/OrderReturned/
+OrderCancelled($model))` calls inside these same hooks queue a job (`SendQueuedNotifications`)
+**synchronously** — the push to the broker happens inline, in the same PHP call stack as the
+hook. If the broker is unreachable (e.g. Redis down), that push throws, propagates out of
+`afterTransitionHooks()`, and lands in the same `try/catch` in `OrderResource`/`EditOrder` that
+shows "Nie można zmienić statusu" — even though the state machine's own write (status +
+`state_histories` + the timestamp column) already committed a moment earlier, for the exact
+reason described above. The admin sees a failure toast for an action that actually succeeded.
+Pre-existing and identical for `confirm`/`cancel` (both dispatch an event from the same
+un-transacted hook mechanism) — `feature/handover-return-emails` (2026-08-12) doubles the
+surface by adding two more transitions that dispatch events the same way, but does not
+introduce the underlying issue.
 
 ---
 
