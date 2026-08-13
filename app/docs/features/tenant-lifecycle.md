@@ -441,7 +441,9 @@ The `file` param is part of the signature (`URL::temporarySignedRoute(…, ['org
 
 ### 7.5 Notification — `app/Notifications/OrganizationDataExportReadyNotification.php`
 
-`implements ShouldQueue, ShouldBeUnique`; `onQueue('emails')`; `via = ['mail']`. `uniqueId() = 'data-export:{orgId}'`, `uniqueFor() = 3600` — prevents duplicate emails on retry/re-run. Constructor `(string $downloadUrl, string $organizationName, int $organizationId)`. PL `MailMessage` with `->action('Pobierz dane firmy', $url)`, cites art. 28(3)(g) RODO and the 7-day validity. Sent to `$org->owner`.
+`implements ShouldQueue, ShouldBeUnique`; `onQueue('emails')`; `via = ['mail']`. `uniqueId() = 'data-export:{orgId}'`, `uniqueFor() = 3600`.
+
+> **Sprostowanie 2026-08-12 — ta deduplikacja NIE DZIAŁA.** `ShouldBeUnique` na notyfikacji jest w Laravelu 12.60.2 martwe: `NotificationSender` dispatchuje `SendQueuedNotifications` przez `Bus::dispatch`, a lock zakłada wyłącznie `PendingDispatch`. Zweryfikowane w źródle i empirycznie (5 odbiorców → 5 dostarczeń). Skutek dla tego konkretnego maila: **ponowne uruchomienie eksportu wyśle właścicielowi kolejny podpisany link do paczki z danymi osobowymi**, wbrew temu, co obiecywał ten akapit. Jedyna realna ochrona to `message_key` w `EmailService`. Patrz `.claude/rules/notifications.md`. Constructor `(string $downloadUrl, string $organizationName, int $organizationId)`. PL `MailMessage` with `->action('Pobierz dane firmy', $url)`, cites art. 28(3)(g) RODO and the 7-day validity. Sent to `$org->owner`.
 
 ### 7.6 Documented refactor debt
 
@@ -518,7 +520,9 @@ Append-only (`const UPDATED_AT = null`, `created_at` only), **unscoped** (no `Be
 
 ### Notification — `app/Notifications/OrganizationClosureRequestedNotification.php`
 
-`ShouldQueue` on the `emails` queue, sent to `User::role('super-admin')->get()`. **Deliberately NOT `ShouldBeUnique`**: Laravel dispatches one job per notifiable, all sharing a single org-keyed lock, so only the first super-admin would receive the mail (silent fan-out loss). The atomic `closure_requested_at` guard already prevents duplicate requests, so per-job dedup is both unnecessary and harmful here. Mail body carries only requester name/email + org name/slug (proportionate, internal, Art. 6(1)(b)).
+`ShouldQueue` on the `emails` queue, sent to `User::role('super-admin')->get()`. **Deliberately NOT `ShouldBeUnique`**, and the atomic `closure_requested_at` guard prevents duplicate requests at the source — which is the right place for it.
+
+> **Sprostowanie 2026-08-12 — uzasadnienie było błędne, decyzja przypadkiem słuszna.** Ten akapit mówił, że `ShouldBeUnique` sprawiłby, iż tylko pierwszy super-admin dostanie mail. To nieprawda: interfejs jest na notyfikacjach martwy w Laravelu 12.60.2, więc niczego by nie zepsuł — ani nie ochronił. Zweryfikowane empirycznie: 5 odbiorców → 5 dostarczeń. Dedup u źródła jest właściwy niezależnie od tego. Patrz `.claude/rules/notifications.md`. Mail body carries only requester name/email + org name/slug (proportionate, internal, Art. 6(1)(b)).
 
 ---
 
