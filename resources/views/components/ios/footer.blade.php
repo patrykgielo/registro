@@ -5,34 +5,45 @@
             <div>
                 @php
                     $settings = app(\App\Support\Settings\SettingsManager::class);
+                    $__footerLogo = $settings->footerLogo();
                 @endphp
                 <div class="mb-4">
-                    <img
-                        src="{{ $settings->footerLogo() }}"
-                        alt="{{ $settings->logoAlt() }}"
-                        class="h-10 w-auto"
-                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-                    >
-                    {{-- Fallback badge if logo fails to load --}}
-                    <div class="hidden w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 items-center justify-center">
-                        <span class="text-white font-bold text-xl">P</span>
-                    </div>
+                    @if($__footerLogo)
+                        <img
+                            src="{{ $__footerLogo }}"
+                            alt="{{ $settings->logoAlt() }}"
+                            class="h-10 w-auto"
+                            onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                        >
+                        {{-- Fallback text if the configured logo URL fails to load --}}
+                        <span class="hidden text-lg font-semibold text-dark-primary tracking-tight">{{ $settings->appName() }}</span>
+                    @else
+                        <span class="text-lg font-semibold text-dark-primary tracking-tight">{{ $settings->appName() }}</span>
+                    @endif
                 </div>
-                <p class="text-sm text-dark-muted mb-4">
-                    Profesjonalne usługi detailingowe dla Twojego auta
-                </p>
+                @php
+                    $__footerContact = $settings->contactInformation();
+                    $__footerPhone = $__footerContact['phone'] ?? null;
+                    $__footerEmail = $__footerContact['email'] ?? null;
+                @endphp
+                @if($__footerPhone || $__footerEmail)
                 <div class="flex gap-3">
-                    <a href="tel:+48123456789"
+                    @if($__footerPhone)
+                    <a href="tel:{{ $__footerPhone }}"
                        class="w-9 h-9 rounded-full bg-white/10 hover:bg-[#0AB1EA] text-white hover:text-white flex items-center justify-center transition-all duration-200 ios-spring"
                        aria-label="Zadzwoń do nas">
                         <x-heroicon-s-phone class="w-4 h-4" />
                     </a>
-                    <a href="mailto:kontakt@registro.local"
+                    @endif
+                    @if($__footerEmail)
+                    <a href="mailto:{{ $__footerEmail }}"
                        class="w-9 h-9 rounded-full bg-white/10 hover:bg-[#0AB1EA] text-white hover:text-white flex items-center justify-center transition-all duration-200 ios-spring"
                        aria-label="Napisz do nas">
                         <x-heroicon-s-envelope class="w-4 h-4" />
                     </a>
+                    @endif
                 </div>
+                @endif
             </div>
 
             {{-- Right: Link columns --}}

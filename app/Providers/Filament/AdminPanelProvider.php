@@ -8,6 +8,7 @@ use App\Filament\Widgets\CacheClearWidget;
 use App\Filament\Widgets\RevenueChartWidget;
 use App\Filament\Widgets\TenantStatsOverviewWidget;
 use App\Http\Responses\LoginResponse;
+use App\Support\Settings\SettingsManager;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -74,8 +75,18 @@ class AdminPanelProvider extends PanelProvider
             ])
 
             // 🏷️ BRANDING
-            ->brandLogo(fn () => view('filament.brand-logo'))
-            ->darkModeBrandLogo(fn () => view('filament.brand-logo-dark'))
+            // Return null when the tenant hasn't configured a logo, so Filament
+            // falls back to the text brandName below instead of a broken <img>.
+            ->brandLogo(function () {
+                $logo = app(SettingsManager::class)->footerLogo();
+
+                return $logo ? view('filament.brand-logo', ['logo' => $logo]) : null;
+            })
+            ->darkModeBrandLogo(function () {
+                $logo = app(SettingsManager::class)->headerLogo();
+
+                return $logo ? view('filament.brand-logo-dark', ['logo' => $logo]) : null;
+            })
             ->brandLogoHeight('2.5rem')
             ->brandName('Registro Admin')
 

@@ -1,6 +1,13 @@
+{{-- No hardcoded title/subtitle defaults — this is a generic, reusable hero
+     banner (dead/unreferenced, like ios/footer.blade.php and
+     ios/nav-logo.blade.php), and a car-detailing default here would be the
+     same bug as everywhere else in app/docs/features/tenant-branding.md:
+     invented business copy standing in for "the caller didn't pass one".
+     Callers must supply their own title; subtitle is optional and already
+     guarded by @if($subtitle) below. --}}
 @props([
-    'title' => 'Detailing jak z przyszłości',
-    'subtitle' => 'Profesjonalne usługi detailingowe dla Twojego auta',
+    'title' => null,
+    'subtitle' => null,
 ])
 
 {{-- iOS-Style Hero Banner with Responsive Height and Monochrome Orbs --}}
@@ -17,10 +24,12 @@
     {{-- Content Container --}}
     <div class="relative z-10 container mx-auto px-4 md:px-6 py-12 sm:py-16 md:py-20 lg:py-24 text-center">
         {{-- Headline with fluid typography using clamp() --}}
+        @if($title)
         <h1 class="font-bold text-white mb-6 drop-shadow-lg animate-fade-in-up"
             style="font-size: clamp(2.25rem, 6vw, 6rem); line-height: 1.1; animation-delay: 0.1s;">
             {{ $title }}
         </h1>
+        @endif
 
         {{-- Subtitle with fluid typography --}}
         @if($subtitle)

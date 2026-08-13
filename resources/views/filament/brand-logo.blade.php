@@ -2,7 +2,7 @@
     $settings = app(\App\Support\Settings\SettingsManager::class);
 @endphp
 <img
-    src="{{ $settings->footerLogo() }}"
+    src="{{ $logo }}"
     alt="{{ $settings->logoAlt() }}"
     class="h-10"
 />
