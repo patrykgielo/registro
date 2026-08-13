@@ -646,6 +646,51 @@
                         </div>
                     @endif
 
+                    {{--
+                        Protocol downloads — eligibility MUST come from
+                        OrderProtocolPdfService, not a re-implemented
+                        in_array() here: it also covers the forced-cancellation
+                        edge case (in_progress -> cancelled, e.g. tenant
+                        offboarding) where the handover protocol must remain
+                        downloadable even though status itself is 'cancelled'.
+                        See OrderProtocolPdfService::canDownloadHandoverProtocol().
+                    --}}
+                    @php
+                        $protocolPdfService = app(\App\Services\Order\OrderProtocolPdfService::class);
+                        $canDownloadHandover = $protocolPdfService->canDownloadHandoverProtocol($order);
+                        $canDownloadReturn = $protocolPdfService->canDownloadReturnProtocol($order);
+                    @endphp
+                    @if($canDownloadHandover || $canDownloadReturn)
+                        <div class="border-t border-border mt-5 pt-4 space-y-2">
+                            @if($canDownloadHandover)
+                                <a
+                                    href="{{ route('orders.protocol.handover', $order) }}"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+                                           text-text-primary ring-1 ring-border bg-surface
+                                           hover:bg-surface-raised
+                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
+                                           transition-all duration-200 ease-out"
+                                >
+                                    <x-heroicon-m-document-arrow-down class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                    Protokół wydania (PDF)
+                                </a>
+                            @endif
+                            @if($canDownloadReturn)
+                                <a
+                                    href="{{ route('orders.protocol.return', $order) }}"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+                                           text-text-primary ring-1 ring-border bg-surface
+                                           hover:bg-surface-raised
+                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
+                                           transition-all duration-200 ease-out"
+                                >
+                                    <x-heroicon-m-document-arrow-down class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                    Protokół zwrotu (PDF)
+                                </a>
+                            @endif
+                        </div>
+                    @endif
+
                     {{-- Cancel action — only for pending_payment orders --}}
                     @if($order->status === 'pending_payment')
                         <div class="border-t border-border mt-5 pt-4">

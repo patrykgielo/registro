@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Rules\ValidPolishNIP;
 use App\Rules\ValidPolishPESEL;
 use App\Rules\ValidPolishREGON;
+use App\Services\Order\OrderProtocolPdfService;
 use App\Services\Order\OrderService;
 use App\Support\TenantFeature;
 use BackedEnum;
@@ -450,6 +451,29 @@ class OrderResource extends BaseResource
                                     ->send();
                             }
                         }),
+
+                    // ->url()->openUrlInNewTab(), NOT ->action(fn () => $pdf->download(...)):
+                    // Illuminate\Http\Response returned from a Filament action closure is
+                    // invisible to Livewire's file-download detection (only StreamedResponse/
+                    // BinaryFileResponse qualify) and gets json_encode()'d instead — raw PDF
+                    // binary through JSON, "Malformed UTF-8 characters". Point at the same
+                    // authorized, already-tested customer/staff download route instead of adding
+                    // a second PDF-serving path. See order-protocols.md.
+                    Actions\Action::make('handover_protocol')
+                        ->label('Protokół wydania (PDF)')
+                        ->icon('heroicon-o-document-arrow-down')
+                        ->color('gray')
+                        ->visible(fn (Order $record): bool => app(OrderProtocolPdfService::class)->canDownloadHandoverProtocol($record))
+                        ->url(fn (Order $record): string => route('orders.protocol.handover', $record))
+                        ->openUrlInNewTab(),
+
+                    Actions\Action::make('return_protocol')
+                        ->label('Protokół zwrotu (PDF)')
+                        ->icon('heroicon-o-document-arrow-down')
+                        ->color('gray')
+                        ->visible(fn (Order $record): bool => app(OrderProtocolPdfService::class)->canDownloadReturnProtocol($record))
+                        ->url(fn (Order $record): string => route('orders.protocol.return', $record))
+                        ->openUrlInNewTab(),
 
                     Actions\Action::make('collect_deposit')
                         ->label('Pobrano kaucję')

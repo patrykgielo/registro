@@ -10,6 +10,7 @@ use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Dev\FakePaymentController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OrderProtocolController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PostController;
@@ -168,6 +169,10 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRent
     Route::get('/moje-zamowienia', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/moje-zamowienia/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/moje-zamowienia/{order}/anuluj', [OrderController::class, 'cancel'])->name('orders.cancel');
+    Route::get('/moje-zamowienia/{order}/protokol-wydania', [OrderProtocolController::class, 'handover'])
+        ->name('orders.protocol.handover');
+    Route::get('/moje-zamowienia/{order}/protokol-zwrotu', [OrderProtocolController::class, 'returned'])
+        ->name('orders.protocol.return');
 
     // Rental extension requests
     Route::get('/api/zamowienia/{order}/pozycje/{orderItem}/sprawdz-przedluzenie', [RentalExtensionController::class, 'checkAvailability'])
