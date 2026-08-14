@@ -139,4 +139,100 @@ class EmailTemplateTest extends TestCase
         $this->assertSame('Subject Wiertarka', $template->renderSubject($data));
         $this->assertSame('Text Wiertarka', $template->renderText($data));
     }
+
+    /**
+     * A CR/LF pair inside a substituted value (e.g. a customer name at checkout) must not
+     * survive into the rendered subject — this is a header-injection vector for any mailer
+     * that does not neutralise it, unlike Symfony Mime today (defence-in-depth, see
+     * .claude/rules/notifications.md).
+     */
+    public function test_render_subject_strips_control_characters_from_a_substituted_value(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'order-notification',
+            'language' => 'pl',
+            'subject' => 'Zamówienie {{n}}',
+        ]);
+
+        $rendered = $template->renderSubject(['n' => "123\r\nBcc: ofiara@example.com"]);
+
+        $this->assertMatchesRegularExpression('/\A[^\x00-\x1F\x7F]*\z/', $rendered);
+        $this->assertSame('Zamówienie 123 Bcc: ofiara@example.com', $rendered);
+    }
+
+    /**
+     * Sanitizing must happen on the FINAL rendered string, not per-value — a newline pasted
+     * directly into the subject TEMPLATE by a tenant admin (via EmailTemplateResource) is the
+     * same injection vector and a per-value fix would miss it entirely.
+     */
+    public function test_render_subject_strips_control_characters_embedded_in_the_template_itself(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'admin-edited-template',
+            'language' => 'pl',
+            'subject' => "Zamówienie #{{order_number}}\r\nBcc: ofiara@example.com",
+        ]);
+
+        $rendered = $template->renderSubject(['order_number' => '456']);
+
+        $this->assertMatchesRegularExpression('/\A[^\x00-\x1F\x7F]*\z/', $rendered);
+        $this->assertSame('Zamówienie #456 Bcc: ofiara@example.com', $rendered);
+    }
+
+    /**
+     * A run of consecutive control characters collapses to a single space, not one space per
+     * character — otherwise a double CRLF (blank line, a common header-injection separator)
+     * would leave a visually broken run of spaces in the subject.
+     */
+    public function test_render_subject_collapses_a_run_of_control_characters_to_a_single_space(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'collapse-template',
+            'language' => 'pl',
+            'subject' => '{{value}}',
+        ]);
+
+        $rendered = $template->renderSubject(['value' => "a\r\n\r\nb"]);
+
+        $this->assertSame('a b', $rendered);
+    }
+
+    /**
+     * A legitimate Polish subject — diacritics, punctuation, an order number — must survive
+     * renderSubject() byte-for-byte. Guards against the sanitizer being overbroad (e.g.
+     * mangling multi-byte UTF-8 sequences it should never touch).
+     */
+    public function test_render_subject_leaves_a_legitimate_polish_subject_unchanged(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'legit-template',
+            'language' => 'pl',
+            'subject' => 'Potwierdzenie zamówienia #{{order_number}} – dziękujemy, Państwu Kowalskim!',
+        ]);
+
+        $rendered = $template->renderSubject(['order_number' => 'ZAM-0042']);
+
+        $this->assertSame(
+            'Potwierdzenie zamówienia #ZAM-0042 – dziękujemy, Państwu Kowalskim!',
+            $rendered
+        );
+    }
+
+    /**
+     * renderText() must NOT get the same treatment — a plain-text body legitimately contains
+     * newlines as paragraph/line breaks. Guards against over-applying the subject fix.
+     */
+    public function test_render_text_still_preserves_newlines_in_a_plain_text_body(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'text-body-template',
+            'language' => 'pl',
+            'subject' => 'Subject',
+            'text_body' => "Linia pierwsza\r\nLinia druga {{name}}",
+        ]);
+
+        $rendered = $template->renderText(['name' => 'Jan']);
+
+        $this->assertSame("Linia pierwsza\r\nLinia druga Jan", $rendered);
+    }
 }

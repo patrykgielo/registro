@@ -206,10 +206,28 @@ class EmailTemplate extends Model
      * Render the subject line with the provided data. No legitimate markup in a subject
      * line — everything, including a TrustedHtml value, is neutralised (see
      * substitutePlaceholders()).
+     *
+     * SECURITY: sanitized on the FINAL rendered string, not per substituted value — a
+     * substituted value (e.g. a customer-supplied name) carrying CR/LF is a header-injection
+     * vector (a mailer that does not neutralise it, unlike Symfony Mime today, would split
+     * that into a second header), but so is a newline pasted directly into the subject
+     * TEMPLATE by a tenant admin. Only sanitizing $data would miss the latter.
      */
     public function renderSubject(array $data): string
     {
-        return $this->substitutePlaceholders($this->subject, $data, escape: false);
+        return $this->sanitizeSubject($this->substitutePlaceholders($this->subject, $data, escape: false));
+    }
+
+    /**
+     * Strip C0 control characters (including CR/LF/TAB) and DEL from a rendered subject line.
+     * A run of control characters collapses to a single space rather than one-for-one, so
+     * "a\r\n\r\nb" becomes "a b", not "a    b". Byte-range regex, no /u — these are all
+     * single-byte ASCII values that never appear inside a multi-byte UTF-8 sequence, so this
+     * is safe on any valid UTF-8 subject (Polish diacritics included).
+     */
+    private function sanitizeSubject(string $subject): string
+    {
+        return trim(preg_replace('/[\x00-\x1F\x7F]+/', ' ', $subject));
     }
 
     /**
