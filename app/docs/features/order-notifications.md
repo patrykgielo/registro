@@ -224,16 +224,40 @@ docblock already flagged for this and five other keys). `text_body` was never af
 already put each on its own labeled line.
 
 **Decision on the unconditional label, made explicit:** `EmailTemplate::render()` is deliberately
-literal-substitution-only (see its own docblock) — no conditionals, and every substituted value is
-HTML-escaped, so a variable cannot smuggle in its own `<br>`/`<p>` markup to hide itself either
-(confirmed: `items_list_html` — an existing, unrelated variable — is ALSO escaped today, so the
-item table already renders as visible HTML source text rather than an actual table in every sent
-order-paid email; a real, separate, pre-existing bug, reported but not fixed here — out of scope
-for a settings-store fix, and touches the templating engine's escaping model, which exists
-specifically because `html_body` is editable by tenant-level admins). Making the "Miejsce odbioru
-sprzętu:" heading disappear when a tenant has no contact info configured would need either engine
-conditionals or a loosened, per-variable escaping exemption — both separate, security-relevant
-changes. Decision: the heading stays unconditional. Only the glued-values regression is fixed here.
+literal-substitution-only (see its own docblock) — no conditionals, and every substituted value was
+(at the time of this correction) unconditionally HTML-escaped, so a variable could not smuggle in
+its own `<br>`/`<p>` markup to hide itself either (confirmed: `items_list_html` — an existing,
+unrelated variable — was ALSO escaped at the time, so the item table rendered as visible HTML
+source text rather than an actual table in every sent order-paid email; a real, separate bug,
+reported here and fixed in `feature/email-template-html-vars`, see "items_list_html rendered as
+escaped text, not a table" below). Making the "Miejsce odbioru sprzętu:" heading disappear when a
+tenant has no contact info configured would still need engine conditionals — the escaping-exemption
+half of that tradeoff no longer applies verbatim now that `TrustedHtml` exists, but conditionals
+were never built, so the heading stays unconditional. Only the glued-values regression is fixed here.
+
+**`items_list_html` rendered as escaped text, not a table (fixed in `feature/email-template-html-vars`,
+2026-08-14):** the bug flagged above. `EmailTemplate::render()` HTML-escaped every substituted
+value with no exception, so the rental item `<table>` built by `OrderPaidNotification`,
+`OrderHandedOverNotification` and `OrderReturnedNotification` showed up as literal `&lt;table&gt;…`
+source in the customer's inbox in every paid/handover/return confirmation email, since each of
+those templates was seeded. Fixed with `App\Support\Email\TrustedHtml` — a value wrapper, not a
+variable-name allowlist living in `EmailTemplate` (see that class's docblock for why: a name-keyed
+list drifts the moment a second notification reuses the same key with a different trust level,
+and `items_list_html` is already built independently by three notification classes). Each
+notification wraps the item-table string it builds in `new TrustedHtml($itemsListHtml)` at the
+exact point it finishes assembling it; `EmailTemplate::substitutePlaceholders()` inserts a
+`TrustedHtml` value verbatim only when rendering `html_body` (`render()`, `$escape === true`) and
+strips its tags when rendering `subject`/`text_body` (no legitimate markup in either). Every other
+value — including a plain string passed under the SAME key name, e.g. if a future caller forgets
+to wrap it — is still escaped exactly as before; the trust decision travels with the value, not
+the key. Safety of each wrapped value rests on the notification code escaping every interpolated
+field (a service name — tenant-admin-set, not code-controlled) via `htmlspecialchars()` BEFORE
+concatenating it into the markup, same as before this change; `TrustedHtml` does not weaken that,
+it only stops the surrounding markup those escaped fragments sit inside from being escaped a
+second time. `deposit_amount` was inspected and left as a plain (still-escaped) string — despite
+sitting directly before an unwrapped `<hr>` in the template with no `<p>` of its own, it carries no
+markup, only a formatted amount, so escaping it is correct as-is; wrapping it would have expanded
+the trusted-HTML surface for no reason.
 
 **A third call site, found by the same review round (item 3):** `resources/views/orders/show.blade.php`
 (customer's own order page) computed its "Miejsce odbioru sprzętu" section from

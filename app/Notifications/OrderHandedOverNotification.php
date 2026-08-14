@@ -8,6 +8,7 @@ use App\Channels\EmailServiceChannel;
 use App\Enums\TemplateKey;
 use App\Models\Order;
 use App\Services\Email\EmailService;
+use App\Support\Email\TrustedHtml;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -137,7 +138,7 @@ class OrderHandedOverNotification extends Notification implements ShouldBeUnique
             : '';
 
         return [
-            'items_list_html' => $itemsListHtml,
+            'items_list_html' => new TrustedHtml($itemsListHtml),
             'items_list_text' => rtrim($itemsText),
         ];
     }
