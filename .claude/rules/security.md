@@ -4,6 +4,7 @@ paths:
   - "app/Http/Middleware/**"
   - "config/auth.php"
   - "config/session.php"
+  - "bootstrap/app.php"
   - ".env.example"
 ---
 
@@ -133,3 +134,38 @@ $validSignatures = [
 - [ ] A04: Insecure Design - Rate limiting enabled
 - [ ] A07: Auth Failures - 2FA for admins (recommended)
 - [ ] **A08: Software and Data Integrity Failures** - SVG sanitization, magic bytes
+
+## NIE ustawiaj TrustProxies „na wszelki wypadek" (incydent 2026-08-08)
+
+`request()->ip()` jest tu **dowodem prawnym**, nie telemetrią: trafia do `users.sms_consent_ip`,
+kolumn zgód marketingowych, `orders.rodo_accepted_ip`, `user_consents.ip_address`, `audit_logs`
+i `maintenance_events`.
+
+**Stan obecny jest POPRAWNY i celowy.** nginx jest brzegiem (`docker-compose.prod.yml` publikuje
+`0.0.0.0:80`) i sięga PHP przez **fastcgi**, gdzie `fastcgi_param REMOTE_ADDR $remote_addr` niesie
+adres realnego klienta. Nikt na tej ścieżce nie ustawia ani nie usuwa `X-Forwarded-For`, a Laravel
+go ignoruje, bo **żaden proxy nie jest zaufany**.
+
+```php
+// ❌ NIGDY. Zaufanie każdemu proxy = zaufanie klientowi, bo klient jest jednym z hopów.
+$middleware->trustProxies(at: '*');
+```
+
+Przy `at: '*'` dowolny odwiedzający wysyła `X-Forwarded-For: 1.2.3.4` i **to** ląduje w jego własnym
+rekordzie zgody. Poprawka „naprawiająca" brakujące TrustProxies **niszczy dowód, który miała chronić**.
+
+Skan dokumentacji 2026-08-08 zalecił dokładnie tę zmianę jako naprawę „zepsutych IP w zgodach RODO".
+Zalecenie było błędne — wynikało z założenia `proxy_pass`, podczas gdy tu jest `fastcgi_pass`.
+Zweryfikowane empirycznie: podrobiony nagłówek jest dziś ignorowany.
+
+### Kiedy TrustProxies STANIE SIĘ wymagane
+
+Gdy wejdzie brzeg per tenant (`_edge` nginx robiący `proxy_pass` do nginxa tenanta), `REMOTE_ADDR`
+stanie się adresem kontenera brzegu — **dla wszystkich**. Dopiero wtedy trzeba zaufać proxy, ale:
+
+- **wyłącznie CIDR sieci brzegowej**, nigdy `*`
+- brzeg musi **nadpisywać** `X-Forwarded-For` (`proxy_set_header X-Forwarded-For $remote_addr`),
+  a nie dopisywać przez `$proxy_add_x_forwarded_for` — inaczej klient wstrzykuje pierwszy wpis
+- to samo dotyczy `X-Forwarded-Host`: bez nadpisania link resetu hasła da się przekierować
+
+Strażnik: `tests/Feature/Security/ClientIpTrustTest.php` — pada przy `at: '*'`, zweryfikowany mutacją.
