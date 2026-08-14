@@ -42,6 +42,13 @@ fake_exe docker <<'EOS'
 case "$*" in
     *"-N -e"*) echo t1; exit 0 ;;
     *"exec -T mysql"*) exit 1 ;;
+    # This test's whole point is that the file phase is NEVER reached today
+    # -- matched specifically (not via the catch-all) anyway, defense-in-
+    # depth against a future edit that changed WHEN the DB failure fires
+    # silently reintroducing case 16/17's SIGPIPE race. Narrow on purpose:
+    # a catch-all drain hangs any OTHER docker call whose stdin is a
+    # terminal or held-open FIFO instead of EOF -- see case 29.
+    *"tar -x -C /dest"*) cat >/dev/null; exit 0 ;;
     *) exit 0 ;;
 esac
 EOS

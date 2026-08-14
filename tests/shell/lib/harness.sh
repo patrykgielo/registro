@@ -169,3 +169,48 @@ extract_between_contains() {
         f && index($0, e) { exit }
     ' "$file"
 }
+
+# real_openssl_bin -- resolves the SYSTEM openssl, not the fake one
+# install_fake_openssl_for_s_client below installs on PATH. Safe to call
+# any time BEFORE that fake exists on disk (sandbox_init alone, prepending
+# $FAKEBIN to PATH, does not yet create a fake openssl there) -- calling it
+# AFTER the fake is installed would resolve to the fake itself and recurse.
+real_openssl_bin() { command -v openssl; }
+
+# make_throwaway_cert DAYS CN CERT_PATH KEY_PATH -- a REAL, self-signed
+# certificate valid for DAYS days from the moment it's generated. Real ASN.1/
+# X.509 date encoding, not a hand-typed "notAfter=..." string this suite
+# would otherwise have to keep in sync with whatever format `openssl x509
+# -enddate` happens to print -- check-certificate-expiry.sh's own date
+# parsing runs against this for real. Never contacts Let's Encrypt or any
+# real CA -- self-signed, entirely offline.
+make_throwaway_cert() {
+    local days="$1" cn="$2" cert="$3" key="$4"
+    "$(real_openssl_bin)" req -x509 -newkey rsa:2048 -nodes -days "$days" \
+        -keyout "$key" -out "$cert" -subj "/CN=${cn}" >/dev/null 2>&1
+}
+
+# install_fake_openssl_for_s_client -- fakes ONLY the `openssl s_client`
+# subcommand (the network call check-certificate-expiry.sh uses to reach a
+# live socket); every other subcommand (x509, req, ...) is handed to the REAL
+# binary via $REAL_OPENSSL_BIN, so date/SAN parsing in a case using this is
+# still real openssl doing real ASN.1 work, not a second fake. The real
+# socket path itself (does `openssl s_client` against an actual TLS listener
+# behave the way this script assumes) was proven once, manually, against a
+# real `openssl s_server` -- not a property of THIS script's own logic
+# (threshold comparison, exit codes, log/silence convention), which is what
+# these cases pin. Cert served is read from $FAKE_OPENSSL_CERT_PATH, set by
+# the calling case AFTER this installs the fake (the fake script itself only
+# reads the env var at call time, so it can be changed between assertions
+# within one case).
+install_fake_openssl_for_s_client() {
+    REAL_OPENSSL_BIN="$(real_openssl_bin)"
+    export REAL_OPENSSL_BIN
+    fake_exe openssl <<'EOS'
+if [ "$1" = "s_client" ]; then
+    cat "$FAKE_OPENSSL_CERT_PATH" 2>/dev/null
+    exit 0
+fi
+exec "$REAL_OPENSSL_BIN" "$@"
+EOS
+}

@@ -37,6 +37,12 @@ fake_exe docker <<'EOS'
 case "$*" in
     *"volume inspect"*) exit 0 ;;
     *"find /d -mindepth 1"*) echo "/d/somefile"; exit 0 ;;
+    # The ONE piped invocation, matched specifically -- NOT the catch-all.
+    # See case 16's identical fix for why: a catch-all drain hangs any
+    # OTHER, non-piped docker call whose stdin (this test script's own) is
+    # a terminal or a held-open FIFO instead of EOF-on-first-read. Case 29
+    # pins this.
+    *"tar -x -C /dest"*) cat >/dev/null; exit 0 ;;
     *) exit 0 ;;
 esac
 EOS

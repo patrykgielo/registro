@@ -27,7 +27,20 @@ sandbox_init
 fake_exe docker <<'EOS'
 case "$1" in
     volume) [ "$2" = "inspect" ] && exit 0; exit 1 ;;
-    run) exit 0 ;;
+    # `cat >/dev/null` drains stdin before exiting -- the REAL `docker run -i
+    # ... tar -x` this stands in for genuinely reads all of restic's piped
+    # output before its own process exits. Without this, the fake exits
+    # immediately and can close its end of the pipe before the fake restic
+    # below (a separate forked process) has even started writing -- under
+    # CPU contention this is a real, reproducible race: `echo` in the writer
+    # then gets SIGPIPE (exit 141), and `set -o pipefail` (this file's own
+    # `set -uo pipefail`) turns that into the pipeline's own exit status,
+    # failing this assertion despite restore_files_live() itself being
+    # correct. Found by stress-testing the suite under artificial CPU load
+    # (`yes >/dev/null &` on every core) after this test was reported flaky
+    # under load in review -- reproduced red without this line, green with
+    # it, both confirmed across a dozen loaded runs.
+    run) cat >/dev/null; exit 0 ;;
 esac
 exit 0
 EOS

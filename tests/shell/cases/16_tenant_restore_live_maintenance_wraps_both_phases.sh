@@ -46,6 +46,19 @@ case "$*" in
     *"exec -T mysql"*) exit 0 ;;
     *"volume inspect"*) exit 0 ;;
     *"find /d -mindepth 1"*) echo "/d/somefile"; exit 0 ;;
+    # The ONE piped invocation (`restic dump | docker run -i ... tar -x
+    # ...`) -- matched specifically, NOT via the catch-all below, and drains
+    # stdin first: same reasoning as case 15's identical fix, a reader that
+    # exits without reading can SIGPIPE the fake restic writer under CPU
+    # contention. Scoped this narrowly on purpose -- an earlier version of
+    # this fix put the drain in the catch-all instead, which meant every
+    # OTHER, non-piped docker invocation (docker compose exec, etc.) also
+    # tried to read stdin to EOF. Those inherit THIS TEST SCRIPT's own
+    # stdin, not a pipe from any fake -- run interactively (a terminal) or
+    # with a FIFO held open (see case 29's regression test for this exact
+    # shape), that never reaches EOF, so `cat` there hangs forever. Found in
+    # review, reproduced, and fixed before shipping: see case 29.
+    *"tar -x -C /dest"*) cat >/dev/null; exit 0 ;;
     *) exit 0 ;;
 esac
 EOS

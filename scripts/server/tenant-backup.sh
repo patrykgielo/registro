@@ -78,6 +78,19 @@ set +a
 : "${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD missing from .env.secrets}"
 
 DB_DATABASE="$(grep -m1 '^DB_DATABASE=' .env 2>/dev/null | cut -d= -f2- || echo registro)"
+# Dead-man's-switch target, operator-supplied, inert when unset -- no vendor
+# named here on purpose. Read from .env like every other non-secret value
+# already read above/below, NOT written by this script and NOT a new file to
+# invent: apply.sh regenerates .env WHOLESALE on every run (this project's
+# own documented trap, ci-cd-troubleshooting.md/instalacja-tenanta-od-zera.md
+# "9.2"), so a value written directly into .env would be silently wiped on
+# the tenant's next release. apply.sh already has the one sanctioned escape
+# hatch for exactly this shape of value -- operator-supplied config it has no
+# way to originate itself -- and appends .env.bak-manual's contents into .env
+# verbatim, untouched, on every apply (apply.sh's own "reconcile .env" step).
+# Reusing that means one operator instruction (add a line to
+# .env.bak-manual), not a new mechanism.
+BACKUP_HEALTHCHECK_URL="$(grep -m1 '^BACKUP_HEALTHCHECK_URL=' .env 2>/dev/null | cut -d= -f2- || true)"
 # The image used to stage the two storage volumes below -- reused rather than
 # a generic helper image (alpine/busybox) so nothing here depends on pulling
 # a NEW image over the network on every cron run: this is the exact image
@@ -193,4 +206,23 @@ restic backup "${RESTIC_TARGETS[@]}" --host "tenant-${SLUG}" --tag "slug=${SLUG}
     || die "database backed up, but at least one storage volume could not be included in the snapshot -- see ${LOG_FILE}" 3
 
 log "Backup complete"
+
+###############################################################################
+# Dead-man's-switch -- ping AFTER "Backup complete" is logged, not before.
+#
+# PLACEMENT, not a new condition: the FILES_FAILED gate directly above this
+# already die()s (exit 3) on a partial backup, before this line is ever
+# reached. A partial backup therefore already can never ping -- putting the
+# ping at the very end of the happy path is sufficient on its own, no extra
+# "was everything actually OK" check needed here.
+#
+# A failed ping must never turn a successful backup into a failed one, and
+# must never hang a cron job: bounded by --max-time, its own failure only
+# logged (never call die()), and the script still exits 0 regardless.
+###############################################################################
+if [ -n "$BACKUP_HEALTHCHECK_URL" ]; then
+    curl -fs --max-time 10 "$BACKUP_HEALTHCHECK_URL" >/dev/null 2>&1 \
+        || log "WARNING: dead-man's-switch ping to BACKUP_HEALTHCHECK_URL failed -- the backup itself succeeded, only the notification did not go through"
+fi
+
 exit 0

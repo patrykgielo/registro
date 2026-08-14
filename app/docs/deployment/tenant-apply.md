@@ -330,6 +330,34 @@ against the exact pre-fix script text, not a synthetic mutation:
     `FAILED` `STATE_DIR/apply-status` -- caught the original bug where it fell through into
     extracting files after the database load had already failed.
 
+`check-certificate-expiry.sh` (new script, added 2026-08-14 -- see
+`instalacja-tenanta-od-zera.md` step 0.4a) and a dead-man's-switch ping added
+to `tenant-backup.sh` the same day add nine more, none found as bugs in
+pre-existing code (both are additive) -- pinning the properties that ARE the
+whole point of building either mechanism, proven red-then-green against a
+deliberately reverted version of each fix, same as every entry above:
+
+15. A certificate with days remaining above both thresholds is a silent,
+    exit-0 pass -- no log line, no alert ping, ever.
+16. A certificate at or below the warning threshold logs a `WARNING`, exits 1.
+17. A certificate at or below the critical threshold logs `CRITICAL`, exits 2,
+    and (if `REGISTRO_CERT_ALERT_URL` is set) actually fires the webhook.
+18. A connection/handshake failure that returns nothing readable is `CRITICAL`
+    with a DISTINCT exit code (3) from both thresholds above -- "could not
+    tell" never collapses into either "healthy" or a dated finding.
+19. No way to determine which hostname to check (`REGISTRO_CERT_CHECK_SNI`
+    unset, no `CERT_DIR` in the legacy `.env`) refuses before ever opening a
+    socket.
+20. `tenant-backup.sh` with no `BACKUP_HEALTHCHECK_URL` in `.env` never
+    invokes `curl` at all -- genuinely inert, not "off but still tries".
+21. A fully successful backup pings the configured URL.
+22. A failed ping is logged but never changes the backup's own exit code
+    (0) -- reverted to "ping first, then check FILES_FAILED" to prove this
+    catches a placement regression, not just a happy-path assertion.
+23. A PARTIAL backup (one storage volume failed to stage) already `die()`s
+    before the ping is ever reached -- caught by moving the ping above the
+    `FILES_FAILED` gate and confirming the case fails.
+
 **Rule going forward:** a shell bug found and fixed in `scripts/server/**`
 gets a test in `tests/shell/cases/` in the same change, the same way a PHP
 bug gets a regression test in `tests/Feature`/`tests/Unit`. See
