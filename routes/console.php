@@ -5,6 +5,7 @@ use App\Jobs\Email\SendAdminDigestJob;
 use App\Jobs\MarkCartsAbandonedJob;
 use App\Jobs\RecalculateDailyStatisticsJob;
 use App\Jobs\Reminder\ProcessRemindersJob;
+use App\Jobs\Reminder\ProcessRentalReturnRemindersJob;
 use App\Jobs\Sms\CleanupOldSmsLogsJob;
 use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
@@ -43,6 +44,16 @@ Schedule::job(new ProcessRemindersJob)
     ->hourly()
     ->withoutOverlapping()
     ->name('reminders:process')
+    ->onOneServer();
+
+// Rental return reminders (Email only) — "due tomorrow" + "overdue" for
+// in_progress orders. Day-granularity source column (order_items.end_date),
+// so daily is sufficient — see ProcessRentalReturnRemindersJob's own
+// docblock for why this is a separate job, not a ProcessRemindersJob config.
+Schedule::job(new ProcessRentalReturnRemindersJob)
+    ->dailyAt('09:00')
+    ->withoutOverlapping()
+    ->name('reminders:rental-return')
     ->onOneServer();
 
 /*

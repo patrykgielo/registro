@@ -585,6 +585,74 @@ Best regards, The {{app_name}} Team',
                 'variables' => ['name', 'requested_address', 'app_name'],
                 'active' => true,
             ],
+
+            // Rental Return Due Soon — customer notification, day before order_items.end_date
+            [
+                'key' => TemplateKey::RENTAL_RETURN_DUE_SOON->value,
+                'language' => 'pl',
+                'subject' => 'Przypomnienie: jutro zwrot sprzętu — zamówienie #{{order_number}}',
+                'html_body' => '<h1>Przypomnienie o zwrocie</h1><p>Cześć {{customer_name}},</p><p>Przypominamy, że jutro (<strong>{{return_date}}</strong>) kończy się okres wypożyczenia sprzętu <strong>{{service_name}}</strong> z zamówienia numer #{{order_number}}.</p><p>Prosimy o zwrot sprzętu w umówionym terminie.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Przypomnienie o zwrocie. Cześć {{customer_name}}, przypominamy, że jutro ({{return_date}}) kończy się okres wypożyczenia sprzętu {{service_name}} z zamówienia nr #{{order_number}}.
+
+Prosimy o zwrot sprzętu w umówionym terminie.
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'service_name', 'return_date', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+            [
+                'key' => TemplateKey::RENTAL_RETURN_DUE_SOON->value,
+                'language' => 'en',
+                'subject' => 'Reminder: equipment return due tomorrow — Order #{{order_number}}',
+                'html_body' => '<h1>Return reminder</h1><p>Hello {{customer_name}},</p><p>This is a reminder that the rental period for <strong>{{service_name}}</strong> from order #{{order_number}} ends tomorrow (<strong>{{return_date}}</strong>).</p><p>Please return the equipment on time.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Return reminder. Hello {{customer_name}}, this is a reminder that the rental period for {{service_name}} from order #{{order_number}} ends tomorrow ({{return_date}}).
+
+Please return the equipment on time.
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'service_name', 'return_date', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+
+            // Rental Return Overdue — customer notification, end_date already passed
+            [
+                'key' => TemplateKey::RENTAL_RETURN_OVERDUE->value,
+                'language' => 'pl',
+                'subject' => 'Zwrot sprzętu po terminie — zamówienie #{{order_number}}',
+                'html_body' => '<h1>Zwrot sprzętu jest po terminie</h1><p>Cześć {{customer_name}},</p><p>Okres wypożyczenia sprzętu <strong>{{service_name}}</strong> z zamówienia numer #{{order_number}} zakończył się <strong>{{return_date}}</strong> ({{days_overdue}} dni temu), a sprzęt nie został jeszcze zwrócony.</p><p>Prosimy o jak najszybszy zwrot lub kontakt z nami.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Zwrot sprzętu jest po terminie. Cześć {{customer_name}}, okres wypożyczenia sprzętu {{service_name}} z zamówienia nr #{{order_number}} zakończył się {{return_date}} ({{days_overdue}} dni temu), a sprzęt nie został jeszcze zwrócony.
+
+Prosimy o jak najszybszy zwrot lub kontakt z nami.
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'service_name', 'return_date', 'days_overdue', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+            [
+                'key' => TemplateKey::RENTAL_RETURN_OVERDUE->value,
+                'language' => 'en',
+                'subject' => 'Equipment return overdue — Order #{{order_number}}',
+                'html_body' => '<h1>Your equipment return is overdue</h1><p>Hello {{customer_name}},</p><p>The rental period for <strong>{{service_name}}</strong> from order #{{order_number}} ended on <strong>{{return_date}}</strong> ({{days_overdue}} days ago), and the equipment has not yet been returned.</p><p>Please return it as soon as possible, or get in touch with us.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Your equipment return is overdue. Hello {{customer_name}}, the rental period for {{service_name}} from order #{{order_number}} ended on {{return_date}} ({{days_overdue}} days ago), and the equipment has not yet been returned.
+
+Please return it as soon as possible, or get in touch with us.
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'service_name', 'return_date', 'days_overdue', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
         ];
 
         foreach ($templates as $template) {
@@ -607,6 +675,6 @@ Best regards, The {{app_name}} Team',
             );
         }
 
-        $this->command->info('✓ Email templates seeded successfully (42 templates)');
+        $this->command->info('✓ Email templates seeded successfully (46 templates)');
     }
 }

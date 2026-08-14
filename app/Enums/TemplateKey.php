@@ -64,6 +64,10 @@ enum TemplateKey: string
     case RENTAL_EXTENSION_APPROVED = 'rental-extension-approved';
     case RENTAL_EXTENSION_REJECTED = 'rental-extension-rejected';
 
+    // ── Rental return reminders (Email only) ─────────────────────
+    case RENTAL_RETURN_DUE_SOON = 'rental-return-due-soon';
+    case RENTAL_RETURN_OVERDUE = 'rental-return-overdue';
+
     // ── Admin (Email only) ───────────────────────────────────────
     case ADMIN_DAILY_DIGEST = 'admin-daily-digest';
     case ADMIN_USER_CREATED = 'admin-user-created';
@@ -99,6 +103,8 @@ enum TemplateKey: string
             self::RENTAL_EXTENSION_REQUESTED => 'Wniosek o przedłużenie (admin)',
             self::RENTAL_EXTENSION_APPROVED => 'Przedłużenie zatwierdzone (klient)',
             self::RENTAL_EXTENSION_REJECTED => 'Przedłużenie odrzucone (klient)',
+            self::RENTAL_RETURN_DUE_SOON => 'Przypomnienie o zwrocie (dzień przed)',
+            self::RENTAL_RETURN_OVERDUE => 'Zwrot po terminie',
             self::ADMIN_DAILY_DIGEST => 'Raport dzienny admina',
             self::ADMIN_USER_CREATED => 'Konto utworzone przez admina',
         };
