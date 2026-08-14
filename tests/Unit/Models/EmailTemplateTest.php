@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Models;
 
 use App\Models\EmailTemplate;
+use App\Support\Email\TrustedHtml;
 use Tests\TestCase;
 
 class EmailTemplateTest extends TestCase
@@ -78,5 +79,64 @@ class EmailTemplateTest extends TestCase
         $this->assertSame('Witamy Jan Kowalski', $template->renderSubject($data));
         $this->assertSame('Witaj Jan Kowalski', $template->renderText($data));
         $this->assertSame('<p>Witaj Jan Kowalski</p>', $template->render($data));
+    }
+
+    public function test_render_inserts_trusted_html_verbatim_instead_of_escaping_it(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'trusted-html-template',
+            'language' => 'pl',
+            'subject' => 'Subject',
+            'html_body' => '<p>{{items_list_html}}</p>',
+        ]);
+
+        $rendered = $template->render([
+            'items_list_html' => new TrustedHtml('<table><tr><td>Wiertarka</td></tr></table>'),
+        ]);
+
+        $this->assertSame('<p><table><tr><td>Wiertarka</td></tr></table></p>', $rendered);
+    }
+
+    /**
+     * The allowlist is per-VALUE (TrustedHtml wrapper), not per variable name — a plain string
+     * under the same key name a notification would use for markup is still escaped like any
+     * other value. Nothing about the *name* "items_list_html" is special to EmailTemplate.
+     */
+    public function test_render_still_escapes_a_script_tag_arriving_through_an_unwrapped_value(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'unwrapped-value-template',
+            'language' => 'pl',
+            'subject' => 'Subject',
+            'html_body' => '<p>{{items_list_html}}</p>',
+        ]);
+
+        $rendered = $template->render([
+            'items_list_html' => '<script>alert(1)</script>',
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $rendered);
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $rendered);
+    }
+
+    /**
+     * renderSubject()/renderText() have no legitimate use for markup — a TrustedHtml value
+     * reaching either has its tags stripped rather than emitted raw, so an accidental reuse of
+     * an HTML-bearing variable in a plain-text/subject template can never leak markup there.
+     */
+    public function test_subject_and_text_strip_tags_from_a_trusted_html_value_instead_of_emitting_them(): void
+    {
+        $template = new EmailTemplate([
+            'key' => 'trusted-html-in-plain-context',
+            'language' => 'pl',
+            'subject' => 'Subject {{items_list_html}}',
+            'html_body' => '<p>{{items_list_html}}</p>',
+            'text_body' => 'Text {{items_list_html}}',
+        ]);
+
+        $data = ['items_list_html' => new TrustedHtml('<table><tr><td>Wiertarka</td></tr></table>')];
+
+        $this->assertSame('Subject Wiertarka', $template->renderSubject($data));
+        $this->assertSame('Text Wiertarka', $template->renderText($data));
     }
 }

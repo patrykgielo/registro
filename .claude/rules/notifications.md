@@ -207,6 +207,30 @@ tym samym niezatransakcjonowanym miejscu), nie wprowadza problemu. Pełny opis:
 `app/docs/features/cart-order-system.md` → "Known limitation — status write and timestamp write
 are not atomic".
 
+## Wstawianie markupu do html_body — `TrustedHtml` (2026-08-14)
+
+`EmailTemplate::render()` HTML-escapuje KAŻDĄ podstawianą wartość domyślnie — `html_body` edytuje
+tenant-admin, więc żadna zmienna nie może przemycić własnego znacznika. Jeśli Twoja notyfikacja
+buduje fragment markupu do wstawienia (np. tabelę pozycji zamówienia), owiń go w
+`App\Support\Email\TrustedHtml` w miejscu, gdzie string jest gotowy:
+
+```php
+use App\Support\Email\TrustedHtml;
+
+return ['items_list_html' => new TrustedHtml($itemsListHtml)];
+```
+
+**Zaufanie jest per-WARTOŚĆ, nie per-nazwa zmiennej** — nie ma listy dozwolonych kluczy w
+`EmailTemplate` do zsynchronizowania. Ten sam klucz przekazany jako zwykły string (np. przez inną
+notyfikację) nadal jest escapowany. `renderSubject()`/`renderText()` zawsze `strip_tags()`ują
+`TrustedHtml` — temat i wersja tekstowa nie mają legalnego zastosowania dla znaczników.
+
+**Warunek bezpieczeństwa leży PRZED konstruktorem, nie w nim:** każde pole interpolowane w
+środku owijanego stringa (np. nazwa usługi ustawiana przez tenant-admina) musi być
+`htmlspecialchars()`-owane w Twoim kodzie PRZED sklejeniem z resztą markupu — `TrustedHtml` samo
+w sobie niczego nie sanityzuje, tylko wyłącza escaping wynikowego stringa jako całości. Wzorzec:
+`OrderPaidNotification::buildRentalVariables()`.
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**

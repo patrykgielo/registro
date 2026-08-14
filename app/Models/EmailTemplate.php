@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\Email\TrustedHtml;
 use App\Support\TenantFeature;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
@@ -155,7 +156,8 @@ class EmailTemplate extends Model
      * html_body is editable by tenant-level admins, not just super-admins). Only
      * literal {{key}} tokens are replaced; everything else in the body (including
      * Blade-looking directives like `@php`) is left as inert literal text.
-     * Substituted values are HTML-escaped since html_body is rendered as email HTML.
+     * Substituted values are HTML-escaped since html_body is rendered as email HTML —
+     * UNLESS a value is a TrustedHtml instance, see substitutePlaceholders().
      *
      * @param  array  $data  Key-value pairs to replace in template
      * @return string Rendered HTML content
@@ -171,6 +173,13 @@ class EmailTemplate extends Model
      * Only exact `{{key}}` tokens (word characters, no spaces/expressions) are replaced.
      * Unknown tokens are left untouched. This never invokes Blade/eval — it cannot execute
      * PHP embedded in a template body.
+     *
+     * A TrustedHtml value (see that class for the trust model) is the one value type exempt
+     * from `e()` when $escape is true — it is inserted into html_body verbatim. Every other
+     * value, including a TrustedHtml one reached with $escape false (renderSubject/renderText —
+     * plain subject/text, no legitimate markup in either), is neutralised: normal values via
+     * e()/no-op-cast same as before, TrustedHtml via strip_tags() so its markup can never leak
+     * into a context that was never meant to render HTML.
      */
     protected function substitutePlaceholders(string $template, array $data, bool $escape): string
     {
@@ -181,28 +190,32 @@ class EmailTemplate extends Model
                 return $matches[0];
             }
 
-            $value = (string) $data[$key];
+            $raw = $data[$key];
+
+            if ($raw instanceof TrustedHtml) {
+                return $escape ? $raw->html : strip_tags($raw->html);
+            }
+
+            $value = (string) $raw;
 
             return $escape ? e($value) : $value;
         }, $template);
     }
 
     /**
-     * Render the subject line with the provided data.
+     * Render the subject line with the provided data. No legitimate markup in a subject
+     * line — everything, including a TrustedHtml value, is neutralised (see
+     * substitutePlaceholders()).
      */
     public function renderSubject(array $data): string
     {
-        $subject = $this->subject;
-
-        foreach ($data as $key => $value) {
-            $subject = str_replace('{{'.$key.'}}', (string) $value, $subject);
-        }
-
-        return $subject;
+        return $this->substitutePlaceholders($this->subject, $data, escape: false);
     }
 
     /**
-     * Render the plain text body with the provided data.
+     * Render the plain text body with the provided data. No legitimate markup in a plain-text
+     * body — everything, including a TrustedHtml value, is neutralised (see
+     * substitutePlaceholders()).
      */
     public function renderText(array $data): ?string
     {
@@ -210,12 +223,6 @@ class EmailTemplate extends Model
             return null;
         }
 
-        $text = $this->text_body;
-
-        foreach ($data as $key => $value) {
-            $text = str_replace('{{'.$key.'}}', (string) $value, $text);
-        }
-
-        return $text;
+        return $this->substitutePlaceholders($this->text_body, $data, escape: false);
     }
 }
