@@ -231,6 +231,36 @@ notyfikację) nadal jest escapowany. `renderSubject()`/`renderText()` zawsze `st
 w sobie niczego nie sanityzuje, tylko wyłącza escaping wynikowego stringa jako całości. Wzorzec:
 `OrderPaidNotification::buildRentalVariables()`.
 
+## `renderSubject()` neutralizuje control characters w wynikowym stringu (2026-08-14)
+
+`EmailTemplate::renderSubject()` (`escape: false`, patrz `TrustedHtml` wyżej — subject nigdy nie
+przechodzi przez `e()`) nie chroniło przed CR/LF. Wartość podstawiana za `{{token}}` (np. imię
+klienta z checkoutu, walidowane tylko `['nullable','string','max:100']`) mogła zawierać
+`\r\nBcc: ofiara@example.com` i lądowała w temacie maila bajt w bajt — klasyczny wektor header
+injection, ścieżka osiągalna przez klienta bez udziału admina.
+
+**Dziś nieeksploatowalne, ale łata jest zasadna:** Symfony Mime neutralizuje to samo (regex
+`tokenNeedsEncoding()` łapie `\r\n`, `QpMimeHeaderEncoder` koduje jako `=?utf-8?Q?...?=` w
+złożonym Subject). Ale to obrona pożyczona — żyje w warstwie transportu (`SmtpMailer`), nie tam,
+gdzie kod wie, że wartość jest linią tematu. `EmailGatewayInterface` istnieje właśnie po to, żeby
+transport był wymienialny; dostawca HTTP-API albo `mail()` fallback nie odziedziczy encodingu
+Symfony.
+
+`EmailTemplate::sanitizeSubject()` (private) neutralizuje na **finalnym wyrenderowanym stringu**,
+nie per-wartość — to samo pokrywa newline wklejony bezpośrednio w SZABLON tematu przez
+tenant-admina (per-wartość fix by to pominął). Usuwa cały zakres C0 control chars + DEL
+(`[\x00-\x1F\x7F]`, w tym `\r`, `\n`, `\t`) — bezpieczne bez `/u`, bo to pojedyncze bajty ASCII,
+nigdy nie występujące wewnątrz wielobajtowej sekwencji UTF-8 (polskie znaki diakrytyczne
+nietknięte). Run kolejnych control chars kolapsuje do JEDNEJ spacji (`"a\r\n\r\nb"` → `"a b"`,
+nie `"a    b"`), całość `trim()`owana.
+
+**`renderText()` celowo NIE dostał tej samej obróbki** — `text_body` to `text/plain`, gdzie
+newline jest legalną treścią (podział akapitów), nie wektorem ataku na nagłówek.
+
+**Poza zakresem tej zmiany:** walidacja `SubmitCheckoutRequest` (`customer_first_name`/
+`customer_last_name` nadal `['nullable','string','max:100']`, bez ograniczenia control chars) —
+osobna decyzja, nierozstrzygnięta.
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
