@@ -256,6 +256,32 @@ Actions\DeleteAction::make()->visible(fn ($record) => static::canDelete($record)
 
 Samo `->visible()` nie wystarcza — akcję da się wywołać bez wyrenderowania.
 
+### Masowe akcje NIE sprawdzają rekordów pojedynczo (incydent 2026-08-08)
+
+`DeleteBulkAction` pyta `canDeleteAny()` **raz** i kasuje całe zaznaczenie.
+`CanBeAuthorized::shouldAuthorizeIndividualRecords()` zwraca `false`, dopóki nie dopniesz
+`->authorizeIndividualRecords()`, a `getIndividuallyAuthorizedSelectedRecords()` oddaje wtedy
+zaznaczenie **nieprzefiltrowane**.
+
+```php
+// ❌ reguła per-rekord z canDelete() nigdy nie zostanie sprawdzona
+Actions\DeleteBulkAction::make()
+
+// ✅ dopiero to woła getDeleteAuthorizationResponse() dla każdego rekordu
+Actions\DeleteBulkAction::make()->authorizeIndividualRecords()
+```
+
+**Zasada: jeśli `canDelete($record)` jest ostrzejsze niż `canDeleteAny()`, akcja masowa MUSI mieć
+`->authorizeIndividualRecords()`.** Inaczej masz zabezpieczenie na akcji wiersza i otwartą furtkę
+obok.
+
+Incydent: agent napisał w docblocku i dokumentacji, że Filament „zawsze" sprawdza rekordy
+pojedynczo. Nieprawda. Pracownik mógł masowo usunąć **własny zatwierdzony urlop**, którego akcja
+wiersza słusznie broniła. Wyszło dopiero, gdy recenzent faktycznie skasował rekord.
+
+**Test akcji masowej to osobny test.** `callTableAction()` nie pokrywa `callTableBulkAction()` —
+to dwie różne ścieżki autoryzacji.
+
 ### Zasada
 
 **Otwierasz `canViewAny()` dla szerszej roli → przejrzyj WSZYSTKIE akcje tego zasobu.** To, co było
@@ -264,3 +290,44 @@ nieszkodliwe przy zamkniętym zasobie, staje się osiągalne w tej samej minucie
 
 **Test musi być zweryfikowany mutacją.** Odwróć guard, sprawdź że test pada. Test na autoryzację,
 który przechodzi z konstrukcji, jest gorszy niż jego brak — daje fałszywą pewność.
+
+### Naprawione: `BaseResource` teraz egzekwuje `can*()` (2026-08-08)
+
+Incydent wyżej opisuje dziurę per-zasób. **Zamknięta w jednym miejscu** —
+`App\Filament\Resources\BaseResource` nadpisuje wszystkie `get*AuthorizationResponse()` tak, by
+wołały odpowiadające `can*()` (`getDeleteAuthorizationResponse()` → `canDelete()`, itd.), zamiast
+schodzić do Gate/policy. **`canDelete()` w zasobie znowu robi to, na co wygląda.** Pełny writeup
+(uzasadnienie domyślnej postawy, rekurencja, decyzje per-zasób): `app/docs/security/patterns/resource-authorization.md`.
+
+**Domyślna postawa BaseResource:** `canViewAny()` = deny-by-default (żaden z 34 zasobów tego nie
+potrzebował — wszystkie już nadpisywały; `ServiceAreaResource` był jedynym wyjątkiem, dostał własne
+nadpisanie). Mutujące `can*()` (create/edit/delete/deleteAny/...) = `hasAnyRole(['admin', 'super-admin'])`
+— to samo, czego już używa niemal każde istniejące `canViewAny()`.
+
+**Rekurencja:** domyślne `can*()` w `BaseResource` NIGDY nie wołają `get*AuthorizationResponse()` —
+to gwarantowana pętla (domyślne `getDeleteAuthorizationResponse()` woła `canDelete()`, więc
+`canDelete()` nie może wołać z powrotem).
+
+**Zasób z tylko `canViewAny()` nadpisanym** (większość z 34) dziedziczy domyślne mutujące `can*()` z
+`BaseResource` — jeśli Twój `canViewAny()` używa innego zestawu ról niż `admin`/`super-admin` (np.
+dopuszcza `staff`, jak `AppointmentResource`), **musisz jawnie nadpisać też `canCreate()`/`canEdit()`/
+`canDelete()`/`canDeleteAny()`/`canView()`** — inaczej domyślna, węższa postawa cicho zabierze
+uprawnienia roli, która ich realnie używa. `StaffVacationPeriodResource` (już miał pełny per-rekordowy
+`can*()`) potrzebował tylko brakującego `canDeleteAny()` — indywidualny rekord i tak jest sprawdzany
+przez Filamentowy `DeleteBulkAction` resolver niezależnie od tego, co zwraca `canDeleteAny()`.
+
+**RelationManager to ta sama klasa dziury, osobna hierarchia klas** (`Filament\Resources\RelationManagers\RelationManager`,
+nie dziedziczy po `BaseResource`) — metody instancyjne, nie statyczne. `OrderItemsRelationManager`
+naprawiony lokalnie (jedyny przypadek w repo z realną logiką `can*()`; nie ma jeszcze wspólnej bazy).
+
+**Panel `platform` — celowo NIE objęty.** `canAccessPanel()` (`app/Models/User.php`) gatuje CAŁY panel
+`/platform` do `super-admin` na wejściu, przed dotarciem do jakiegokolwiek zasobu — to jedyna rola,
+jaka tam w ogóle występuje. Per-akcja `can*()` na `Platform\RoleResource` autoryzowałoby super-admina
+przeciwko super-adminowi, więc nie dodaje żadnej realnej granicy. Rewizja: jeśli kiedyś powstanie
+druga rola z dostępem do `/platform` (np. read-only auditor), ta decyzja przestaje być aktualna.
+
+**Strict mode (`$panel->strictAuthorization()`) — nadal NIE do włączenia.** `Platform\RoleResource` nie
+ma żadnego `can*()` i dziedziczy wprost po `Filament\Resources\Resource` — bez polityki w
+`app/Policies/` (nadal nie istnieje) strict rzuciłby `LogicException` na każdej akcji tego zasobu przy
+pierwszym mouncie. Warunek do rewizji: dopiero po tym, jak platform dostanie tę samą warstwę co
+`/admin`, albo własną politykę.

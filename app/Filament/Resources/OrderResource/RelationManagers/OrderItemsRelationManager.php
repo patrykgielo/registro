@@ -8,6 +8,8 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Database\Eloquent\Model;
 
 class OrderItemsRelationManager extends RelationManager
 {
@@ -82,5 +84,31 @@ class OrderItemsRelationManager extends RelationManager
     public function canDelete($record): bool
     {
         return false;
+    }
+
+    /**
+     * No CreateAction/EditAction/DeleteAction is registered on this table today
+     * (recordActions/headerActions/toolbarActions are all empty — line items are
+     * read-only snapshots of what was ordered), so this is currently unreachable
+     * in practice. But it's the same class of hole App\Filament\Resources\BaseResource
+     * closes for Resources: RelationManager's getDeleteAuthorizationResponse()
+     * (what a future DeleteAction would actually call) does not consult
+     * canDelete() above by default — it falls through to Gate/policy resolution,
+     * which allows by default with no OrderItemPolicy. Wiring it now means a
+     * later "let staff void a line item" feature can't silently reopen this.
+     */
+    public function getCreateAuthorizationResponse(): Response
+    {
+        return $this->canCreate() ? Response::allow() : Response::deny();
+    }
+
+    public function getEditAuthorizationResponse(Model $record): Response
+    {
+        return $this->canEdit($record) ? Response::allow() : Response::deny();
+    }
+
+    public function getDeleteAuthorizationResponse(Model $record): Response
+    {
+        return $this->canDelete($record) ? Response::allow() : Response::deny();
     }
 }

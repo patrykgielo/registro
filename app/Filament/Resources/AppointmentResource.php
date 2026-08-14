@@ -17,6 +17,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class AppointmentResource extends BaseResource
@@ -388,5 +389,39 @@ class AppointmentResource extends BaseResource
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['admin', 'super-admin', 'staff']) ?? false;
+    }
+
+    /**
+     * Staff run the calendar day to day — create/edit/delete/view an appointment
+     * is exactly their job, not just admin's. BaseResource's default (admin/
+     * super-admin only) would have silently taken EditAction/DeleteAction/the
+     * "New" button away from every staff member the moment authorization
+     * actually started being enforced. Mirrors canViewAny() above; there is no
+     * finer-grained business rule here today (unlike StaffVacationPeriodResource,
+     * which restricts staff to their own pending records).
+     */
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return static::canViewAny();
     }
 }

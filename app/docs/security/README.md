@@ -33,6 +33,7 @@ Complete security documentation for the Registro application.
 - [Calendar Generation Security](patterns/calendar-generation-security.md)
 - [Service Layer Security](patterns/service-layer-security.md)
 - [Role Escalation Guard (UserResource/RoleResource)](patterns/role-escalation-guard.md)
+- [Resource Authorization Layer (BaseResource)](patterns/resource-authorization.md)
 
 ---
 

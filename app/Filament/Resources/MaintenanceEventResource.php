@@ -14,6 +14,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class MaintenanceEventResource extends BaseResource
@@ -233,6 +234,34 @@ class MaintenanceEventResource extends BaseResource
      * Restrict access to super-admins only (global model, not tenant-scoped).
      */
     public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    /**
+     * Bulk delete exists in the table (cleanup of old logs); BaseResource's
+     * default is admin/super-admin — narrowed to match canViewAny() above so
+     * an admin who could never reach this page can't reach it through a more
+     * generic path either.
+     */
+    public static function canDeleteAny(): bool
+    {
+        return auth()->user()?->hasRole('super-admin') ?? false;
+    }
+
+    /**
+     * The singular counterpart, for the same reason. Unreachable today — this
+     * resource registers no row-level DeleteAction and canViewAny() blocks the
+     * page mount for anyone but a super-admin — but leaving it on BaseResource's
+     * wider admin default would mean the next embed or row action silently
+     * inherits a looser rule than the rest of the class states.
+     */
+    public static function canDelete(Model $record): bool
     {
         return auth()->user()?->hasRole('super-admin') ?? false;
     }
