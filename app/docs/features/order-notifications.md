@@ -190,6 +190,69 @@ deposit lifecycle and pickup logistics are out of scope for these two emails (de
 — see the design decisions below), and the equipment is already with/returned from the customer by
 the time either fires.
 
+**Correction (2026-08-14, `feature/settings-store-disconnect`):** `pickup_address`/`pickup_phone`
+resolved to empty strings in every `order-paid` email ever sent, since inception. The comment above
+`buildRentalVariables()` said this was deliberate ("queue-safe, no SettingsManager") and read
+`$order->organization->settings` (the `organizations.settings` JSON column) directly — but that
+column only ever holds `modules`/`features`/`location`; nothing writes `contact.*` into it. The
+tenant's actual contact info (what `SystemSettings`' Contact tab saves) lives in the `settings`
+table, read via `SettingsManager::getForOrganization($path, $organization, $default)` — which takes
+the organization explicitly rather than resolving `TenantFeature::currentTenant()`, so it is
+equally queue-safe. Fixed to use that instead. A related caching bug in `getForOrganization()`
+itself (a tenant inheriting a global `contact.*` value could keep serving a stale value for up to
+the cache TTL after a platform-global correction) was found and fixed in the same change — see
+`tenant-branding.md`'s "two settings stores" section for that half. One rough edge remains,
+deliberately not fixed here: the `order-paid` template's "Miejsce odbioru sprzętu:" label is
+unconditional, so a tenant with no contact info configured still shows the label with nothing
+under it — fixing it means editing a seeded DB template row, out of scope for this change (see
+`order-protocols.md` §5's "known residual rough edge" note). Details and the parallel fix in the
+handover/return protocol PDFs: `order-protocols.md` §5, `tenant-branding.md`'s "two settings
+stores" section.
+
+**Second correction (same day, from code review of the first correction):** the "rough edge" note
+above was itself incomplete in a way that mattered. The `order-paid` HTML body concatenated
+`{{pickup_address}}{{pickup_phone}}` with **no separator at all** — dormant only because both
+variables were always empty before this branch's fix. Once real values started flowing through,
+this rendered `…00-100 Warszawa+48123123123` glued together in every HTML confirmation email
+— a regression this branch introduced, not merely a cosmetic pre-existing gap, so it was fixed
+here rather than deferred: `EmailTemplateSeeder.php` now separates the two with `<br>`, and
+`database/migrations/2026_08_14_100000_fix_order_paid_pickup_html_separator.php` applies the same
+correction (exact-value match, tenant customisations untouched) to already-provisioned tenants'
+stored rows — `order-paid` is not seeded by any migration otherwise, only by `EmailTemplateSeeder`
+at first-tenant provisioning (the same gap `OrderHandoverReturnEmailTemplateMigrationTest`'s
+docblock already flagged for this and five other keys). `text_body` was never affected — it
+already put each on its own labeled line.
+
+**Decision on the unconditional label, made explicit:** `EmailTemplate::render()` is deliberately
+literal-substitution-only (see its own docblock) — no conditionals, and every substituted value is
+HTML-escaped, so a variable cannot smuggle in its own `<br>`/`<p>` markup to hide itself either
+(confirmed: `items_list_html` — an existing, unrelated variable — is ALSO escaped today, so the
+item table already renders as visible HTML source text rather than an actual table in every sent
+order-paid email; a real, separate, pre-existing bug, reported but not fixed here — out of scope
+for a settings-store fix, and touches the templating engine's escaping model, which exists
+specifically because `html_body` is editable by tenant-level admins). Making the "Miejsce odbioru
+sprzętu:" heading disappear when a tenant has no contact info configured would need either engine
+conditionals or a loosened, per-variable escaping exemption — both separate, security-relevant
+changes. Decision: the heading stays unconditional. Only the glued-values regression is fixed here.
+
+**A third call site, found by the same review round (item 3):** `resources/views/orders/show.blade.php`
+(customer's own order page) computed its "Miejsce odbioru sprzętu" section from
+`$order->organization?->settings` directly, in a `@php` block — the same JSON-column bug, missed by
+the first sweep because that sweep only grepped `app/`, not `resources/views/`. `$hasPickupInfo` was
+therefore always `false`: this section has never rendered for any tenant. Fixed by moving the
+extraction into `OrderController::show()` and passing a `$pickup` array to the view. Re-swept
+`resources/views/`, `resources/js/`, `database/`, `routes/` in addition to `app/` — clean, no
+further hits.
+
+**Root-cause follow-up (same round):** all three call sites — this notification, the two protocol
+PDFs, and `OrderController::show()` — had independently hand-rolled the same five-key `contact.*`
+lookup, each with its own "read via `getForOrganization()`, not the JSON column" docblock. Two of
+the three had gotten that docblock's own advice wrong. Consolidated into
+`SettingsManager::contactDetailsFor(?Organization): array`, the one place that decides which
+store — see `tenant-branding.md`'s "two settings stores" section, "Root-cause follow-up"
+subsection, for the full reasoning and why the per-caller display-shape combining was
+deliberately NOT folded into the same method.
+
 ---
 
 ## Design Decisions

@@ -37,9 +37,15 @@ class OrderController extends Controller
         abort_unless($order->user_id === auth()->id() && $order->organization_id === $org->id, 403);
 
         $rentalExtensionEnabled = $this->settings->isRentalExtensionEnabled();
-        $order->load(['items.extensionRequests']);
+        $order->load(['items.extensionRequests', 'organization']);
 
-        return view('orders.show', compact('order', 'rentalExtensionEnabled'));
+        // "Miejsce odbioru sprzętu" section — the settings TABLE's contact.*
+        // group (what SystemSettings' Contact tab saves), via the single
+        // canonical accessor. NOT $order->organization->settings, the JSON
+        // column — see contactDetailsFor()'s own docblock for why.
+        $pickup = $this->settings->contactDetailsFor($order->organization);
+
+        return view('orders.show', compact('order', 'rentalExtensionEnabled', 'pickup'));
     }
 
     public function cancel(Request $request, Order $order): RedirectResponse

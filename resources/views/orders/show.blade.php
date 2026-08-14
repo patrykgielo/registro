@@ -428,11 +428,10 @@
 
                 {{-- ─── Pickup location ─── --}}
                 @php
-                    $orgSettings    = $order->organization?->settings ?? [];
-                    $pickupAddress  = data_get($orgSettings, 'contact.address_line');
-                    $pickupPostal   = data_get($orgSettings, 'contact.postal_code');
-                    $pickupCity     = data_get($orgSettings, 'contact.city');
-                    $pickupPhone    = data_get($orgSettings, 'contact.phone');
+                    $pickupAddress  = $pickup['address_line'];
+                    $pickupPostal   = $pickup['postal_code'];
+                    $pickupCity     = $pickup['city'];
+                    $pickupPhone    = $pickup['phone'];
                     $hasPickupInfo  = $pickupAddress || $pickupCity || $pickupPhone;
                 @endphp
                 @if($hasPickupInfo)

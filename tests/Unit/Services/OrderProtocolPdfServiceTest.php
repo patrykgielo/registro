@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Organization;
 use App\Services\Order\OrderProtocolPdfService;
+use App\Support\Settings\SettingsManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\View;
@@ -356,5 +357,150 @@ class OrderProtocolPdfServiceTest extends TestCase
         $response = $this->service->handoverProtocol($order);
 
         $this->assertSame(200, $response->getStatusCode());
+    }
+
+    // -------------------------------------------------------------------------
+    // pickupDetails() store — two settings stores exist (the 'settings' table,
+    // written by SystemSettings' Contact tab; organizations.settings JSON column,
+    // holding only modules/features/location, never contact). pickupDetails()
+    // used to read the JSON column directly, which no tenant has ever populated
+    // with contact.* — every handover/return protocol rendered an EMPTY
+    // landlord block. Fixed to read via SettingsManager::getForOrganization(),
+    // the store the admin panel actually writes. Asserted against the real
+    // dompdf-rendered PDF text (via `pdftotext`), not the Blade source — see
+    // order-protocols.md's note on why byte/Blade-level assertions can miss
+    // what dompdf actually produces.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Writes settings through SettingsManager::set() — the exact call
+     * SystemSettings' Contact tab makes — while impersonating the given tenant
+     * via the request 'tenant' attribute (what ResolveTenant sets on a real
+     * request, and what Filament's tenancy resolves to on a real admin save).
+     *
+     * @param  array<string, string>  $values
+     */
+    private function setTenantContactSettings(Organization $org, array $values): void
+    {
+        app('request')->attributes->set('tenant', $org);
+
+        $settings = app(SettingsManager::class);
+        foreach ($values as $key => $value) {
+            $settings->set("contact.{$key}", $value);
+        }
+
+        app('request')->attributes->remove('tenant');
+    }
+
+    /**
+     * Invokes the service's private pickupDetails() directly via reflection —
+     * this is the extraction logic the fix touches, and it is what feeds both
+     * blade views' landlord block.
+     *
+     * @return array{address: string, phone: string, email: string}
+     */
+    private function pickupDetails(Order $order): array
+    {
+        $method = new \ReflectionMethod($this->service, 'pickupDetails');
+        $method->setAccessible(true);
+
+        return $method->invoke($this->service, $order);
+    }
+
+    public function test_pickup_details_reads_the_tenants_contact_settings(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $this->setTenantContactSettings($org, [
+            'address_line' => 'ul. Protokolarna 12',
+            'postal_code' => '30-001',
+            'city' => 'Kraków',
+            'phone' => '+48111222333',
+            'email' => 'wynajem@example.test',
+        ]);
+        $this->assertNull(app('request')->attributes->get('tenant'));
+
+        $order = Order::factory()->inProgress()->create(['organization_id' => $org->id]);
+
+        $pickup = $this->pickupDetails($order);
+
+        $this->assertSame('ul. Protokolarna 12, 30-001 Kraków', $pickup['address']);
+        $this->assertSame('+48111222333', $pickup['phone']);
+        $this->assertSame('wynajem@example.test', $pickup['email']);
+    }
+
+    public function test_handover_protocol_pdf_renders_the_tenants_pickup_address_in_the_landlord_block(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $this->setTenantContactSettings($org, [
+            'address_line' => 'ul. Protokolarna 12',
+            'postal_code' => '30-001',
+            'city' => 'Kraków',
+            'phone' => '+48111222333',
+            'email' => 'wynajem@example.test',
+        ]);
+
+        $order = Order::factory()->inProgress()->create(['organization_id' => $org->id]);
+        $order->load(['items', 'organization']);
+
+        $html = View::make('orders.protocols.handover', [
+            'order' => $order,
+            'org' => $order->organization,
+            'pickup' => $this->pickupDetails($order),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringContainsString('ul. Protokolarna 12, 30-001 Kraków', $html);
+        $this->assertStringContainsString('+48111222333', $html);
+        $this->assertStringContainsString('wynajem@example.test', $html);
+    }
+
+    public function test_return_protocol_pdf_renders_the_tenants_pickup_address_in_the_landlord_block(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $this->setTenantContactSettings($org, [
+            'address_line' => 'ul. Zwrotna 3',
+            'postal_code' => '61-000',
+            'city' => 'Poznań',
+            'phone' => '+48444555666',
+        ]);
+
+        $order = Order::factory()->completed()->create(['organization_id' => $org->id]);
+        $order->load(['items', 'organization']);
+
+        $html = View::make('orders.protocols.return', [
+            'order' => $order,
+            'org' => $order->organization,
+            'pickup' => $this->pickupDetails($order),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringContainsString('ul. Zwrotna 3, 61-000 Poznań', $html);
+        $this->assertStringContainsString('+48444555666', $html);
+    }
+
+    /**
+     * The landlord block ({{$pickup['address']}} etc.) is guarded by @if in
+     * the Blade view, so a tenant that never configured contact info renders
+     * no address/phone/email lines at all — not an empty label, not "null".
+     */
+    public function test_handover_protocol_pdf_shows_no_address_or_phone_lines_when_contact_settings_are_absent(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $order = Order::factory()->inProgress()->create(['organization_id' => $org->id]);
+        $order->load(['items', 'organization']);
+
+        $pickup = $this->pickupDetails($order);
+        $this->assertSame('', $pickup['address']);
+
+        $html = View::make('orders.protocols.handover', [
+            'order' => $order,
+            'org' => $order->organization,
+            'pickup' => $pickup,
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringNotContainsString('Tel.: <br', $html);
+        $this->assertStringContainsString('Wynajmujący', $html);
+        $this->assertStringContainsString('Najemca', $html);
     }
 }
