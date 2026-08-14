@@ -239,13 +239,50 @@ section for why that is never a drive-by) — not attempted here.
 ### 5. Company-identification limitation (not fixed here — product decision pending)
 
 `organizations` has **no legal identity fields** — no NIP, REGON, registered legal name, or
-registered address. Only `name` and `settings.contact.*` (`address_line`, `postal_code`, `city`,
-`phone`, `email` — the same fields `OrderPaidNotification::buildRentalVariables()` already reads
-for the pickup-address block in the payment-confirmation email). Both protocol documents render
-whatever is present in `settings.contact.*` and print blank space for anything missing — they do
-not invent new settings keys or add a settings UI for this. Whether a tenant's legal
-identity belongs on the Organization model (and whether it should be mandatory before the first
-protocol can be issued) is a product decision, not made in this branch.
+registered address. Only `name` and the `settings` table's `contact.*` group (`address_line`,
+`postal_code`, `city`, `phone`, `email` — the same fields
+`OrderPaidNotification::buildRentalVariables()` reads for the pickup-address block in the
+payment-confirmation email), read via `SettingsManager::getForOrganization()`, tenant row falling
+back to the global row. Both protocol documents render whatever is present in `contact.*` and
+print blank space for anything missing — they do not invent new settings keys or add a settings UI
+for this. Whether a tenant's legal identity belongs on the Organization model (and whether it
+should be mandatory before the first protocol can be issued) is a product decision, not made in
+this branch.
+
+**Correction (2026-08-14, `feature/settings-store-disconnect`):** the paragraph above originally
+said `pickupDetails()` read `settings.contact.*` and called the resulting empty landlord block a
+"limitation" of the missing legal-identity fields. That was wrong on both counts. There are two
+separate settings stores — the `settings` table (what `SystemSettings`' Contact tab actually
+saves, and what `SettingsManager` reads) and the unrelated `organizations.settings` JSON column
+(holds only `modules`/`features`/`location`, written solely by
+`SeedOrganizationDefaults::seedIndustryFeatures()`, never `contact.*`). `pickupDetails()` was
+reading the JSON column directly — so the landlord block rendered empty for every tenant
+regardless of what was configured in Settings → Contact, not because of any missing schema. Fixed
+in `App\Services\Order\OrderProtocolPdfService::pickupDetails()` (and the mirrored
+`OrderPaidNotification::buildRentalVariables()`) to read via `SettingsManager::getForOrganization()`
+instead. See `tenant-branding.md`'s "two settings stores that do not agree" section for the full
+finding, including a second, related caching bug found and fixed in the same change (a tenant that
+inherits a global `contact.*` value, rather than having its own row, could keep serving a
+platform-global correction as stale for up to the cache TTL — fixed in `SettingsManager` itself,
+not in either call site here).
+
+**Known residual rough edge, deliberately kept (decided, not deferred):** the seeded `order-paid`
+email template's "Miejsce odbioru sprzętu:" label (in `EmailTemplateSeeder`) is unconditional —
+unlike the PDF's Blade `@if` guards, it always renders even when a tenant has configured no
+contact info at all, leaving a label with nothing under it. `EmailTemplate::render()` is
+literal-substitution-only with no conditionals (and escapes every substituted value, so a
+variable cannot smuggle in markup to hide itself either) — making the label conditional would
+need either engine conditionals or a loosened per-variable escaping exemption, both separate,
+security-relevant changes out of scope here. See `order-notifications.md`'s correction note for
+the full reasoning, and for a related, more serious regression this branch DID fix in the same
+template (values that render literally glued together once populated) plus the data migration
+that ships the fix to already-provisioned tenants.
+
+**A third call site, found by code review after the other two were already fixed:**
+`resources/views/orders/show.blade.php` (the customer's own order page,
+`OrderController::show()`) had the identical JSON-column bug — the "Miejsce odbioru sprzętu"
+section on that page has never rendered for any tenant. Fixed the same way, moved into
+`OrderController::pickupDetails()`. See `tenant-branding.md`'s "two settings stores" section.
 
 ### 6. `dompdf.enable_remote` stays `false` — both views are self-contained by design
 
@@ -266,9 +303,13 @@ a remote asset to either view without re-reading this section first.
 
 - `app/Services/Order/OrderProtocolPdfService.php` — status gating (`canDownloadHandoverProtocol()`
   / `canDownloadReturnProtocol()`, public — §3) + `Pdf::loadView()` (mirrors
-  `StatisticsExportService`), plus `pickupDetails()` (mirrors
-  `OrderPaidNotification::buildRentalVariables()`'s organization-settings extraction — own copy,
-  not a shared abstraction, matching this codebase's stated convention, see `order-notifications.md`)
+  `StatisticsExportService`), plus `pickupDetails()`, which combines
+  `SettingsManager::contactDetailsFor($order->organization)`'s five raw fields into the
+  `address`/`phone`/`email` shape this view needs — NOT `organization->settings`, the JSON
+  column; see §5's correction and `tenant-branding.md`'s "two settings stores" section for why
+  `contactDetailsFor()` is the ONE place that decides which store, with the three callers
+  (this one, `OrderPaidNotification::buildRentalVariables()`, `OrderController::show()`) each
+  only responsible for their own display shape, not the store
 - `resources/views/orders/protocols/handover.blade.php`, `.../return.blade.php` — Polish-language,
   print-oriented (DejaVu Sans for PL diacritics, same as `statistics/pdf-report.blade.php`);
   duplicated rather than sharing a partial, matching the two-notification-classes precedent in
@@ -290,7 +331,15 @@ a remote asset to either view without re-reading this section first.
   Blade `View::make()->render()` (not the PDF bytes — dompdf compresses/encodes content streams, so
   byte-level string assertions are unreliable), empty-organization-settings does not throw,
   `handoverDepositStatuses()`/`returnDepositStatuses()` data providers covering all 5 deposit
-  statuses on both documents (§1a)
+  statuses on both documents (§1a); `pickupDetails()`/landlord-block coverage for the
+  settings-store fix (§5's correction) — tenant contact settings written through
+  `SettingsManager::set()` (the same call the admin panel makes) with no ambient tenant at read
+  time (simulates the queue-worker case), a tenant-scoped override beating a global row, and the
+  absent-settings case rendering no address/phone lines at all rather than an empty label. The
+  Blade-render assertions were additionally spot-checked against a real dompdf-generated PDF via
+  `pdftotext` on the host (not part of the committed suite — `pdftotext` isn't installed in the
+  `app` container/CI image) to confirm dompdf doesn't mangle Polish diacritics in the address; it
+  didn't. See §5's correction and `tenant-branding.md`'s "two settings stores" section
 - `tests/Feature/Orders/OrderProtocolDownloadTest.php` — HTTP-level: happy path (200 +
   `Content-Type: application/pdf`), wrong state (404), cross-tenant (404), cross-customer (404),
   no tenant context (404), guest → redirect to login, staff-of-own-tenant can download (§2),

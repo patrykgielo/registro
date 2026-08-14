@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Order;
 
 use App\Models\Order;
+use App\Support\Settings\SettingsManager;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
 
@@ -38,6 +39,8 @@ class OrderProtocolPdfService
 
     /** @var array<int, string> Statuses reachable only after the return was accepted. */
     private const RETURN_ELIGIBLE_STATUSES = ['completed', 'refunded'];
+
+    public function __construct(protected SettingsManager $settings) {}
 
     public function handoverProtocol(Order $order): Response
     {
@@ -120,25 +123,27 @@ class OrderProtocolPdfService
 
     /**
      * organizations has no legal identity (NIP/REGON/registered address) —
-     * only 'name' plus settings.contact.*. Mirrors
+     * only 'name' plus the `settings` table's contact.* group, read via
+     * SettingsManager::contactDetailsFor() — the single canonical accessor
+     * for this, tenant row falling back to the global row. Mirrors
      * OrderPaidNotification::buildRentalVariables(); do not invent extra
      * settings keys here, that is a product decision pending separately
-     * (see order-protocols.md).
+     * (see order-protocols.md). Do NOT read $order->organization->settings
+     * (the JSON column) — see contactDetailsFor()'s own docblock for why a
+     * shared accessor exists instead of each caller reading the settings
+     * table directly.
      *
      * @return array{address: string, phone: string, email: string}
      */
     private function pickupDetails(Order $order): array
     {
-        $settings = $order->organization?->settings ?? [];
+        $contact = $this->settings->contactDetailsFor($order->organization);
 
-        $addressLine = (string) data_get($settings, 'contact.address_line', '');
-        $postalCode = (string) data_get($settings, 'contact.postal_code', '');
-        $city = (string) data_get($settings, 'contact.city', '');
-        $phone = (string) data_get($settings, 'contact.phone', '');
-        $email = (string) data_get($settings, 'contact.email', '');
+        $address = trim(implode(', ', array_filter([
+            $contact['address_line'],
+            trim($contact['postal_code'].' '.$contact['city']),
+        ])));
 
-        $address = trim(implode(', ', array_filter([$addressLine, trim($postalCode.' '.$city)])));
-
-        return compact('address', 'phone', 'email');
+        return ['address' => $address, 'phone' => $contact['phone'], 'email' => $contact['email']];
     }
 }

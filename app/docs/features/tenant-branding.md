@@ -303,6 +303,11 @@ green, same as every other fix in this document.
 
 ### Related, out-of-scope finding: two settings stores that do not agree, and why the ordering here matters
 
+**Fixed 2026-08-14 on `feature/settings-store-disconnect`** — see the correction note at the end of
+this section. The rest of this section is kept as originally written (the finding, and why fixing
+the placeholder-`contact.*` removal first, in this branch, mattered) because that reasoning is still
+the reason the fix below was safe to make afterward.
+
 There are **two separate places** "settings" can live, and code in this area reads the wrong one:
 
 - **`settings` table** — what `SettingsManager::set()`/`get()`/`getForOrganization()` read and write
@@ -338,6 +343,116 @@ data or nothing, is safe by construction.
 
 **Not fixed here — this is a behavior change to notifications and to a legal document that just
 shipped, and needs its own review.** Flagged to the branch owner as a separate decision to make.
+
+**Correction (2026-08-14, `feature/settings-store-disconnect`):** fixed. Both call sites now read
+via `SettingsManager::getForOrganization('contact.*', $order->organization, $default)` — the
+tenant row, falling back to the global `organization_id IS NULL` row, i.e. exactly the store
+`SystemSettings`' Contact tab writes. `getForOrganization()` takes the organization explicitly
+rather than resolving `TenantFeature::currentTenant()`, so it stays queue-safe (`OrderPaidNotification`
+is `ShouldQueue`) without needing the JSON-column shortcut. `OrderProtocolPdfService` gained a
+constructor-injected `SettingsManager` for this (previously stateless). Cache correctness verified:
+`SettingsManager::set()`'s invalidation key is built from `TenantFeature::currentTenant()`'s id,
+which is the same id `getForOrganization()` uses for its cache key when called with that tenant's
+`Organization` — so a Contact-tab save in the admin panel (where `currentTenant()` resolves to the
+tenant being edited) invalidates exactly the key a later queue-worker read for that tenant's order
+will recompute. Regression coverage:
+`tests/Feature/Notifications/OrderPaidNotificationPickupAddressTest.php` (new) and
+`tests/Unit/Services/OrderProtocolPdfServiceTest.php`'s `pickupDetails()`/landlord-block tests
+(extended) — both write settings through `SettingsManager::set()` with no ambient tenant at read
+time, to prove the queue-worker path specifically, not just the happy path. Independently
+reproduced by generating a real dompdf PDF and reading it back with `pdftotext` on the host — the
+landlord block renders correctly. Full narrative: `order-notifications.md`, `order-protocols.md` §5.
+
+**Second correction, same day, from code review of the first correction:** the cache-correctness
+claim above ("invalidates exactly the key a later queue-worker read... will recompute") only
+covers a tenant that has its OWN `settings` row. It does not cover **inheritance**. A tenant with
+no row of its own reads (and, pre-fix, cached) the global fallback UNDER THE TENANT'S OWN cache
+key. `SettingsManager::set()`'s invalidation only ever clears a tenant-scoped key; `setGlobal()`'s
+invalidation only ever clears the global key. Neither one ever cleared the tenant-scoped cache
+entry holding the inherited value — so an operator correcting the address at the platform-global
+level, then generating a handover protocol for a tenant that inherits it, got the stale address
+until the 3600s TTL expired on its own. Pre-existing in `SettingsManager` since before this branch,
+not introduced by it — but this branch is what puts that path on the route for a signed document,
+so it was fixed here rather than deferred. Fix: `getForOrganization()` no longer caches an
+inherited global value under the tenant key at all — only "this tenant has no row of its own"
+(`SettingsManager::TENANT_ROW_MISS` sentinel) is cached there; the actual inherited read delegates
+to `getGlobal()`, reusing the cache key `setGlobal()` already invalidates correctly. Proven
+red-then-green: `tests/Unit/Support/Settings/SettingsManagerGlobalInvalidationTest.php`.
+
+**Third correction, same review round — a third call site, a live regression the fix itself
+introduced, and a weak test:**
+
+1. **A third call site.** `resources/views/orders/show.blade.php` (customer's own order page) read
+   `$order->organization?->settings` directly in a `@php` block, computing `$hasPickupInfo` from
+   it — the identical JSON-column bug, missed by the original sweep because that sweep grepped
+   `app/` only, never `resources/views/`. `$hasPickupInfo` was therefore always `false`: the
+   "Miejsce odbioru sprzętu" section has never rendered on that page for any tenant. Fixed by
+   moving the extraction into `OrderController::show()`'s new `pickupDetails()` (same convention
+   as the other two call sites), passed to the view as `$pickup`. Re-swept `resources/views/`,
+   `resources/js/`, `database/`, `routes/` in addition to `app/` this time — all clean, only
+   legitimate `modules`/`features`/`location` readers and this document's own explanatory comments
+   remain. Proven red-then-green:
+   `tests/Feature/Orders/OrderShowPickupLocationTest.php`.
+2. **A live regression the first fix itself activated.** `EmailTemplateSeeder`'s `order-paid`
+   HTML body concatenated `{{pickup_address}}{{pickup_phone}}` with no separator — dormant only
+   because both variables were always empty before the fix above made them real. Once populated,
+   this rendered `…00-100 Warszawa+48123123123` glued together in every HTML confirmation email —
+   worse than the pre-fix empty state, not merely cosmetic, so it needed fixing in this same
+   change rather than being deferred like the (separate, still-open) unconditional-label rough
+   edge. Fixed in `EmailTemplateSeeder.php` (adds `<br>`) plus
+   `database/migrations/2026_08_14_100000_fix_order_paid_pickup_html_separator.php` for
+   already-provisioned tenants (`order-paid` is seeded ONLY by `EmailTemplateSeeder`, at
+   first-tenant provisioning — no migration seeds it at all, a pre-existing gap
+   `OrderHandoverReturnEmailTemplateMigrationTest`'s docblock already flagged for six template
+   keys including this one). Exact-value `WHERE html_body = <old>` match, same safety convention
+   as `2026_08_12_120000_seed_order_handover_return_email_templates.php`: a tenant's own
+   customisation, or an operator's unrelated hand-edit of the global row, is never touched.
+   Full narrative and the unconditional-label decision: `order-notifications.md`.
+3. **A test that would have passed against the glued output.**
+   `OrderPaidNotificationPickupAddressTest`'s first test asserted the address and the phone as
+   independent `assertStringContainsString()` calls — `"…Warszawa+48123123123"` satisfies both
+   independently, so the test pinned wiring, not the actual rendered adjacency. Rewritten to
+   assert the exact junction fragment (`'ul. Testowa 5, 00-100 Warszawa<br>+48123123123'`) plus an
+   explicit `assertStringNotContainsString('Warszawa+48123123123', ...)`. Confirmed this version
+   actually fails against the pre-fix (glued) template before re-confirming green.
+
+**Also from this review round, unrelated to the three above:** `SettingsManager::set()` gained a
+docblock warning that it targets the GLOBAL row whenever no tenant is resolved (e.g. run from
+`tinker`/a console command with no ambient tenant) — `setGlobal()` already warned about the
+opposite-direction footgun (LC-9, `models.md`), `set()` did not. Not reachable through any
+Filament-panel path this codebase uses; documentation only, no behavior change.
+
+### Root-cause follow-up: three copies of the same lookup, one of them wrong twice
+
+Every fix above (OrderPaidNotification, OrderProtocolPdfService, then the third call site in
+OrderController) independently re-derived the same five-key `contact.*` lookup, and each
+carried a docblock saying "read via `getForOrganization()`, NOT `organization->settings`". That
+convention is exactly the one that produced the original bug — a docblock the next caller has to
+read and trust, on each of three near-identical copies, is not a structural guarantee. Raised in
+review: would a single accessor make the wrong-store mistake impossible for a fourth caller,
+rather than merely documented against?
+
+Added `SettingsManager::contactDetailsFor(?Organization): array` — the ONE place that reads
+`contact.address_line`/`postal_code`/`city`/`phone`/`email` via `getForOrganization()`, returning
+all five as raw strings (`''` default, never `null`). All three call sites now call it instead of
+spelling out the five `getForOrganization('contact.*', ...)` calls themselves:
+
+- `OrderController::show()` passes the raw five-key array straight to the view (needs address
+  line and postal+city on separate `<dt>/<dd>` lines — no combining).
+- `OrderProtocolPdfService::pickupDetails()` and `OrderPaidNotification::buildRentalVariables()`
+  each combine `address_line`+`postal_code`+`city` into one display string locally — DELIBERATELY
+  not folded into `contactDetailsFor()` itself. That combining is a display-shape choice each
+  caller owns, not a store decision; a method that also decides "and here's the one true way to
+  join these fields as text" would just be a fourth per-caller convention wearing a shared name.
+  `contactDetailsFor()`'s own docblock says so explicitly, so the temptation to add an
+  "assembled" variant next time is answered before it's asked.
+
+A new caller can now still get the DISPLAY SHAPE wrong (unlikely to matter much — it's just
+string formatting) but cannot get the STORE wrong, because there is no longer a second `contact.*`
+lookup to copy from that reads the wrong one. Coverage:
+`tests/Unit/Support/Settings/SettingsManagerContactDetailsTest.php` (new) — including a
+poisoned-JSON-column test that plants the WRONG-store shape data (`settings.contact.address_line`
+on the `organizations` row) and asserts `contactDetailsFor()` never surfaces it.
 
 ## Fourth pass: hardcoded text with no settings row at all
 

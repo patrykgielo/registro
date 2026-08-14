@@ -29,6 +29,14 @@ class SettingsManager
     private const CACHE_PREFIX = 'settings';
 
     /**
+     * Sentinel cached under a tenant's cache key to mean "no row of this
+     * tenant's own exists" — deliberately NOT the same thing as caching the
+     * inherited global value under that key (see getForOrganization()'s
+     * docblock for why that distinction is the whole fix).
+     */
+    private const TENANT_ROW_MISS = "\0__settings_tenant_row_miss__\0";
+
+    /**
      * Get a setting value by dot notation path.
      *
      * Tenant-aware: checks tenant-specific setting first, falls back to global default.
@@ -47,6 +55,17 @@ class SettingsManager
      * Set a setting value by dot notation path.
      *
      * Example: set('booking.business_hours_start', '10:00')
+     *
+     * WARNING: targets TenantFeature::currentTenant() ?? null — i.e. the GLOBAL row —
+     * whenever no tenant is resolved. That is correct from the Filament admin panel (a
+     * real tenant is always resolved there) but is a footgun from `artisan tinker` or a
+     * console command run with no ambient tenant context: it writes the row EVERY tenant
+     * without their own override inherits from, while an operator who typed `set(...)`
+     * expecting to fix one tenant's setting may not realize that. setGlobal()'s own
+     * docblock already warns about the opposite direction (a stale `session('tenant_id')`
+     * silently tenant-scoping an intended-global write, see models.md's GOTCHA LC-9) — this
+     * is the missing warning for this method. Not currently reachable through any path this
+     * codebase's Filament panels use (found in review, 2026-08-14).
      *
      * @param  string  $path  Dot notation path (group.key)
      * @param  mixed  $value  Value to store
@@ -133,34 +152,41 @@ class SettingsManager
      * THIS request (e.g. the `tenant` request attribute set by ResolveTenant) and the
      * decision must not be silently overridden by a stale `session('tenant_id')` left by
      * a prior subdomain visit — see CheckRegistrationEnabled for the motivating case.
+     *
+     * A tenant with no row of its own INHERITS the global value — that inherited value is
+     * NEVER cached under the tenant's own cache key (only "this tenant has no row of its
+     * own" is, via TENANT_ROW_MISS). The inherited read instead delegates to getGlobal(),
+     * which caches under the global key that setGlobal() already invalidates correctly.
+     * Caching the inherited value under the tenant key was the original bug here
+     * (2026-08-14, feature/settings-store-disconnect code review): setGlobal()'s
+     * invalidation only ever clears the global key, so a tenant that had already read
+     * (and cached) the OLD inherited value kept serving it for up to CACHE_TTL after an
+     * operator corrected the global default — see SettingsManagerGlobalInvalidationTest.
      */
     public function getForOrganization(string $path, ?Organization $organization, mixed $default = null): mixed
     {
         [$group, $key] = $this->parsePath($path);
         $tenantId = $organization?->id;
-        $cacheKey = self::CACHE_PREFIX.':tenant:'.($tenantId ?? 'global').":{$group}:{$key}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($group, $key, $default, $tenantId) {
-            if ($tenantId) {
+        if ($tenantId) {
+            $tenantCacheKey = self::CACHE_PREFIX.":tenant:{$tenantId}:{$group}:{$key}";
+
+            $tenantValue = Cache::remember($tenantCacheKey, self::CACHE_TTL, function () use ($group, $key, $tenantId) {
                 $setting = Setting::withoutGlobalScope('organization')
                     ->where('organization_id', $tenantId)
                     ->group($group)
                     ->key($key)
                     ->first();
 
-                if ($setting) {
-                    return $this->unwrapValue($setting->value);
-                }
+                return $setting ? $this->unwrapValue($setting->value) : self::TENANT_ROW_MISS;
+            });
+
+            if ($tenantValue !== self::TENANT_ROW_MISS) {
+                return $tenantValue;
             }
+        }
 
-            $setting = Setting::withoutGlobalScope('organization')
-                ->whereNull('organization_id')
-                ->group($group)
-                ->key($key)
-                ->first();
-
-            return $setting ? $this->unwrapValue($setting->value) : $default;
-        });
+        return $this->getGlobal($path, $default);
     }
 
     /**
@@ -499,6 +525,46 @@ class SettingsManager
     public function contactInformation(): array
     {
         return $this->group('contact');
+    }
+
+    /**
+     * The canonical, single place that reads a tenant's contact details from the
+     * `settings` TABLE — what SystemSettings' Contact tab actually writes, tenant row
+     * falling back to the global row via getForOrganization(). Every caller that needs
+     * a tenant's address/phone/email for a customer-facing surface (order-paid email,
+     * handover/return protocol PDFs, the customer's own order page) MUST go through
+     * this method rather than reading $organization->settings directly.
+     *
+     * Why this exists: three call sites independently hand-rolled this same five-key
+     * lookup, and two of the three reached for the WRONG store — organizations.settings,
+     * the unrelated JSON column that only ever holds modules/features/location — with
+     * nobody noticing for as long as the feature existed (feature/settings-store-disconnect,
+     * 2026-08-14; full incident account in tenant-branding.md's "two settings stores"
+     * section). A docblock on each copy saying "read via getForOrganization(), not the
+     * JSON column" is a convention the next caller can still get wrong by copy-pasting
+     * the wrong sibling. A single accessor that already reads the correct store makes
+     * that mistake structurally impossible instead: there is no store decision left for
+     * a new caller to get wrong, only formatting.
+     *
+     * Deliberately returns the five RAW fields, not a pre-assembled "address_line, city"
+     * string — the three current callers each want a different SHAPE (the notification
+     * and the PDF combine address_line+postal_code+city into one display string, the
+     * customer's own order page renders them as two separate <dt>/<dd> lines) and none of
+     * that formatting choice is where the actual bug was. Combine the raw fields at each
+     * call site as needed; do not add a second "assembled" variant of this method for
+     * that — see this docblock the next time you're tempted to.
+     *
+     * @return array{address_line: string, postal_code: string, city: string, phone: string, email: string}
+     */
+    public function contactDetailsFor(?Organization $organization): array
+    {
+        return [
+            'address_line' => (string) $this->getForOrganization('contact.address_line', $organization, ''),
+            'postal_code' => (string) $this->getForOrganization('contact.postal_code', $organization, ''),
+            'city' => (string) $this->getForOrganization('contact.city', $organization, ''),
+            'phone' => (string) $this->getForOrganization('contact.phone', $organization, ''),
+            'email' => (string) $this->getForOrganization('contact.email', $organization, ''),
+        ];
     }
 
     /**
