@@ -268,6 +268,45 @@ CRON
 chmod 644 /etc/cron.d/registro-certificate
 log "Installed /etc/cron.d/registro-certificate (every 15 min, no-op when unchanged)"
 
+# Certificate EXPIRY probe -- independent of the reconciler above. That
+# script only re-issues on a NAME CHANGE (its own "Certificate already
+# covers N name(s) -- nothing to do" branch) -- actual time-based renewal is
+# certbot's own separate systemd timer. Nothing until now noticed if THAT
+# timer stopped firing; the outage would be the first signal. Root, same as
+# sync-certificate.sh above, purely so it can read the legacy checkout's
+# .env regardless of who owns it -- the probe itself only opens a TLS
+# connection to 127.0.0.1:443, it never touches /etc/letsencrypt or reloads
+# nginx. Daily, not every 15 minutes: this is a synchronous few-second probe
+# against a value (days until expiry) that does not change meaningfully
+# faster than once a day, unlike the reconciler's own name-list, which can
+# change the moment a tenant is provisioned.
+if [ -f "$(dirname "$0")/server/check-certificate-expiry.sh" ]; then
+    install -m 755 -o root -g root "$(dirname "$0")/server/check-certificate-expiry.sh" \
+        "${DEPLOY_SCRIPT_DIR}/check-certificate-expiry.sh"
+    log "Installed ${DEPLOY_SCRIPT_DIR}/check-certificate-expiry.sh"
+elif [ -f /root/check-certificate-expiry.sh ]; then
+    install -m 755 -o root -g root /root/check-certificate-expiry.sh "${DEPLOY_SCRIPT_DIR}/check-certificate-expiry.sh"
+    log "Installed ${DEPLOY_SCRIPT_DIR}/check-certificate-expiry.sh from /root/"
+else
+    warn "check-certificate-expiry.sh not found -- nothing will notice if certificate renewal silently stops working"
+fi
+
+install -m 644 -o root -g root /dev/null /var/log/registro-certificate-expiry.log 2>/dev/null || true
+
+# Same silent-when-clean convention as tenant-check.sh/sync-certificate.sh
+# above -- stdout to /dev/null, the script's own log file is the durable
+# record and it only grows on a finding. Optional webhook alerting
+# (REGISTRO_CERT_ALERT_URL, no vendor implied) is this operator's decision,
+# not installed here -- add it to this line, or to /etc/environment, if
+# wanted; unset means log-only, same as every other check on this machine
+# today.
+cat >/etc/cron.d/registro-certificate-expiry <<'CRON'
+# Fail loudly if the certificate served on :443 is close to expiry (see /opt/registro/check-certificate-expiry.sh)
+0 6 * * * root /opt/registro/check-certificate-expiry.sh >/dev/null 2>&1
+CRON
+chmod 644 /etc/cron.d/registro-certificate-expiry
+log "Installed /etc/cron.d/registro-certificate-expiry (daily, silent when healthy)"
+
 ###############################################################################
 log "SSH hardening"
 ###############################################################################

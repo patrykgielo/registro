@@ -88,19 +88,57 @@ Powinieneś zobaczyć `Linger=yes`.
 
 ### 0.4 — Zainstaluj skrypty operatora
 
-> Kopiuje trzy skrypty z repo na serwer, jako własność roota, żeby nikt inny ich nie podmienił.
+> Kopiuje cztery skrypty z repo na serwer, jako własność roota, żeby nikt inny ich nie podmienił.
 > Uruchom to z katalogu repo na swojej maszynie.
 
 ```bash
 cd /var/www/projects/registro/app
-for f in apply.sh tenant-check.sh tenant-backup.sh; do
+for f in apply.sh tenant-check.sh tenant-backup.sh check-certificate-expiry.sh; do
   scp scripts/server/$f root@srv1342834.hstgr.cloud:/tmp/$f
   ssh root@srv1342834.hstgr.cloud "install -m 755 -o root -g root /tmp/$f /opt/registro/$f && rm /tmp/$f"
 done
 ssh root@srv1342834.hstgr.cloud 'ls -l /opt/registro/'
 ```
 
-Powinieneś zobaczyć trzy pliki `-rwxr-xr-x root root`.
+Powinieneś zobaczyć cztery pliki `-rwxr-xr-x root root`.
+
+### 0.4a — Zegarek na wygasanie certyfikatu (`check-certificate-expiry.sh`)
+
+> `sync-certificate.sh` (krok 2.5) NIGDY nie odnawia po czasie — reaguje wyłącznie na zmianę listy
+> nazw. Faktyczne odnowienie robi WŁASNY, niezależny timer certbota, uruchamiany przez
+> `setup-production-server.sh` przy pierwszym stawianiu maszyny. Do tej pory nic nie sprawdzało, czy
+> ten timer w ogóle działa — awaria byłaby pierwszym sygnałem. Ten skrypt łączy się z `127.0.0.1:443`
+> (nie czyta pliku certyfikatu z dysku — to celowe, patrz nagłówek skryptu: certyfikat odnowiony na
+> dysku, ale nigdy nie przeładowany do nginxa, to dokładnie ten sam kształt błędu co incydent
+> 2026-08-12 z tego dokumentu, tylko dla certyfikatu zamiast configu) i liczy dni do wygaśnięcia.
+
+Na maszynie postawionej `setup-production-server.sh` PO tej zmianie — nic więcej nie musisz robić,
+skrypt i cron (`/etc/cron.d/registro-certificate-expiry`, codziennie o 6:00, jako root, cichy gdy
+zdrowy) instalują się same. Na już istniejącym UAT — po wykonaniu 0.4 powyżej, dolóż cron ręcznie:
+
+```bash
+ssh root@srv1342834.hstgr.cloud 'cat >/etc/cron.d/registro-certificate-expiry <<CRON
+# Fail loudly if the certificate served on :443 is close to expiry (see /opt/registro/check-certificate-expiry.sh)
+0 6 * * * root /opt/registro/check-certificate-expiry.sh >/dev/null 2>&1
+CRON
+chmod 644 /etc/cron.d/registro-certificate-expiry'
+```
+
+Sprawdź od razu, ręcznie (nie czekaj do 6:00) — cisza i kod 0 to zdrowy certyfikat:
+
+```bash
+ssh root@srv1342834.hstgr.cloud '/opt/registro/check-certificate-expiry.sh; echo "kod: $?"'
+```
+
+Progi: OSTRZEŻENIE ≤30 dni (to próg, przy którym certbot i tak powinien już odnowić — jego brak
+oznacza, że coś jest nie tak), KRYTYCZNE ≤14 dni. Nadpisywalne (`REGISTRO_CERT_WARN_DAYS`,
+`REGISTRO_CERT_CRIT_DAYS`), ale nie ma powodu tego robić bez konkretnego argumentu.
+
+**Opcjonalny webhook, bez żadnego dostawcy wpisanego na sztywno:** ustaw `REGISTRO_CERT_ALERT_URL`
+(zwykły `GET`, dowolny endpoint typu healthchecks.io/UptimeRobot/własny) w linii crona powyżej albo
+w `/etc/environment` — bez tego skrypt zostaje dokładnie tak cichy jak `tenant-check.sh` dziś (log +
+kod wyjścia, nic nie jest odpytywane z zewnątrz). URL nigdy nie trafia do logu skryptu (może nieść
+sekretny token) — jeśli ping zawiedzie, log mówi tylko że ping zawiódł, nie dlaczego ani dokąd szedł.
 
 ### 0.5 — Sprawdź logowanie do rejestru obrazów
 
@@ -463,6 +501,32 @@ ssh deploy@srv1342834.hstgr.cloud '/opt/registro/apply.sh nazwaklienta v0.14.0'
 ```bash
 ssh deploy@srv1342834.hstgr.cloud '/opt/registro/tenant-backup.sh nazwaklienta'
 ```
+
+### Zegarek na to, że cron backupu w ogóle przestał odpalać
+
+Kod wyjścia niezero + log to za mało — cron, który przestał się odpalać (zła crontab, pełny dysk,
+usunięty skrypt) nie da ŻADNEGO sygnału, nie tylko zły. Odpowiedź: dead-man's-switch — udany
+`tenant-backup.sh` sam odpytuje URL, który podaje operator; **brak** pingu jest tym, na co alarmuje
+zewnętrzny serwis (healthchecks.io i podobne — nic wpisane na sztywno w kodzie).
+
+**Opcjonalne, cichy no-op bez konfiguracji.** Włącz per tenant (osobny cron na tenanta = osobny URL,
+żeby jeden zdechły cron nie chował się za pingami wszystkich pozostałych tenantów) — dodaj linię do
+`/opt/stacks/<slug>/.env.bak-manual`:
+
+```
+BACKUP_HEALTHCHECK_URL=https://twoj-monitoring.example/ping/<token-tenanta>
+```
+
+**Dlaczego `.env.bak-manual`, nie `.env`:** `apply.sh` regeneruje `.env` W CAŁOŚCI przy KAŻDYM
+przebiegu (pułapka 9.2 tego dokumentu) — wartość wpisana wprost do `.env` zniknęłaby przy
+najbliższym wydaniu. `.env.bak-manual` to już istniejący, sankcjonowany sposób na wartości, których
+`apply.sh` nie potrafi sam wymyślić (`apply.sh`'s own „reconcile .env"), doklejany do `.env`
+niezmieniony przy każdym uruchomieniu.
+
+Ping idzie DOPIERO po pełnym sukcesie — baza I oba wolumeny plików. Częściowy backup (jeden wolumen
+się nie udał) i tak kończy się `die()` (kod 3) zanim dojdzie do pingu, bez osobnego warunku. Zerwane
+połączenie z endpointem monitoringu NIGDY nie zamienia udanego backupu w nieudany — ping jest tylko
+najlepszym-wysiłkiem po fakcie, z limitem czasu (nie zawiesi crona).
 
 **Ograniczenie, o którym musisz wiedzieć:** repozytorium backupu i jego hasło leżą **na tym samym
 serwerze, który backupujemy**. To jest redundancja dyskowa, **nie disaster recovery**. Jeśli

@@ -37,7 +37,13 @@ fake_exe docker <<'EOS'
 case "$*" in
     *"volume inspect"*) exit 0 ;;
     *"find /d -mindepth 1"*) echo "/d/somefile"; exit 0 ;;
-    *) exit 0 ;;
+    # Catch-all also handles the piped `docker run -i ... tar -x` file
+    # restore step -- drains stdin first, same reasoning (and same
+    # load-testing) as case 15's identical fix: a reader that exits without
+    # reading can SIGPIPE the fake restic writer under CPU contention,
+    # failing this test for a reason that has nothing to do with
+    # tenant-restore.sh's own correctness.
+    *) cat >/dev/null; exit 0 ;;
 esac
 EOS
 

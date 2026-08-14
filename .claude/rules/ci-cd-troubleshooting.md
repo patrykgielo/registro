@@ -708,7 +708,8 @@ nawet bez sieci), więc synchroniczny resolver libc dla literalnego upstreamu pr
 osiągnąć zanim podda — ~5,2 s na zły kształt z gołym `--network none`. Nadpisanie
 `/etc/resolv.conf` na `nameserver 127.0.0.1` + `options timeout:1 attempts:1` (adres loopback bez
 nasłuchującego procesu, szybka porażka zamiast pełnego cyklu timeoutu) tnie to do ~1,2 s na zły
-kształt. Cały case: ~4,5 s. Cały pakiet (18 pozostałych testów + ten): ~5,3 s zamiast <1 s.
+kształt. Cały case: ~4,5 s. Cały pakiet (27 pozostałych testów + ten, stan 2026-08-14): ~6,3 s
+zamiast <2 s -- rosło z każdym dodanym niezależnym od tego case'u testem, ten sam realny koszt.
 Uznane za wart tego kosztu, bo alternatywa (regex) dowiedziona jako przepuszczająca realne błędy,
 jeden z nich niemożliwy do naprawienia wzorcem, który regex by "wykrył jako nieobecny".
 
