@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Onboarding;
 
 use App\Enums\TemplateKey;
+use App\Events\TenantRegistered;
 use App\Models\EmailTemplate;
 use App\Models\Organization;
 use App\Models\OrganizationLifecycleLog;
 use App\Models\TenantProvisioningState;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -51,11 +53,28 @@ class TenantProvisionCommandTest extends TestCase
         ]);
     }
 
-    public function test_it_prints_a_password_setup_link_instead_of_emailing_one(): void
+    /**
+     * The link is always the stdout deliverable -- whether or not the
+     * TenantRegistered mail also goes out is a separate concern, covered by
+     * the dispatch tests below.
+     */
+    public function test_it_always_generates_a_password_setup_token(): void
+    {
+        $this->runCommand()->assertSuccessful();
+
+        $owner = User::where('email', 'owner@acme.test')->firstOrFail();
+        $this->assertNotNull($owner->password_setup_token);
+    }
+
+    /**
+     * --no-email is the explicit opt-out for an operator who does not want
+     * the tenant-registered mail -- the setup token/link must still work.
+     */
+    public function test_the_no_email_flag_still_prints_a_setup_link_without_emailing(): void
     {
         Notification::fake();
 
-        $this->runCommand()->assertSuccessful();
+        $this->runCommand(['--no-email' => true])->assertSuccessful();
 
         $owner = User::where('email', 'owner@acme.test')->firstOrFail();
         $this->assertNotNull($owner->password_setup_token);
@@ -151,5 +170,63 @@ class TenantProvisionCommandTest extends TestCase
         $this->runCommand()->assertSuccessful();
 
         $this->artisan('registro:tenant-provisioned')->assertSuccessful();
+    }
+
+    /**
+     * TenantRegistered is the only thing left that fires the owner-welcome +
+     * operator-notification mail since BusinessRegisterController was removed
+     * -- this command is now the sole caller.
+     */
+    public function test_it_dispatches_tenant_registered_for_a_newly_created_organization(): void
+    {
+        Event::fake([TenantRegistered::class]);
+
+        $this->runCommand()->assertSuccessful();
+
+        Event::assertDispatched(TenantRegistered::class, function (TenantRegistered $event) {
+            return $event->organization->slug === 'acme-rentals'
+                && $event->owner->email === 'owner@acme.test';
+        });
+    }
+
+    public function test_it_does_not_redispatch_tenant_registered_on_an_idempotent_rerun(): void
+    {
+        $this->runCommand()->assertSuccessful();
+
+        Event::fake([TenantRegistered::class]);
+
+        $this->runCommand()->assertSuccessful();
+
+        Event::assertNotDispatched(TenantRegistered::class);
+    }
+
+    public function test_the_no_email_flag_suppresses_the_dispatch(): void
+    {
+        Event::fake([TenantRegistered::class]);
+
+        $this->runCommand(['--no-email' => true])->assertSuccessful();
+
+        Event::assertNotDispatched(TenantRegistered::class);
+    }
+
+    /**
+     * The setup link is the actual deliverable of this command -- a mail
+     * transport failure (SMTP down, queue connection refused) must not stop
+     * the operator from getting it, and must not fail the command.
+     */
+    public function test_a_failure_dispatching_tenant_registered_does_not_fail_the_command(): void
+    {
+        Notification::fake();
+        Event::listen(TenantRegistered::class, function (): void {
+            throw new \RuntimeException('smtp is down');
+        });
+
+        $this->runCommand()->assertSuccessful();
+
+        $org = Organization::where('slug', 'acme-rentals')->firstOrFail();
+        $owner = User::where('email', 'owner@acme.test')->firstOrFail();
+
+        $this->assertNotNull($owner->password_setup_token);
+        $this->assertSame($owner->id, $org->owner_id);
     }
 }

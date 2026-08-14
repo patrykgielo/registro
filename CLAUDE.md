@@ -39,14 +39,14 @@ Rules are organized in TIERs:
 - **Laravel 12**, PHP 8.3+, MySQL 8.0
 - **Filament v4** (namespace breaking changes - see filament.md)
 - **Tailwind CSS 4.0**, Vite 7+
-- **Docker Compose** (9 services)
+- **Docker Compose** (8 services — `docker compose config --services`)
 
 **URLs:**
 - Local: https://registro.local:8444
 
 **Repo:** `patrykgielo/registro`
 
-**Note:** CI/CD workflows are disabled (workflow_dispatch only). No staging/production servers configured yet.
+**Note:** CI/CD workflows are disabled (workflow_dispatch only). **UAT is live** — `srv1342834.hstgr.cloud`, app domain `registrolabs.com`. PreProd (`registroapps.com`) is a machine not yet bought. See `app/docs/deployment/instalacja-tenanta-od-zera.md`.
 
 ---
 

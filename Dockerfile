@@ -106,7 +106,9 @@ RUN rm -rf /tmp/php-config
 
 # Browser Testing Support (Playwright + Node.js)
 # Only installed when BROWSER_TESTING=true (local development)
-# This adds ~500MB to the image but enables E2E testing
+# System Chromium deps only here - the browser binaries themselves are
+# installed further down, once package.json is available (see below),
+# so their version can be pinned to the exact npm "playwright" version.
 RUN if [ "$BROWSER_TESTING" = "true" ]; then \
         echo "✓ Installing browser testing dependencies..."; \
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -154,17 +156,44 @@ COPY --from=frontend-builder /app/public/build ./public/build
 # Autoload
 RUN composer dump-autoload --optimize --no-dev
 
-# Install Playwright for browser testing (only when enabled)
-# Uses system Chromium instead of downloading separate binaries
+# Install Playwright browser binaries (only when enabled)
+#
+# WHY NOT node_modules: docker-compose.yml bind-mounts the whole project
+# (".:/var/www"), so anything this layer wrote under /var/www/node_modules
+# would be shadowed by the host's node_modules at runtime anyway. The npm
+# "playwright" package itself already lives on the host (devDependency,
+# vendored via bind mount) and pest-plugin-browser always shells out to the
+# host's "./node_modules/.bin/playwright" — never anything from the image.
+# What the image DOES need to provide, and what a rebuild was silently
+# losing, is the actual browser executables (Chromium binaries), which are
+# NOT part of node_modules and are never installed by "npm install".
+#
+# WHERE: $PLAYWRIGHT_BROWSERS_PATH is pinned to /opt/playwright-browsers,
+# outside /var/www, so the bind mount can never shadow it.
+#
+# VERSION: the browser build downloaded by "playwright install" is tied to
+# the exact version of the playwright CLI that requests it. If that version
+# drifts from the host's node_modules/playwright (package.json), the host
+# CLI refuses to launch the image's browser ("Executable doesn't exist" /
+# "Playwright was just installed or updated"). To guarantee they match, the
+# version is read from package.json at build time (COPY . . above already
+# brought it in) rather than hardcoded — bumping the npm package forces a
+# rebuild to pick up the new pin instead of silently drifting.
 RUN if [ "$BROWSER_TESTING" = "true" ]; then \
-        echo "✓ Installing Playwright..."; \
-        npm install playwright@latest; \
-        echo "✓ Playwright installed"; \
+        set -e; \
+        PLAYWRIGHT_VERSION=$(node -e "process.stdout.write(require('/var/www/package.json').devDependencies.playwright.replace(/^[^0-9]*/, ''))"); \
+        echo "✓ Installing Playwright CLI + Chromium pinned to package.json version: $PLAYWRIGHT_VERSION"; \
+        npm install -g "playwright@$PLAYWRIGHT_VERSION"; \
+        mkdir -p /opt/playwright-browsers; \
+        PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers playwright install chromium; \
+        echo "✓ Playwright $PLAYWRIGHT_VERSION Chromium binaries installed to /opt/playwright-browsers"; \
     fi
 
-# Playwright environment (Debian uses downloaded browsers, not system chromium)
-# Skip browser download during npm install - will install via npx playwright install
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
+# Browser binaries live outside /var/www (see rationale above) so the bind
+# mount in docker-compose.yml never shadows them. Harmless no-op when
+# BROWSER_TESTING=false — nothing reads this var if node/playwright aren't
+# installed, and it adds no size to the production image.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # Copy public directory to /tmp for entrypoint script
 RUN cp -r /var/www/public /tmp/public
@@ -187,10 +216,14 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Attempting to chown to non-existent user causes restart loops (v0.6.1 incident).
 #
 # See: app/docs/decisions/ADR-013-docker-user-model.md
+#
+# /opt/playwright-browsers only exists when BROWSER_TESTING=true; chown is
+# skipped otherwise so this step doesn't fail on the production image.
 RUN groupadd -g 1000 laravel && \
     useradd -u 1000 -g laravel -m laravel && \
     chown -R laravel:laravel /var/www && \
-    chown -R laravel:laravel /tmp/public
+    chown -R laravel:laravel /tmp/public && \
+    if [ -d /opt/playwright-browsers ]; then chown -R laravel:laravel /opt/playwright-browsers; fi
 
 USER laravel
 

@@ -9,7 +9,7 @@
         class="mb-6"
     >
         <p class="mb-3">
-            Link, którego użyłeś, wygasł lub jest nieprawidłowy. Linki do ustawienia hasła są ważne przez 30 minut ze względów bezpieczeństwa.
+            Link, którego użyłeś, wygasł lub jest nieprawidłowy. Linki do ustawienia hasła są ważne przez {{ \App\Models\User::PASSWORD_SETUP_TTL_HOURS }} godziny ze względów bezpieczeństwa.
         </p>
         <hr class="my-3 border-red-200">
         <p class="mb-0">

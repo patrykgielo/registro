@@ -9,33 +9,26 @@ paths:
 
 ```php
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 
-class AppointmentConfirmation extends Notification implements ShouldQueue, ShouldBeUnique
+class AppointmentConfirmation extends Notification implements ShouldQueue
 {
     use Queueable;
 }
 ```
 
-## ⚠️ ShouldBeUnique + wielu odbiorców = fan-out bug (Incident 2026-06-30)
+## ⚠️ `ShouldBeUnique` na notyfikacji NIC NIE ROBI (Laravel 12.60.2)
 
-**NIE używaj `ShouldBeUnique` gdy ta sama notyfikacja idzie do WIELU odbiorców jednym `Notification::send($collection, …)`.**
+**Zweryfikowane 2026-08-12 w źródle frameworka i empirycznie. Deklaracja jest martwa — nie szkodzi, ale nie chroni.**
 
-Laravel dispatchuje **jeden `SendQueuedNotifications` job per notifiable**, a wszystkie współdzielą **jeden** klucz locka (`uniqueId()` jest notifiable-agnostyczny). Tylko pierwszy job zdobywa lock — reszta jest **cicho odrzucana**. Efekt: z N super-adminów mail dostaje **tylko 1**.
+`NotificationSender::queueNotification()` robi `$this->bus->dispatch(SendQueuedNotifications…)` — bezpośredni `Bus::dispatch` na opakowaniu, które implementuje wyłącznie `ShouldQueue`. Lock zakłada **tylko** `PendingDispatch::__destruct()`, czyli ścieżka `Job::dispatch()`, której notyfikacje nigdy nie używają. `Bus\Dispatcher` w ogóle nie zna tego interfejsu, a `InteractsWithUniqueJobs` służy do ZWALNIANIA locka i sprawdza opakowanie, nie notyfikację.
 
-```php
-// ❌ ŹLE — z 5 super-adminami tylko 1 dostanie mail
-class OrganizationClosureRequestedNotification extends Notification implements ShouldQueue, ShouldBeUnique
-{
-    public function uniqueId(): string { return 'closure:'.$this->org->id; } // wspólny dla wszystkich odbiorców!
-}
-Notification::send(User::role('super-admin')->get(), new OrganizationClosureRequestedNotification($org));
+**Dowód:** 5 odbiorców przez jedno `Notification::send($collection, …)` z `uniqueId()` niezależnym od odbiorcy → **5 dostarczeń**, na prawdziwej kolejce `sync` i prawdziwym cache.
 
-// ✅ DOBRZE — bez ShouldBeUnique; deduplikację rób na poziomie AKCJI (atomowy guard)
-class OrganizationClosureRequestedNotification extends Notification implements ShouldQueue { /* … */ }
-```
+**Co z tego wynika:** 23 klasy w `app/Notifications/` deklarują ten interfejs i żadna nic z niego nie ma. Te wysyłane mailem chroni deduplikacja po `message_key` w `EmailService` (patrz niżej) — **to jest jedyny działający mechanizm**. Notyfikacje niemailowe nie mają żadnego.
 
-**Zasada:** `ShouldBeUnique` jest dla notyfikacji **1-odbiorczych** powiązanych z encją (np. potwierdzenie do jednego klienta). Dla broadcastu do roli/zespołu — **wyłącz** i zapobiegaj duplikatom u źródła (atomowy `whereNull(...)->update(...)`, flaga stanu). Ref: `app/Notifications/OrganizationClosureRequestedNotification.php`.
+**Nie dodawaj `ShouldBeUnique` do nowych notyfikacji** — sugeruje ochronę, której nie ma. Deduplikację rób u źródła: atomowy guard w akcji (`whereNull(...)->update(...)`, flaga stanu) albo `message_key` w `EmailService`.
+
+**Sprostowanie:** wcześniejsza wersja tej reguły opisywała „Incident 2026-06-30 — fan-out bug", w którym `ShouldBeUnique` miał sprawić, że z pięciu super-adminów maila dostaje jeden. **Ten incydent nigdy się nie wydarzył.** `OrganizationClosureRequestedNotification` powstał w commicie `b2d79f9` od razu bez tego interfejsu — nikt nigdy go z niczego nie zdejmował (`git log -S` po całej historii `app/Notifications/`: zero usunięć). Był to przewidywany, nie zaobserwowany tryb awarii, zapisany jako kronika incydentu — i przewidywanie było błędne, bo Laravel 12.60.2 wszedł miesiąc WCZEŚNIEJ (2026-05-23). Jeśli kiedyś realnie zaobserwujesz „tylko 1 z N dostał maila", przyczyna jest gdzie indziej — zacznij od tego, czy kolekcja odbiorców nie jest pusta albo jednoelementowa (`User::role('super-admin')->get()` na stacku tenanta zwraca **pustą** kolekcję).
 
 ## Uniqueness (CRITICAL - prevent duplicates)
 
@@ -236,6 +229,75 @@ Test z `Notification::fake()` + `assertNothingSent()` po wymuszonym rollbacku pr
 
 **RefreshDatabase + `DB::transaction()` w teście — działa poprawnie, ale nieoczywiście:** `RefreshDatabase` podmienia `db.transactions` na `Illuminate\Foundation\Testing\DatabaseTransactionsManager` (nie bazową klasę), która traktuje poziom **1** (własną owijającą transakcję testu) jako efektywny root — `afterCommitCallbacksShouldBeExecuted($level) { return $level === 1; }`. Dzięki temu `DB::transaction()` wywołane wewnątrz testu poprawnie odpala `ShouldQueueAfterCommit` callbacki od razu po swoim (pozornie tylko nested/SAVEPOINT) commicie — nie trzeba żadnego specjalnego triku. Bez tego callbacki nigdy by nie odpaliły podczas testu (znane, udokumentowane ograniczenie Laravela poza kontekstem testowym — zob. laravel/framework#35857, #48451, #48472). Ref: `RentalExtensionServiceTest::test_request_extension_notification_does_not_leave_the_app_when_the_wrapping_transaction_rolls_back()` i sąsiednie testy.
 
+## `event()` w afterTransitionHooks() nie jest transakcyjny (pre-existing, 2026-08-12)
+
+`OrderStatusStateMachine::transitionTo()` (kod vendora) zapisuje `status` + `state_histories`,
+DOPIERO POTEM woła `afterTransitionHooks()` jako **osobny, późniejszy zapis** — nie w tej samej
+transakcji DB. `event(new OrderConfirmed/OrderHandedOver/OrderReturned/OrderCancelled(...))`
+w tych hookach kolejkuje job (`SendQueuedNotifications`) **synchronicznie** — push do brokera
+(Redis) dzieje się inline, w tym samym stack call co hook. Gdy broker jest nieosiągalny, push
+rzuca wyjątek, który wypada z `afterTransitionHooks()` prosto do `try/catch` w
+`OrderResource`/`EditOrder` — admin widzi "Nie można zmienić statusu", mimo że status + kolumna
+znacznika czasu **już się zapisały** chwilę wcześniej. Pre-existing dla `confirm`/`cancel`,
+`feature/handover-return-emails` tylko podwaja powierzchnię (dwie kolejne dyspozycje eventów w
+tym samym niezatransakcjonowanym miejscu), nie wprowadza problemu. Pełny opis:
+`app/docs/features/cart-order-system.md` → "Known limitation — status write and timestamp write
+are not atomic".
+
+## Wstawianie markupu do html_body — `TrustedHtml` (2026-08-14)
+
+`EmailTemplate::render()` HTML-escapuje KAŻDĄ podstawianą wartość domyślnie — `html_body` edytuje
+tenant-admin, więc żadna zmienna nie może przemycić własnego znacznika. Jeśli Twoja notyfikacja
+buduje fragment markupu do wstawienia (np. tabelę pozycji zamówienia), owiń go w
+`App\Support\Email\TrustedHtml` w miejscu, gdzie string jest gotowy:
+
+```php
+use App\Support\Email\TrustedHtml;
+
+return ['items_list_html' => new TrustedHtml($itemsListHtml)];
+```
+
+**Zaufanie jest per-WARTOŚĆ, nie per-nazwa zmiennej** — nie ma listy dozwolonych kluczy w
+`EmailTemplate` do zsynchronizowania. Ten sam klucz przekazany jako zwykły string (np. przez inną
+notyfikację) nadal jest escapowany. `renderSubject()`/`renderText()` zawsze `strip_tags()`ują
+`TrustedHtml` — temat i wersja tekstowa nie mają legalnego zastosowania dla znaczników.
+
+**Warunek bezpieczeństwa leży PRZED konstruktorem, nie w nim:** każde pole interpolowane w
+środku owijanego stringa (np. nazwa usługi ustawiana przez tenant-admina) musi być
+`htmlspecialchars()`-owane w Twoim kodzie PRZED sklejeniem z resztą markupu — `TrustedHtml` samo
+w sobie niczego nie sanityzuje, tylko wyłącza escaping wynikowego stringa jako całości. Wzorzec:
+`OrderPaidNotification::buildRentalVariables()`.
+
+## `renderSubject()` neutralizuje control characters w wynikowym stringu (2026-08-14)
+
+`EmailTemplate::renderSubject()` (`escape: false`, patrz `TrustedHtml` wyżej — subject nigdy nie
+przechodzi przez `e()`) nie chroniło przed CR/LF. Wartość podstawiana za `{{token}}` (np. imię
+klienta z checkoutu, walidowane tylko `['nullable','string','max:100']`) mogła zawierać
+`\r\nBcc: ofiara@example.com` i lądowała w temacie maila bajt w bajt — klasyczny wektor header
+injection, ścieżka osiągalna przez klienta bez udziału admina.
+
+**Dziś nieeksploatowalne, ale łata jest zasadna:** Symfony Mime neutralizuje to samo (regex
+`tokenNeedsEncoding()` łapie `\r\n`, `QpMimeHeaderEncoder` koduje jako `=?utf-8?Q?...?=` w
+złożonym Subject). Ale to obrona pożyczona — żyje w warstwie transportu (`SmtpMailer`), nie tam,
+gdzie kod wie, że wartość jest linią tematu. `EmailGatewayInterface` istnieje właśnie po to, żeby
+transport był wymienialny; dostawca HTTP-API albo `mail()` fallback nie odziedziczy encodingu
+Symfony.
+
+`EmailTemplate::sanitizeSubject()` (private) neutralizuje na **finalnym wyrenderowanym stringu**,
+nie per-wartość — to samo pokrywa newline wklejony bezpośrednio w SZABLON tematu przez
+tenant-admina (per-wartość fix by to pominął). Usuwa cały zakres C0 control chars + DEL
+(`[\x00-\x1F\x7F]`, w tym `\r`, `\n`, `\t`) — bezpieczne bez `/u`, bo to pojedyncze bajty ASCII,
+nigdy nie występujące wewnątrz wielobajtowej sekwencji UTF-8 (polskie znaki diakrytyczne
+nietknięte). Run kolejnych control chars kolapsuje do JEDNEJ spacji (`"a\r\n\r\nb"` → `"a b"`,
+nie `"a    b"`), całość `trim()`owana.
+
+**`renderText()` celowo NIE dostał tej samej obróbki** — `text_body` to `text/plain`, gdzie
+newline jest legalną treścią (podział akapitów), nie wektorem ataku na nagłówek.
+
+**Poza zakresem tej zmiany:** walidacja `SubmitCheckoutRequest` (`customer_first_name`/
+`customer_last_name` nadal `['nullable','string','max:100']`, bez ograniczenia control chars) —
+osobna decyzja, nierozstrzygnięta.
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
@@ -245,6 +307,9 @@ Test z `Notification::fake()` + `assertNothingSent()` po wymuszonym rollbacku pr
 - `UserRegisteredNotification` - rejestracja
 - `PasswordResetNotification` - reset hasła
 - `AdminCreatedUserNotification` - setup hasła dla admin-created users
+- `OrderPaidNotification`, `OrderConfirmedNotification`, `OrderHandedOverNotification`,
+  `OrderReturnedNotification`, `OrderCancelledNotification` - cykl życia zamówienia (wynajem);
+  patrz `app/docs/features/order-notifications.md`
 
 **Standard MailChannel (MailMessage):**
 - `DataExportCompletedNotification` - eksport danych RODO

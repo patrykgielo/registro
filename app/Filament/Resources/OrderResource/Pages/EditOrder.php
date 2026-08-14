@@ -6,6 +6,7 @@ namespace App\Filament\Resources\OrderResource\Pages;
 
 use App\Filament\Resources\OrderResource;
 use App\Filament\Traits\StaysOnPageAfterSave;
+use App\Services\Order\OrderProtocolPdfService;
 use App\Services\Order\OrderService;
 use Filament\Actions;
 use Filament\Forms\Components\Textarea;
@@ -65,6 +66,24 @@ class EditOrder extends EditRecord
                         Notification::make()->danger()->title('Nie można zakończyć zamówienia')->body($e->getMessage())->send();
                     }
                 }),
+
+            // ->url()->openUrlInNewTab(), NOT ->action(fn () => $pdf->download(...)) — see
+            // OrderResource.php's own comment on the same two actions for why.
+            Actions\Action::make('handover_protocol')
+                ->label('Protokół wydania (PDF)')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('gray')
+                ->visible(fn (): bool => app(OrderProtocolPdfService::class)->canDownloadHandoverProtocol($this->record))
+                ->url(fn (): string => route('orders.protocol.handover', $this->record))
+                ->openUrlInNewTab(),
+
+            Actions\Action::make('return_protocol')
+                ->label('Protokół zwrotu (PDF)')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('gray')
+                ->visible(fn (): bool => app(OrderProtocolPdfService::class)->canDownloadReturnProtocol($this->record))
+                ->url(fn (): string => route('orders.protocol.return', $this->record))
+                ->openUrlInNewTab(),
 
             Actions\Action::make('cancel')
                 ->label('Anuluj')

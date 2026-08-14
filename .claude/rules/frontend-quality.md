@@ -102,6 +102,46 @@ Patrz `resources/views/booking-wizard/` dla pełnego przykładu.
 
 ---
 
+---
+
+## CRITICAL: Usuwasz właściwość komponentu Alpine → przegrepuj SZABLONY
+
+Kasując getter/pole z `x-data`, wyszukaj jego nazwę w całym `resources/views/`. Blade nic nie zgłosi,
+a `:href="cosCzegoNieMa"` rzuca `ReferenceError` przy **inicjalizacji** Alpine, nie przy kliknięciu.
+
+**Incident 2026-08-08:** przy migracji ze starego wizarda na Cart/Checkout usunięto getter
+`bookingUrl()` (wskazywał na skasowany route), ale zostało jedno z dwóch użyć w
+`services/show.blade.php`. Efekt: **każda** strona sprzętu `item_rental` rzucała
+`Uncaught ReferenceError` i pokazywała drugi, martwy przycisk „Zarezerwuj online" pod działającym
+„Dodaj do koszyka". Przeżyło to wszystkie 1054 testy, bo **testy Feature nie wykonują JS** —
+sprawdzają, co serwer wysłał, nie co przeglądarka z tym zrobiła. Znalazł to dopiero pierwszy test
+przeglądarkowy sklepu.
+
+**Zapobieganie:** `assertNoJavaScriptErrors()` w teście przeglądarkowym każdej ważnej strony
+publicznej. Kosztuje jedną linię i łapie całą tę klasę błędów.
+
+---
+
+## CRITICAL: Logo/Brand Fallback → text, NIGDY bundled asset
+
+`SettingsManager::headerLogo()`/`footerLogo()` zwracają `?string` — `null` gdy tenant nie ma
+uploadowanego logo. Każdy caller MUSI `@if($logo) <img> @else <span>{{ text brand }}</span> @endif`.
+**NIGDY** `?? asset('images/cokolwiek.svg')` jako fallback — to dokładnie ten bug.
+
+**Incident 2026-08-13:** `public/images/logo.svg` to marka poprzedniego właściciela kodu (Paradocks,
+migracja 2026-03-02). Każdy tenant bez własnego logo pokazywał cudzą markę na każdej stronie
+publicznej — istniejące fallbacki tekstowe w szablonach były martwym kodem, bo `headerLogo()` nigdy
+nie zwracało pustej wartości. Pełny opis + lista call-site'ów: `app/docs/features/tenant-branding.md`.
+Nie dodawaj nowego bundled placeholder logo "na wszelki wypadek" — go nie ma, i nie powinno być.
+
+Ta sama zasada dotyczy tekstu, nie tylko obrazków: `SettingSeeder.php` seedował globalnie
+(`organization_id IS NULL`, więc u KAŻDEGO tenanta bez własnej wartości) fałszywy kontakt
+(`contact@example.com`, `ul. Marszałkowska 1`) i copy opisujące mobilną myjnię/detailing — projekt
+sprzedaje wyłącznie wynajem sprzętu. Domyślna wartość ustawienia widocznego dla klienta jest albo
+branżowo-neutralna, albo jej po prostu nie ma — nigdy nie wymyślaj nowego copy "na zastępstwo".
+
+---
+
 ## Verification Checklist (przed commit)
 
 - [ ] `npm run build` wykonany

@@ -6,14 +6,15 @@
 
 @section('step-content')
 <div class="service-selection fade-in -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-8 bg-section-dark rounded-xl">
-    {{-- Step Title --}}
+    {{-- Step Title — no subtitle here: "Wybierz usługę detailingu dla
+         Twojego pojazdu" hardcoded a car-detailing business into wizard
+         step 1 of a booking flow any time_slot tenant can reach. The
+         heading alone is industry-agnostic; no replacement copy was
+         written — see app/docs/features/tenant-branding.md. --}}
     <div class="service-selection__header text-center mb-8">
         <h2 class="service-selection__title text-3xl sm:text-4xl font-bold text-white mb-3">
             Wybierz usługę
         </h2>
-        <p class="service-selection__subtitle text-lg text-white/70">
-            Wybierz usługę detailingu dla Twojego pojazdu
-        </p>
     </div>
 
     {{-- Form --}}

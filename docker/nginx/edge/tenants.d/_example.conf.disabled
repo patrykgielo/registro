@@ -1,0 +1,118 @@
+# =============================================================================
+# TENANT VHOST TEMPLATE -- not loaded.
+#
+# edge-tls.conf's `include /etc/nginx/tenants.d/*.conf;` only picks up
+# `*.conf`; this file ends in `.disabled` so it is never included, and stays
+# in this directory purely as documentation + a copy-paste starting point.
+#
+# To attach a real tenant "acme" (see app/docs/deployment/edge-stack.md for
+# the full procedure and its preconditions):
+#
+#   1. cp _example.conf.disabled acme.conf
+#   2. Replace every SLUG with acme, CERT_DOMAIN with the live certificate
+#      directory (same value edge-tls.local.conf itself was rendered with),
+#      and TENANT_SERVER_NAMES with this stack's own space-separated host
+#      list (apply.sh's HOSTS, comma-to-space converted -- one hostname by
+#      default, <slug>.<this machine's own domain>, see apply.sh's own
+#      APP_DOMAIN read for where that comes from; more only if apply.sh's
+#      [hosts] argument named more).
+#   3. mkdir -p ../tenant-pages/acme && cp ../tenant-pages/_default/*.html ../tenant-pages/acme/
+#   4. Add the `tenant-acme-edge` network to docker-compose.edge.yml (top-level
+#      `networks:` AND `services.edge-nginx.networks`) -- declared `external:
+#      true` on both this file and the tenant stack's own compose file. NEVER
+#      `docker network connect` by hand; see the runbook for why.
+#   5. docker compose -f docker-compose.edge.yml up -d edge-nginx
+#
+# acme.conf itself is NOT committed -- tenants.d/*.conf is gitignored (it
+# names live customer subdomains, which don't belong in this repo's history
+# any more than app.prod-tls.local.conf's certificate path does).
+# =============================================================================
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    # One tenant answers on exactly one domain -- see apply.sh's own HOSTS
+    # default for why this is not a hardcoded pair: each machine (UAT vs
+    # PreProd, in the two-machines plan) has its own domain, and a tenant
+    # provisioned on one must never carry the other machine's name here --
+    # Let's Encrypt validates every SAN on a certificate over HTTP-01, and a
+    # name pointing at the OTHER machine fails validation and takes the
+    # WHOLE certificate order down with it, not just that one name.
+    server_name TENANT_SERVER_NAMES;
+
+    # Same certificate as the default_server fallback in edge-tls.conf today
+    # (the multi-SAN HTTP-01 one) -- nginx requires an ssl_certificate on
+    # every `listen ... ssl` server block; it is not inherited from the
+    # default_server just because they share the same `listen 443` address.
+    # Once the wildcards land, this becomes whichever of the two apex
+    # certificates matches SLUG's domain -- see edge-tls.conf's header.
+    ssl_certificate     /etc/letsencrypt/live/CERT_DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/CERT_DOMAIN/privkey.pem;
+
+    # Resolved by Docker's embedded DNS AT REQUEST TIME, not once at config
+    # load. Exact pattern already in production at
+    # docker/nginx/production/app.prod.conf:34-35. A literal
+    # `proxy_pass http://tenant-SLUG-nginx:80;` makes nginx resolve the name
+    # ONCE, when this config loads/reloads -- if that tenant's container
+    # happens to be stopped at that exact instant, nginx refuses to (re)load
+    # THIS FILE, which takes every other tenant sharing this edge down with
+    # it, since they're all `include`d into the same running nginx process.
+    # The variable form defers resolution to each request: a stopped tenant
+    # only 502s for its own visitors.
+    resolver 127.0.0.11 valid=5s ipv6=off;
+    set $upstream_tenant tenant-SLUG-nginx:80;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location / {
+        proxy_pass http://$upstream_tenant;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Always https: the edge is the only TLS terminator in this
+        # architecture, so this is never conditional the way it would be
+        # behind a proxy that sometimes forwards plain HTTP.
+        proxy_set_header X-Forwarded-Proto https;
+
+        # Defense-in-depth, not the source of truth. X-Tenant is set by the
+        # TENANT's OWN nginx (task 4), from that container's own TENANT_SLUG
+        # env var -- never from a header, and never from this hop. Clearing
+        # any client-supplied value here means a request that lied about its
+        # X-Tenant on the way to the edge cannot ride that lie any further
+        # just because a future task 4 config forgets to overwrite it.
+        proxy_set_header X-Tenant "";
+
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+
+        # Upstream error bodies are swallowed by default; without this,
+        # error_page below never fires and visitors see whatever raw error
+        # page nginx or PHP-FPM inside the tenant stack produced (or nothing,
+        # on a connection refused).
+        proxy_intercept_errors on;
+        # `=502`, not a bare `=`. Without an explicit code, the response
+        # takes the status of whatever @tenant_down actually serves -- a
+        # successfully found static file is 200, which would make an outage
+        # invisible to curl/uptime checks and to the browser's own network
+        # tab, even though the page correctly tells a human the service is
+        # down. Verified by request: `= @tenant_down` served the page as a
+        # bare 200; `=502 @tenant_down` serves the identical body as 502.
+        error_page 502 503 504 =502 @tenant_down;
+    }
+
+    # Per-tenant service page. Chosen by directory, not by a shared template:
+    # each vhost's root is hardcoded to its own slug under tenant-pages/, set
+    # up once at attach time (step 3 above). Falls back to a bare 502 with no
+    # body if the directory is somehow missing its file, rather than an nginx
+    # 404 that would look like the platform itself is broken.
+    location @tenant_down {
+        internal;
+        root /etc/nginx/tenant-pages/SLUG;
+        try_files /503.html =502;
+    }
+}

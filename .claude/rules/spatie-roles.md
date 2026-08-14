@@ -48,7 +48,7 @@ $user->assignRole('admin');  // RoleDoesNotExist exception!
 
 | Plik | Rola | Status |
 |------|------|--------|
-| `app/Actions/Onboarding/CreateOrganizationWithOwner.php` | admin | ✅ Zabezpieczone |
+| `app/Actions/Onboarding/ProvisionTenantOrganization.php` | admin | ✅ Zabezpieczone |
 | `app/Listeners/AssignCustomerRole.php` | customer | ✅ Zabezpieczone |
 | `database/seeders/RolePermissionSeeder.php` | all | ✅ Seeder (firstOrCreate) |
 

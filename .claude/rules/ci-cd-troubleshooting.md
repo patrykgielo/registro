@@ -103,3 +103,619 @@ Zweryfikowano:
   - `docker compose down && docker compose up -d` (pełna rekoncyliacja — usuwa wszystkie orphany na raz; Docker Compose też ostrzega o `orphan containers` przy `docker compose up` jeśli kontener nie odpowiada żadnemu service)
 - Po każdej zmianie w `docker-compose*.yml` usuwającej service: sprawdź `docker ps -a` i porównaj z `docker compose config --services` — cokolwiek działa, a nie jest na liście, to orphan do usunięcia
 - Zob. też: Incydent 2026-06-29 (ten sam plik, powyżej) — root cause dual-consumer był ten sam, ale tam problem był w pliku compose; tutaj problem był w LIVE środowisku które nigdy nie zostało zrekoncyliowane z poprawionym plikiem
+
+---
+
+## Incydent (znaleziony w review, nie shipped): `docker compose run` w forced-command recovery path
+
+`scripts/server/deploy.sh`'s `force_clear_flag()` (task 4, stack-per-tenant epic) przeszedł przez
+DWIE wersje. Pierwsza szukała wolumenu `storage-framework` ręcznie (`docker volume ls --filter
+label=com.docker.compose.project=...`) i odmawiała działania przy 0 lub 2+ trafieniach — słusznie
+(nie zgadywać przy czymś destrukcyjnym), ale zostawiało to zero ścieżki odzyskania przez forced
+command, gdy dopasowanie zawiodło.
+
+Druga wersja (poprawka na powyższe) zamieniła to na `docker compose -f "$COMPOSE_FILE" run --rm
+--no-deps --entrypoint rm app -f <plik>` — i to była REGRESJA złapana w code review, nie shipped.
+**KAŻDA subkomenda Compose (`run`, `config`, `ps`) interpoluje CAŁY plik przed wyborem serwisu** —
+`docker-compose.prod.yml` ma `${APP_KEY:?}`/`${APP_DOMAIN:?}`/`${REDIS_PASSWORD:?}`, więc
+zblankowany/zepsuty `.env` wywala `docker compose run` na etapie interpolacji, ZANIM `--entrypoint
+rm` się wykona — dokładnie ten scenariusz ("hasło zblankowane złą edycją"), dla którego funkcja
+istnieje, i dokładnie ten sam root cause, który już wywala primary path
+(`docker compose exec -T app php artisan up`). Zweryfikowane: `docker compose run` z pustym
+`REDIS_PASSWORD` → `error while interpolating x-app-env.REDIS_PASSWORD: required variable ... is
+missing a value` — kod wyjścia 1, PRZED jakąkolwiek próbą `rm`.
+
+**Finalny fix: nie pytaj Compose o nic.** Nazwa wolumenu jest OBLICZANA (nie wyszukiwana): Compose
+nazywa wolumeny deterministycznie jako `${project}_${volume-key}`, a `project` to
+`${TENANT_PREFIX:-registro}` — czytane samym `grep` z `.env` (ta sama technika co `status` action),
+nie wymaga interpolacji CAŁEGO pliku. `docker volume inspect` (surowy docker, nie compose)
+potwierdza istnienie PRZED dotknięciem — `docker run -v nazwa:/path` na nieistniejącej nazwie CICHO
+TWORZY pusty wolumen, co dałoby fałszywy sukces bez realnego usunięcia flagi. Zweryfikowane
+end-to-end pod zepsutym `.env` (puste `REDIS_PASSWORD`): flaga usunięta poprawnie.
+
+**Zasada:** w forced-command recovery path (SSH restricted command, brak dostępu do surowego docker
+poza zdefiniowaną gramatyką) — NIGDY `docker compose <cokolwiek>` jeśli plik ma choć jeden
+`${VAR:?}`. Kompozycja subkomend Compose nie ma trybu "zignoruj resztę pliku, obchodzi mnie tylko
+ten serwis" — interpolacja jest zawsze całościowa. Pełny opis + obie weryfikacje (bug i fix, oba pod
+tym samym zepsutym `.env`): `app/docs/deployment/tenant-compose-stack.md`.
+
+---
+
+## Incydent (znaleziony przez faktyczne uruchomienie, nie shipped): `apply.sh` — 6 bugów w jednej sesji walidacji
+
+Task 6 (`scripts/server/apply.sh`, `tenant-check.sh`, `tenant-backup.sh` — reconciler dla
+stack-per-tenant). Każdy z poniższych złapany dopiero przez REALNE uruchomienie danej ścieżki
+(`docker build` z bieżącego brancha, prawdziwy `git clone`, prawdziwy `systemd-run --user`), nie przez
+inspekcję kodu. Pełny opis: `app/docs/deployment/tenant-apply.md`.
+
+1. **`log()`/`die()` czytały `$LOG_FILE` zanim zmienna istniała.** `LOG_FILE` zależy od `SLUG`,
+   znanego dopiero po parsowaniu argumentów — ale `die()` jest wywoływane już PRZY walidacji argumentów.
+   Pod `set -u`: `unbound variable` zamiast realnego komunikatu błędu. Fix: `${LOG_FILE:-/dev/null}`.
+2. **Plik locka leżał W ŚRODKU katalogu, do którego `git clone` miał dopiero sklonować repo.**
+   `mkdir -p "$STACK_DIR"; exec 9>"${STACK_DIR}/.apply.lock"` — katalog przestawał być pusty PRZED
+   `git clone`, a `git clone` odmawia klonowania do niepustego katalogu. Każdy pierwszy `apply` dla
+   nowego tenanta padał. Fix: całe bookkeeping skryptu (lock/log/status/pre-dumpy) w osobnym
+   `STACKS_ROOT/.state/<slug>/`, nigdy w git working tree.
+3. **`registro:tenant-provisioned --assert` nie znaczy "spójny".** Nawet gdy `assertConsistent()`
+   przechodzi, komenda i tak zwraca `FAILURE` (`not-provisioned`) dla świeżego, jeszcze
+   nie-sprowizjonowanego stacka. Traktowanie każdego niezerowego exit code jako "niespójność, die"
+   wywalałoby KAŻDY pierwszy `apply` dla KAŻDEGO nowego tenanta, zawsze. Rozróżnienie po TREŚCI
+   wyjścia (dokładnie `not-provisioned` = OK, cokolwiek innego = realna niespójność), nie po exit code.
+4. **`VAR="$(cmd)"` w osobnej linii NIE jest warunkiem pod `set -e`.** Linia `RC=$?` zaraz po takim
+   przypisaniu nigdy się nie wykonywała — `set -e` zabijał skrypt w momencie gdy `cmd` (oczekiwanie
+   zwracające czasem niezero, jak w punkcie 3) zwracało błąd. Fix: `VAR="$(cmd)" || RC=$?`.
+5. **`find`, w przeciwieństwie do bash-owego globa, nie pomija plików/katalogów zaczynających się od
+   kropki.** Skan sierot w `tenant-check.sh` raportował własny katalog `.state/` apply.sh jako
+   "osierocony katalog tenanta". Fix: `-not -name '.*'`.
+
+**Zasada:** żaden z tych pięciu nie był widoczny przy samej lekturze kodu — wszystkie wymagały
+faktycznego uruchomienia ścieżki, którą łamały (pierwszy `apply` dla nowego tenanta, `--assert` na
+świeżym stacku, skan `check` na drzewie z `.state/`). Przy skryptach powłoki obsługujących "pierwsze
+uruchomienie czegoś nowego" — zawsze faktycznie wykonaj tę ścieżkę, nie tylko `bash -n`/shellcheck.
+
+---
+
+## Incydent (drugi przegląd infrastrukturalny, znaleziony i naprawiony): `apply.sh` — plik statusu mógł kłamać po sygnale
+
+Kontynuacja incydentu powyżej. Pełny opis + reprodukcja SIGTERM krok po kroku:
+`app/docs/deployment/tenant-apply.md` → "Infrastructure review — six more fixes".
+
+1. **KRYTYCZNE — `on_exit`'s `$?` czyta 0 nawet gdy proces ginie od nieprzechwyconego sygnału**
+   (bash raportuje status ostatniej komendy, nie sygnału, gdy sygnał trafia między komendami).
+   Stary `OK` z poprzedniego udanego przebiegu przeżywał SIGTERM w trakcie kolejnego. Fix: `RUNNING`
+   pisane BEZWARUNKOWO jako pierwsza rzecz po zajęciu locka — jedyny sposób, żeby plik znów pokazał
+   `OK`, to żeby ten KONKRETNY przebieg faktycznie dobiegł końca. Traps (HUP/INT/TERM, wzorzec z
+   `deploy.sh`) to tylko szybsza, bardziej informacyjna ścieżka (natychmiastowy `FAILED` z powodem
+   zamiast czekania na próg wieku `RUNNING` w `check.sh`) — NIE gwarancja; SIGKILL i tak ich nie złapie.
+   **Odkryte przy okazji:** bash ODKŁADA wykonanie trap handlera do zakończenia BIEŻĄCEJ komendy
+   pierwszoplanowej (udokumentowane zachowanie bash) — SIGTERM wysłany w trakcie długiego `docker
+   compose` nie przerywa go, handler odpala dopiero gdy ta komenda się skończy. Dotyczy też własnego
+   `on_signal` w `deploy.sh`.
+2. **WYSOKIE — maintenance mode zwalniał się przy dokładnie tych dwóch awariach, które oznaczają
+   "ruch może trafić do złego tenanta"**: niespójność `registro:tenant-provisioned --assert` i
+   niezgodność sondy X-Tenant. Naprawione (`KEEP_MAINTENANCE=true` w obu miejscach), zweryfikowane
+   przez realne wywołanie tej samej `clear_maintenance()` na żywym stacku ze SPREPAROWANYM złym
+   X-Tenant: `KEEP_MAINTENANCE=true` → strona zostaje na 503; `KEEP_MAINTENANCE=false` (stare
+   zachowanie) → strona wraca na 200, serwując POTWIERDZONY zły slug.
+3. **WYSOKIE — "ponowne uruchomienie to czysty retry" nieprawdziwe dla migracji** (DDL MySQL nie jest
+   atomowe — kolumna A może zostać, migracja nierozliczona, retry pada na "column already exists").
+   Doprecyzowano w dokumentacji. Osobno: `REGISTRO_VERSION` eksportowane jako zmienna powłoki DZIAŁA
+   na nowym tagu już od `pull`/`migrate`/`up -d` — zapis do `.env` na końcu chroni REKORD, nie STAN
+   DZIAŁAJĄCY; operator ufający samemu `.env` między `up -d` a końcem może zobaczyć starą wersję,
+   podczas gdy działa już nowa.
+4. **WYSOKIE — konflikt blokady restic bez udokumentowanego `restic unlock`.** Zweryfikowane
+   bezpośrednio: `restic backup` bierze blokadę WSPÓLNĄ (nie blokuje kolejnych backupów), martwa
+   blokada realnie blokuje dopiero przy konflikcie z operacją WYŁĄCZNĄ (`prune`/`check`) — węziej niż
+   pierwotnie zakładano, ale realne. Dodano wykrywanie `already locked` w wyjściu restic + gotowa
+   komenda `restic unlock` z wypełnionymi zmiennymi w komunikacie błędu.
+5. **ŚREDNIE — nieudany backup po ZDROWYM, żywym release'ie raportował FAILED**, tak samo jak
+   faktycznie zepsuty deploy — operator nie mógł odróżnić "strona padła" od "strona żyje, tylko backup
+   nawalił". Nowy status `DEGRADED` (exit 5), `REGISTRO_VERSION` i tak przypinane (release faktycznie
+   żyje). Zweryfikowane end-to-end dwa razy (awaria → `DEGRADED`, potem naprawa hasła restic → `OK`)
+   na żywym, health-checked stacku.
+6. **ŚREDNIE — alokacja portu: dwaj pierwsi tenanci provisionowani jednocześnie mogli wybrać ten sam
+   port**, a przegrany trwale utykał (wybór zapisywany w `.env`, każdy kolejny apply odczytywał
+   kolizję zamiast realokować) — w przeciwieństwie do alokacji subnetu, gdzie nic nie jest
+   zapisywane wcześniej, więc retry naturalnie skanuje od nowa. Naprawione globalnym, krótkim
+   `flock` wokół sekcji skan-potem-rezerwacja. Współbieżne provisionowanie RÓŻNYCH tenantów jest
+   celowo wspierane (osobny lock niż per-tenantowy `STATE_DIR/apply.lock`), nie odrzucane.
+
+**Zasada:** dokładnie jak wyżej — żaden z tych sześciu nie był widoczny przy samej lekturze kodu.
+Reprodukcja SIGTERM wymagała wstrzykniętego `sleep` w kopii testowej (realne okno wyścigu przez
+round-trip narzędzi było za wąskie) — deterministyczne opóźnienie w rzucanej kopii, zdiffowane
+przeciwko oryginałowi, żeby dowieść że różni się dokładnie o jedną linię.
+
+---
+
+## Incydent (znaleziony przez analizę, przed shippingiem): `sync-certificate.sh` enumerował TYLKO
+## starą bazę — dedykowane stacki znikały z certyfikatu na każdym przebiegu crona
+
+Kontynuacja epiki stack-per-tenant (task 6+). `sync-certificate.sh` budował listę nazw SAN
+wyłącznie z `php artisan tenants:hostnames` w kontenerze STAREGO, współdzielonego stacka. Tenant
+provisionowany na własnym stacku (`/opt/stacks/<slug>/`, własna baza) nigdy tam nie trafiał — a
+skrypt wystawia certyfikat na DOKŁADNIE tę listę (`certbot --expand`), więc każda nazwa dodana
+ręcznie znikała przy najbliższym przebiegu (co 15 min). Pełny opis: `edge-stack.md` → "Known gap,
+fixed", `instalacja-tenanta-od-zera.md` krok 2.5.
+
+**Znaleziony, ale NIE naprawiony pułapką, przy projektowaniu naprawy:** oczywisty pierwszy pomysł —
+odpalić `tenants:hostnames` też wewnątrz kontenera każdego dedykowanego stacka — jest SAM W SOBIE
+błędny. Ta komenda liczy `baseDomain + "<org-slug>.<baseDomain>"`; na dedykowanym stacku
+`APP_DOMAIN` to już `PRIMARY_HOST` tenanta (np. `acme.registrolabs.com`), a jedyna organizacja w
+jego bazie ma TEN SAM slug (`acme`) — wynik: `acme.acme.registrolabs.com`, nazwa której nic nie
+serwuje i której nie pokrywa jednopoziomowy wildcard. Let's Encrypt odrzuca CAŁE zamówienie przy
+jednej niewalidującej się nazwie — czyli naiwna naprawa zepsułaby odnawianie certyfikatu dla
+WSZYSTKICH tenantów naraz, w tym starego stacka. Znalezione przez analizę przepływu danych
+(`apply.sh`'s `.env` generation → `config('app.domain')` → `ListTenantHostnamesCommand`), nie przez
+uruchomienie — ale zweryfikowane logicznie krok po kroku przed napisaniem jakiegokolwiek kodu.
+
+**Naprawa:** źródłem nazw dla dedykowanego stacka jest `TENANT_HOSTS`, odczytywane NA ŻYWO z
+środowiska kontenera `app` (`docker compose exec app sh -c 'echo $TENANT_HOSTS'`) — to już jest
+dokładna, ustalona przy `apply` allowlista, którą `ResolveTenant`/`TrustedTenantHosts` i tak
+egzekwują. Zero przeliczania.
+
+**Fail-safe, nie fail-shrink:** katalog bez pliku compose (śmieć albo `.state/` — `find` NIE pomija
+kropkowanych wpisów, patrz incydent apply.sh wyżej) = cichy skip. Katalog z plikiem compose, który
+NIE odpowiada (kontener padnięty, zepsuty `.env`, timeout) = **przerwanie CAŁEGO przebiegu przed
+dotknięciem certbota** — nigdy cichego zawężenia listy. Zweryfikowane end-to-end w piaskownicy
+(fake `su`/`docker`/`certbot`/`id` w PATH, cztery scenariusze: brak `/opt/stacks`, `.state` +
+katalog-śmieć, zdrowy stack, niedostępny stack) — `certbot certonly` w scenariuszu niedostępnego
+stacka NIE został wywołany ani razu.
+
+**Zasada:** przy REUŻYWANIU istniejącej komendy/mechanizmu w NOWYM kontekście (inna architektura,
+inny model danych) — prześledź co faktycznie policzy, zanim się do niej podłączysz. "Ta sama
+komenda" nie znaczy "ten sam poprawny wynik", jeśli założenia kontekstu się zmieniły.
+
+---
+
+## Incydent (znaleziony przez analizę planu dwóch maszyn, przed shippingiem): `apply.sh` domyślnie
+## doklejał OBIE domeny każdemu tenantowi — wywaliłoby certyfikat na całej maszynie
+
+Faza 1 planu `dwie-maszyny-uat-preprod.md`. `apply.sh` miał `EDGE_DOMAINS=(registrolabs.com
+registroapps.com)` na sztywno i domyślny `[hosts]` = `<slug>.registrolabs.com,<slug>.registroapps.com`
+— **każdy** tenant dostawał obie domeny, także w `server_name` szablonu brzegu
+(`tenants.d/_example.conf.disabled`, ta sama para wpisana na sztywno, „musi być zgodne z EDGE_DOMAINS
+ręcznie" wprost w komentarzu). Nieszkodliwe przy jednej maszynie. W modelu docelowym
+(`registrolabs.com` = UAT, `registroapps.com` = PreProd, osobne maszyny) w dniu, w którym
+`*.registroapps.com` zacznie wskazywać na drugą maszynę, walidacja HTTP-01 tej nazwy dla tenanta
+stojącego na UAT trafia w maszynę bez pliku wyzwania — Let's Encrypt odrzuca **całe** zamówienie przy
+jednej niewalidującej się nazwie, więc odnowienie certyfikatu przestaje działać dla **wszystkich**
+tenantów na UAT naraz, cicho, do wygaśnięcia.
+
+**Naprawa:** domena to własność MASZYNY, nie wywołania. `apply.sh` już czyta `CERT_DIR` z `.env`
+legacy checkoutu (`${LEGACY_APP_DIR}/.env`) — ten sam precedens zastosowany do domeny: gdy `[hosts]`
+nie podano, czyta `APP_DOMAIN` z tego samego pliku (`deploy-init.sh` już o to pyta i już to zapisuje,
+dla routingu poddomen legacy stacka — żadnego nowego klucza do skonfigurowania). Brak `APP_DOMAIN` =
+odmowa natychmiast, przed jakimkolwiek dotknięciem dysku/Dockera, z komunikatem wprost nazywającym co
+ustawić. Jawny argument `[hosts]` nadal nadpisuje w całości. Szablon brzegu: `server_name` zamieniony
+z pary na sztywno na jeden placeholder (`TENANT_SERVER_NAMES`), podstawiany przez `apply.sh` z
+`HOSTS` tego konkretnego stacka (przecinki → spacje) — koniec ręcznej synchronizacji stałej z
+szablonem.
+
+Zweryfikowane end-to-end w piaskownicy (throwaway git origin, realny lokalny `docker build`, realny
+`docker compose` — bez dotykania serwera/dev-bazy/Let's Encrypt): domyślny tenant dostał dokładnie
+jedną nazwę w `TENANT_HOSTS` i w wyrenderowanym `server_name`; jawny dwuelementowy `[hosts]` dał
+dokładnie te dwie nazwy w obu miejscach; legacy `.env` bez `APP_DOMAIN` odmówił natychmiast z
+poprawnym komunikatem; `tenant-check.sh` przeszedł cicho; wyrenderowany vhost przeszedł `nginx -t`
+w kontenerze `nginx:1.25-alpine` z throwaway self-signed certyfikatem. Pełny opis:
+`app/docs/deployment/tenant-apply.md` → „One tenant, one domain".
+
+**Zasada:** wartość należąca do MASZYNY (domena, katalog certyfikatu) nie powinna być ani stałą
+wpisaną na sztywno w skrypcie, ani argumentem powtarzanym przy każdym wywołaniu — czytaj ją z
+`.env` instalacji, tym samym mechanizmem co już istniejące wartości tego typu (`CERT_DIR`), zamiast
+wymyślać nowy.
+
+---
+
+## Incydent (Faza 2 planu dwóch maszyn, znaleziony w piaskownicy, przed shippingiem): cztery
+## poprawki blokujące, jedna z nich odsłoniła świeżego buga we własnym fixie
+
+Kontynuacja epiki stack-per-tenant. Cztery niezależne poprawki (dwie warunki konieczne dla istnienia
+maszyny PreProd, dwie higieniczne), wszystkie zweryfikowane realnym uruchomieniem w piaskownicy
+(fake `su`/`docker`/`certbot` na PATH dla `sync-certificate.sh`, realny Docker + realny restic przez
+`restic/restic` obraz dla backupu wolumenów), nie samą lekturą kodu.
+
+**1. `sync-certificate.sh` umierał bez stacka legacy.** Maszyna bez działającego stacka legacy
+(świeży PreProd — checkout jest, kontenery nigdy nie wystartowały) to legalna konfiguracja wnosząca
+zero nazw legacy, nie błąd. Rozróżnienie: `docker compose ps -q app` (bez `-a`, więc pokazuje TYLKO
+żywe kontenery) mówi "czy w ogóle jest tu coś do zapytania" — puste = legalne zero nazw (kontynuuj),
+niepuste ale sama `tenants:hostnames` pusta/błędna = "jest, ale zepsute" (przerwij, bez zmiany
+certyfikatu). Dodano też twardy strażnik na końcu: jeśli WSZYSTKIE źródła (legacy + dedykowane
+stacki + www) razem dały zero nazw — przerwij, nigdy nie proś certbota o certyfikat na zero nazw.
+
+**2. `sync-certificate.sh` dla dedykowanych stacków czytał `TENANT_HOSTS` z żywego kontenera
+(`docker compose exec`), nie z `.env`.** Poprawne dla "jeden zawsze-żywy stack per klient", błędne
+odkąd UAT zaczął hostować projekty potencjalnych klientów, tworzone i zatrzymywane między sesjami —
+"katalog jest, kontener stoi" stało się stanem NORMALNYM, a stary fail-safe (słusznie) traktował to
+tak samo jak "zepsute", zamrażając odnowienie dla WSZYSTKICH innych tenantów przez jeden śpiący
+stack. `apply.sh` i tak zapisuje `TENANT_HOSTS` do `.env` tego stacka — czytanie STAMTĄD to ta sama
+wartość, dostępna niezależnie od tego, czy kontener akurat działa.
+
+**Bug znaleziony PRZY OKAZJI naprawy #1, nie przewidziany z góry:** `DESIRED` mogło teraz legalnie
+zaczynać się jako pusty string (brak legacy). Istniejąca linia scalająca
+`DESIRED="$(printf '%s\n%s\n' "$DESIRED" "$STACK_NAMES" | sort -u)"` przy pustym `$DESIRED` zostawiała
+JEDNĄ pustą linię w wyniku `sort -u` (bo pusta linia to też "unikalna wartość") — dawało to gołe
+`-d ` (pusty argument domeny) przekazane do `certbot`. Znalezione przez FAKTYCZNE uruchomienie
+scenariusza "brak legacy + jeden dedykowany stack" w piaskownicy, nie przez inspekcję. Fix:
+`sed '/^$/d'` przed `sort -u` w OBU miejscach scalania (dedykowane stacki i `www`).
+
+**3. `apply.sh` nigdy nie zapisywał `NGINX_RELOAD_CONTAINER`**, mimo że własny komentarz
+`sync-certificate.sh` mówił, że "apply ma to zrobić przy cutoverze". Na maszynie z brzegiem
+(`docker-compose.edge.yml`) reload po odnowieniu trafiał w zły kontener — certyfikat odnawiał się na
+dysku, nginx dalej serwował stary, cicho, do wygaśnięcia. Naprawa NIE jest bezwarunkowym zapisem przy
+każdym `edge-sync` (ten krok biegnie przy KAŻDYM apply, cutover czy nie — brzeg odpowiada czystym
+HTTP, dopóki udokumentowany ręczny cutover się nie wydarzy) — zapis jest bramkowany sprawdzeniem
+FAKTYCZNEGO bind mountu działającego kontenera edge-nginx (`docker inspect` na źródle mountu
+`/etc/nginx/conf.d/default.conf`), nie zmienną `EDGE_NGINX_CONF`, bo udokumentowana procedura
+cutover ustawia tę zmienną TYLKO dla jednej komendy, nigdy nie zapisuje jej do `.env`. Nazwa
+kontenera czytana z `docker-compose.edge.yml`'s `container_name`, nie zgadywana drugi raz.
+
+**4. `tenant-backup.sh`/`apply.sh` backupowały wyłącznie `mysqldump` — wolumeny
+`storage-app-public`/`storage-app-private` nie były objęte niczym.** Naprawa: staging obu wolumenów
+do katalogu na hoście (przez jednorazowy kontener `docker run -v <wolumen>:/src:ro`), potem JEDNO
+wywołanie `restic backup` z plikiem `.sql` I oboma katalogami naraz — jeden snapshot, nie dwa
+bliskie w czasie. Dwa realne bugi znalezione TYLKO przez faktyczne uruchomienie na prawdziwym
+wolumenie Dockera:
+- `docker run -v nieistniejący:/sciezka` CICHO TWORZY pusty wolumen zamiast błędu — strażnik
+  `docker volume inspect` PRZED montowaniem, zweryfikowany że faktycznie odpala (wywołanie z nazwą,
+  która nigdy nie istniała: funkcja zwróciła błąd I `docker volume ls` potwierdził brak nowego
+  wolumenu).
+- **GNU `cp -a /src/. /dest/` nie tylko kopiuje zawartość DO `/dest`, nadpisuje też WŁASNE
+  uprawnienia/właściciela `/dest` metadanymi źródła** (root:root, bo katalog wolumenu sam jest
+  root-owned). Kontener stagingowy musi być `--user 0:0` (root), bo pliki w wolumenie należą do
+  stałego usera obrazu `laravel` (UID 1000, ADR-013), a katalog na hoście tego UID-a nie wpuszcza —
+  ale bez `chown -R $(id -u):$(id -g) /dest` jako DRUGIEJ komendy w tym samym uprzywilejowanym
+  `docker run`, katalog stagingowy cicho zmieniał właściciela na roota, a `rm -rf` zwykłego
+  użytkownika (bez sudo na tej maszynie) kończyło się `Permission denied` od DRUGIEGO uruchomienia
+  w górę. Zweryfikowane wprost oboma wariantami (bez `chown` — błąd sprzątania; z `chown` — sukces)
+  zanim trafiło do kodu produkcyjnego.
+
+Pełny opis wszystkich czterech + osiem wyników walidacji: `app/docs/deployment/tenant-apply.md`,
+`app/docs/deployment/edge-stack.md`, `app/docs/deployment/instalacja-tenanta-od-zera.md` (Część
+7.5/7.8/8.1/8.6/8.7).
+
+**Zasada:** naprawa jednego założenia ("legacy zawsze istnieje") może cicho złamać kod NIŻEJ w tym
+samym pliku, który zakładał to samo założenie w innej formie (scalanie list przez `sort -u` zakładało
+niepusty start). Po KAŻDEJ zmianie założenia — przeszukaj resztę pliku pod kątem miejsc, które po
+cichu na nim polegały, nie tylko napraw miejsce, które explicite о to poproszono. Osobno: przy
+kopiowaniu z Docker volume na hosta z `cp -a` — GNU coreutils re-stempluje docelowy katalog
+metadanymi źródła, nie tylko jego zawartość; jeśli docelowy katalog musi zostać własnością
+nieuprzywilejowanego usera, `chown` z powrotem MUSI się odbyć w tym samym uprzywilejowanym
+kontenerze, nie jako osobny, później uruchamiany krok.
+
+---
+
+## Incydent (drugi przegląd infrastrukturalny tej samej Fazy 2, dwa realne bugi potwierdzone
+## reprodukcją, nie teorią): `apply.sh` cichcem cofał cutover TLS; `sync-certificate.sh` mylił
+## "nic tu nie ma" z "nie potrafię sprawdzić"
+
+Kontynuacja bezpośrednio powyżej. Niezależny przegląd odtworzył oba bugi na jednorazowych
+projektach compose/wolumenach, nie tylko przeczytał kod.
+
+**1. KRYTYCZNE — `apply.sh`'s krok `edge-sync` cofał zakończony cutover TLS przy KAŻDYM
+kolejnym apply.** `docker-compose.edge.yml` montuje config nginxa przez
+`${EDGE_NGINX_CONF:-edge.conf}`. Udokumentowany ręczny cutover (`edge-stack.md`) ustawia tę
+zmienną TYLKO dla jednej komendy — nigdy nie zapisuje jej do `.env`. `edge-sync` uruchamia `docker
+compose ... up -d edge-nginx` przy KAŻDYM apply, dla KAŻDEGO tenanta, w procesie, gdzie ta zmienna
+jest pusta. Zreprodukowane na jednorazowym projekcie compose: cutover → `up -d` bez zmiennej →
+`docker inspect` pokazał zarówno źródło mountu, JAK i `StartedAt` zmienione — kontener
+zrekreowany z powrotem na bootstrap `edge.conf`, cicho, bez `die()`, tylko linia loga czytana jako
+informacyjna. Pierwszy apply dla dowolnego tenanta PO cutoverze zdejmowałby terminację TLS dla
+WSZYSTKICH tenantów za brzegiem naraz.
+
+**Naprawa:** PRZED `up -d edge-nginx`, odczytaj FAKTYCZNY bind mount działającego kontenera
+(`docker inspect` na `/etc/nginx/conf.d/default.conf`), wyciągnij z niego nazwę pliku i wyeksportuj
+`EDGE_NGINX_CONF` na tę samą wartość dla TEGO wywołania — `up -d` rekreuje kontener z tym samym
+configiem, który już miał. Kontener, który jeszcze nie istnieje (pierwsze uruchomienie brzegu) nie
+ma nic do zachowania — `EDGE_NGINX_CONF` zostaje puste, co jest poprawnym domyślnym stanem
+bootstrap. Zweryfikowane na jednorazowym projekcie compose (przepisane hosty absolutnych ścieżek
+`/etc/letsencrypt` na katalogi w piaskownicy, żeby nie dotykać realnych ścieżek roota): cutover →
+`apply` uruchomiony DWA RAZY z rzędu z `EDGE_NGINX_CONF` niepustym w środowisku procesu → mount
+źródło NIEZMIENIONE (`edge-tls.local.conf`) przy obu przebiegach, `NGINX_RELOAD_CONTAINER` zapisane
+raz, bez duplikatu przy trzecim przebiegu. Kontrola negatywna: ten sam `up -d` BEZ poprawki (gołe
+`docker compose up -d edge-nginx`, dokładnie stare zachowanie) na tym samym stanie faktycznie cofnął
+mount na `edge.conf` — dowód, że bug był realny, nie hipotetyczny.
+
+**2. WYSOKIE — `sync-certificate.sh`'s sonda "czy legacy stack działa" nie odróżniała "nic tu nie
+ma" od "nie potrafię sprawdzić".** Pierwsza wersja poprawki (patrz incydent wyżej) używała `docker
+compose ps -q app 2>/dev/null || true` — ale `docker compose ps`, jak KAŻDA subkomenda Compose,
+interpoluje CAŁY plik `.env` przed odpowiedzią (ten sam fakt co incydent "docker compose run w
+forced-command recovery path" wyżej). Zblankowany/zepsuty `.env` legacy stacka (dokładnie incydent
+REDIS_PASSWORD już w tej kronice) sprawiał, że `docker compose ps -q app` **zawodził** (exit
+niezero, puste stdout) MIMO że kontener wciąż działał i serwował ruch na środowisku, z jakim
+wystartował. Odczytane jako "legalnie nic tu nie ma" → zero nazw legacy wniesionych → `certbot
+--expand` wystawiał certyfikat OKROJONY z każdej nazwy legacy, podczas gdy legacy stack wciąż stał i
+serwował na starym certyfikacie. Dokładnie ten sam bug klasy "cichego skurczenia", który cały ten
+plik ma zapobiegać, wpuszczony tylnymi drzwiami przez WŁASNĄ wcześniejszą poprawkę.
+
+**Naprawa:** sonda przez `docker inspect --format '{{.State.Running}}' registro-app` — surowe
+zapytanie o obiekt kontenera PO NAZWIE, nigdy nie dotyka interpolacji Compose. Nazwa kontenera
+STAŁA (`docker-compose.prod.yml`'s `container_name: ${TENANT_PREFIX:-registro}-app`, a
+`TENANT_PREFIX` zostaje puste na legacy stacku z założenia) — ten sam precedens co domyślne
+`registro-nginx` już w tym pliku. Trzy stany rozróżnione: `docker inspect` zwraca `true` → działa,
+odpytaj `tenants:hostnames` (istniejąca ścieżka bez zmian); zwraca `false` → istnieje, ale
+zatrzymany, zero nazw; zawodzi z komunikatem "no such object" → kontenera nigdy nie było, zero
+nazw; zawodzi z INNYM komunikatem (`daemon nieosiągalny`, brak uprawnień) → **fatalne**, `die()`,
+nigdy nie czytane jako "nic tu nie ma".
+
+**Bug znaleziony PRZY OKAZJI implementacji tej naprawy, nie przewidziany:** `VAR="$(cmd)"` w
+osobnej linii, bez `|| ...`, pod `set -e` — DOKŁADNIE incydent "6 bugów w `apply.sh`", punkt 4, w
+NOWYM miejscu. `docker inspect` na nieistniejącym kontenerze (dokładnie ten scenariusz "absent
+checkout", który ta gałąź ma poprawnie obsłużyć) zabijał skrypt W TEJ LINII, zanim `LEGACY_INSPECT_RC=$?`
+w ogóle się wykonało — zreprodukowane przez faktyczne uruchomienie (`bash -x`), nie przez inspekcję.
+Fix: `LEGACY_INSPECT_RC=0; VAR="$(cmd)" || LEGACY_INSPECT_RC=$?`. Zweryfikowane po fixie: cztery
+stany (absent, running zdrowy, running z zepsutym `.env`, `docker inspect` zawodzący z realnego
+powodu) wszystkie dają poprawny wynik, wszystkie sześć wcześniejszych scenariuszy piaskownicy nadal
+przechodzi.
+
+Pełny opis: `app/docs/deployment/edge-stack.md`, `app/docs/deployment/tenant-apply.md`. Trzeci,
+średni finding tego samego przeglądu (procedura przywracania plików nie dziedziczyła poprawki
+własności z backupu — `chown -R $(id -u):$(id -g)` po stronie backupu nie ma odpowiednika po
+stronie przywracania, więc przywrócone pliki mogą zostać niezapisywalne dla realnego UID aplikacji)
+opisany w `instalacja-tenanta-od-zera.md` Część 8.6/8.7 — zweryfikowany z UMYŚLNIE innym
+symulowanym UID `deploy` (1002, realny przykład z ADR-010) żeby zbieżność UID hosta z UID aplikacji
+w piaskownicy nie zamaskowała buga po raz drugi.
+
+**Zasada:** ten sam bug ("`cmd` w compose zawodzi z powodu `.env`, nie z powodu stanu, o który
+pytasz") potrafi wrócić w ZUPEŁNIE innym miejscu tego samego repo, jeśli naprawa w jednym miejscu
+(dedykowane stacki, incydent wyżej) nie zostanie systematycznie zastosowana do KAŻDEGO miejsca z tym
+samym kształtem zapytania (legacy stack, ten incydent). Przy dowolnym `docker compose <cokolwiek>`
+używanym WYŁĄCZNIE jako "czy to w ogóle działa" — pytaj `docker inspect` po nazwie kontenera
+zamiast, nie warunkuj bramki na subkomendzie Compose, która i tak zawsze interpoluje cały plik.
+Osobno: gdy walidujesz mechanizm ownership/permission w piaskownicy, sprawdź NAJPIERW czy UID hosta
+testowego przypadkiem nie zgadza się z UID, którego bug dotyczy — zbieżność cicho unieważnia test
+(złapane i naprawione dwa razy w tej samej sesji, patrz też incydent bezpośrednio powyżej).
+
+---
+
+## Incydent (Faza 3 planu dwóch maszyn, znaleziony przez realną migrację, nie inspekcję):
+## `stage_volume()` cicho tworzyło PUSTY backup obu wolumenów storage na prawdziwym obrazie
+
+`apply.sh`'s własny finalny krok backupu i cały `tenant-backup.sh` wołają `docker run --user 0:0
+-v <wolumen>:/src:ro ... "ghcr.io/patrykgielo/registro:<tag>" sh -c "cp -a /src/. /dest/ && chown
+..."` — **bez `--entrypoint`**. Ten obraz ma własny `docker/entrypoint.sh`, który odmawia startu
+jako ktokolwiek inny niż `laravel` (`EXPECTED_USER` check, `❌ CRITICAL: Running as 'root' but
+expected 'laravel'`) — `--user 0:0` nigdy nie docierał do `cp`/`chown`, entrypoint zabijał kontener
+najpierw. `docker run` samo w sobie "kończyło się sukcesem" (kontener wystartował i wyszedł — tylko
+z kodem 1, nic nie skopiowane), a otaczający `stage_volume()` tę porażkę łapał (`return 1`) —
+skutek widoczny operatorowi to `DEGRADED` na KAŻDYM apply, dla KAŻDEGO tenanta, odkąd ten kod
+istniał nietestowany przeciw prawdziwemu obrazowi — łatwe do przeczytania jako "restic jeszcze nie
+zainstalowany", nie jako "wolumeny storage nigdy nie trafiły do snapshota".
+
+**Naprawa:** `--entrypoint sh` + rozbicie komendy na `-c "..."` (teraz argument DLA `sh`, nie część
+CMD, którego i tak nikt nie interpretował) — identyczny, jednowierszowy fix w obu plikach.
+Zweryfikowane wprost przed i po: to samo `❌ CRITICAL` reprodukowane na oryginalnym kodzie; po
+naprawie `cp -a`/`chown` faktycznie wykonane, `sha256sum` zgodna z oryginałem.
+
+**Dlaczego wcześniejsza walidacja Fazy 2 (2026-08-09/10, ten sam plik, incydent "4 poprawki
+blokujące... realny wolumen Dockera" wyżej) tego nie złapała:** ten test uruchomił
+`stage_volume()` jako izolowaną funkcję przeciw JAKIEMUŚ wolumenowi Dockera, najwyraźniej nie
+przeciw kontenerowi zbudowanemu z WŁASNEGO `Dockerfile`/`entrypoint.sh` tego projektu — generyczny
+obraz nigdy nie trafiłby na ten guard. Walidacja Fazy 3 (pełna migracja tenanta między dwiema
+symulowanymi maszynami) była pierwszym razem, gdy ta dokładna funkcja pobiegła z prawdziwym,
+entrypoint-guarded obrazem `ghcr.io/patrykgielo/registro` jako kontenerem stagingowym — dokładnie
+tym, którego używa każdy realny `apply`/cron backup na prawdziwym serwerze.
+
+Pełny opis + cała walidacja migracji (6 punktów, `audit_logs`/`APP_KEY` przeżywa przeniesienie,
+niezależna alokacja portów/podsieci na maszynie docelowej): `app/docs/deployment/
+instalacja-tenanta-od-zera.md` → Część 9, `app/docs/deployment/tenant-apply.md` →
+"`stage_volume()` bug found during Faza 3 validation".
+
+**Zasada:** izolowany test funkcji, który podstawia inny obraz/kontener niż ten, którego produkcja
+faktycznie używa, może przejść, mimo że funkcja jest złamana przeciw prawdziwemu artefaktowi. Gdy
+kod robi `docker run` na WŁASNYM obrazie projektu (nie na `alpine`/`debian`/generycznym helperze) —
+walidacja MUSI użyć tego samego, realnie zbudowanego obrazu, z jego prawdziwym entrypointem,
+inaczej test dowodzi tylko, że powłoka wewnątrz działa, nie że cała ścieżka `docker run` działa.
+
+---
+
+## Incydent (znaleziony przez faktyczny drill, nie shipped): `tenant-restore.sh` — read side
+## backupu nie istniał; drill nie znalazł bugów w nowym skrypcie, ale znalazł dwie pułapki metodyki
+
+`scripts/server/tenant-restore.sh`, nowy. Do 2026-08-12 nic w repo nigdy nie CZYTAŁO snapshota
+restica — jedyna procedura przywracania była prozą w `instalacja-tenanta-od-zera.md` Część 8 do
+ręcznego przepisania. Pełny opis skryptu, tryby, i drill end-to-end (build lokalny obrazu, prawdziwy
+6-kontenerowy stack, backup → zniszczenie CAŁEGO stacka → `--restore-live` → weryfikacja
+`sha256sum`/odszyfrowania/własności): `app/docs/deployment/instalacja-tenanta-od-zera.md` → 8.0,
+8.7a; `app/docs/deployment/tenant-apply.md` → sekcja `tenant-restore.sh`.
+
+**Sam skrypt zadziałał poprawnie za pierwszym uruchomieniem na każdej testowanej ścieżce** (scratch
+restore, `--restore-live`, cztery bramki bezpieczeństwa, override `RESTIC_PASSWORD_FILE`) — żaden
+bug w `tenant-restore.sh` nie został znaleziony przez sam drill. Trzy testy (`tests/shell/cases/
+13-15`) i tak dodane, bo pinują WŁASNOŚCI będące całą obietnicą bezpieczeństwa tego skryptu
+(`--confirm-slug`, `--target-db` ≠ żywa baza, `chown -R 1000:1000`), nie regresje.
+
+**Dwie pułapki znalezione w METODYCE walidacji, obie skorygowane przed dowiedzeniem czegokolwiek:**
+
+1. **Model factory (`Organization::factory()`) nie działa na prawdziwym obrazie produkcyjnym.**
+   `Call to undefined function Database\Factories\fake()` — `fakerphp/faker` to zależność
+   `require-dev`, wycięta przez `composer install --no-dev` przy budowaniu obrazu. To POPRAWNE
+   zachowanie obrazu produkcyjnego, nie bug — ale znaczy, że każdy przyszły drill na TYM obrazie
+   musi zasadzać dane wprost przez `Model::create([...])` (z wszystkimi wymaganymi kolumnami,
+   `owner_id`, `auditable_type`/`auditable_id` itd.), nie przez fabryki, inaczej wygląda na zepsuty
+   model zamiast na oczekiwane ograniczenie środowiska.
+2. **Fake `id -u`/`id -g` na `PATH` NIE symuluje innego hosta-operatora dla `tenant-backup.sh`'s
+   `stage_volume()`.** Pierwsza próba dowiedzenia "backup pod innym UID operatora" podmieniła
+   binarkę `id`, żeby `$(id -u):$(id -g)` w skrypcie zwracało `1002` — ale sam PROCES basha nadal
+   biegł jako prawdziwy UID hosta (1000). Uprzywilejowany `docker run --user 0:0 ... chown -R
+   1002:1002 /dest` faktycznie przestawił własność katalogu stagingowego na 1002, a NASTĘPNY krok
+   skryptu (`rm -rf "$STAGE_DIR"` we własnym, nieuprzywilejowanym procesie, prawdziwy UID 1000) padł
+   `Permission denied` na każdym pliku — wyglądające jak realny bug w `tenant-backup.sh`, ale będące
+   artefaktem testu: w rzeczywistości `id -u` ZAWSZE prawdziwie zwraca UID wywołującego procesu,
+   więc `chown` na tę wartość nigdy nie może rozjechać się z uprawnieniami tego samego procesu.
+   Naprawa: nie fałszować `id`, tylko zbudować snapshot z zawartością OZNAKOWANĄ inną własnością
+   wprost (`docker run --user 0:0 ... chown -R 1002:1002` na źródle), niezależnie od PATH-owych
+   podmianek — to faktycznie testuje "co jeśli snapshot zawiera pliki z innym UID", bez fałszowania
+   tożsamości procesu, która musi zostać spójna dla testu żeby cokolwiek dowodzić.
+
+**Zasada:** brak znalezionych bugów w faktycznym uruchomieniu jest samo w sobie wynikiem wartym
+zapisania (nie "nic się nie stało, pomiń") — odróżnia "przetestowane i działa" od "nieprzetestowane".
+Przy próbie SYMULOWANIA innej tożsamości (UID, użytkownika) w teście powłoki: podmiana binarki
+zwracanej przez `$(polecenie)` zmienia tylko STRING, którego skrypt użyje w kolejnej komendzie — nie
+zmienia rzeczywistych uprawnień PROCESU, który tę komendę wykonuje. Jeśli oba muszą się zgadzać
+(jak `chown` na wartość z `id -u`, potem operacja na tym samym pliku przez ten sam proces), fałszowanie
+samego `id` tworzy rozjazd, którego produkcja nigdy nie zobaczy.
+
+---
+
+## Incydent (drugi przegląd tego samego dnia, cztery realne luki, wszystkie odtworzone w kodzie):
+## `tenant-restore.sh` — zielony drill dowiódł happy path, nie ścieżek awaryjnych
+
+Bezpośrednia kontynuacja incydentu powyżej. Pierwszy drill (ten sam dzień, 2026-08-12) przeszedł
+end-to-end i doprowadził do 15/15 zielonych testów — ale drugi, niezależny przegląd odtworzył
+CZTERY realne błędy w tej samej wersji skryptu, wszystkie w kodzie ścieżki `--restore-live`, żaden
+z nich widoczny w happy-pathowym drillu, bo żaden test nie pinował SEKWENCJI wywołań, tylko same
+bramki bezpieczeństwa (confirm-slug, target-db≠live, chown). Usunięcie CAŁEJ sekwencji trybu
+konserwacji z kodu i tak dawało 15/15 — dowód wprost, że zielony end-to-end nie jest tym samym co
+bezpieczne ścieżki awaryjne.
+
+1. **SEVERE — tryb konserwacji zagnieżdżony wyłącznie w bloku bazy danych.** Dwie konsekwencje:
+   `--restore-live --confirm-slug <slug> --skip-db` (zwykłe, udokumentowane wywołanie — guard
+   odmawia tylko przy OBU flagach `--skip-*` naraz) wypakowywało pliki prosto do żywych wolumenów
+   **bez żadnego trybu konserwacji w ogóle**; a na zwykłej ścieżce `artisan up` uruchamiał się
+   PRZED wypakowaniem wolumenów — aplikacja wracała na ruch z bazą odwołującą się do
+   zdjęć/logo/obrazów CMS wciąż w trakcie `tar -x`, dokładnie tej niespójności, przed którą ma
+   chronić jeden snapshot restica (patrz `tenant-backup.sh`'s własny nagłówek).
+2. **Nic nie bramkowało fazy plików awarią fazy bazy.** Nieudane wczytanie zrzutu logowało "app left
+   in maintenance mode… fix manually", ustawiało flagę awarii, i i tak leciało dalej do wypakowania
+   plików do żywych wolumenów.
+3. **Brak pułapek na sygnał.** Jedyny trap to `rm -f "$DUMP"` na EXIT, rozbrajany w połowie skryptu —
+   Ctrl-C, zerwane SSH albo timeout systemd w środku `artisan down`/wczytywania/`tar` zostawiały
+   tenanta w trybie konserwacji albo z połowicznie nadpisanym wolumenem, bez żadnego zapisu
+   tłumaczącego dlaczego. `apply.sh`'s `on_exit`/`on_signal` (patrz incydent wyżej w tym pliku,
+   "drugi przegląd infrastrukturalny") istnieje dokładnie po to, a `tenant-restore.sh` go nie miało.
+4. **`tenant-check.sh` mógł zgłosić fałszywie zdrowego tenanta.** `tenant-restore.sh` nigdy nie
+   pisało do `STATE_DIR/apply-status`, a `tenant-check.sh` ufa temu plikowi jako źródłu prawdy —
+   nieudany albo zabity live restore zostawiał tenanta zepsutego, podczas gdy status wciąż czytał
+   się jako `OK` z ostatniego udanego `apply`.
+
+**Naprawa:** JEDNO okno trybu konserwacji obejmuje OBIE fazy niezależnie od
+`--skip-db`/`--skip-files`; faza plików NIGDY nie startuje po awarii fazy bazy; `on_exit`/
+`on_signal` skopiowane z dokładnie tego samego wzorca co `apply.sh` (bezwarunkowy zapis `RUNNING`
+w momencie wejścia w tryb konserwacji, `FAILED` z powodem przy każdej awarii/sygnale, `OK` dopiero
+po pełnym sukcesie). **Jedna celowa różnica względem `apply.sh`:** `clear_maintenance()` w
+`tenant-restore.sh` NIGDY nie próbuje sam wywołać `artisan up` (w przeciwieństwie do `apply.sh`'s
+odpowiednika, który auto-leczy przerwaną migrację) — restore ma DWIE zależne fazy, a auto-leczenie
+na przerwaniu, które wylądowało między nimi, ryzykowałoby dokładnie tę samą niespójność co błąd #1.
+Człowiek potwierdzający ręcznie spójność bazy i plików przed wpisaniem `artisan up` jest tu
+świadomie bezpieczniejszym domyślnym zachowaniem niż auto-czyszczenie — uzasadnione tym, że
+`apply.sh`'s pojedynczy, niezależny krok migracji na auto-leczenie pozwala, a restore nie.
+
+**Trzy nowe testy pinujące SEKWENCJĘ, nie same bramki** (`tests/shell/cases/16-18`) — każdy
+dowiedziony czerwono-potem-zielono przez podstawienie DOKŁADNEJ starej (błędnej) wersji skryptu i
+potwierdzenie, że test wywraca się dokładnie na opisanym problemie (test 16 złapał `artisan up`
+przed plikami I brak zapisu `apply-status`; test 17 złapał brak `artisan down` przy `--skip-db`;
+test 18 złapał wypakowanie plików po awarii bazy I brak zapisu `FAILED`).
+
+**Druga, realna weryfikacja NAPRAWIONEJ wersji, nie tylko fejkami w `tests/shell/`** — dokładnie ta
+sama lekcja co przy fejkowaniu `id` w incydencie wyżej: fejki dowodzą, że skrypt WYSYŁA właściwe
+komendy we właściwej kolejności, nie że prawdziwy Docker/MySQL faktycznie tak się zachowa. Powtórzono
+CAŁY drill (nowy build obrazu, świeży `git worktree`, sześć kontenerów) przeciw poprawionej wersji:
+happy path pokazał w logu skryptu kolejność WPROST poprawną (baza → oba wolumeny → "Application is
+now live"), `apply-status` → `OK`; prawdziwa awaria auth MySQL (podmienione `DB_ROOT_PASSWORD` w
+`.env.secrets`, kontener wciąż z PRAWDZIWYM oryginalnym hasłem — realny `Access denied`, nie
+symulowany) zatrzymała restore z kodem 3, zero linii o wypakowywaniu plików w logu, `horizon`/
+`scheduler` nadal zatrzymane, `apply-status` → `FAILED`; przywrócenie poprawnego hasła i ponowienie
+TEJ SAMEJ komendy w pełni odzyskało stan (kod 0, `apply-status` → `OK`).
+
+**Zasada:** zielony end-to-end drill dowodzi, że happy path działa — nie dowodzi, że ścieżki
+awaryjne (awaria w połowie, sygnał, plik statusu czytany przez inny skrypt) są bezpieczne. Test
+pinujący SAMĄ BRAMKĘ (czy odmowa działa) i test pinujący SEKWENCJĘ (co się dzieje, gdy bramka
+przepuści, a coś DALEJ zawiedzie) to dwie różne własności — pierwszy nie zastępuje drugiego. Po
+naprawie znalezionej w REVIEW (nie w drillu) — powtórz przynajmniej skróconą wersję realnego drillu
+na poprawionym kodzie, nie tylko testy jednostkowe z fejkami: fejki potwierdzają KOLEJNOŚĆ wywołań,
+nie że prawdziwa infrastruktura tak zareaguje.
+
+## Incydent 2026-08-12: lokalny nginx nie startował bez kontenera `node` — literalny `proxy_pass`/`fastcgi_pass` do nazwy kontenera
+
+Obserwowane na żywo w tej sesji: `registro-node` (Vite dev server, `npm run dev`) wyszedł/nie
+działał; `registro-nginx` był w pętli restartów, `curl` na `https://registro.local:8444` zwracał
+exit 7 (connection refused). Log: `[emerg] host not found in upstream "registro-node"`.
+
+**Przyczyna:** `docker/nginx/default.conf` miało `proxy_pass https://registro-node:5173;` zapisane
+literalnie w dwóch lokacjach obsługujących Vite HMR (`/@vite/` i `~ ^/(resources|@id|node_modules)/`).
+nginx rozwiązuje literalny upstream w `proxy_pass`/`fastcgi_pass` RAZ, przy starcie/reload configu —
+brak kontenera w tym dokładnie momencie wywala start CAŁEGO pliku, nie tylko tych dwóch lokacji,
+bo wszystkie dzielą jeden `server {}`. To zderzało się wprost ze standardową zasadą tego projektu
+(`CLAUDE.md`): nigdy `npm run dev`, zawsze `docker compose exec -T app npm run build` — środowisko
+było niemożliwe do uruchomienia we własnej sankcjonowanej konfiguracji.
+
+Ten sam kształt błędu (osobny bug, nie ta sama linia) był w `docker/nginx/staging/app.staging.conf`:
+`fastcgi_pass app:9000;` literalnie — brak kontenera `app` przy starcie/reload wywalał cały plik,
+identyczny mechanizm jak wyżej, inny upstream.
+
+**Naprawa:** wzorzec już istniejący w repo (`docker/nginx/production/app.prod.conf`,
+`docker/nginx/edge/tenants.d/_example.conf.disabled`) — `resolver 127.0.0.11 valid=5s ipv6=off;`
+(Docker's embedded DNS) + `set $upstream_x host:port;` + `proxy_pass $upstream_x;`/
+`fastcgi_pass $upstream_x;`. Zmienna odracza rozwiązanie nazwy do czasu żądania: zatrzymany
+kontener 502-uje TYLKO własne lokacje, reszta configu wstaje normalnie. Jedna pułapka do
+sprawdzenia przy `proxy_pass`/`fastcgi_pass` z URI (nie tu, ale dla przyszłych podobnych fixów):
+nginx nie potrafi w czasie parsowania rozstrzygnąć, czy zmienna zawiera część URI, więc zawsze
+traktuje to jak "bez URI" — czyli oryginalny URI żądania leci bez zmian, dokładnie tak samo jak
+literalny `proxy_pass host:port;` bez ścieżki (potwierdzone: [nginx docs, ngx_http_proxy_module,
+sekcja proxy_pass](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass) — "if the
+address is specified without a URI, or it is not possible to determine the part of URI to be
+replaced, the full request URI is passed").
+
+`app.staging.conf` ma DODATKOWO `resolver 8.8.8.8 8.8.4.4 valid=300s;` na poziomie `server` — dla
+OCSP stapling, publiczny DNS, nie zna nazw kontenerów Dockera. `resolver` per-`location` nadpisuje
+`resolver` z `server` TYLKO w tej lokacji — więc drugi `resolver 127.0.0.11 ...;` poszedł do środka
+`location ~ \.php$`, zostawiając OCSP na publicznym DNS nietkniętym. Dodanie drugiego `resolver` w
+TYM SAMYM kontekście (co próbowałem najpierw w `default.conf`, gdzie już był jeden na poziomie
+`server`) kończy się `nginx: [emerg] "resolver" directive is duplicate` — złapane od razu przez
+`nginx -t`/rzeczywisty restart, nie zostawione w kodzie.
+
+**Zweryfikowane uruchomieniem, nie czytaniem:** `node` zatrzymany → `docker compose restart nginx`
+→ kontener wstał czysto (bez `[emerg]`, bez pętli restartów), `curl` na `/` → 200, HTML odwołuje się
+do `build/assets/...`, nie `@vite` (bo `public/hot` nie istniał — assety poprawnie zbudowane);
+pobranie realnego pliku CSS/JS z `build/assets/` → 200 z poprawnym `content-type`; `/@vite/client`
+→ 502, nginx nadal `Up` po tym żądaniu. `app`/`mysql`/`redis` NIE przebudowane (te same ID kontenerów
+przed i po). `app.staging.conf` zweryfikowany WYŁĄCZNIE przez `nginx -t` w jednorazowym kontenerze
+(bez certów Let's Encrypt, syntetyczny self-signed) — nie uruchomiony przeciw prawdziwemu ruchowi
+staging, bo taki serwer w tej sesji nie istniał do przetestowania.
+
+**Test — pierwsza wersja (grep) obalona w review, druga wersja (prawdziwy `nginx -t`) zastąpiła ją
+całkowicie:** pierwsza wersja `tests/shell/cases/19_nginx_no_hardcoded_proxy_upstream.sh` była
+statyczną analizą regexem `(proxy_pass|fastcgi_pass)\s+host:port;` nad całym drzewem
+`docker/nginx/**/*.conf*`. Review odtworzyło DWA obejścia, oba nadal wywalające nginx dokładnie jak
+oryginalny bug:
+1. Spacja przed średnikiem (`proxy_pass https://host:port ;`) — regex wymagał `:[0-9]+;` bez
+   spacji, więc formatowanie edytora go omijało.
+2. Blok `upstream nodeup { server host:port; }` + `proxy_pass http://nodeup;` — zero trafień
+   regexa. GORSZE niż pierwsze obejście: `resolve=` na linii `server` wewnątrz `upstream {}` to
+   funkcja WYŁĄCZNIE nginx-plus, więc sztuczka ze zmienną, którą ta reguła rekomenduje jako
+   naprawę, w ogóle nie da się tu zastosować — regex rekomendujący niedziałającą naprawę jest
+   gorszy niż brak checka.
+
+**Zasada (transferowalna, nie tylko dla tego pliku):** regex statyczny pinuje PISOWNIĘ dzisiejszego
+błędu, nie WŁASNOŚĆ. Obie luki były pisownią, której regex nie przewidział. Gdzie prawdziwa
+własność jest tanio wykonywalna (tu: `docker run --rm --network none ... nginx -t` — nginx albo
+startuje, albo nie), wykonaj ją naprawdę zamiast przybliżać tekstowym dopasowaniem.
+
+**Druga wersja — prawdziwe `nginx -t`:** case uruchamia `nginx:1.25-alpine` z `--network none`
+(deterministycznie nierozwiązywalny upstream, offline, niezależnie od tego, jakie kontenery akurat
+żyją na jakiejkolwiek sieci mostkowej) przeciw (1) obu prawdziwym, naprawionym plikom z repo —
+muszą wystartować czysto — oraz (2) trzem syntetycznym, znanym-złym kształtom (literał oryginalny,
+literał ze spacją, blok `upstream {}`) — każdy MUSI wywalić `nginx -t`. Dowiedzione
+czerwono-potem-zielono na PRAWDZIWYCH plikach z repo (nie tylko syntetykach): `git stash` obu
+naprawionych plików → FAIL, złapane dokładnie `default.conf` (`registro-node`) i
+`app.staging.conf` (`app`); `git stash pop` → PASS. Wszystkie trzy syntetyczne złe kształty →
+exit 1; naprawiona forma zmiennej → exit 0.
+
+**Koszt czasowy — świadomy kompromis, nie przeoczenie:** `tests.md` twierdzi, że cały pakiet
+działa "w dobrze poniżej sekundy, offline, bez prawdziwego demona Dockera". Ten JEDEN case łamie
+to twierdzenie: `--network none` i tak dziedziczy `/etc/resolv.conf` HOSTA (kopiowany przez Dockera
+nawet bez sieci), więc synchroniczny resolver libc dla literalnego upstreamu próbuje go realnie
+osiągnąć zanim podda — ~5,2 s na zły kształt z gołym `--network none`. Nadpisanie
+`/etc/resolv.conf` na `nameserver 127.0.0.1` + `options timeout:1 attempts:1` (adres loopback bez
+nasłuchującego procesu, szybka porażka zamiast pełnego cyklu timeoutu) tnie to do ~1,2 s na zły
+kształt. Cały case: ~4,5 s. Cały pakiet (18 pozostałych testów + ten): ~5,3 s zamiast <1 s.
+Uznane za wart tego kosztu, bo alternatywa (regex) dowiedziona jako przepuszczająca realne błędy,
+jeden z nich niemożliwy do naprawienia wzorcem, który regex by "wykrył jako nieobecny".
+
+**Sprawdzone dokumenty:** README.md i `docker-init.sh` (jedyna udokumentowana ścieżka "quick
+start") uruchamiają `docker compose up -d --build` bez wskazywania serwisów — `node` wstaje
+automatycznie, więc żaden udokumentowany happy path nie trafiał na ten bug wprost. Trafiał na niego
+deweloper, którego `node` już nie działał (crash `npm install`, ręczne `docker compose stop node`,
+albo — jak w tej sesji — kontener po prostu wyszedł) i który potem zrestartował/przebudował `nginx`.
+`composer run dev` to osobna, nie-Dockerowa ścieżka (`npx concurrently` + `php artisan serve` +
+`npm run dev` na hoście) — nie dotyka tego pliku w ogóle.

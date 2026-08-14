@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\TenantFeature;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -101,6 +102,33 @@ class SmsTemplate extends Model
     public function scopeForLanguage($query, string $language)
     {
         return $query->where('language', $language);
+    }
+
+    /**
+     * Resolve the active template to actually send, tenant-override-aware.
+     *
+     * Same rationale and cross-tenant guarantees as EmailTemplate::resolveActive() —
+     * see that docblock. SmsTemplate carries the identical BelongsToOrganization +
+     * NULL-org-seeded-global combination, so it has the identical defect.
+     */
+    public static function resolveActive(string $key, string $language): ?self
+    {
+        $tenantId = TenantFeature::currentTenant()?->id;
+
+        return static::query()
+            ->withoutGlobalScope('organization')
+            ->where('key', $key)
+            ->where('language', $language)
+            ->where('active', true)
+            ->where(function ($query) use ($tenantId) {
+                $query->whereNull('organization_id');
+
+                if ($tenantId !== null) {
+                    $query->orWhere('organization_id', $tenantId);
+                }
+            })
+            ->orderByRaw('organization_id IS NULL')
+            ->first();
     }
 
     /**

@@ -1,0 +1,35 @@
+# =============================================================================
+# LEGACY SHARED STACK -- restores the public port bindings docker-compose.prod.yml's
+# nginx service no longer defaults to.
+#
+# Task 4 (stack-per-tenant epic) flipped that file's HTTP_PORT_V4/V6 default to
+# loopback-only, matching how HTTPS_PORT_V4/V6 already behaved -- a per-tenant
+# stack sitting behind docker-compose.edge.yml must publish NOTHING, and a
+# forgotten override should fail SAFE (unreachable), not fail OPEN (reachable
+# directly, bypassing the edge's Host-allowlist/444 fallback). See
+# app/docs/deployment/tenant-compose-stack.md for the full reasoning.
+#
+# The live legacy server is the one deployment that genuinely needs the
+# opposite: this IS the ingress, there is no edge in front of it, and it has
+# always published 80 to the world unconditionally (it has to, before any
+# certificate exists). This file restores exactly that -- bit-for-bit the same
+# `ports:` block docker-compose.prod.yml carried before task 4 -- via `!override`
+# (Compose Specification merge tag), not another `${VAR:-default}`: Compose
+# APPENDS sequence fields like `ports:` across `-f` files by default (verified:
+# a plain override `ports:` entry left BOTH the base's loopback binding and this
+# file's public one active on the same target port), so a bare list here would
+# not have replaced anything -- `!override` is what makes this file authoritative
+# for the whole `ports:` list rather than adding to it.
+#
+# Used ONLY by scripts/server/deploy.sh (COMPOSE_ARGS), which is, and always has
+# been, exclusively the legacy single-stack's deploy target. A genuine tenant
+# stack never references this file at all.
+# =============================================================================
+
+services:
+  nginx:
+    ports: !override
+      - "0.0.0.0:80:80"
+      - "[::]:80:80"
+      - "${HTTPS_PORT_V4:-127.0.0.1:443:443}"
+      - "${HTTPS_PORT_V6:-[::1]:443:443}"

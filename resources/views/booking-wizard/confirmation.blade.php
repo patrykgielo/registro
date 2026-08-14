@@ -247,21 +247,20 @@
                 </div>
             </div>
 
-            {{-- Preparation Checklist --}}
+            {{-- Preparation Checklist — tenant-configured only, no hardcoded
+                 fallback. A hardcoded checklist here would assert something
+                 about how THIS tenant's service works (e.g. "make sure your
+                 car is accessible") regardless of what tenant it actually
+                 is; absent means "don't show a checklist", not "guess one".
+                 See app/docs/features/tenant-branding.md. --}}
             @php
-                $defaultBeforeVisitItems = [
-                    'Upewnij się, że samochód jest dostępny pod wskazanym adresem',
-                    'Usuń wartościowe przedmioty z wnętrza auta',
-                    'Dostęp do wody i prądu ułatwi pracę (jeśli to możliwe)',
-                    'Otrzymasz przypomnienie SMS 2h przed wizytą',
-                ];
                 $beforeVisitItems = app(\App\Support\Settings\SettingsManager::class)->get('booking_wizard.before_visit_items');
-                // Fallback to defaults if setting is null, empty, or not an array
-                if (!is_array($beforeVisitItems) || empty($beforeVisitItems)) {
-                    $beforeVisitItems = $defaultBeforeVisitItems;
+                if (!is_array($beforeVisitItems)) {
+                    $beforeVisitItems = [];
                 }
             @endphp
 
+            @if(!empty($beforeVisitItems))
             <div class="confirmation-screen__checklist bg-blue-50 rounded-2xl p-6 border border-blue-200 mb-6 animate-slide-up" style="animation-delay: 0.2s;">
                 <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -281,6 +280,7 @@
                     @endforeach
                 </ul>
             </div>
+            @endif
 
             {{-- Action Buttons --}}
             <div class="confirmation-screen__actions grid grid-cols-1 gap-4 mb-8 animate-slide-up" style="animation-delay: 0.3s;">

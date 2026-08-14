@@ -57,7 +57,7 @@ Modules gatują widoczność Resources w Filament, Features gatują pola w formu
 | **Decisions** | `decisions/` | Architecture Decision Records (ADR) |
 | **Security** | `security/` | Baseline, audits, vulnerabilities |
 | **Legal** | `legal/` | GDPR assessments (analytics-gdpr-lia.md) |
-| **Deployment** | `deployment/` | Deploy scripts, pre-deployment checks |
+| **Deployment** | `deployment/` | Deploy scripts, pre-deployment checks. **Start here for installing a tenant: [`deployment/instalacja-tenanta-od-zera.md`](deployment/instalacja-tenanta-od-zera.md)** — the operator path from an unprepared server to a working client, in Polish, one line of explanation per command. Every other deployment doc is a deep-dive on one piece of it. |
 | **Dependencies** | `dependencies.md` | External packages i wersje |
 
 ### Architecture
@@ -71,7 +71,7 @@ for the conceptual overview these deep-dive.
 | Panel Isolation | `architecture/panel-isolation.md` | `/platform` vs `/admin` split, authorization layering, the boundary behind VULN-003 and the EditOrder PII leak |
 | Data Isolation | `architecture/data-isolation.md` | `organization_id` scoping end-to-end — `ResolveTenant` → `BelongsToOrganization` fail-closed scope |
 | Infrastructure | `architecture/infrastructure.md` | Docker Compose topology across dev/staging/prod, real drift between the 4 compose files |
-| Tenant Provisioning | `architecture/tenant-provisioning.md` | Signup → `CreateOrganizationWithOwner` → active tenant; automatic vs. manual `onboarding:seed-vertical` |
+| Tenant Provisioning | `features/tenant-stack-provisioning.md` | `registro:tenant-provision` CLI → active tenant; automatic vs. manual `onboarding:seed-vertical`. (Old public self-serve wizard doc archived: `docs/archive/features/tenant-provisioning-wizard.md`.) |
 | Request Flow | `architecture/request-flow.md` | Checkout sequence diagram (thin-controller pattern) + the sync/async queue boundary |
 
 ### Features
@@ -83,6 +83,7 @@ for the conceptual overview these deep-dive.
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
 | SMS System | `features/sms-system/` | Stable |
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
+| Order Handover/Return Protocols | `features/order-protocols.md` | Download-only PDFs, generated on demand |
 
 ### Guides
 

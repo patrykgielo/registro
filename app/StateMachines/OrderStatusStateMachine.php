@@ -6,6 +6,8 @@ namespace App\StateMachines;
 
 use App\Events\OrderCancelled;
 use App\Events\OrderConfirmed;
+use App\Events\OrderHandedOver;
+use App\Events\OrderReturned;
 use Asantibanez\LaravelEloquentStateMachines\StateMachines\StateMachine;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Support\Facades\Validator as ValidatorFacade;
@@ -102,6 +104,53 @@ class OrderStatusStateMachine extends StateMachine
             'cancelled' => [
                 function (string $from, $model): void {
                     event(new OrderCancelled($model, notify: $model->notifyOnCancel ?? true));
+                },
+            ],
+            // Handover: admin action "Wydano klientowi" (OrderResource row action /
+            // EditOrder header action, both call the same transitionTo('in_progress')).
+            // No timestamp column for this transition exists (deliberately — see
+            // order-notifications.md); the event is the only record.
+            'in_progress' => [
+                function (string $from, $model): void {
+                    event(new OrderHandedOver($model));
+                },
+            ],
+            // Mirrors paid_at/cancelled_at (see Przelewy24Service, OrderService::cancel):
+            // completed_at was declared in the schema/fillable/casts but never written
+            // anywhere. Lives here rather than at the call site because 'completed' is
+            // reached from two independent Filament call sites (OrderResource row action
+            // and EditOrder header action) — a hook is the single source of truth instead
+            // of duplicating the write in both places.
+            //
+            // Idempotency: the state machine's own transitionTo() already no-ops when
+            // $to === currentState() (see StateMachine::transitionTo()), and the
+            // transitions() map only allows 'completed' to be reached from 'in_progress'
+            // — there is no path back into 'in_progress' from 'completed', so a genuine
+            // re-entry is not reachable today. The null-check is defense-in-depth against
+            // that assumption changing later, not a currently-exercised path.
+            //
+            // Deliberately its OWN callable, separate from the OrderReturned dispatch
+            // below — "did we already stamp completed_at" and "should the customer be
+            // emailed" are different questions and must not share a guard. A backfill,
+            // data migration, import, or seeder can set completed_at directly (bypassing
+            // this hook entirely, since none of those call transitionTo()) without that
+            // ever meaning a customer was emailed about a return. If a future path DID
+            // call transitionTo('completed') on an order whose completed_at was already
+            // set by one of those, coupling the two would silently skip the email even
+            // though a genuine, hook-firing transition just happened. The email hook
+            // below has no such guard: this whole array is Laravel's own
+            // afterTransitionHooks() mechanism, which only invokes 'completed' callables
+            // on a genuine transition INTO 'completed' (see the idempotency note above)
+            // — so it needs no guard of its own to avoid a double-send, exactly like the
+            // 'confirmed'/'in_progress'/'cancelled' hooks above, none of which guard either.
+            'completed' => [
+                function (string $from, $model): void {
+                    if ($model->completed_at === null) {
+                        $model->update(['completed_at' => now()]);
+                    }
+                },
+                function (string $from, $model): void {
+                    event(new OrderReturned($model));
                 },
             ],
         ];

@@ -86,6 +86,44 @@ class OrderTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // afterTransitionHooks — completed_at
+    // -------------------------------------------------------------------------
+
+    public function test_transitioning_to_completed_sets_completed_at(): void
+    {
+        $order = Order::factory()->inProgress()->create();
+        $this->assertNull($order->completed_at);
+
+        $order->status()->transitionTo('completed');
+        $order->refresh();
+
+        $this->assertNotNull($order->completed_at);
+        $this->assertTrue($order->completed_at->greaterThan(now()->subMinute()));
+    }
+
+    public function test_transitioning_to_completed_does_not_overwrite_an_existing_completed_at(): void
+    {
+        // Reaching 'completed' twice is not possible through the state machine today
+        // (transitions() only allows in_progress -> completed, and nothing routes back
+        // into in_progress from completed) — this proves the hook's own null-guard would
+        // still protect an already-set timestamp if that ever changed. Seeds the
+        // precondition directly (completed_at already set) rather than trying to reach
+        // it through transition history, then drives the real transitionTo('completed')
+        // path (from=in_progress != to=completed, so the hook genuinely fires — this is
+        // not the vendor's $to === currentState() no-op).
+        // Truncated to whole seconds up front — the datetime column round-trip already
+        // drops microseconds, so comparing against a microsecond-precision $original
+        // would fail even when the guard correctly left the stored value untouched.
+        $original = now()->subDay()->startOfSecond();
+        $order = Order::factory()->inProgress()->create(['completed_at' => $original]);
+
+        $order->status()->transitionTo('completed');
+        $order->refresh();
+
+        $this->assertTrue($order->completed_at->equalTo($original));
+    }
+
+    // -------------------------------------------------------------------------
     // State machine — forbidden transitions
     // -------------------------------------------------------------------------
 

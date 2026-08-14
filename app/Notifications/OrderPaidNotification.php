@@ -8,6 +8,7 @@ use App\Channels\EmailServiceChannel;
 use App\Enums\TemplateKey;
 use App\Models\Order;
 use App\Services\Email\EmailService;
+use App\Support\Email\TrustedHtml;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -132,7 +133,14 @@ class OrderPaidNotification extends Notification implements ShouldBeUnique, Shou
 
     /**
      * Build rental-specific template variables from order data.
-     * Uses organization->settings JSON directly (queue-safe, no SettingsManager).
+     *
+     * Reads pickup/contact info via SettingsManager::contactDetailsFor() — the single
+     * canonical accessor for this, queue-safe because it takes the organization
+     * explicitly rather than resolving TenantFeature::currentTenant() (which depends on
+     * request/session state a queue worker doesn't have). Do NOT read
+     * $order->organization->settings (the JSON column) — see contactDetailsFor()'s own
+     * docblock for why a shared accessor exists instead of each caller reading the
+     * settings table directly.
      *
      * @return array<string, string>
      */
@@ -169,16 +177,16 @@ class OrderPaidNotification extends Notification implements ShouldBeUnique, Shou
             ? number_format((float) $order->deposit_amount, 2, ',', ' ').' zł'
             : '';
 
-        $orgSettings = $order->organization?->settings ?? [];
-        $addressLine = data_get($orgSettings, 'contact.address_line', '');
-        $postalCode = data_get($orgSettings, 'contact.postal_code', '');
-        $city = data_get($orgSettings, 'contact.city', '');
-        $phone = data_get($orgSettings, 'contact.phone', '');
+        $contact = app(\App\Support\Settings\SettingsManager::class)->contactDetailsFor($order->organization);
+        $phone = $contact['phone'];
 
-        $pickupAddress = trim(implode(', ', array_filter([$addressLine, trim($postalCode.' '.$city)])));
+        $pickupAddress = trim(implode(', ', array_filter([
+            $contact['address_line'],
+            trim($contact['postal_code'].' '.$contact['city']),
+        ])));
 
         return [
-            'items_list_html' => $itemsListHtml,
+            'items_list_html' => new TrustedHtml($itemsListHtml),
             'items_list_text' => rtrim($itemsText),
             'deposit_amount' => $depositAmount,
             'pickup_address' => $pickupAddress,

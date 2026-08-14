@@ -85,28 +85,22 @@ class SettingSeeder extends Seeder
     /**
      * Seed booking wizard configuration settings.
      *
-     * Note: before_visit_items is a flat array for Filament simple Repeater.
-     * Do NOT nest in extra array - that causes [object Object] display bug.
+     * Deliberately seeds neither key. Both used to default to a mobile
+     * car-wash checklist ("Usuń wartościowe przedmioty z wnętrza auta") and
+     * parking-type options — a live render path
+     * (resources/views/booking-wizard/steps/vehicle-location.blade.php,
+     * resources/views/booking-wizard/confirmation.blade.php), not just an
+     * unused admin field, so an absent value is not cosmetic here. Both
+     * consumers already treat "empty" correctly: the location-type section
+     * is wrapped in `@if(count($serviceLocationTypes ?? []) > 0)`, and the
+     * checklist block gates on `!empty($beforeVisitItems)` (see that
+     * blade file — its own hardcoded 3rd-tier fallback, not just this
+     * seeder, carried the same car-wash text and was fixed in the same
+     * pass). See app/docs/features/tenant-branding.md.
      */
     private function seedBookingWizardSettings(): void
     {
-        $settings = [
-            // Simple Repeater: flat array of strings (NOT nested!)
-            'before_visit_items' => [
-                'Upewnij się, że samochód jest dostępny pod wskazanym adresem',
-                'Usuń wartościowe przedmioty z wnętrza auta',
-                'Dostęp do wody i prądu ułatwi pracę (jeśli to możliwe)',
-                'Otrzymasz przypomnienie SMS 2h przed wizytą',
-            ],
-            // Complex Repeater: array of objects with named fields
-            'service_location_types' => [
-                ['name' => 'Parking naziemny', 'icon' => 'sun', 'description' => 'Parking na zewnątrz, bez zadaszenia'],
-                ['name' => 'Parking podziemny', 'icon' => 'building-office', 'description' => 'Wymagany kod dostępu do garażu'],
-                ['name' => 'Podwórko/Posesja', 'icon' => 'home', 'description' => 'Prywatna posesja z dostępem'],
-            ],
-        ];
-
-        $this->seedGroup('booking_wizard', $settings);
+        //
     }
 
     /**
@@ -128,29 +122,32 @@ class SettingSeeder extends Seeder
 
     /**
      * Seed business contact information settings.
+     *
+     * Deliberately seeds nothing: a placeholder email/phone/address here
+     * (e.g. "contact@example.com", a fabricated Warsaw street) would be a
+     * false claim about a tenant that never entered one — every consumer of
+     * these keys (SystemSettings Contact tab, storefront header/footer,
+     * maintenance pages) already treats an absent value as "don't show it",
+     * not "show a guess". See app/docs/features/tenant-branding.md.
      */
     private function seedContactSettings(): void
     {
-        $settings = [
-            'email' => ['contact@example.com'],
-            'phone' => ['+48123456789'],
-            'address_line' => ['ul. Marszałkowska 1'],
-            'city' => ['Warszawa'],
-            'postal_code' => ['00-001'],
-        ];
-
-        $this->seedGroup('contact', $settings);
+        //
     }
 
     /**
      * Seed appearance settings (logo configuration).
+     *
+     * No logo_alt default either — SettingsManager::logoAlt() already falls
+     * back to appName() when unset, and a hardcoded car-wash tagline here
+     * would defeat that fallback for every tenant, same bug class as the
+     * bundled logo asset.
      */
     private function seedAppearanceSettings(): void
     {
         $settings = [
             'header_logo' => [null],  // null = use default asset fallback
             'footer_logo' => [null],
-            'logo_alt' => ['Registro - Mobilne Myjnie Parowe'],
         ];
 
         $this->seedGroup('appearance', $settings);
@@ -158,32 +155,46 @@ class SettingSeeder extends Seeder
 
     /**
      * Seed marketing content settings.
+     *
+     * hero_title/hero_subtitle/services_heading/services_subheading/
+     * features_heading/features_subheading/features/cta_heading/
+     * cta_subheading are deliberately NOT seeded: the homepage is CMS-driven
+     * (see .claude/rules/blade-components.md — there is no home.blade.php),
+     * and grep confirms none of these keys is read by any Blade file — this
+     * whole sub-shape is vestigial, predating the CMS migration. Seeding
+     * detailing-shop copy ("Profesjonalne Pranie Tapicerki Samochodowej")
+     * into a dead admin field is lower severity than a live render (nobody
+     * outside the tenant's own admin ever sees it), but it is still a real
+     * defect — an admin opening Settings finds a form pre-filled with
+     * another industry's copy. Removing the fields/tab entirely is a
+     * separate, bigger decision (out of scope here — see
+     * app/docs/features/tenant-branding.md).
+     *
+     * important_info_heading/important_info_points are dead too, same as
+     * the rest of this group — an earlier pass here claimed
+     * resources/views/booking/create.blade.php renders them; that was
+     * wrong (that file is itself dead code, corrected by code review — see
+     * app/docs/features/tenant-branding.md). Kept and trimmed anyway on
+     * their own merits: two of the three seeded points were generic
+     * booking-policy statements (deposit required, 24h cancellation
+     * window), the third ("Usługi realizowane na terenie klienta" —
+     * mobile at-customer-location service) was the same false-business-
+     * model claim as the removed prelaunch tagline, so only that one item
+     * is dropped, not the whole key.
+     *
+     * important_info_points is a Simple Repeater
+     * (SystemSettings.php:911, `->simple(...)`) — per
+     * .claude/rules/filament-settings-pages.md ("Repeater Data Format"),
+     * that means a FLAT array of strings, same shape as the sibling
+     * before_visit_items above. NOT `[[ 'a', 'b' ]]`.
      */
     private function seedMarketingSettings(): void
     {
         $settings = [
-            'hero_title' => ['Profesjonalne Pranie Tapicerki Samochodowej'],
-            'hero_subtitle' => ['Przywróć swojemu samochodowi pierwotny wygląd'],
-            'services_heading' => ['Nasze Usługi'],
-            'services_subheading' => ['Kompleksowa oferta detailingu'],
-            'features_heading' => ['Dlaczego My?'],
-            'features_subheading' => ['Gwarantujemy najwyższą jakość'],
-            'features' => [
-                [
-                    ['title' => 'Profesjonalny Sprzęt', 'description' => 'Używamy najnowocześniejszego sprzętu do prania tapicerki'],
-                    ['title' => 'Doświadczony Zespół', 'description' => 'Nasz zespół ma wieloletnie doświadczenie'],
-                    ['title' => 'Gwarancja Jakości', 'description' => 'Gwarantujemy 100% satysfakcji'],
-                ],
-            ],
-            'cta_heading' => ['Umów się już dziś'],
-            'cta_subheading' => ['Skontaktuj się z nami i poznaj naszą ofertę'],
             'important_info_heading' => ['Ważne Informacje'],
             'important_info_points' => [
-                [
-                    'Rezerwacja wymaga wpłaty zaliczki',
-                    'Możliwość anulacji do 24h przed wizytą',
-                    'Usługi realizowane na terenie klienta',
-                ],
+                'Rezerwacja wymaga wpłaty zaliczki',
+                'Możliwość anulacji do 24h przed wizytą',
             ],
         ];
 
@@ -242,17 +253,22 @@ class SettingSeeder extends Seeder
 
     /**
      * Seed pre-launch page default content settings.
+     *
+     * No tagline/description_1/description_2/launch_date default: the copy
+     * this used to seed ("we come to you, not you to us", "mobile car-wash
+     * and detailing booking system") describes a specific business this
+     * project no longer sells (equipment_rental only — see
+     * app/docs/project/business_focus or CLAUDE.md), and the seeded
+     * launch_date drifts into the past the moment nobody looks at it again.
+     * Only industry-agnostic boilerplate ("Coming soon", "Got questions?")
+     * stays. See app/docs/features/tenant-branding.md.
      */
     private function seedPrelaunchSettings(): void
     {
         $settings = [
             'page_title' => ['Wkrótce startujemy - Registro'],
             'heading' => ['Wkrótce Ruszamy!'],
-            'tagline' => ['Registro polega na tym, że to my przyjeżdżamy do Ciebie, a nie Ty do Nas!'],
             'date_label' => ['Data startu'],
-            'launch_date' => ['2026-01-25'],
-            'description_1' => ['Wprowadzamy autorski system rezerwacji mobilnych usług mycia pojazdów oraz detailingu.'],
-            'description_2' => ['Świadczymy usługi we wskazanej przez Ciebie lokalizacji.'],
             'contact_heading' => ['Masz pytania?'],
             'copyright_text' => ['Registro. Wszelkie prawa zastrzeżone.'],
             'html_lang' => ['pl'],

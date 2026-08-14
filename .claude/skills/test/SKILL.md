@@ -33,9 +33,19 @@ docker compose exec -T app php artisan test $ARGUMENTS
 
 ## Step 4: Analyze Results
 
-**Pre-existing failures (7, do NOT try to fix):**
-- `BookingConfirmationSecurityTest` (1) — CSRF
-- `BookingServiceAreaBypassTest` (6) — CSRF
+**Pre-existing failures (3, do NOT try to fix)** — verified 2026-08-08 against
+`docker compose exec -T app php artisan test` (`3 failed, 5 skipped, 1051 passed`):
+- `customer can cancel pending payment order` — CustomerOrdersTest
+- `cancel sets cancelled at timestamp` — CustomerOrdersTest
+- `booking wizard has 4 steps without vehicles` — TenantFeatureTest
+
+Root cause of these three is **not** diagnosed — do not assume it, check.
+
+This list drifts. It previously claimed 7 failures in two completely different
+test files, which would have made anyone comparing against it either chase a
+phantom regression or wave a real one through. **Re-derive it, don't trust it:**
+`php artisan test 2>&1 | grep -E "^  ⨯|Tests:"` — and if the output disagrees
+with the list above, fix the list in the same PR.
 
 Any failure NOT in this list = **new regression**, must fix.
 

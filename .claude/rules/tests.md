@@ -155,6 +155,53 @@ $this->assertEquals($expected, $errorMessage);
 2. Run `docker compose exec app php artisan test` - tests in Docker
 3. OR run tests with SQLite: `php artisan test` (requires pdo_sqlite)
 
+## tests/Browser (Pest v4 real-browser E2E)
+
+- In-process server (`LaravelHttpServer`) — Playwright/Chromium hit the app in the SAME PHP process, no `artisan serve`.
+- `SESSION_SECURE_COOKIE=false` in `.env.testing` — plugin forces `http://`; `true` silently drops cookies.
+- Filament login rate-limits at 5/min per IP, array cache is per-process → leftover hit 429s next test's login — `Cache::flush()` first.
+- Only `grent`/`qatest` slugs resolve to `127.0.0.1` in `/etc/hosts` — other slugs fail at DNS, not app logic.
+- Selector gotcha: Filament ids are the dotted statePath (`id="form.email"`). Bare `"form.email"` parses as CSS `tag.class` and hangs — always `fill('[id="form.email"]', ...)`.
+- **Cross-subdomain tests must set `session.domain` explicitly.** `.env.testing` leaves it unset, so Laravel issues a host-only cookie that never travels to another tenant's subdomain — a "tenant A's admin is rejected on tenant B" test would then pass because the browser sent no credentials at all, not because anything defended. Real deployments use a wildcard (`.env.staging.example`), which is the precondition VULN-003 is about. `TenantIsolationTest` forces `session.domain` in `beforeEach` for exactly this reason.
+- **One browser context per test.** Opening a second while the first is alive deadlocks the process — no exception, no timeout, no output, just a hang, because the AmpHttp server and the Playwright client share one PHP process and cooperate on fibers. To switch users, drive the real logout form and log in again (see `EmployeeCreationTest`). Note this is NOT needed for multi-tenant assertions: the tenants live in the database, one session sees them all.
+- Chromium is baked into the image at `/opt/playwright-browsers` (`PLAYWRIGHT_BROWSERS_PATH`), NOT `~/.cache` — `.:/var/www` would shadow anything under the project dir, and a container-local install dies on the next `build`. The version is derived from `package.json` at build time, so **bumping `playwright` there requires `docker compose build app`** — skip it and you get a misleading "Executable doesn't exist", not a version warning.
+- **pest#1734 workaround (open upstream, no vendor patch):** `LaravelHttpServer` builds every request from a hardcoded `127.0.0.1` URL — the SERVER bag never gets the real tenant Host, only the HEADERS bag does. Livewire's `PersistentMiddleware::makeFakeRequest()` rebuilds headers FROM the server bag on every `/livewire/update`, so `ResolveTenant` sees `127.0.0.1` and redirects to root. Fixed by `App\Http\Middleware\Testing\PestBrowserHostBugWorkaround`, prepended to the GLOBAL stack ONLY under `APP_ENV=testing` (`bootstrap/app.php`) — dead everywhere else. Mechanism in the class docblock. Delete both once pest/pest#1734 ships upstream.
+
+## Shell tests (`scripts/server/**`)
+
+`scripts/server/*.sh` (apply/deploy/sync-certificate/tenant-check/tenant-backup)
+have their own suite, separate from PHPUnit — plain bash, no bats (not
+installed, and this project forbids adding a new package-manager dependency
+for it). Run with:
+
+```bash
+bash tests/shell/run.sh
+```
+
+Runs in ~5 s, offline. Nearly all of it is one case: `19_nginx_*` is the sole
+case that starts a real container (`nginx:1.25-alpine`, `--network none`,
+`nginx -t`), because the property it guards — nginx still starts when no
+upstream container exists — is not decidable by inspecting the file. Its
+predecessor was a regex, and a regex pins the *spelling* of today's bug, not
+the property: a space before the semicolon slipped through, and so did an
+`upstream {}` block, which the recommended `resolver`+variable fix cannot even
+repair (`resolve=` is nginx-plus only). Both variants were verified fatal.
+
+Every other case is offline and instant, with no real Docker daemon/server/network —
+every `docker`/`certbot`/`su`/`git`/`restic` call is a fake executable on
+`PATH` that records its own invocation to a call log the test then asserts
+on (see `tests/shell/lib/harness.sh`'s own header for the full reasoning,
+including why extraction-from-the-real-file is used for functions that live
+inside a script with top-level `set -euo pipefail` and cannot run standalone).
+
+**A fixed shell bug in `scripts/server/**` gets a test in `tests/shell/cases/`
+in the same change** — same rule as a PHP bug getting a regression test.
+Assert on observable behavior (which command ran, with which arguments, what
+was written to disk, what exit code) — never grep the script for a string; a
+grep passes even when the behavior is broken and breaks on innocent
+refactors. Full catalog of what's pinned today:
+`app/docs/deployment/tenant-apply.md` → "Permanent regression suite".
+
 ## Laravel Pint (Code Style)
 
 **CRITICAL:** All code MUST pass Pint before commit.

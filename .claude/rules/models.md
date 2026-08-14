@@ -189,6 +189,18 @@ class Service extends Model
 Service::withoutGlobalScope('organization')->create([...]);
 ```
 
+### Globalne wiersze (organization_id NULL) czytane przez tenanta — wzorzec resolveActive()
+
+Model z wierszami *celowo* globalnymi (`organization_id = NULL`, np. `EmailTemplate`,
+`SmsTemplate`) jest niedostępny dla KAŻDEGO żądania z rozwiązanym tenantem — standardowy scope
+filtruje do `organization_id = tenant->id`, więc wiersz NULL nigdy nie pasuje (bug 2026-08-08:
+każdy email zamówienia rzucał „template not found"). Nie łataj tego przez `withoutGlobalScope()`
+bez zamiennika — to na powrót otwiera cross-tenant read. Wzorzec:
+`EmailTemplate::resolveActive($key, $language)` / `SmsTemplate::resolveActive()` — jawny
+`withoutGlobalScope('organization')` + własny warunek `organization_id = tenant->id OR NULL`
+(nigdy inny tenant), tenant-override wygrywa przez `orderByRaw('organization_id IS NULL')`. Pełny
+opis: `app/docs/features/email-template-tenant-resolution.md`.
+
 ### `tenant_resolution_attempted` — jak działa fail-closed (VULN-003 Layer 2)
 
 `ResolveTenant::handle()` (`app/Http/Middleware/ResolveTenant.php`) ustawia

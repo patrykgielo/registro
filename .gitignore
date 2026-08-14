@@ -115,6 +115,9 @@ ssh_config
 .claude/.cc-doctor-mcp-stamp
 /check_loader.php
 
+# Pest browser test screenshots (local debugging artifacts)
+tests/Browser/Screenshots
+
 # ============================================================================
 # Architecture docs portal (docker-compose.docs.yml) — build artifacts
 # ============================================================================
@@ -136,3 +139,34 @@ docker/nginx/production/app.prod-tls.local.conf
 # The renderer writes here first and moves it into place; a failure between the
 # two would otherwise leave permanent untracked junk in the working tree.
 docker/nginx/production/app.prod-tls.local.conf.tmp
+
+# Same reasoning, edge stack (docker-compose.edge.yml): edge-tls.conf is the
+# tracked CERT_DOMAIN template, edge-tls.local.conf is server-local.
+docker/nginx/edge/edge-tls.local.conf
+docker/nginx/edge/edge-tls.local.conf.tmp
+
+# Same reasoning again, per-tenant stack (task 4, docker-compose.prod.yml):
+# app.tenant.conf is the tracked TENANT_SLUG_PLACEHOLDER template.
+docker/nginx/production/app.tenant.local.conf
+docker/nginx/production/app.tenant.local.conf.tmp
+
+# Per-tenant vhosts name live customer subdomains -- generated at attach time
+# (app/docs/deployment/edge-stack.md), never committed. The template stays
+# tracked because it doesn't match *.conf (it ends in .disabled).
+docker/nginx/edge/tenants.d/*.conf
+
+# Per-tenant service pages are seeded from tenant-pages/_default/ at attach
+# time and may be customised per client afterwards -- server-local, not
+# tracked. _default/ itself stays tracked as the seed and the fallback.
+docker/nginx/edge/tenant-pages/*/
+!docker/nginx/edge/tenant-pages/_default/
+
+# Task 6 (scripts/server/apply.sh) -- regenerated on every apply run from the
+# ground truth (which tenants.d/*.conf files exist / which tenant a given
+# stack checkout belongs to), never hand-edited. Exists so neither
+# docker-compose.edge.yml nor docker-compose.prod.yml ever needs an in-place
+# edit to attach a tenant network -- both are tracked files `git checkout
+# --force` reverts on every deploy/apply, which would silently undo a
+# hand-edit the next time either ran. See app/docs/deployment/tenant-apply.md.
+docker-compose.edge.tenants.override.yml
+docker-compose.tenant-network.override.yml

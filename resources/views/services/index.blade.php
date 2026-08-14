@@ -21,7 +21,7 @@
         @else
             <div class="flex flex-col sm:flex-row gap-3 justify-center">
                 @if($registrationEnabled)
-                    <x-ui.button href="{{ route('register') }}" size="lg">Rozpocznij</x-ui.button>
+                    <x-ui.button href="{{ route('customer.register') }}" size="lg">Rozpocznij</x-ui.button>
                 @endif
                 <x-ui.button variant="secondary" href="{{ route('login') }}" size="lg">Zaloguj się</x-ui.button>
             </div>
@@ -106,7 +106,7 @@
         @else
             <div class="flex flex-col sm:flex-row gap-3 justify-center">
                 @if($registrationEnabled)
-                    <x-ui.button href="{{ route('register') }}" size="lg" class="bg-surface-raised text-text-primary hover:bg-surface">Załóż konto</x-ui.button>
+                    <x-ui.button href="{{ route('customer.register') }}" size="lg" class="bg-surface-raised text-text-primary hover:bg-surface">Załóż konto</x-ui.button>
                 @endif
                 <x-ui.button variant="ghost" href="{{ route('login') }}" size="lg" class="text-dark-text hover:text-dark-text">Mam już konto</x-ui.button>
             </div>

@@ -1,0 +1,86 @@
+# =============================================================================
+# REGISTRO EDGE STACK -- task 5 of the stack-per-tenant epic.
+#
+# The only stack that publishes 80/443. docker-compose.prod.yml (the legacy
+# shared stack, still what serves the live server today) and every future
+# per-tenant stack (task 4) keep those ports unpublished and are reached only
+# through here. Full design, cutover sequence and every manual step:
+# app/docs/deployment/edge-stack.md.
+#
+# Deliberately NOT wired into any live server by this change. No tenant is
+# attached below -- attaching the first one is a later, separate operational
+# step (task 6 for the automation; the runbook documents doing it by hand
+# until then).
+#
+# Usage:
+#   docker compose -f docker-compose.edge.yml config   # validate
+#   docker compose -f docker-compose.edge.yml up -d
+# =============================================================================
+
+services:
+  edge-nginx:
+    image: nginx:1.25-alpine
+    container_name: registro-edge-nginx
+    restart: unless-stopped
+    # Same dual-stack reasoning as docker-compose.prod.yml's nginx service:
+    # the bare "80:80"/"443:443" form binds IPv4 only, and Let's Encrypt
+    # resolves AAAA first with no IPv4 fallback -- HTTP-01 would fail against
+    # a working site. Unlike the legacy stack, 443 is published unconditionally
+    # from the start: this compose file is only ever brought up AFTER a
+    # certificate already exists (see edge-stack.md's bring-up order), so
+    # there is no "HTTP-only install" phase where a hanging 443 would matter.
+    ports:
+      - "0.0.0.0:80:80"
+      - "[::]:80:80"
+      - "0.0.0.0:443:443"
+      - "[::]:443:443"
+    volumes:
+      # edge.conf (HTTP-only, no certificates required) is the default so a
+      # brand-new box can bring the edge up before any certificate exists.
+      # Switch to edge-tls.local.conf via EDGE_NGINX_CONF once certbot has
+      # succeeded -- see docker/nginx/edge/edge-tls.conf's own header.
+      - ./docker/nginx/edge/${EDGE_NGINX_CONF:-edge.conf}:/etc/nginx/conf.d/default.conf:ro
+      # One file per attached tenant, gitignored (see .gitignore) except the
+      # tracked _example.conf.disabled template. Mounted read-only: nothing
+      # inside the container ever writes here.
+      - ./docker/nginx/edge/tenants.d:/etc/nginx/tenants.d:ro
+      - ./docker/nginx/edge/tenant-pages:/etc/nginx/tenant-pages:ro
+      # Same three host paths docker-compose.prod.yml's nginx service mounts,
+      # for the same reason: the certificate scripts/server/sync-certificate.sh
+      # maintains, and the ACME webroot it and certbot both write/read.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
+      - /var/www/letsencrypt:/var/www/letsencrypt:ro
+    networks:
+      - edge-internal
+      # One line per attached tenant goes here, e.g. `- tenant-acme-edge`,
+      # matching a same-named entry under the top-level `networks:` block
+      # below AND a matching declaration in that tenant's own compose file.
+      # Never `docker network connect` -- see edge-stack.md for why.
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  # No other container joins this today. Kept as an explicit named network,
+  # matching every other compose file in this project, rather than relying on
+  # Compose's implicit default -- a companion container (a cert-renewal
+  # helper, a metrics exporter) has somewhere to attach without inventing a
+  # new network at that point.
+  edge-internal:
+    driver: bridge
+
+  # ---------------------------------------------------------------------------
+  # Per-tenant networks -- one entry per attached tenant, external: true.
+  # `external: true` means Compose expects the network to already exist
+  # (created out-of-band, see edge-stack.md) rather than creating or deleting
+  # it itself; that's the whole point -- Compose reconciliation on this file
+  # must never be able to destroy the tenant stack's side of the connection.
+  #
+  # Example for a tenant "acme" (uncomment and adjust when attaching one):
+  #
+  # tenant-acme-edge:
+  #   external: true
+  # ---------------------------------------------------------------------------

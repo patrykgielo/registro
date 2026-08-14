@@ -74,7 +74,17 @@ class StatisticsExportService
      *   by_day: array<string, array{orders: float, appointments: float, rentals: float, total: float}>
      * }  $data
      */
-    public function toPdf(array $data, ?Organization $org, string $period): \Illuminate\Http\Response
+    /**
+     * Pre-existing bug fixed in passing (feature/rental-protocols review): this used to
+     * `return $pdf->download($filename)`, i.e. `Illuminate\Http\Response`. Called from a Filament
+     * page action (Statistics::exportPdf()), that type is invisible to Livewire's
+     * SupportFileDownloads::valueIsntAFileResponse() — it only recognizes StreamedResponse /
+     * BinaryFileResponse — so the raw PDF binary was treated as the action's return VALUE and
+     * json_encode()'d, throwing "Malformed UTF-8 characters" on every click. toCsv() above never
+     * had this problem because response()->streamDownload() already returns StreamedResponse; toPdf()
+     * now does the same.
+     */
+    public function toPdf(array $data, ?Organization $org, string $period): StreamedResponse
     {
         $pdf = Pdf::loadView('statistics.pdf-report', [
             'data' => $data,
@@ -85,6 +95,10 @@ class StatisticsExportService
 
         $filename = 'statystyki-'.$period.'-'.now()->format('Y-m-d').'.pdf';
 
-        return $pdf->download($filename);
+        return response()->streamDownload(function () use ($pdf) {
+            echo $pdf->output();
+        }, $filename, [
+            'Content-Type' => 'application/pdf',
+        ]);
     }
 }

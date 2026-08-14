@@ -1,22 +1,33 @@
 # Tenant-Stack Provisioning
 
-**Scope:** The `registro:tenant-provision` CLI command and the schema/route/panel gating that
-supports it, for the dedicated tenant-stack architecture — one Docker container + one MySQL
-database per client, `TENANT_SLUG` set in that container's environment.
-**Last verified:** 2026-08-06 against `feature/tenant-stacks`.
-**Related:** [Tenant Provisioning (self-serve wizard)](../architecture/tenant-provisioning.md),
-[Tenant Lifecycle](tenant-lifecycle.md), `.claude/rules/spatie-roles.md`, `.claude/rules/models.md`
+**Scope:** The `registro:tenant-provision` CLI command, the schema/route/panel gating that supports
+it, and the request-time gating (`ResolveTenant` slug pinning, `TrustHosts`/`TrustProxies`) for the
+dedicated tenant-stack architecture — one Docker container + one MySQL database per client,
+`TENANT_SLUG` set in that container's environment.
+**Last verified:** 2026-08-08 against `feature/setup-ttl-and-drop-public-wizard` (public self-serve
+wizard removed entirely — this is now the ONLY tenant-provisioning path; see "Why this exists"
+below).
+**Related:** [Tenant Lifecycle](tenant-lifecycle.md), `.claude/rules/spatie-roles.md`,
+`.claude/rules/models.md`, `.claude/rules/middleware.md`. The old self-serve-wizard architecture doc
+is archived: `docs/archive/features/tenant-provisioning-wizard.md`.
 
 ---
 
 ## Why this exists
 
-Today's only working path to a new organization is the public self-serve wizard
-(`BusinessRegisterController`) — there was no operator-run way to provision a tenant.
-`CreateOrganization` (the `/platform` Filament page) is a bare `CreateRecord`: it inserts a row into
-`organizations` and nothing else — no owner user, no `organization_user` pivot row — so
-`User::canAccessTenant()` (which checks the pivot exclusively) returns `false` for everyone, and the
-newly-created organization is unreachable.
+This command was originally added as an operator-run alternative alongside the public self-serve
+wizard (`BusinessRegisterController`) — before it existed, `CreateOrganization` (the `/platform`
+Filament page) was the only way to create an organization outside that wizard, and it's a bare
+`CreateRecord`: it inserts a row into `organizations` and nothing else — no owner user, no
+`organization_user` pivot row — so `User::canAccessTenant()` (which checks the pivot exclusively)
+returns `false` for everyone, and the newly-created organization is unreachable.
+
+The wizard itself is gone now (removed along with `CreateOrganizationWithOwner` and
+`OnboardingData` — see the archived doc linked above): the product model is "we sign a contract and
+provision from the CLI," and a public path that could mint a second `Organization` was one of only
+three ways a stack-per-tenant container's database could ever end up holding more than one.
+`registro:tenant-provision` is therefore now the **only** working path to a new organization on
+every stack type, not just dedicated tenant-stack containers.
 
 Separately, the project is moving dedicated clients onto one-container-per-tenant Docker stacks,
 each with its own database holding **exactly one** organization. That changes what "safe" means at
@@ -36,14 +47,20 @@ php artisan registro:tenant-provision \
 
 - Builds on existing onboarding primitives rather than duplicating them: `SeedOrganizationDefaults`
   (settings + feature/module flags) is reused as-is via a new action,
-  `App\Actions\Onboarding\ProvisionTenantOrganization`. It is **not** `CreateOrganizationWithOwner`
-  — that action unconditionally inserts and requires a password; this command needs idempotent
-  `firstOrCreate`-by-slug semantics and a passwordless owner.
+  `App\Actions\Onboarding\ProvisionTenantOrganization`. It was deliberately **not**
+  `CreateOrganizationWithOwner` (the wizard's action, since removed) — that action unconditionally
+  inserted and required a password; this command needs idempotent `firstOrCreate`-by-slug semantics
+  and a passwordless owner.
 - **Owner has no password.** Access is via the existing invite-link mechanism
   (`User::initiatePasswordSetup()`, the same one `Filament\Resources\UserResource` uses for
-  admin-created staff) — the command prints the `password.setup` URL to stdout and does **not** send
-  any e-mail (no operator inbox exists to send from inside a fresh container, and
-  `TenantWelcomeNotification` assumes a password was already set).
+  admin-created staff) — the command always prints the `password.setup` URL to stdout, regardless of
+  what happens with e-mail.
+- **Dispatches `TenantRegistered`** (owner welcome + operator heads-up, `TenantWelcomeNotification` /
+  `NewTenantRegisteredNotification`) on genuine first creation only — never re-announced on an
+  idempotent rerun. Kept off the critical path deliberately: a dispatch failure (SMTP down, queue
+  connection refused) is caught, logged, and reported in the command's own output table, but never
+  fails the command or withholds the stdout link — that link is the actual deliverable. `--no-email`
+  opts out of the dispatch entirely.
 - **Idempotent by slug/e-mail.** Re-running the command (container restart, re-applied stack config)
   finds the existing organization/owner via `firstOrCreate` instead of duplicating them, refreshes
   the password-setup token, and does not re-run the audit-log write or the global seeders (below).
@@ -162,17 +179,18 @@ defect — in the real deployment order `organizations` is empty when migrations
 creates the one row afterwards), so it only ever fires if the migration is run against the wrong
 database.
 
-## Route gating — public registration
+## Route removal — public registration
 
-`routes/web.php` wraps the entire `/register/*` + `/get-started*` block
-(`BusinessRegisterController` routes, AJAX slug endpoints, legacy redirects) in
-`if (! config('app.tenant_slug')) { ... }`. Chosen over a middleware for the same reason as the
-singleton lock: a route that was never registered has no controller to reach and nothing to forget
-to attach — `route:list` inside a `TENANT_SLUG`-set container simply doesn't list it. A middleware
-gate depends on remembering to attach it everywhere and has repeatedly had gaps in this codebase
-(see the 6-layer VULN-003 history in `.claude/rules/middleware.md`). Verified in
-`tests/Feature/TenantSlugGatingTest.php` (`/register` → 404, route name unregistered) and its control
-group `TenantSlugGatingDisabledTest.php` (both remain reachable without `TENANT_SLUG`).
+`/register/*` and `/get-started*` (`BusinessRegisterController` routes, AJAX slug endpoints, legacy
+redirects) used to be gated behind `if (! config('app.tenant_slug')) { ... }` in `routes/web.php` --
+registered only on the shared legacy stack, absent entirely on a dedicated tenant-stack container.
+That whole block, its controller, its two supporting actions (`CreateOrganizationWithOwner`,
+`OnboardingData`), and its views are gone now (see "Why this exists" above) -- there is no config
+condition left to read, on either stack type. Every `route('register')` call site was audited and
+either repointed (`customer.register`, a login redirect, a `mailto:` contact link) or left dead-code
+guarded (`welcome.blade.php`'s `@if (Route::has('register'))`). Verified in
+`tests/Feature/TenantSlugGatingTest.php::test_business_registration_route_names_are_not_registered`,
+which now holds regardless of `TENANT_SLUG`.
 
 `/customer/register` (tenant-subdomain self-registration, gated separately by
 `CheckRegistrationEnabled`) is untouched — it's a different flow (existing tenant's own customers
@@ -203,11 +221,67 @@ stack. This assumption is load-bearing for the panel gating above; if a future c
 `TENANT_SLUG` was set (or unset) at build time for every deployed stack — worth a note if that
 changes.
 
+## Request-time gating — `ResolveTenant`, `TrustHosts`, `TrustProxies`
+
+Provisioning creates the organization; this section is what actually serves it once the container
+starts taking traffic. Two independent layers, not one:
+
+**`ResolveTenant::handlePinnedTenant()`** — when `config('app.tenant_slug')` (`TENANT_SLUG`) is set,
+`ResolveTenant::handle()` branches immediately, before the Host-derived subdomain logic runs at all.
+It resolves the one Active organization by slug from the container's own environment instead of
+deriving it from the Host header — there is nothing to derive on a dedicated stack; the database holds
+exactly one organization (`organizations.singleton`, above).
+
+Pinning the slug alone is not enough: with nothing else checking the Host, this container would answer
+`200` to literally any Host that reaches it (a stray DNS record, a scanner hitting the bare IP, a
+Host that doesn't match the client's actual domain at all) — there is no other tenant on this stack to
+fall back to or redirect toward, so an unchecked Host would silently serve this tenant's data under it.
+`config('app.tenant_hosts')` (`TENANT_HOSTS`, comma-separated) is the independent, fail-closed second
+layer: a Host outside the allowlist gets `404` even though the slug resolves fine. **Empty/unset
+`TENANT_HOSTS` denies every Host on purpose** — an operator who sets `TENANT_SLUG` but forgets
+`TENANT_HOSTS` gets a 404ing stack, not a silently wide-open one. A pinned slug that fails to resolve
+an Active organization (never provisioned yet, wrong slug) also fails closed to `404` — deliberately
+not wired into the closed/suspended-org pages the Host-derived branch below it uses; out of scope here.
+
+**`TrustHosts` / `TrustProxies`** (`bootstrap/app.php`, `config/trustedproxy.php`,
+`App\Support\TrustedTenantHosts`) — `bootstrap/app.php` previously configured neither. That mattered
+independently of tenant-stack pinning: once TLS moves to an edge proxy (a later task) in front of this
+stack, a client-supplied `X-Forwarded-Host` header, forwarded unfiltered by a naively-configured edge
+and trusted by Laravel, can redirect any absolute URL this app generates (a password-reset link, for
+instance) to an attacker's host. Both are now wired, config/env-driven, safe by default:
+
+- `TrustHosts`, registered via `$middleware->trustHosts(at: fn () => TrustedTenantHosts::patterns())`
+  — a closure, not a resolved array, because `withMiddleware()`'s closure runs *before*
+  `LoadEnvironmentVariables`/`LoadConfiguration` (same timing hazard documented on
+  `PestBrowserHostBugWorkaround`), so reading `config()` has to be deferred to request time. Laravel's
+  own `shouldSpecifyTrustedHosts()` gate is a no-op outside `local`/`testing` — dev and `tests/Browser`
+  are unaffected by construction, not by anything this feature added. `TrustedTenantHosts::patterns()`
+  adds `TENANT_HOSTS` on top of Laravel's own default (`config('app.url')`'s host + subdomains, via
+  `subdomains: true`), so a pinned stack answering on a client's own custom domain is trusted too.
+- `TrustProxies` is always in Laravel's global middleware stack regardless of configuration; what it
+  trusts is driven by `config('trustedproxy.proxies')` (`TRUSTED_PROXIES_CIDR`) — read at request time
+  from `config/trustedproxy.php`, not passed via `trustProxies(at: ...)` in the bootstrap closure (same
+  timing hazard). **Unset (the default) trusts nothing** — `X-Forwarded-*` is ignored entirely, which
+  is what already happened implicitly before this feature and is exactly what keeps
+  `X-Forwarded-Host` from overriding the real Host today. No tenant sits behind an edge network yet
+  (task 5, [Edge Stack](../deployment/edge-stack.md), built the ingress but nothing is attached to it)
+  — once one does, its `TRUSTED_PROXIES_CIDR` becomes that tenant's `tenant-<slug>-edge` subnet, never
+  `*`.
+
+Covered by `tests/Feature/Middleware/ResolveTenantPinnedTest.php`,
+`tests/Feature/Security/TrustedProxiesAndHostsTest.php`,
+`tests/Unit/Support/TrustedTenantHostsTest.php`.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `config/app.php` | `tenant_slug` config key (`env('TENANT_SLUG')`) |
+| `config/app.php` | `tenant_slug` (`TENANT_SLUG`), `tenant_hosts` (`TENANT_HOSTS`) config keys |
+| `config/trustedproxy.php` | `proxies` config key (`TRUSTED_PROXIES_CIDR`) |
+| `app/Http/Middleware/ResolveTenant.php` | `handlePinnedTenant()` — slug pinning + `TENANT_HOSTS` fail-closed check |
+| `app/Support/TrustedTenantHosts.php` | Builds `TrustHosts`' extra patterns from `TENANT_HOSTS` |
+| `bootstrap/app.php` | `TrustHosts`/`TrustProxies` wiring |
+| `.env.production.example`, `.env.staging.example` | `TENANT_SLUG`/`TENANT_HOSTS`/`TRUSTED_PROXIES_CIDR` documented alongside `APP_DOMAIN` |
 | `database/migrations/2026_08_06_100001_create_tenant_provisioning_state_table.php` | Marker table |
 | `database/migrations/2026_08_06_100002_add_singleton_lock_to_organizations_table.php` | DB-level 2nd-org lock |
 | `app/Models/TenantProvisioningState.php` | Marker model |
@@ -223,9 +297,23 @@ changes.
 
 ## Known gaps / explicitly out of scope
 
-- The shell `apply` script that would call `registro:tenant-provisioned` before deciding whether to
-  run `registro:tenant-provision` does not exist yet — `scripts/server/**` is a separate task.
-- Docker/nginx changes (per-tenant image variants, wildcard cert automation, etc.) are untouched.
+- **Done** — `scripts/server/apply.sh` (task 6, see `app/docs/deployment/tenant-apply.md`) now calls
+  `registro:tenant-provisioned` before deciding whether to run `registro:tenant-provision`, and
+  documents a real bug this surfaced: `--assert` returning non-zero does not by itself mean
+  "inconsistent" — it also returns non-zero, printing exactly `not-provisioned`, for any stack that
+  simply hasn't been provisioned yet.
+- Docker/nginx changes: task 5 (`docker-compose.edge.yml`, see
+  [Edge Stack](../deployment/edge-stack.md)) builds the shared ingress this architecture needs, but
+  it proxies to a `tenant-<slug>-nginx` container that task 4 (rebuilding the tenant compose itself)
+  has not produced yet. Per-tenant image variants and wildcard cert automation remain untouched.
+- `handlePinnedTenant()` does not reuse the closed/suspended-organization pages the Host-derived
+  branch above it renders (`errors.business-closed`, `errors.business-suspended`) — a pinned tenant
+  that is not `Active` (never provisioned yet, or later suspended/closed) fails closed to a plain
+  `404` instead. Deliberate scope cut to keep the pinning change minimal; revisit if a
+  Suspended/Closing/Closed pinned stack ever needs its own dedicated status page instead of a bare 404.
+- No `apply`/deploy-script wiring yet for `TENANT_HOSTS`/`TRUSTED_PROXIES_CIDR` — an operator
+  provisioning a real dedicated stack has to set both by hand today; there is no CLI helper analogous
+  to `registro:tenant-provision` that also writes these.
 - If an operator re-runs the command with a different `--owner-email` against an already-provisioned
   slug, the new user is linked as an **additional** owner (pivot `role = owner`) rather than
   replacing `organizations.owner_id` — the command prints a warning; it does not silently change
@@ -240,8 +328,10 @@ changes.
   client customised through a resource that is currently unreachable on that stack type. Needs an
   artisan writer (or `--modules=` on provisioning), plus a decision on whether tenant stacks should
   default differently from the shared stack.
-- The password-setup link is printed to stdout on **every** run, and its token is currently valid for
-  30 minutes. The "stdout is safe because whoever runs this already has shell" reasoning holds for
-  interactive operator runs only — if `apply` ever calls this non-interactively and captures stdout
-  into a deploy log or CI artifact, the exposure moves from shell access to log-storage access.
-  Raising the TTL (a separate task) makes that window longer, so the two need deciding together.
+- The password-setup link is printed to stdout on **every** run, and its token is valid for
+  `User::PASSWORD_SETUP_TTL_HOURS` (24h, raised from the original 30 minutes — see
+  `app/Models/User.php::initiatePasswordSetup()` for why 24h and not 7 days). The "stdout is safe
+  because whoever runs this already has shell" reasoning holds for interactive operator runs only —
+  if `apply` ever calls this non-interactively and captures stdout into a deploy log or CI artifact,
+  the exposure moves from shell access to log-storage access, and the longer TTL widens that window
+  correspondingly.

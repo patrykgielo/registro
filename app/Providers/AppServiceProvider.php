@@ -13,7 +13,9 @@ use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
 use App\Events\OrderCancelled;
 use App\Events\OrderConfirmed;
+use App\Events\OrderHandedOver;
 use App\Events\OrderPaid;
+use App\Events\OrderReturned;
 use App\Events\PasswordResetRequested;
 use App\Events\RentalCancelled;
 use App\Events\TenantRegistered;
@@ -34,7 +36,9 @@ use App\Notifications\AppointmentRescheduledNotification;
 use App\Notifications\NewTenantRegisteredNotification;
 use App\Notifications\OrderCancelledNotification;
 use App\Notifications\OrderConfirmedNotification;
+use App\Notifications\OrderHandedOverNotification;
 use App\Notifications\OrderPaidNotification;
+use App\Notifications\OrderReturnedNotification;
 use App\Notifications\PasswordResetNotification;
 use App\Notifications\TenantWelcomeNotification;
 use App\Notifications\UserRegisteredNotification;
@@ -187,8 +191,9 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Share global feature flags with all Blade views.
      *
-     * Provides $bookingEnabled, $rentalEnabled, $registrationEnabled, $contactPhone
-     * for conditional rendering of CTAs, cart links, and registration links.
+     * Provides $bookingEnabled, $rentalEnabled, $registrationEnabled, $contactPhone,
+     * $contactEmail for conditional rendering of CTAs, cart links, and registration
+     * links.
      */
     private function shareFeatureFlags(): void
     {
@@ -198,6 +203,10 @@ class AppServiceProvider extends ServiceProvider
             $view->with('rentalEnabled', $sm->isRentalEnabled());
             $view->with('registrationEnabled', $sm->isRegistrationEnabled());
             $view->with('contactPhone', $sm->get('contact.phone', ''));
+            // Used on the root domain (no tenant resolved) as the fallback
+            // call-to-action where a "sign up" link used to be -- there is no
+            // public self-serve registration anymore, see routes/web.php.
+            $view->with('contactEmail', $sm->contactInformation()['email'] ?? 'kontakt@registro.app');
         });
     }
 
@@ -392,6 +401,32 @@ class AppServiceProvider extends ServiceProvider
                 $order->user->notify(new OrderCancelledNotification($order, $event->reason));
             } else {
                 \Log::warning('OrderCancelled: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        });
+
+        // Order Handed Over: notify customer ("Wydano klientowi" admin action)
+        Event::listen(OrderHandedOver::class, function (OrderHandedOver $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderHandedOverNotification($order));
+            } else {
+                \Log::warning('OrderHandedOver: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        });
+
+        // Order Returned: notify customer ("Sprzęt zwrócony" admin action)
+        Event::listen(OrderReturned::class, function (OrderReturned $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderReturnedNotification($order));
+            } else {
+                \Log::warning('OrderReturned: no user attached, skipping customer notification', [
                     'order_id' => $order->id,
                 ]);
             }

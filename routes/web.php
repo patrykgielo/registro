@@ -4,13 +4,13 @@ use App\Http\Controllers\Api\SmsApiIncomingController;
 use App\Http\Controllers\Api\SmsApiWebhookController;
 use App\Http\Controllers\Api\VehicleDataController;
 use App\Http\Controllers\AppointmentController;
-use App\Http\Controllers\Auth\BusinessRegisterController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Dev\FakePaymentController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OrderProtocolController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PostController;
@@ -169,6 +169,10 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRent
     Route::get('/moje-zamowienia', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/moje-zamowienia/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/moje-zamowienia/{order}/anuluj', [OrderController::class, 'cancel'])->name('orders.cancel');
+    Route::get('/moje-zamowienia/{order}/protokol-wydania', [OrderProtocolController::class, 'handover'])
+        ->name('orders.protocol.handover');
+    Route::get('/moje-zamowienia/{order}/protokol-zwrotu', [OrderProtocolController::class, 'returned'])
+        ->name('orders.protocol.return');
 
     // Rental extension requests
     Route::get('/api/zamowienia/{order}/pozycje/{orderItem}/sprawdz-przedluzenie', [RentalExtensionController::class, 'checkAvailability'])
@@ -198,52 +202,18 @@ Route::middleware([ResolveTenant::class, 'throttle:5,1'])->group(function () {
     Route::post('/login', [\App\Http\Controllers\Auth\LoginController::class, 'login']);
 });
 
-// Business registration (root domain: /register → 2-step self-serve wizard).
-// Registered ONLY on the shared legacy stack (TENANT_SLUG unset). A dedicated
-// tenant-stack container already gets its one organization from
-// `registro:tenant-provision` at boot, and organizations.singleton (see its
-// migration) would reject a 2nd one at the DB level regardless — but gating at
-// route-registration time means the endpoint does not exist here at all: no
-// middleware to forget, nothing to bypass. Visible by reading this file, unlike
-// a middleware attached elsewhere.
-if (! config('app.tenant_slug')) {
-    Route::middleware(['guest'])->group(function () {
-        Route::get('/register', [BusinessRegisterController::class, 'showStep1'])
-            ->name('register');
-        Route::post('/register/step/1', [BusinessRegisterController::class, 'storeStep1'])
-            ->middleware('throttle:10,1')
-            ->name('register.step1.store');
-        Route::get('/register/step/2', [BusinessRegisterController::class, 'showStep2'])
-            ->name('register.step2');
-        Route::post('/register/step/2', [BusinessRegisterController::class, 'storeStep2'])
-            ->middleware('throttle:5,1')
-            ->name('register.step2.store');
-    });
-
-    // Business registration step 3 + welcome (auth required)
-    Route::middleware(['auth'])->group(function () {
-        Route::get('/register/step/3', [BusinessRegisterController::class, 'showStep3'])
-            ->name('register.step3');
-        Route::post('/register/step/3', [BusinessRegisterController::class, 'storeStep3'])
-            ->middleware('throttle:10,1')
-            ->name('register.step3.store');
-        Route::get('/register/welcome', [BusinessRegisterController::class, 'welcome'])
-            ->name('register.welcome');
-    });
-
-    // Business registration AJAX (throttled)
-    Route::middleware('throttle:30,1')->group(function () {
-        Route::get('/register/check-slug', [BusinessRegisterController::class, 'checkSlug'])
-            ->name('register.check-slug');
-        Route::get('/register/generate-slug', [BusinessRegisterController::class, 'generateSlug'])
-            ->name('register.generate-slug');
-    });
-
-    // Backwards compatibility: /get-started → /register
-    Route::redirect('/get-started', '/register', 301);
-    Route::redirect('/get-started/step/2', '/register/step/2', 301);
-    Route::redirect('/get-started/welcome', '/register/welcome', 301);
-}
+// Business registration used to live here: a public 2-step self-serve wizard
+// (root domain only, `BusinessRegisterController`). Removed -- the model is
+// now "we sign a contract and provision from the CLI"
+// (`registro:tenant-provision`), and a public path that could mint a second
+// Organization was one of only three ways a stack-per-tenant container's
+// database could ever end up holding more than one. See
+// app/docs/features/tenant-stack-provisioning.md.
+//
+// Every `route('register')` call site was audited and repointed or removed --
+// see the removal notes in that doc. `register`, `register.step2.store`, and
+// `/get-started` are intentionally gone; do not re-add without re-opening this
+// decision.
 
 // Customer registration (tenant subdomain: /register → single-step)
 // ResolveTenant needed to attach user to organization on subdomain registration

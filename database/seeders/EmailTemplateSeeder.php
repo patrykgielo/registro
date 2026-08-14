@@ -353,7 +353,7 @@ class EmailTemplateSeeder extends Seeder
                 'key' => TemplateKey::ORDER_PAID->value,
                 'language' => 'pl',
                 'subject' => 'Potwierdzenie zamówienia #{{order_number}} — {{app_name}}',
-                'html_body' => '<h1>Dziękujemy za zamówienie!</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało opłacone. Poniżej znajdziesz szczegóły wynajmu:</p>{{items_list_html}}<p style="margin-top:16px;"><strong>Suma za wynajem:</strong> {{total_amount}} zł</p>{{deposit_amount}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"><p><strong>Miejsce odbioru sprzętu:</strong><br>{{pickup_address}}{{pickup_phone}}</p><p>Zachowaj tę wiadomość — przyda się przy odbiorze sprzętu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'html_body' => '<h1>Dziękujemy za zamówienie!</h1><p>Cześć {{customer_name}},</p><p>Twoje zamówienie numer <strong>#{{order_number}}</strong> zostało opłacone. Poniżej znajdziesz szczegóły wynajmu:</p>{{items_list_html}}<p style="margin-top:16px;"><strong>Suma za wynajem:</strong> {{total_amount}} zł</p>{{deposit_amount}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"><p><strong>Miejsce odbioru sprzętu:</strong><br>{{pickup_address}}<br>{{pickup_phone}}</p><p>Zachowaj tę wiadomość — przyda się przy odbiorze sprzętu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
                 'text_body' => 'Dziękujemy za zamówienie! Cześć {{customer_name}}, Twoje zamówienie nr #{{order_number}} zostało opłacone.
 
 Sprzęt:
@@ -376,7 +376,7 @@ Pozdrawiamy, Zespół {{app_name}}',
                 'key' => TemplateKey::ORDER_PAID->value,
                 'language' => 'en',
                 'subject' => 'Order Confirmation #{{order_number}} — {{app_name}}',
-                'html_body' => '<h1>Thank you for your order!</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been paid. Here are your rental details:</p>{{items_list_html}}<p style="margin-top:16px;"><strong>Rental total:</strong> {{total_amount}} PLN</p>{{deposit_amount}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"><p><strong>Equipment pickup location:</strong><br>{{pickup_address}}{{pickup_phone}}</p><p>Keep this email — you will need it when collecting the equipment.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'html_body' => '<h1>Thank you for your order!</h1><p>Hello {{customer_name}},</p><p>Your order number <strong>#{{order_number}}</strong> has been paid. Here are your rental details:</p>{{items_list_html}}<p style="margin-top:16px;"><strong>Rental total:</strong> {{total_amount}} PLN</p>{{deposit_amount}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"><p><strong>Equipment pickup location:</strong><br>{{pickup_address}}<br>{{pickup_phone}}</p><p>Keep this email — you will need it when collecting the equipment.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
                 'text_body' => 'Thank you for your order! Hello {{customer_name}}, Your order #{{order_number}} has been paid.
 
 Items:
@@ -438,6 +438,84 @@ Best regards, The {{app_name}} Team',
                 'text_body' => 'Order Cancelled. Hello {{customer_name}}, Your order #{{order_number}} has been cancelled. Reason: {{reason}}. View history: {{orders_url}}. Best regards, The {{app_name}} Team',
                 'blade_path' => null,
                 'variables' => ['customer_name', 'order_number', 'reason', 'orders_url', 'app_name'],
+                'active' => true,
+            ],
+
+            // 20. Order Handed Over - Customer Notification (Polish)
+            [
+                'key' => TemplateKey::ORDER_HANDED_OVER->value,
+                'language' => 'pl',
+                'subject' => 'Potwierdzenie wydania sprzętu — zamówienie #{{order_number}}',
+                'html_body' => '<h1>Sprzęt został Ci wydany</h1><p>Cześć {{customer_name}},</p><p>Potwierdzamy, że sprzęt z zamówienia numer <strong>#{{order_number}}</strong> został Ci przekazany:</p>{{items_list_html}}<p>Zachowaj tę wiadomość — to potwierdzenie odbioru sprzętu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Sprzęt został Ci wydany. Cześć {{customer_name}}, Potwierdzamy, że sprzęt z zamówienia nr #{{order_number}} został Ci przekazany.
+
+{{items_list_text}}
+
+Zachowaj tę wiadomość — to potwierdzenie odbioru sprzętu.
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+            // 20. Order Handed Over - Customer Notification (English)
+            [
+                'key' => TemplateKey::ORDER_HANDED_OVER->value,
+                'language' => 'en',
+                'subject' => 'Handover Confirmation — Order #{{order_number}}',
+                'html_body' => '<h1>Your equipment has been handed over</h1><p>Hello {{customer_name}},</p><p>We confirm the equipment from order <strong>#{{order_number}}</strong> has been handed over to you:</p>{{items_list_html}}<p>Keep this email — it is your confirmation of receipt.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Your equipment has been handed over. Hello {{customer_name}}, We confirm the equipment from order #{{order_number}} has been handed over to you.
+
+{{items_list_text}}
+
+Keep this email — it is your confirmation of receipt.
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+
+            // 21. Order Returned - Customer Notification (Polish)
+            [
+                'key' => TemplateKey::ORDER_RETURNED->value,
+                'language' => 'pl',
+                'subject' => 'Potwierdzenie zwrotu sprzętu — zamówienie #{{order_number}}',
+                'html_body' => '<h1>Dziękujemy za zwrot sprzętu</h1><p>Cześć {{customer_name}},</p><p>Potwierdzamy, że sprzęt z zamówienia numer <strong>#{{order_number}}</strong> został przez nas odebrany, a wypożyczenie zostało zakończone:</p>{{items_list_html}}<p>Zachowaj tę wiadomość — to potwierdzenie przyjęcia zwrotu.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Szczegóły zamówienia</a></p><p>Dziękujemy za skorzystanie z naszych usług!</p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Dziękujemy za zwrot sprzętu. Cześć {{customer_name}}, Potwierdzamy, że sprzęt z zamówienia nr #{{order_number}} został przez nas odebrany, a wypożyczenie zostało zakończone.
+
+{{items_list_text}}
+
+Zachowaj tę wiadomość — to potwierdzenie przyjęcia zwrotu.
+
+Szczegóły zamówienia: {{orders_url}}
+
+Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
+                'active' => true,
+            ],
+            // 21. Order Returned - Customer Notification (English)
+            [
+                'key' => TemplateKey::ORDER_RETURNED->value,
+                'language' => 'en',
+                'subject' => 'Return Confirmation — Order #{{order_number}}',
+                'html_body' => '<h1>Thank you for returning your equipment</h1><p>Hello {{customer_name}},</p><p>We confirm the equipment from order <strong>#{{order_number}}</strong> has been received back and the rental is now complete:</p>{{items_list_html}}<p>Keep this email — it is your confirmation that the return was accepted.</p><p><a href="{{orders_url}}" style="background-color:#3D8A94;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">Order Details</a></p><p>Thank you for choosing our services!</p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Thank you for returning your equipment. Hello {{customer_name}}, We confirm the equipment from order #{{order_number}} has been received back and the rental is now complete.
+
+{{items_list_text}}
+
+Keep this email — it is your confirmation that the return was accepted.
+
+Order details: {{orders_url}}
+
+Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'order_number', 'orders_url', 'app_name', 'items_list_html', 'items_list_text'],
                 'active' => true,
             ],
 
@@ -510,15 +588,25 @@ Best regards, The {{app_name}} Team',
         ];
 
         foreach ($templates as $template) {
-            EmailTemplate::updateOrCreate(
+            // Deliberately scoped to the GLOBAL row only (organization_id IS NULL), with the
+            // tenant scope bypassed outright. In console context BelongsToOrganization's scope
+            // is already a no-op (see its boot method), so an unscoped match on key+language
+            // alone would find ANY row for that key+language — including a tenant's override —
+            // and overwrite it with generic seed content, or (now that the unique constraint is
+            // per-organization, see 2026_08_08_100001_scope_template_uniques_to_organization.php)
+            // create a second global row instead of updating the existing one. Matching
+            // organization_id explicitly keeps re-seeding idempotent against the global row and
+            // untouchable by/for any tenant override.
+            EmailTemplate::withoutGlobalScope('organization')->updateOrCreate(
                 [
                     'key' => $template['key'],
                     'language' => $template['language'],
+                    'organization_id' => null,
                 ],
                 $template
             );
         }
 
-        $this->command->info('✓ Email templates seeded successfully (38 templates)');
+        $this->command->info('✓ Email templates seeded successfully (42 templates)');
     }
 }

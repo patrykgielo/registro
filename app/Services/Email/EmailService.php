@@ -98,11 +98,10 @@ class EmailService
             }
         }
 
-        // Step 2: Fetch template from database
-        $template = EmailTemplate::where('key', $templateKey)
-            ->where('language', $language)
-            ->where('active', true)
-            ->first();
+        // Step 2: Fetch template from database — tenant override if one exists, else the
+        // global (NULL-organization) template. See EmailTemplate::resolveActive() docblock
+        // for why this cannot be a plain ::where()->first() (VULN-003-class cross-tenant risk).
+        $template = EmailTemplate::resolveActive($templateKey, $language);
 
         // Step 3: Try fallback Blade view if template not found
         if (! $template) {

@@ -85,6 +85,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tenant Hosts (dedicated tenant-stack containers only)
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated allowlist of hostnames this container is allowed to
+    | answer on. Only consulted by ResolveTenant when tenant_slug (above) is
+    | set — a Host outside this list gets 404 even though tenant_slug
+    | resolves fine; fail-closed and independent of the slug pinning, not a
+    | replacement for it. Empty on the shared legacy stack and in dev/tests,
+    | where it is never read. Also feeds TrustHosts' pattern list
+    | (bootstrap/app.php, App\Support\TrustedTenantHosts) so Laravel's own
+    | Host-header validation agrees with ResolveTenant's.
+    |
+    */
+
+    'tenant_hosts' => array_values(array_filter(array_map(
+        static fn (string $host): string => strtolower(trim($host)),
+        explode(',', (string) env('TENANT_HOSTS', ''))
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

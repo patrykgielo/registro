@@ -520,6 +520,11 @@ class OrganizationResource extends Resource
             ->bulkActions([
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make()
+                        // canDelete() additionally requires lifecycle_state = Closed.
+                        // Without this opt-in Filament checks canDeleteAny() once and
+                        // deletes the whole selection, so that per-record requirement
+                        // would rest entirely on the before() guard below.
+                        ->authorizeIndividualRecords()
                         ->before(function (Collection $records, Actions\DeleteBulkAction $action): void {
                             $service = app(TenantObligationService::class);
                             $blocked = [];
