@@ -34,6 +34,23 @@
 # SAN count it observed in its log line, purely informational, so a human
 # comparing two runs can notice a sudden drop -- it does not fail on it.
 #
+# FRAGILE DEPENDENCY ON TODAY'S "ONE CERT FOR EVERYONE" ARCHITECTURE
+#
+# The default SNI (CERT_DIR, read below) is only guaranteed to reach a real
+# certificate today because nginx does NOT yet select a certificate per SNI
+# -- one shared cert file answers every server block regardless of what name
+# is presented (edge-tls.conf's own header). On a legacy-free machine
+# (PreProd, instalacja-tenanta-od-zera.md 10.3) CERT_DIR is set to the bare
+# apex (e.g. registroapps.com) purely as certbot's `--cert-name` LABEL --
+# that section explicitly documents the apex itself is NEVER a SAN on the
+# certificate, only `<slug>.registroapps.com` per tenant is. Once per-domain
+# SNI-based cert selection ships (edge-tls.conf's own documented next step),
+# presenting SNI=registroapps.com will hit whatever server block matches
+# that exact name, if any -- not necessarily the certificate actually
+# protecting real tenant traffic. Whoever does that wildcard work should
+# revisit this default (point REGISTRO_CERT_CHECK_SNI at a real tenant
+# hostname instead of CERT_DIR on a legacy-free machine) at the same time.
+#
 # WHY THIS THRESHOLD
 #
 # certbot's own renewal timer (independent of sync-certificate.sh's 15-minute

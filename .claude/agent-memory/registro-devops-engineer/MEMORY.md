@@ -4,3 +4,4 @@
 - [tier1-budget-prefer-runbook](feedback_tier1_budget_prefer_runbook.md) — TIER 1 rules at 11,924/12,000 chars, no headroom; put new deployment guidance in the runbook, not deployment.md
 - [project-silent-failure-probes](project_silent_failure_probes_2026-08-14.md) — cert-expiry probe + backup dead-man's-switch, built 2026-08-14, not yet run on any real server
 - [fake-pipe-stdin-drain](feedback_fake_pipe_stdin_drain.md) — a fake reader on the far end of a real pipe (fake `docker run` consuming fake `restic dump`) must drain stdin or the test flakes under CPU load
+- [test-both-load-and-stdin-axes](feedback_test_both_load_and_stdin_axes.md) — CPU-load robustness and open-stdin robustness are independent axes; a `&` background job in a test case leaks fds into `$(...)` and orphans its children on `kill`

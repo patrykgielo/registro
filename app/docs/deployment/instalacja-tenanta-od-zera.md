@@ -523,6 +523,23 @@ najbliższym wydaniu. `.env.bak-manual` to już istniejący, sankcjonowany spos�
 `apply.sh` nie potrafi sam wymyślić (`apply.sh`'s own „reconcile .env"), doklejany do `.env`
 niezmieniony przy każdym uruchomieniu.
 
+**Pułapka, którą łatwo przeoczyć — to samo `.env.bak-manual` działa w DRUGĄ stronę.** Dopisanie
+linii do `.env.bak-manual` samo w sobie NIC nie zmienia — `tenant-backup.sh` czyta
+`BACKUP_HEALTHCHECK_URL` z `.env`, a `.env.bak-manual` trafia do `.env` WYŁĄCZNIE podczas
+`apply.sh`. Dopóki nie odpalisz `apply.sh` (albo zwykłego wydania — `apply` i tak jest tym samym
+poleceniem, patrz „Wydanie nowej wersji u klienta" wyżej) dla tego tenanta, `tenant-backup.sh` po
+prostu nie widzi tej zmiennej — operator wierzy, że monitoring już działa, a on cicho nie działa aż
+do najbliższego wydania. Dokładnie ta klasa błędu, po którą ten cały PR powstał. Zweryfikuj od razu,
+zamiast zakładać:
+
+```bash
+ssh deploy@srv1342834.hstgr.cloud 'grep BACKUP_HEALTHCHECK_URL /opt/stacks/nazwaklienta/.env'
+```
+
+Pusty wynik = zmiana jeszcze nie dotarła do `.env`, dopisanie do `.env.bak-manual` nie wystarczy
+samo w sobie. Uruchom `apply.sh` (albo poczekaj do najbliższego wydania), sprawdź ponownie, dopiero
+wtedy ufaj, że dead-man's-switch faktycznie pinguje.
+
 Ping idzie DOPIERO po pełnym sukcesie — baza I oba wolumeny plików. Częściowy backup (jeden wolumen
 się nie udał) i tak kończy się `die()` (kod 3) zanim dojdzie do pingu, bez osobnego warunku. Zerwane
 połączenie z endpointem monitoringu NIGDY nie zamienia udanego backupu w nieudany — ping jest tylko
