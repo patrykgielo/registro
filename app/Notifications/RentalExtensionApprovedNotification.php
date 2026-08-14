@@ -12,10 +12,11 @@ use App\Support\Settings\SettingsManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Log;
 
-class RentalExtensionApprovedNotification extends Notification implements ShouldBeUnique, ShouldQueue
+class RentalExtensionApprovedNotification extends Notification implements ShouldBeUnique, ShouldQueue, ShouldQueueAfterCommit
 {
     use Queueable;
 

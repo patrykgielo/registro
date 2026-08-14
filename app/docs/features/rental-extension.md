@@ -66,6 +66,14 @@ On approval, competing pending requests for the same item are auto-rejected.
 
 **Reject/approve error-handling parity:** the Filament `approve` action catches both `RentalUnavailableException` and `\RuntimeException` (the latter thrown when a request is no longer Pending — e.g. two admins acting on the same request) — mirrors the `reject` action's existing catch, so a TOCTOU double-action surfaces as a clean notification instead of an uncaught 500.
 
+## Notifications must not fire before commit (fixed 2026-08)
+
+All three `->notify()` calls in `RentalExtensionService` (`requestExtension()`, `approve()`, `reject()`) happen *inside* the enclosing `DB::transaction()`. With `config/queue.php`'s `after_commit => false` on every connection (project-wide default) and these notifications not implementing `ShouldQueueAfterCommit`, `SendQueuedNotifications` dispatched onto the `sync` queue connection — used in tests, and effectively synchronous in most of this app's actual deployments too — ran **immediately**, before the transaction committed. A rollback after `notify()` (e.g. the auto-reject bulk `update()` in `approve()` failing) meant the customer/admin was told about a request/approval/rejection that was never persisted.
+
+Fix: the three notification classes (`RentalExtensionRequestedNotification`, `RentalExtensionApprovedNotification`, `RentalExtensionRejectedNotification`) now implement `Illuminate\Contracts\Queue\ShouldQueueAfterCommit`. This defers the underlying job until the outermost transaction actually commits, and discards it silently if the transaction rolls back — no application code changes needed at the three call sites.
+
+**Why this over moving `notify()` outside the transaction:** these transactions are wide (multiple row locks, availability re-checks, financial adjustments) and the notified recipient/payload depends on data mutated inside them; extracting `notify()` would mean re-deriving state post-commit in three places and wouldn't protect a future `notify()` call added inside the same transactions. `ShouldQueueAfterCommit` is declarative on the notification class and protects every call site, present and future. See `.claude/rules/notifications.md` for the interface and the testing gotcha it comes with.
+
 ## Availability math
 
 Extension window starts at `end_date + 1 day`. The current OrderItem does NOT overlap this window (its end_date < extensionStart), so no self-exclusion logic is needed.

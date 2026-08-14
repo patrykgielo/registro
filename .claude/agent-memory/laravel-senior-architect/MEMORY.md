@@ -63,6 +63,13 @@
 - CheckoutFlowTest::validCheckoutPayload() updated to include customer_type, legal acceptances, PESEL, address
 - `email_templates` is intentionally global/NULL-organization_id (migration `2026_06_29_120000_fix_tenant_scoped_unique_constraints` skips it) but `EmailTemplate` still uses `BelongsToOrganization` — any test with a real resolved tenant that triggers a templated notification needs `Notification::fake()` or it 500s with "template not found" (root cause of CustomerOrdersTest's 2 pre-existing failures)
 
+## Notifications inside DB::transaction() (feature/queue-after-commit — 2026-08-08)
+- Fixed 3 sites in RentalExtensionService (requestExtension/approve/reject): notify() called inside DB::transaction(), all 4 queue connections have after_commit=false → fired before commit, survived rollback. Fix: notification classes implement ShouldQueueAfterCommit (declarative, not moving notify() calls — see app/docs/features/rental-extension.md for why)
+- StartOrganizationOffboarding is the OTHER correct pattern (narrow transaction, notify() already outside it) — don't confuse the two; ShouldQueueAfterCommit is for when the transaction is wide and the payload depends on data mutated inside it
+- Notification::fake()/Queue::fake() CANNOT prove/disprove this fix — both bypass SendQueuedNotifications/Queue::push()/shouldDispatchAfterCommit() entirely. Must mock the real terminal boundary (EmailGatewayInterface, or EmailService one level up when a real tenant is resolved in-test — see next bullet) and force a rollback via an outer DB::transaction() in the test
+- RefreshDatabase's own DatabaseTransactionsManager (Illuminate\Foundation\Testing\DatabaseTransactionsManager) treats level 1 as commit-root, so ShouldQueueAfterCommit callbacks fire correctly inside RefreshDatabase tests without special setup — full mechanism + test pattern in .claude/rules/notifications.md
+- Reconfirmed: EmailTemplate's BelongsToOrganization scope excludes seeded global (organization_id=NULL) templates once a real tenant is resolved in a test → real sendFromTemplate() 500s "template not found"; mock EmailService itself (not just the gateway) in tests that resolve a real tenant
+
 ## Hooks
 - [feedback_stop_hook_stderr.md](feedback_stop_hook_stderr.md) — Stop/SubagentStop hooks capture stderr only; all echo must use >&2
 
