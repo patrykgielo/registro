@@ -37,18 +37,15 @@
         </div>
     @endif
 
-    {{-- CTA Widget --}}
-    <div class="bg-gradient-to-br from-primary-400 to-primary-500 rounded-lg shadow-lg p-6 text-white">
-        <h3 class="text-xl font-bold mb-2">Umów wizytę już dziś!</h3>
-        <p class="text-primary-100 mb-4">
-            Profesjonalny detailing dla Twojego auta. Rezerwacja online w 60 sekund.
-        </p>
-        <a href="{{ route('home') }}"
-           class="block w-full text-center min-h-11 px-6 py-3 bg-white text-primary-600 font-semibold rounded-lg
-                  hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-500 transition-colors">
-            Zarezerwuj termin
-        </a>
-    </div>
+    {{-- CTA Widget removed — it hardcoded "Profesjonalny detailing dla
+         Twojego auta" (mobile car-wash copy), unconditionally rendered on
+         every CMS page/post of every tenant via cms.layouts.default. A
+         shared layout partial isn't the place to guess what a tenant sells,
+         and this project's rule is "no invented replacement copy" — see
+         app/docs/features/tenant-branding.md. If a CTA belongs here, it
+         needs to be content-driven (a CMS block, or a per-tenant setting),
+         not a hardcoded string — that's a feature decision for the owner,
+         not something to reword in a branding cleanup. --}}
 
     {{-- Recent Posts (for Pages/Promotions) --}}
     @if(in_array($type, ['page', 'promotion']) && $recentPosts)

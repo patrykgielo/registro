@@ -598,31 +598,35 @@ class SettingsManager
     }
 
     /**
-     * Get header logo URL (for navigation).
+     * Get header logo URL (for navigation), or null if the tenant hasn't
+     * configured one. Callers must fall back to a text brand name — never
+     * to a bundled asset, which would show a foreign/placeholder brand.
      */
-    public function headerLogo(): string
+    public function headerLogo(): ?string
     {
         $path = $this->extractFilePath($this->get('appearance.header_logo'));
 
-        if ($path) {
-            return Storage::disk('public')->url($path);
+        if (! $path) {
+            return null;
         }
 
-        return asset('images/logo.svg');
+        return Storage::disk('public')->url($path);
     }
 
     /**
-     * Get footer logo URL (for footer).
+     * Get footer logo URL (for footer), or null if the tenant hasn't
+     * configured one. Callers must fall back to a text brand name — never
+     * to a bundled asset, which would show a foreign/placeholder brand.
      */
-    public function footerLogo(): string
+    public function footerLogo(): ?string
     {
         $path = $this->extractFilePath($this->get('appearance.footer_logo'));
 
-        if ($path) {
-            return Storage::disk('public')->url($path);
+        if (! $path) {
+            return null;
         }
 
-        return asset('images/logo.svg');
+        return Storage::disk('public')->url($path);
     }
 
     /**

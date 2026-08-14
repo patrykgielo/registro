@@ -11,7 +11,7 @@
     // Default to home route if no href provided
     $logoHref = $href ?? route('home');
 
-    // Use provided src or get header logo from settings
+    // Use provided src or get header logo from settings (null when tenant hasn't configured one)
     $logoSrc = $src ?? $settings->headerLogo();
 
     // Alt text from prop or settings
@@ -22,16 +22,21 @@
 @endphp
 
 <a href="{{ $logoHref }}" class="flex items-center" aria-label="Go to homepage">
-    <img
-        src="{{ $logoSrc }}"
-        alt="{{ $logoAlt }}"
-        class="{{ $logoClasses }}"
-        loading="eager"
-        onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
-    >
-
-    {{-- Fallback text logo (hidden by default, shown if SVG fails to load) --}}
-    <span class="hidden text-xl lg:text-2xl font-bold text-[#0AB1EA] hover:text-white transition-colors">
-        {{ $logoAlt }}
-    </span>
+    @if($logoSrc)
+        <img
+            src="{{ $logoSrc }}"
+            alt="{{ $logoAlt }}"
+            class="{{ $logoClasses }}"
+            loading="eager"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+        >
+        {{-- Fallback text logo (hidden by default, shown if the URL fails to load) --}}
+        <span class="hidden text-xl lg:text-2xl font-bold text-[#0AB1EA] hover:text-white transition-colors">
+            {{ $logoAlt }}
+        </span>
+    @else
+        <span class="text-xl lg:text-2xl font-bold text-[#0AB1EA] hover:text-white transition-colors">
+            {{ $logoAlt }}
+        </span>
+    @endif
 </a>
