@@ -7,7 +7,10 @@ namespace Tests\Feature\Onboarding;
 use App\Models\Organization;
 use App\Models\TenantProvisioningState;
 use App\Models\User;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -103,6 +106,25 @@ class TenantProvisioningGuardsTest extends TestCase
     {
         config()->set('app.tenant_slug', 'acme-rentals');
         $this->runProvision()->assertSuccessful();
+
+        // In a real deployment TENANT_SLUG is set in .env before the container
+        // ever runs `migrate`, so 2026_08_06_100002_add_singleton_lock_to_organizations_table's
+        // own shouldLockSingleton() guard (mysql + tenant_slug filled) adds the
+        // singleton column at migrate time. This test harness runs the whole
+        // migration set exactly once, before any test, with TENANT_SLUG unset --
+        // setting it above via config() is necessarily a runtime-only simulation
+        // that migration timing can never retroactively see. On MySQL that makes
+        // assertConsistent()'s "TENANT_SLUG is set but organizations.singleton is
+        // missing" branch fire, which is CORRECT per that command's own contract,
+        // not a bug -- so recreate exactly what the real migration would have
+        // built, matching its guard, to exercise the actual agreeing-state path
+        // this test claims to cover. No-op on SQLite/already-locked: the command
+        // itself short-circuits non-mysql drivers (TenantProvisioningStatusCommand::assertConsistent()).
+        if (DB::getDriverName() === 'mysql' && ! Schema::hasColumn('organizations', 'singleton')) {
+            Schema::table('organizations', function (Blueprint $table): void {
+                $table->tinyInteger('singleton')->storedAs('1')->unique('organizations_singleton_unique');
+            });
+        }
 
         $this->artisan('registro:tenant-provisioned', ['--assert' => true])->assertSuccessful();
     }

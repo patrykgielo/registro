@@ -12,6 +12,7 @@ use App\Services\Lifecycle\OrganizationDataExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Spatie\Permission\Models\Role;
@@ -430,10 +431,13 @@ class OrganizationDataExportTest extends TestCase
 
         // Delete the owner so $org->owner resolves to null.
         // With FK constraints temporarily disabled the org row is orphaned (not cascade-deleted),
-        // which is the only realistic path where owner_id points to a missing user.
-        DB::statement('PRAGMA foreign_keys = OFF');
+        // which is the only realistic path where owner_id points to a missing user. Portable
+        // across drivers: raw `PRAGMA foreign_keys = OFF` is SQLite-only syntax and is a 1064
+        // syntax error on MySQL -- Schema::disableForeignKeyConstraints()/enableForeignKeyConstraints()
+        // compile to the right statement per driver (PRAGMA on SQLite, SET FOREIGN_KEY_CHECKS on MySQL).
+        Schema::disableForeignKeyConstraints();
         DB::table('users')->where('id', $owner->id)->delete();
-        DB::statement('PRAGMA foreign_keys = ON');
+        Schema::enableForeignKeyConstraints();
 
         $this->artisan('organizations:export-data', ['organization' => (string) $org->id])
             ->assertFailed();
