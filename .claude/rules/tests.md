@@ -47,6 +47,74 @@ public function test_user_can_create_appointment(): void
 - Use mocks for dependencies
 - Fast execution
 
+## Reference data seeding (once per test process, not once per test)
+
+RBAC roles/permissions, transactional email templates, and vehicle types are reference/lookup
+data every `RefreshDatabase` test needs, but no test should be re-creating from scratch. They live
+in `database/seeders/TestReferenceDataSeeder.php`, wired as `Tests\TestCase::$seeder`:
+
+```php
+abstract class TestCase extends BaseTestCase
+{
+    use CreatesApplication;
+
+    protected $seeder = \Database\Seeders\TestReferenceDataSeeder::class;
+}
+```
+
+**Why this works, mechanically:** `RefreshDatabase`'s `migrateFreshUsing()` (from
+`CanConfigureMigrationCommands`) reads the `$seeder` property and passes `--seeder=...` to
+`migrate:fresh`. `migrate:fresh --seeder=X` runs `db:seed --class=X` as part of the SAME command —
+i.e. still inside `migrateDatabases()`, which only executes once per process (guarded by
+`RefreshDatabaseState::$migrated`) and strictly BEFORE the first test's `beginDatabaseTransaction()`.
+Every later test's per-test transaction therefore starts from — and rolls back to — an
+already-seeded baseline, instead of re-inserting ~185 rows (34 permissions, 4 roles, ~46 email
+templates, 5 vehicle types) from scratch on every single test. This is the officially documented
+Laravel mechanism for exactly this use case, not a workaround — see `vendor/laravel/framework/
+src/Illuminate/Foundation/Testing/Traits/CanConfigureMigrationCommands.php`. No special-casing is
+needed for tests that don't use `RefreshDatabase`: `migrateFreshUsing()`/`$seeder` is only ever
+consulted from inside `RefreshDatabase::migrateDatabases()`, so a test class that never triggers
+`refreshDatabase()` never triggers this either.
+
+**Measured effect (2026-08-16, ephemeral `mysql:8.0`, isolated Docker network, never dev-MySQL,
+one run each before/after):** `--testsuite=Feature`, 833 passed / 5 skipped / 0 failed identically
+both times — **214.32s → 80.32s** (~62% reduction). SQLite locally: unaffected within noise (already
+fast; the per-row cost that dominates on MySQL's real network/disk I/O barely registers in-memory).
+
+**What was checked before trusting this** (do this again before touching this mechanism):
+- **Tenant-context safety:** `EmailTemplate` uses `BelongsToOrganization`, whose `creating()` hook
+  auto-assigns `organization_id` from `TenantFeature::currentTenant()` when unset. Seeding now runs
+  at absolute process bootstrap — before any HTTP request, Filament tenant, or session exists — so
+  `currentTenant()` deterministically returns `null` and every seeded template stays global
+  (`organization_id = NULL`), identical to today's per-test behavior. `RolePermissionSeeder` and
+  `VehicleTypeSeeder` have no tenant dependency at all (no `BelongsToOrganization`).
+- **Idempotency:** all three seeders use `firstOrCreate`/`updateOrCreate` keyed on natural identity
+  (permission name, role name, template key+language+organization_id, vehicle type slug) — required
+  for a seeder invoked via `--seeder` to be safe to interact with migrations that seed the same
+  rows (`2025_12_02_224732_seed_email_templates.php` and friends run first, as part of the same
+  `migrate:fresh`; `EmailTemplateSeeder` then `updateOrCreate`s the same keys — same order as
+  before, unaffected by running once instead of 833 times).
+- **Tests that need a truly empty table** (fresh-install simulation) delete the reference rows
+  themselves, inside their own per-test transaction — this still works unchanged, because the
+  delete is scoped to that one test's transaction and rolls back afterward:
+  `CreateOwnerCommandTest::test_it_seeds_roles_when_the_database_has_none()` explicitly
+  `Role::query()->delete()` etc. before asserting `Role::count() === 0`. **Do not "fix" a test like
+  this by weakening its assertion — the delete-inside-the-test pattern is the correct answer, not
+  a workaround.**
+- **Migration-pin tests** that assert exact row counts for a specific migration's rows
+  (`OrderHandoverReturnEmailTemplateMigrationTest`, `RentalReturnReminderEmailTemplateMigrationTest`)
+  are self-contained — they either compare against the already-migrated baseline (unaffected either
+  way) or `DB::table(...)->delete()` and reseed inside their own transaction before asserting.
+- **Non-`RefreshDatabase` test classes** (Unit tests, mostly) never seeded this data before and
+  still don't — unaffected by construction (see mechanism above).
+
+**Adding a new reference/lookup seeder:** add it to `TestReferenceDataSeeder::run()`'s `$this->call([...])`
+list, keep it idempotent (`firstOrCreate`/`updateOrCreate`, never raw `insert()`), and confirm it
+has no tenant-context dependency that would produce different rows at process-bootstrap time than
+per-request time. **Do not** revert to seeding it from `Tests\TestCase::setUp()` via
+`$this->artisan('db:seed', ...)` — that reintroduces the O(number of tests) reseed cost this
+pattern exists to remove.
+
 ## Assertions
 
 ### Common Patterns

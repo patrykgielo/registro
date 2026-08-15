@@ -1,5 +1,11 @@
 # Test Engineer — Project Memory
 
+## Reference data seeded once per test process, not once per test (added 2026-08-16)
+- [project_seed_once_per_process_2026-08-16.md](project_seed_once_per_process_2026-08-16.md) — `Tests\TestCase::$seeder` (RefreshDatabase's own `--seeder` mechanism) replaces 3× `$this->artisan('db:seed', ...)` per test. 214s → 80s on ephemeral `mysql:8.0` (Feature suite, one run each, identical 833/5/0 result). Read before changing `Tests\TestCase.php`, `database/seeders/TestReferenceDataSeeder.php`, or adding a new global/reference seeder.
+
+## MySQL 8.0 release gate (added 2026-08-15)
+- [project_mysql_gate_27_failures_2026-08-15.md](project_mysql_gate_27_failures_2026-08-15.md) — `deploy-production.yml`'s Feature suite ran on real `mysql:8.0` for the first time ever, found 27 failures invisible on SQLite (0 there, same commit). Four distinct mechanisms (SQLite-only `PRAGMA`, unenforced `ENUM`, a `Mockery::close()`-before-`parent::tearDown()` anti-pattern that leaks the per-test transaction and cascades ~50s MySQL lock-wait-timeouts across unrelated test classes, and the actual trigger — `QUEUE_CONNECTION=redis` present unvalidated in that CI step since the repo's first commit, contradicting `.env.testing`'s deliberate `sync`). Fixed in PR #188. Read before touching any raw `DB::statement()`, a fixture `status`/enum column, or a custom `tearDown()` in a Feature test — and before reproducing `QUEUE_CONNECTION=redis` locally (Horizon/Redis contamination risk, see file).
+
 ## Pre-Existing Failures (drifts over time — check `php artisan test` yourself before trusting this)
 - As of 2026-08-08 (after the EmailTemplate/SmsTemplate tenant-scope fix below shipped): **1 failed**,
   5 skipped, 1062+ passed on default suite (Unit+Feature) — only `TenantFeatureTest` (booking wizard
