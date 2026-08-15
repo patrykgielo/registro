@@ -1079,3 +1079,113 @@ tej klasy okazuje się zepsuty, przeszukaj CAŁY `.github/workflows/` pod kątem
 skopiowanego bloku (`services:`, wersje obrazów, override'y env) — kopiowanie z projektu-szablonu
 oznacza, że błąd prawie na pewno nie jest odosobniony. `gh run list --workflow=<plik>` przed
 zaufaniem KAŻDEMU workflow, nie tylko temu, nad którym akurat się pracuje.
+
+---
+
+## 2026-08-16: koszt minut Actions — cache warstw Dockera, usunięcie `ci-staging.yml`, `skip_tests`
+
+Kontynuacja optymalizacji zapoczątkowanej PR #192 (seedery raz na proces, test job 214s→80s).
+Trzy zmiany w `deploy-production.yml` + usunięcie martwego pliku, wszystkie w jednej sesji.
+
+### 1. `ci-staging.yml` usunięty jako potwierdzony martwy kod
+
+Zero przebiegów w całej historii Actions (`gh run list --workflow=ci-staging.yml`), sekrety
+`STAGING_VPS_*` nigdy nie istniały (`gh secret list` → tylko `HEALTH_CHECK_HOST` jako zmienna,
+jedno środowisko `production`), a maszyna PreProd, w którą celuje jego `deploy` job, nie jest
+kupiona. Dokładnie ten sam wniosek co incydent 2026-08-15 wyżej ("ten sam rozjazd silnika... dwa z
+nich mają zero przebiegów do dziś") już sygnalizował, tylko wyciągnięty do końca. Referencje
+zaktualizowane: `.claude/agents/devops-engineer.md` (lista workflow), `production-readiness-checklist.md`
+(dopisek superseding, nie przepisanie historii), `.github/workflows/RELEASE_PROCESS.md` (przepisany
+całościowo — opisywał model push-tag-triggeruje-deploy, nieprawdziwy od dawna, sprzed komentarza
+"Disabled for Registro migration" w każdym pliku workflow).
+
+### 2. Cache warstw Dockera w `build` — `type=gha`, nie `type=registry`
+
+`docker build --no-cache --pull` zamieniony na `docker/build-push-action` z
+`cache-from/cache-to: type=gha,scope=registro-image,mode=max,ignore-error=true` (wymaga
+`docker/setup-buildx-action` — sterownik `docker` domyślny na runnerach nie eksportuje żadnego
+cache backendu poza inline).
+
+**Rozstrzygnięcie `gha` vs `registry`, i dlaczego NIE jest to policzone, tylko uzasadnione
+logicznie:** ten pipeline buduje WYŁĄCZNIE z `workflow_dispatch` na git TAGU (`inputs.version`),
+nigdy z pusha na branch. Reguła dostępu GitHuba do cache Actions to udokumentowane "bieżący ref,
+ref bazowy, branch domyślny" (docs.docker.com/build/cache/backends/gha/) — **niezweryfikowane**,
+czy tag ref liczy się jako własny, trwale odizolowany zakres (co zrobiłoby ten cache bezużytecznym
+między wydaniami) czy trafia pod fallback brancha domyślnego. `type=registry` nie ma tej
+niejednoznaczności (zwykły OCI pull po nazwie, bez ACL na ref) — ale requiruje własny cleanup w
+GHCR. `cleanup-cache.yml` w repo już celuje w schemat `buildcache-*` (dokładnie tę architekturę) —
+zweryfikowane, że nigdy nic go nie zasiliło (`gh api .../packages/container/registro/versions` →
+zero tagów `buildcache-*`), więc nie jest to w konflikcie z wyborem `gha`, tylko pozostaje martwym,
+niedotkniętym kodem sprzed tej decyzji. `type=gha` wybrany, bo tania pomyłka: brak trafienia cache
+kosztuje dokładnie tyle, co dziś (3,3 min), zero wpływu na storage GHCR, zero nowego cleanupu do
+utrzymania. Darmowy limit 10 GB/repo z automatyczną eksmisją LRU (bez ryzyka billingu na koncie bez
+Pro/Team/Enterprise — zweryfikowane z changelogu GitHuba z 2025-11-20) pasuje do „użytkownik płaci z
+własnej kieszeni" lepiej niż rosnący prywatny storage w GHCR.
+
+**Diagnostyka do wykonania PRZY PIERWSZYCH DWÓCH realnych dispatchach** (nie da się tego
+zweryfikować bez faktycznego uruchomienia na GitHubie, którego ta sesja nie wykonała — zakaz
+dispatchowania workflowów): dwa różne tagi wersji pod rząd, log kroku "Build and push image" w
+DRUGIM przebiegu. Warstwy `apt-get`/`docker-php-ext-install`/`composer install`/`npm ci` oznaczone
+`CACHED` → działa międzytagowo zgodnie z projektem. Brak `CACHED` na żadnej → ACL GitHuba
+skopował cache per-tag, zero zysku dla tego kształtu pipeline'u — fallback to `type=registry` z
+JEDNYM reużywanym tagiem (np. `buildcache-latest`) + `provenance: false`, żeby ograniczyć
+powierzchnię nietagowanych manifestów do wyczyszczenia.
+
+**`provenance: false`/`sbom: false`** dodane celowo — `docker/build-push-action` domyślnie
+generuje adnotacje supply-chain jako dodatkowe nietagowane obiekty w TYM SAMYM pakiecie GHCR co
+obrazy wydań; bez potrzeby na wewnętrznym pipeline deployu, i upraszcza że jedyne nietagowane
+śmieci, jakie ten job może wytworzyć, to wpisy w cache Actions (sprzątane automatycznie przez
+GitHub), nie coś w GHCR wymagające ręcznego czyszczenia.
+
+**Zysk build joba: NIE zmierzony, tylko oszacowany logiką warstw Dockerfile.** Warstwy
+`apt-get install`+`docker-php-ext-configure/install`+`pecl install redis` (linie 37-71) leżą NAD
+`COPY composer.json`/`COPY . .` i nie zależą od kodu aplikacji ani lockfile'ów — historycznie
+najwolniejsza część obrazów PHP (kompilacja rozszerzeń) jest cache-eligible przy KAŻDYM buildzie,
+niezależnie od tego co się zmieniło w release. Warstwy `composer install`/`npm ci` cache-eligible
+tylko gdy `composer.lock`/`package-lock.json` niezmienione między wydaniami — częste, ale nie
+gwarantowane. Bez pomiaru nie da się podać liczby; oczekiwanie to zauważalne, ale niepewne co do
+wielkości skrócenie 3,3 min buildu przy niezmienionych lockfile'ach, bliskie zeru gdy się zmieniają
+— nigdy gorsze niż dziś (`ignore-error=true` na cache-to, `cache-from` samo w sobie nie może
+spowolnić buildu poniżej stanu bez cache).
+
+### 3. `skip_tests` — bramkowany podwójnym potwierdzeniem, nie gołym boolean
+
+Rozważone i odrzucone: (a) goły boolean z ostrzeżeniem w logu — zbyt łatwy do przypadkowego
+zaznaczenia przy ponownym dispatchu z zapamiętanymi wartościami UI; (b) automatyczne sprawdzenie
+"czy ten tag miał już udany przebieg testów" przez `gh run list`/API — odrzucone, bo dopasowanie po
+NAZWIE taga jest kruche jeśli tag zostanie kiedykolwiek przestawiony na inny commit, a automatyczna
+zielona lampka to dokładnie ten rodzaj "wygląda bezpiecznie samo z siebie" mechanizmu, przed którym
+ta flaga ma chronić operatora, nie zastępować jego osąd.
+
+Wybrane: `skip_tests: boolean` (default `false`) + `skip_tests_confirm: string` (default `''`),
+musi DOKŁADNIE zgadzać się z `inputs.version` żeby pominięcie faktycznie zadziałało — wzorzec
+identyczny do `tenant-restore.sh --confirm-slug` już w tym repo. Nowy job `preflight` (bez
+`needs`, zawsze biegnie, ~5s) jest jedynym miejscem porównania — `test`/`build`/`deploy` czytają
+`needs.preflight.outputs.skip_tests`, żadne z nich nie duplikuje logiki porównania.
+
+**Fail-safe, nie fail-shrink, zastosowane wprost:** `skip_tests=true` z NIEPASUJĄCYM
+`skip_tests_confirm` (literówka, pusty, zły tag) → `preflight` kończy się `::error::` i exit 1,
+CAŁY przebieg pada w sekundach, PRZED jakimkolwiek checkoutem/buildem. Świadomie NIE spada cicho z
+powrotem na "uruchom testy" — to byłoby bezpieczne dla kodu, ale operator, który poprosił o
+pominięcie i dostał zamiast tego wolniejszy, ale w końcu zielony deploy, nie ma żadnego sygnału że
+jego flaga nie zadziałała.
+
+**Skipnięty `test` job wymagał jawnych `if:` w `build`/`deploy`.** Domyślna semantyka `needs:` bez
+`if:` odpowiada `success()` — job, który zgłasza się jako `skipped` (bo jego własny `if:` był
+`false`), NIE liczy się automatycznie jako spełniający zależność; bez jawnego
+`needs.test.result == 'success' || needs.test.result == 'skipped'` przy KAŻDYM
+`skip_tests=true` przebiegu `build`/`deploy` po prostu nigdy by się nie uruchomiły, cicho. Nie
+zweryfikowane realnym uruchomieniem na GitHubie (zakaz dispatchowania) — zweryfikowane wyłącznie
+przez dokumentację GitHuba o zachowaniu `needs`/`success()` przy jobach skipniętych; pierwszy realny
+dispatch z `skip_tests=true` jest jedynym sposobem na dowiedzenie tego wprost.
+
+### Zapobieganie
+
+Przy DOWOLNYM nowym `if:` warunkującym job w łańcuchu `needs:` — sprawdź, czy downstream jobs mają
+WŁASNY jawny `if:` obejmujący `.result == 'skipped'`, nie polegaj na domyślnym `success()`. Przy
+cache Dockera w pipeline triggerowanym WYŁĄCZNIE tagami (nie branchami) — sprawdź dokumentację ACL
+wybranego backendu cache pod kątem zakresu per-ref, zanim obiecasz przyspieszenie; jeśli nie da się
+zweryfikować bez realnego dispatcha, wybierz backend, którego najgorszy przypadek to "brak zysku",
+nie "cichy koszt" (tu: `type=gha` nad `type=registry`, z tego samego powodu co
+`ignore-error=true` na `cache-to` — cache to optymalizacja, nigdy nie powinna umieć zablokować albo
+spowolnić poniżej baseline realnego deployu).
