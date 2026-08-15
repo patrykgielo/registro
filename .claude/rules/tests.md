@@ -250,15 +250,22 @@ for it). Run with:
 bash tests/shell/run.sh
 ```
 
-Runs in ~15 s. Most of it is offline; two cases start real containers because
+Runs in ~16 s. Most of it is offline; three cases start real containers because
 the property they guard is not decidable by inspecting the file alone:
 `19_nginx_*` (`nginx:1.25-alpine`, `--network none`, `nginx -t` — nginx still
 starts when no upstream container exists; its regex predecessor missed a
 trailing-space variant and an `upstream {}` block, the latter unfixable by
-the recommended fix) and `30_deploy_production_db_engine_matches_prod.sh`
+the recommended fix), `30_deploy_production_db_engine_matches_prod.sh`
 (`mysql:8.0` + a `mariadb:10.11` negative control — the CI test gate's DB
 engine must actually accept the JSON-operator syntax production's migrations
-use, not just be *named* the same as production's compose file).
+use, not just be *named* the same as production's compose file), and
+`31_redis_hardening_survives_existing_appendonlydir.sh` (`redis:7.2-alpine`
+against a volume with a REAL, organically-created `appendonlydir` — a
+hand-written directory inherits the shell's own umask and never reproduces
+the 0700 permission bits `v0.13.0-rc12` actually crashed on; extracts the
+compose file's real `cap_add` list rather than hardcoding it, with the old
+SETUID+SETGID-only spec as a negative control that must reproduce `find:
+./appendonlydir: Permission denied` verbatim).
 
 Every other case is offline and instant, with no real Docker daemon/server/network —
 every `docker`/`certbot`/`su`/`git`/`restic` call is a fake executable on

@@ -145,6 +145,20 @@ services:
     # GHCR) with --cap-drop ALL --security-opt no-new-privileges: entrypoint's
     # own user self-check passes and it proceeds straight to waiting on MySQL,
     # no permission error anywhere in the boot sequence.
+    #
+    # Re-verified independently 2026-08-15 (redis incident review, this same
+    # ci-cd-troubleshooting.md entry): the risk pattern that broke redis under
+    # this exact release (a runtime chown/find sweep tripping on volume state
+    # left by history) does NOT apply here. This entrypoint never chowns or
+    # walks the volume tree at runtime -- Dockerfile:222-226 bakes
+    # laravel:laravel ownership into the image at every path the container
+    # writes, and ADR-013 has pinned that UID to 1000 since before hardening
+    # existed, so a volume from any prior deploy is already correctly owned.
+    # Confirmed on a REAL ghcr.io/patrykgielo/registro:v0.13.0-rc12 pull, full
+    # stack up under docker-compose.prod.yml unmodified except the redis fix
+    # below: `app` reached `healthy`, ran real migrations against `mysql`, and
+    # served a real HTTP 200 through hardened `nginx` on both /up and a Blade
+    # view -- not a copy of the image, not an extracted function.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -239,11 +253,43 @@ services:
     networks:
       - registro-prod
     # Hardening: the official entrypoint drops from root to the redis user via
-    # setpriv before exec'ing redis-server. Verified against redis:7.2-alpine
-    # (the exact image/tag this service pins) with --cap-drop ALL: SETUID and
-    # SETGID alone are sufficient for a real PONG over an authenticated
-    # connection; CHOWN was tried too and is NOT needed (dropped again after
-    # confirming SETUID+SETGID alone already worked).
+    # setpriv before exec'ing redis-server, but FIRST -- while still root --
+    # runs `find . \! -user redis -exec chown redis {} +` over the whole
+    # volume (docker-library/redis's docker-entrypoint.sh). This project's
+    # own entrypoint sets `umask 0077` for redis-server's own file creation,
+    # so a volume with real prior history has `appendonlydir` at mode 0700,
+    # owned redis:redis. Incident 2026-08-15: v0.13.0-rc12 crashlooped on the
+    # LIVE UAT volume with exactly `find: ./appendonlydir: Permission denied`
+    # -- reproduced verbatim here against a volume seeded with real persisted
+    # keys and a real BGREWRITEAOF, not synthetic files.
+    #
+    # SETUID+SETGID alone (the previous state of this file) is what let that
+    # regression ship: it looks sufficient because it IS sufficient on a
+    # never-before-used volume -- redis:7.2-alpine's image already owns /data
+    # as redis:redis at build time, Docker seeds a brand-new named volume from
+    # that image content, so `find` has nothing to chown and no restrictive
+    # directory to enter yet. The gap only opens on a volume with prior data.
+    #
+    # DAC_OVERRIDE is what root needs to bypass the 0700 permission bits and
+    # actually opendir() appendonlydir -- confirmed by removing it: the exact
+    # `find: ./appendonlydir: Permission denied` reproduces. With it added:
+    # the real seeded keys loaded correctly (`DB loaded from append only
+    # file`), an authenticated PING succeeded, and an explicit `SAVE` (which
+    # writes a fresh top-level file into /data, exercised separately from the
+    # subdirectory case) succeeded too.
+    #
+    # CHOWN is deliberately NOT added. The `chown redis {} +` calls in that
+    # same find are no-ops in every real scenario: kernel chown_common() only
+    # requires CAP_CHOWN when the target uid actually changes, and every file
+    # `find` walks on this volume -- including the /data mountpoint itself,
+    # confirmed by `stat` before touching it -- is already owned redis:redis,
+    # either from a prior real boot or inherited from the image at volume
+    # creation. Nothing in this repo's backup/restore path
+    # (tenant-backup.sh/tenant-restore.sh) ever touches redis_data, so there
+    # is no code path that could leave a root-owned file for a real chown to
+    # act on. Verified on both a volume with real prior data (loaded fine)
+    # and a genuinely fresh volume (`stat` showed redis:redis before any
+    # container touched it, boots fine) with CHOWN absent in both cases.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -251,6 +297,7 @@ services:
     cap_add:
       - SETUID
       - SETGID
+      - DAC_OVERRIDE
     pids_limit: 64
     # Widened from 320m: 64MB above --maxmemory 256mb left too little for
     # connection/client-buffer overhead plus the copy-on-write memory spike a
@@ -346,6 +393,13 @@ services:
     # then failed on setgid() until SETUID+SETGID were both added too; the
     # four together bring up a real request-serving nginx (confirmed with an
     # actual HTTP request, not just "container stays up").
+    #
+    # Re-verified 2026-08-15 (redis incident review): CHOWN is unconditional,
+    # not tied to proxy_cache (this vhost, app.prod.conf, has none) --
+    # removing it reproduces `nginx: [emerg] chown("/var/cache/nginx/
+    # client_temp", 101) failed` every time, because nginx's master inits its
+    # temp-path directories on every start regardless of whether anything
+    # ever writes to them. Set is confirmed minimal, not over-granted.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -376,6 +430,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # pids_limit checked against config/horizon.php's production maxProcesses=10
+    # (2026-08-15 redis incident review): a live master+supervisor+workers
+    # count under this exact image, this exact cgroup, measured 8 processes
+    # at idle scaling toward ~12 at maxProcesses=10 -- 256 leaves wide margin,
+    # not a bottleneck. Not raised or lowered.
     pids_limit: 256
     # 512m was BELOW what this image's own config already permits, found in
     # review: config/horizon.php's production `supervisor-1` allows

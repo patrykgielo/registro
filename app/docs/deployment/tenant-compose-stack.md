@@ -200,11 +200,41 @@ not by reasoning about what "should" be needed:
 |---|---|---|
 | `app`/`horizon`/`scheduler` | *(none)* | Already non-root (`laravel`, `Dockerfile:228`), binds no privileged port. Ran `ghcr.io/patrykgielo/registro:v0.13.0-rc9` (the pinned image, a tag already on this host) with zero cap-add — entrypoint's own user self-check passed, proceeded straight to waiting on MySQL. |
 | `mysql` | `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE` | `mysql:8.0` with zero cap-add hung; adding caps one failure at a time until a real `mysqladmin ping` succeeded. |
-| `redis` | `SETUID`, `SETGID` | `redis:7.2-alpine` with zero cap-add: `setpriv: setresuid failed`. `CHOWN` was tried too and found unnecessary — removed after confirming `SETUID`+`SETGID` alone gave a real authenticated `PONG`. |
-| `nginx` | `NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID` | `nginx:1.25-alpine` with zero cap-add: `chown("/var/cache/nginx/client_temp") failed`. Added `CHOWN`, then hit `setgid(101) failed`; added `SETUID`+`SETGID` too. Confirmed with a real `GET /` returning nginx's welcome page. |
+| `redis` | `SETUID`, `SETGID`, `DAC_OVERRIDE` | `redis:7.2-alpine` with zero cap-add: `setpriv: setresuid failed`. `SETUID`+`SETGID` alone gave a real authenticated `PONG` -- **but only against a brand-new volume**. `DAC_OVERRIDE` added 2026-08-15 (see below and `ci-cd-troubleshooting.md`'s "Incydent 2026-08-15"). `CHOWN` deliberately NOT added -- confirmed unnecessary in both states of the volume, see below. |
+| `nginx` | `NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID` | `nginx:1.25-alpine` with zero cap-add: `chown("/var/cache/nginx/client_temp") failed`. Added `CHOWN`, then hit `setgid(101) failed`; added `SETUID`+`SETGID` too. Confirmed with a real `GET /` returning nginx's welcome page. Re-confirmed 2026-08-15 that `CHOWN` is still load-bearing (not over-granted): removing it reproduces the same `chown()` failure, unconditionally, regardless of whether `proxy_cache` is configured. |
 
 `pids_limit`/`mem_limit`: `app` 512/1536m, `mysql` 512/1g, `redis` 64/384m, `nginx` 128/256m,
 `horizon` 256/1536m, `scheduler` 128/256m.
+
+### The gap this table's own methodology had: fresh volume vs. one with history
+
+The `redis` row above was originally verified (and this table originally written) against a
+**brand-new** volume only, because that is what a from-scratch verification naturally produces.
+`v0.13.0-rc12` shipped `SETUID`+`SETGID` alone on the strength of that verification and crashlooped
+on UAT's real, thirteen-day-old volume: `redis:7.2-alpine`'s own entrypoint runs `find . \! -user
+redis -exec chown redis {} +` as root before dropping privileges, and this project's own entrypoint
+sets `umask 0077` for files `redis-server` creates itself -- so a volume with real history has
+`appendonlydir/` at mode `0700`. Root without `CAP_DAC_OVERRIDE` cannot `opendir()` a directory it
+does not own and lacks permission on, exactly like any other user; a freshly-created volume never
+exercises this at all, because `redis:7.2-alpine`'s own image already owns `/data` as `redis:redis`
+in the image layer, and Docker seeds a brand-new named volume from that image content on first use.
+
+`CHOWN` stays deliberately absent: the same `find`'s `chown redis {} +` calls are no-ops in every
+real scenario, because the kernel only requires `CAP_CHOWN` when the target UID actually changes,
+and every file on this volume -- including the `/data` mountpoint itself -- is always already owned
+`redis:redis`, either from a prior real boot or inherited from the image at volume creation. Nothing
+in this repo's backup/restore path (`tenant-backup.sh`/`tenant-restore.sh`) ever touches
+`redis_data`, so there is no code path that could leave a root-owned file behind for a real `chown`
+to act on.
+
+**The general lesson, not just this one row:** verifying a hardening capability against a
+*never-used* resource (empty volume, fresh container, clean database) proves the capability set is
+sufficient for first boot. It proves nothing about a service that will never again boot from empty
+on a live host. Any future capability review of this file must test each stateful service (`mysql`,
+`redis`, and any future one with a named volume) against a volume seeded with **real prior
+activity**, not just a fresh one -- full reproduction, regression test, and both before/after runs:
+`ci-cd-troubleshooting.md` → "Incydent 2026-08-15", `tests/shell/cases/
+31_redis_hardening_survives_existing_appendonlydir.sh`.
 
 `app` and `horizon`'s `mem_limit` were **raised from an initial 768m/512m**, found in review to sit
 *below* what this repo's own configuration already permits, not "conservative":

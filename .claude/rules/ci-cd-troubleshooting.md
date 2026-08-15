@@ -836,3 +836,113 @@ przebiegów przez całą historię repo aż do tego dnia. Migracja z projektu-sz
 walidacji = dług, który czeka cicho aż ktoś faktycznie uruchomi ścieżkę. Osobno: `Mockery::close()`
 w customowym `tearDown()` PRZED `parent::tearDown()` to wzorzec do unikania zawsze, niezależnie od
 silnika bazy — Laravel już robi to bezpiecznie sam; SQLite tylko maskował konsekwencję.
+
+---
+
+## Incydent 2026-08-15: `v0.13.0-rc12` (hardening every service) crashlooped redis na UAT —
+## dwuminutowa awaria produkcji, cofnięte do rc9
+
+### Problem
+
+Deploy `v0.13.0-rc12` na UAT dodał `security_opt: no-new-privileges:true` + `cap_drop: ALL` (+
+selektywny `cap_add`) do każdej z sześciu usług w `docker-compose.prod.yml`. Redis wpadł w pętlę
+restartów, log dosłownie:
+
+```
+find: ./appendonlydir: Permission denied
+```
+
+`docker compose up` przerwał z `dependency failed to start: container registro-redis is unhealthy`
+— `app`, `nginx`, `horizon`, `scheduler` zostały w stanie `Created` i nigdy nie wystartowały. MySQL
+wstał zdrowy. Operator cofnął do `rc9` ręcznie; strona stała ~2 minuty.
+
+### Przyczyna
+
+`redis:7.2-alpine`'s oficjalny `docker-entrypoint.sh` startuje jako root i, zanim zrobi `setpriv
+--reuid redis --regid redis` (drop do uid 999), wykonuje `find . \! -user redis -exec chown redis
+{} +` nad całym `/data`. Ten projekt sam ustawia `umask 0077` dla plików tworzonych przez
+`redis-server` (ten sam skrypt, dalej w pliku) — więc `appendonlydir/`, katalog realnie utworzony
+przez wcześniejszy, nie-hardenowany boot, ma tryb `0700`, właściciel `redis:redis`. `find` jako root
+BEZ `CAP_DAC_OVERRIDE` podlega zwykłym bitom uprawnień tak samo jak każdy inny proces — `opendir()`
+na katalogu `0700` nienależącym do niego (a root bez tej capability nie "jest" właścicielem w
+sensie jądra) zwraca `EACCES`, `find` kończy się niezerowo, `set -e` w entrypoincie zabija kontener
+PRZED jakimkolwiek `exec redis-server`.
+
+`cap_drop: ALL` + `cap_add: [SETUID, SETGID]` (stan `rc12` przed poprawką) przeszedł przegląd
+wcześniej, bo **działa bezbłędnie na świeżym wolumenie**: `redis:7.2-alpine`'s własny obraz ma
+`/data` już własnościowo `redis:redis` w warstwie obrazu, a Docker zasiewa NOWY nazwany wolumen
+zawartością obrazu przy pierwszym użyciu (zweryfikowane: `stat` na wolumenie, którego żaden
+kontener jeszcze nie dotknął, pokazał `redis:redis` od razu) — `find` na takim wolumenie nie ma nic
+do zrobienia, żadnego restrykcyjnego katalogu do wejścia. Luka otwiera się dopiero na wolumenie z
+prawdziwą historią, a produkcyjny wolumen UAT miał wtedy trzynaście dni realnych danych.
+
+### Rozwiązanie
+
+Dodano `DAC_OVERRIDE` do `cap_add` redisa (`SETUID`, `SETGID`, `DAC_OVERRIDE`). `CHOWN` świadomie
+NIE dodane — `chown redis {} +` w tym samym `find` jest no-opem w każdym realnym scenariuszu:
+jądro (`chown_common()`) wymaga `CAP_CHOWN` tylko gdy docelowy UID faktycznie się zmienia, a
+KAŻDY plik, po którym `find` chodzi na tym wolumenie — łącznie z samym punktem montowania `/data`,
+sprawdzonym wprost `stat`em przed jakąkolwiek zmianą — jest już własnością `redis:redis`, albo z
+wcześniejszego realnego boota, albo odziedziczoną z obrazu przy tworzeniu wolumenu. Żadna ścieżka
+backup/restore w tym repo (`tenant-backup.sh`/`tenant-restore.sh`) nigdy nie dotyka `redis_data`,
+więc nie ma kodu, który mógłby zostawić plik należący do roota.
+
+**Zweryfikowane realnym uruchomieniem, nie inspekcją, oba kierunki (bug i fix), na tym samym
+wolumenie z REALNĄ historią** (nie syntetycznymi plikami — organiczny boot, `SET`, `BGREWRITEAOF`,
+`appendonlydir` powstały pod prawdziwym umaskiem tego projektu):
+- Stary spec (`SETUID`+`SETGID`) → `find: ./appendonlydir: Permission denied`, dosłownie jak w
+  incydencie.
+- Nowy spec (+ `DAC_OVERRIDE`) → realne klucze wczytane (`DB loaded from append only file`),
+  uwierzytelnione `PING` → `PONG`, `SAVE` (zapis NOWEGO pliku wprost do `/data`, ścieżka
+  nieprzetestowana samym odczytem) → sukces.
+- Ten sam test na GENUINELE świeżym wolumenie (nigdy nie dotkniętym) → sukces bez `DAC_OVERRIDE`
+  ani `CHOWN`, potwierdzając dlaczego pierwotna weryfikacja rc12 nie złapała błędu.
+
+**Cały stack, na realnym obrazie `ghcr.io/patrykgielo/registro:v0.13.0-rc12` (pull, nie build
+lokalny), pod `docker-compose.prod.yml` niezmodyfikowanym poza tą jedną poprawką** — wszystkie
+sześć usług doszło do `healthy` (`scheduler` do `Up`, brak healthchecka), realna migracja
+(`php artisan migrate --force`) przeszła, realny `curl` przez hardenowany `nginx` do hardenowanego
+`app` zwrócił `200` na `/up` i na pełnym widoku Blade. Zweryfikowano też negatywnie na poziomie
+CAŁEGO stacka (nie tylko pojedynczego `docker run` na redisie): cofnięcie `cap_add` redisa do
+starego spec + `docker compose up -d` na tym samym stacku odtworzyło DOKŁADNIE `dependency failed
+to start: container hxtest-redis is unhealthy`, z `app`/`horizon`/`nginx`/`scheduler` w `Created`
+— ten sam obraz awarii co na UAT.
+
+**`app`, `horizon`, `scheduler`** (ten sam obraz, ten sam non-root `laravel` user od
+Dockerfile:228) potwierdzone bez potrzeby jakiegokolwiek `cap_add` — re-zweryfikowane niezależnie
+od istniejącego komentarza w pliku (nie zaufane samo w sobie), bo klasa błędu, która złamała redisa
+(runtime chown/permission sweep trafiający w stan wolumenu z historią), fizycznie nie istnieje w
+tym entrypoincie: brak jakiegokolwiek `find`/`chown` w `docker/entrypoint.sh`, własność `laravel:
+laravel` zapieczona w obrazie (Dockerfile:222-226) i przypięta na UID 1000 od ADR-013, sprzed
+istnienia hardeningu.
+
+**`nginx`** (`NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`) potwierdzone jako już minimalne, nie
+nadmiarowe — usunięcie `CHOWN` reprodukuje `nginx: [emerg] chown("/var/cache/nginx/client_temp",
+101) failed (1: Operation not permitted)` za każdym razem, bo nginx inicjalizuje swoje katalogi
+tymczasowe bezwarunkowo przy starcie, niezależnie od tego czy `proxy_cache` jest gdziekolwiek
+skonfigurowany (w tym vhoście — `app.prod.conf` — nie jest).
+
+**`pids_limit`** sprawdzony pod kątem forków Horizona (`config/horizon.php`'s production
+`maxProcesses: 10`): realny pomiar na żywym, hardenowanym kontenerze pokazał 8 procesów w spoczynku,
+limit `256` zostawia szeroki margines do skalowania w górę. Nie zmieniony.
+
+### Test regresyjny
+
+`tests/shell/cases/31_redis_hardening_survives_existing_appendonlydir.sh` — buduje wolumen z
+REALNĄ historią (organiczny boot + `SET` + `BGREWRITEAOF`, nie ręcznie pisane pliki: katalog
+zrobiony `mkdir`+`echo` dziedziczy umask powłoki testowej, 0755, i NIGDY nie odtwarza buga),
+ekstraktuje `cap_add` redisa wprost z `docker-compose.prod.yml` (nigdy na sztywno), z syntetycznym
+starym spec (`SETUID`+`SETGID`) jako negatywną kontrolą. Dowiedzione czerwono-potem-zielono:
+`git stash` tego pliku → dokładny `find: ./appendonlydir: Permission denied` z komunikatem testu;
+`git stash pop` → PASS.
+
+### Zapobieganie
+
+**Ten sam wzorzec co incydent `stage_volume()` (Faza 3, wyżej w tym pliku) i incydent nginx-upstream
+(2026-08-12, wyżej): weryfikacja na świeżym/syntetycznym stanie nie dowodzi niczego o zachowaniu na
+stanie z historią**, gdy operacja (tu: `find`+`chown` jako root, tam: `docker run` na własnym
+obrazie z jego prawdziwym entrypointem) jest wrażliwa na to, co konkretnie już leży na dysku. Przy
+hardeningu KAŻDEJ usługi w compose naraz — zweryfikuj każdą osobno przeciw stanowi, jaki miałaby
+NAPRAWDĘ na produkcji (wolumen z danymi, nie pusty), nie przeciw temu, co najwygodniej postawić w
+piaskownicy. "Działa na fresh volume" i "działa" to dwa różne twierdzenia, i tylko drugie ma
+znaczenie dla usługi, która nigdy nie startuje od zera na żywym serwerze.
