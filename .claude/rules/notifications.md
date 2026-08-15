@@ -310,6 +310,13 @@ osobna decyzja, nierozstrzygnięta.
 - `OrderPaidNotification`, `OrderConfirmedNotification`, `OrderHandedOverNotification`,
   `OrderReturnedNotification`, `OrderCancelledNotification` - cykl życia zamówienia (wynajem);
   patrz `app/docs/features/order-notifications.md`
+- `RentalReturnDueSoonNotification`, `RentalReturnOverdueNotification` - przypomnienia o zwrocie
+  sprzętu (dzień przed `order_items.end_date` / po nim), wysyłane przez
+  `ProcessRentalReturnRemindersJob` (osobny job, NIE `reminder_configs`/`ReminderLog` —
+  `order_items.end_date` to kolumna typu `date`, appointmenty potrzebują godzinowego
+  bufora, wynajem nie). Dedup przez `EmailService`'s `message_key`, jak reszta Order
+  notifications, nie osobna tabela logów. Patrz `app/docs/features/rental-return-reminders.md`
+  po pełne uzasadnienie decyzji projektowej.
 
 **Standard MailChannel (MailMessage):**
 - `DataExportCompletedNotification` - eksport danych RODO
