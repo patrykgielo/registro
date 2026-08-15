@@ -97,7 +97,17 @@ case "${ACTION:-}" in
         # key, not `source .env`, keeps this diagnostic independent of every
         # other var in the file the way the comment above requires -- an
         # unset/missing key defaults to "registro", identical to today.
-        prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2-)"
+        #
+        # `|| true` on the substitution, not on the whole line: under
+        # `pipefail`, an ABSENT key is the normal legacy case (deployment.md:
+        # "TENANT_PREFIX= PUSTE na legacy") -- grep exits 1 (no match), cut
+        # exits 0, and pipefail takes the higher of the two, so the pipeline
+        # itself reports failure for a perfectly normal missing key. Without
+        # this, `set -e` kills the script here, before `docker ps` ever runs,
+        # on every legacy invocation of the one action this forced command
+        # exposes for diagnosis. Same fix, same reasoning, as force_clear_flag
+        # below and the equivalent grep in every other scripts/server/*.sh.
+        prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2- || true)"
         docker ps -a --filter "name=${prefix:-registro}-" \
             --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
         exit 0
@@ -198,7 +208,12 @@ KEEP_MAINTENANCE=false
 # the stack is broken.
 force_clear_flag() {
     local prefix vol image
-    prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2-)"
+    # Same pipefail/grep-no-match trap as the `status` action above: an
+    # absent TENANT_PREFIX (the legacy stack's normal state) makes the
+    # pipeline itself report failure without `|| true`, killing the script
+    # here under `set -e` -- in a recovery function whose whole purpose is
+    # to run when everything else has already gone wrong.
+    prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2- || true)"
     vol="${prefix:-registro}_storage-framework"
     image="ghcr.io/patrykgielo/registro:${REGISTRO_VERSION:-latest}"
 

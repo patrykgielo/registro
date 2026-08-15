@@ -358,6 +358,16 @@ deliberately reverted version of each fix, same as every entry above:
     before the ping is ever reached -- caught by moving the ping above the
     `FILES_FAILED` gate and confirming the case fails.
 
+`deploy.sh`'s `status` action and `force_clear_flag()` (found running the real forced command
+against UAT, 2026-08-15 -- see `ci-cd-troubleshooting.md`'s "instalacja NOWEJ wersji na UAT padała
+na `status`") add two more, both proven red-then-green against the exact pre-fix line:
+
+24. `status` reaches `docker ps` and exits 0 when `.env` has no `TENANT_PREFIX` line at all -- not
+    an empty value, an absent key, the legacy stack's actual documented state.
+25. `force_clear_flag()` falls back to the `registro_storage-framework` volume name under the same
+    missing-key `.env`, rather than dying on the `grep | cut` pipeline before `docker volume
+    inspect` ever runs.
+
 **Rule going forward:** a shell bug found and fixed in `scripts/server/**`
 gets a test in `tests/shell/cases/` in the same change, the same way a PHP
 bug gets a regression test in `tests/Feature`/`tests/Unit`. See
