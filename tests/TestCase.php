@@ -8,15 +8,16 @@ abstract class TestCase extends BaseTestCase
 {
     use CreatesApplication;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // Only seed when the test uses RefreshDatabase (has a database)
-        if (in_array(\Illuminate\Foundation\Testing\RefreshDatabase::class, class_uses_recursive($this))) {
-            $this->artisan('db:seed', ['--class' => \Database\Seeders\RolePermissionSeeder::class]);
-            $this->artisan('db:seed', ['--class' => \Database\Seeders\EmailTemplateSeeder::class]);
-            $this->artisan('db:seed', ['--class' => \Database\Seeders\VehicleTypeSeeder::class]);
-        }
-    }
+    /**
+     * `RefreshDatabase::migrateFreshUsing()` reads this and passes
+     * `--seeder=...` to `migrate:fresh`, which runs it exactly ONCE per test
+     * process (before the first test's transaction begins) instead of once
+     * per test. Tests that use RefreshDatabase get roles/permissions, email
+     * templates, and vehicle types seeded automatically; tests that don't
+     * use RefreshDatabase never trigger `migrate:fresh` at all, so this
+     * property is simply unused for them. See
+     * `database/seeders/TestReferenceDataSeeder.php` and
+     * `.claude/rules/tests.md` -> "Reference data seeding".
+     */
+    protected $seeder = \Database\Seeders\TestReferenceDataSeeder::class;
 }
