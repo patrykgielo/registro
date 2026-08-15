@@ -27,6 +27,14 @@ is no longer the app-facing host anywhere (it remains correct as the VPS's own S
 This section is left as-is below as an accurate record of the state at first deploy — see
 `app/docs/deployment/domain-migration-registrolabs.md` for what changed and why.
 
+**Superseded 2026-08-16**: `.github/workflows/ci-staging.yml`, referenced throughout this document
+as an inherited-but-unexercised workflow, has been deleted. Confirmed dead before removal: zero
+runs in the repo's entire Actions history, `STAGING_VPS_*` secrets never existed (`gh secret list`
+empty), and the PreProd machine its `deploy` job targets is still unbought. Every `ci-staging.yml`
+reference below is historical — it describes a file that no longer exists, not a currently-live
+gap. See `.claude/rules/ci-cd-troubleshooting.md` (2026-08-16 entry) for the removal and for the
+`deploy-production.yml` build-cache/`skip_tests` changes made in the same session.
+
 ---
 
 ## 1. Blocking infra bugs — FIXED 2026-08-01 (`feature/deploy-infra-fixes`)

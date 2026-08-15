@@ -48,7 +48,6 @@ image is built by CI and pulled from GHCR.
 - All CI/CD workflows are `workflow_dispatch` (manual). Deploys go over SSH, not Actions.
 
 ### CI/CD Workflows (all disabled)
-- `.github/workflows/ci-staging.yml`
 - `.github/workflows/test.yml`
 - `.github/workflows/deploy-production.yml`
 - `.github/workflows/fix-styling.yml`

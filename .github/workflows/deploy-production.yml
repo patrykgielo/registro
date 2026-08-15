@@ -8,6 +8,16 @@ on:
         description: 'Release tag to build and deploy (vMAJOR.MINOR.PATCH)'
         required: true
         type: string
+      skip_tests:
+        description: 'DANGEROUS: skip the PHPUnit gate and deploy UNVERIFIED code. Requires skip_tests_confirm below to exactly match "version". A mismatch is safe: the tests just run anyway (see the build job log for a warning either way). Only for re-deploying a tag that already passed this exact pipeline.'
+        required: false
+        type: boolean
+        default: false
+      skip_tests_confirm:
+        description: 'To actually skip tests, retype the exact value of "version" above. Any mismatch (typo, empty, stale value) is safe: tests run as normal.'
+        required: false
+        type: string
+        default: ''
 
 # Prevent concurrent deployments - queue new ones, don't cancel
 concurrency:
@@ -18,6 +28,24 @@ jobs:
   test:
     name: PHPUnit Tests
     runs-on: ubuntu-latest
+    # Deliberately fail-safe, not fail-loud: skip ONLY when BOTH
+    # skip_tests=true AND skip_tests_confirm matches version EXACTLY. Any
+    # mismatch (typo, empty, a value left over from a previous dispatch)
+    # makes this condition false and the tests just run -- the same, safe
+    # default as skip_tests=false. No dedicated job validates this first:
+    # running the tests on a mismatch IS the safe fallback, not an error
+    # condition to report before the fact -- a prior version of this
+    # workflow used a separate `preflight` job for that validation and was
+    # corrected (GitHub Actions bills every job a minimum of one full
+    # minute regardless of runtime; a ~10s validation job would tax EVERY
+    # dispatch, including the overwhelming skip_tests=false majority, to
+    # serve the rare skip case -- see ci-cd-troubleshooting.md, 2026-08-16).
+    # Visibility on the outcome (skipped, or attempted-but-mismatched) lives
+    # in `build`'s "Report skip_tests outcome" step instead, which costs
+    # nothing extra: it's a step inside a job that already runs and is
+    # already billed for its own ~3 min.
+    if: |
+      !(inputs.skip_tests == true && inputs.skip_tests_confirm == inputs.version)
     permissions:
       contents: read
 
@@ -160,6 +188,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: test
+    # Default `needs:` semantics only run this job when every job in `needs`
+    # succeeded -- a job whose `if:` made it report "skipped" (the normal,
+    # deliberate outcome of a matched skip_tests) does NOT count as success by
+    # default, so without this explicit condition build would silently never
+    # run on any skip_tests deploy. `!cancelled()` (not the default
+    # `success()`) is required for the `needs.test.result == 'skipped'`
+    # branch to even be evaluated -- see GitHub's own docs on skipped jobs.
+    if: |
+      !cancelled() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
     permissions:
       contents: read
       packages: write
@@ -175,6 +213,25 @@ jobs:
           # existence check in "Resolve version".
           ref: ${{ inputs.version || github.ref }}
           fetch-depth: 0
+
+      # Only place skip_tests is surfaced to the operator (see `test`'s `if:`
+      # comment for why there's no dedicated validation job). Silent -- and
+      # cheap, just an `if:` check -- for the overwhelming skip_tests=false
+      # default. TEST_RESULT is guaranteed 'success' or 'skipped' here: this
+      # step only runs when build itself does, and build's own `if:` above
+      # already restricts it to exactly those two outcomes.
+      - name: Report skip_tests outcome
+        if: inputs.skip_tests == true
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          VERSION: ${{ inputs.version }}
+          CONFIRM: ${{ inputs.skip_tests_confirm }}
+        run: |
+          if [ "$TEST_RESULT" = "skipped" ]; then
+            echo "::warning::skip_tests=true -- the PHPUnit gate was SKIPPED for $VERSION by explicit operator request (skip_tests_confirm matched). This deploy is NOT verified by this pipeline run."
+          else
+            echo "::warning::skip_tests=true was requested but skip_tests_confirm ('$CONFIRM') did not match version ('$VERSION') -- the PHPUnit gate ran anyway (fail-safe default, not an error). Re-dispatch with skip_tests_confirm set to exactly '$VERSION' if you actually intended to skip."
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
@@ -202,24 +259,65 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
-      - name: Build image
-        run: |
-          docker build \
-            --no-cache \
-            --pull \
-            --build-arg OPCACHE_MODE=production \
-            --tag ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }} \
-            --tag ghcr.io/patrykgielo/registro:latest \
-            .
+      - name: Set up Docker Buildx
+        # The default "docker" driver buildx ships with on GH-hosted runners
+        # cannot export the registry/gha cache backends used below -- only
+        # the docker-container driver this action creates can. Required for
+        # cache-to/cache-from to do anything at all, not an optimization.
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
-      - name: Push image
-        run: |
-          docker push ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }}
-          docker push ghcr.io/patrykgielo/registro:latest
+      - name: Build and push image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          push: true
+          pull: true
+          # No supply-chain need for attestations on an internal deploy
+          # pipeline, and provenance/SBOM manifests are additional untagged
+          # objects under this same GHCR package -- disabling them keeps the
+          # only untagged garbage this job can create to the gha cache's own
+          # entries (which live in Actions cache storage, not GHCR, and are
+          # evicted by GitHub automatically -- see cache-to below).
+          provenance: false
+          sbom: false
+          build-args: |
+            OPCACHE_MODE=production
+          tags: |
+            ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }}
+            ghcr.io/patrykgielo/registro:latest
+          # type=gha, not type=registry: this pipeline only ever builds from
+          # workflow_dispatch against a git TAG (never a branch push), and
+          # GitHub's own cache access rule is "current ref, base ref, default
+          # branch" -- unverified here whether a tag ref counts as its own
+          # permanently-isolated scope (would make this cache a no-op across
+          # releases) or falls back to the default branch. type=registry has
+          # no such ambiguity (plain OCI pull, no ref ACL) but pays for it in
+          # GHCR storage that needs its own cleanup -- this repo's
+          # cleanup-cache.yml already targets a `buildcache-*` registry tag
+          # scheme for that reason, but zero such tags have ever existed
+          # (verified via `gh api .../packages/container/registro/versions`)
+          # because nothing ever wrote one; it predates this change and is
+          # unrelated to it, not modified here. type=gha costs nothing to get
+          # wrong: worst case is zero cache hit, same 3.3 min as today, no
+          # GHCR storage, no separate cleanup workflow to maintain. See
+          # ci-cd-troubleshooting.md for what to check after the first two
+          # real dispatches.
+          cache-from: type=gha,scope=registro-image
+          # mode=max caches the frontend-builder stage's layers too (npm ci,
+          # npm run build) -- mode=min (the default) only caches the final
+          # image's own layers and would never cache a stage that isn't
+          # copied whole into it. ignore-error=true: a cache-service hiccup
+          # must never fail an actual deploy over a lost optimization.
+          cache-to: type=gha,scope=registro-image,mode=max,ignore-error=true
 
   deploy:
     runs-on: ubuntu-latest
     needs: [test, build]
+    # Same "skipped test job still counts" reasoning as build's `if:` above.
+    if: |
+      !cancelled() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      needs.build.result == 'success'
     # This job never checks out code and never calls the GitHub API -- it only
     # opens an SSH session. An empty scope means a leaked GITHUB_TOKEN from any
     # step here can do nothing to the repository.

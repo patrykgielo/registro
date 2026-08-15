@@ -1,170 +1,132 @@
 # Release Process Guide
 
-This document describes the updated CI/CD workflow after fixing the multiple deployment issue.
+**Rewritten 2026-08-16** — everything below the old version of this document described a
+push-to-tag / auto-deploy-staging model that predates the "Disabled for Registro migration"
+comment now sitting at the top of every workflow file. That model has not matched reality for a
+long time: **all workflows are `workflow_dispatch` only.** Nothing deploys automatically from a
+push, a PR merge, or a tag push. `git push origin v4.2.0` today does nothing but push a tag.
 
-## Problem Solved
+There is no staging environment. UAT (`registrolabs.com`, live, one tenant) is the only real
+server; PreProd (`registroapps.com`) is a machine that has not been bought. `ci-staging.yml`, which
+used to describe a staging auto-deploy, was deleted 2026-08-16 — zero runs in its entire history,
+its `STAGING_VPS_*` secrets never existed. See `.claude/rules/ci-cd-troubleshooting.md`.
 
-**Before**: Merging to `main` triggered both test workflow AND deployment workflow simultaneously, causing conflicts and failed deployments.
-
-**After**: Deployments trigger ONLY on version tags (`v*.*.*`), not on push to `main`.
-
-## Updated Workflow
+## Current Workflow
 
 ### 1. Feature Development
 ```bash
 git checkout -b feature/my-feature develop
 # ... develop feature ...
 git push -u origin feature/my-feature
-# Create PR: feature/my-feature → develop
+gh pr create --base develop --title "feat: ..."
 ```
+`test.yml` (Run Tests) is `workflow_dispatch` only — it does **not** run automatically on push or
+PR. Dispatch it manually if you want a clean-room check of `develop` before tagging.
 
-**CI Actions**:
-- ✅ Tests run automatically on PR
-- ✅ Tests run on push to develop after merge
-
-### 2. Deploy to Staging (Automatic)
+### 2. Tag a Release
 ```bash
-# After PR merged to develop
-# Staging auto-deploys from develop branch
-```
-
-**CI Actions**:
-- ✅ Tests run on develop
-- ✅ Auto-deploy to staging (if configured)
-
-### 3. Create Release Branch
-```bash
-git checkout -b release/v4.2.0 develop
-# Update CHANGELOG.md
-# Bump version
-git commit -m "chore(release): prepare v4.2.0"
-git push -u origin release/v4.2.0
-```
-
-**CI Actions**:
-- ✅ Tests run on PR to main
-- ❌ NO deployment yet
-
-### 4. Manual Approval & Merge to Main
-```bash
-# After tests pass on staging
-# Manually review and approve PR: release/v4.2.0 → main
-# Use GitHub UI or:
-gh pr create --base main --head release/v4.2.0
-gh pr merge <PR_NUMBER> --merge  # Use merge commit, not squash
-```
-
-**CI Actions**:
-- ✅ Tests run as part of PR checks
-- ❌ NO deployment (push to main does NOT trigger deployment)
-
-### 5. Create Production Tag (Triggers Deployment)
-```bash
-git checkout main
-git pull origin main
+git checkout main   # or the branch you're releasing from
+git pull
 git tag -a v4.2.0 -m "Release v4.2.0 - Feature Description"
 git push origin v4.2.0
 ```
+Pushing the tag triggers **nothing**. It only makes `v4.2.0` resolvable for the next step.
 
-**CI Actions**:
-- ✅ **DEPLOYMENT TRIGGERED** by tag push
-- ✅ Tests run
-- ✅ Docker image built
-- ✅ Deployed to production
-
-### 6. Merge Back to Develop
+### 3. Dispatch the Deploy
 ```bash
-git checkout develop
-git merge --no-ff release/v4.2.0
-git push origin develop
-# Delete release branch
-git branch -d release/v4.2.0
-git push origin --delete release/v4.2.0
+gh workflow run deploy-production.yml -f version=v4.2.0
 ```
+This is the **only** thing that builds, tests, and deploys. It runs three-to-four jobs in order:
 
-**CI Actions**:
-- ✅ Tests run on develop
+| Job | What | Skippable |
+|-----|------|-----------|
+| `test` (PHPUnit) | Full Feature suite against `mysql:8.0`+`redis:7.2-alpine` | Only via `skip_tests` (below) |
+| `build` | Builds the image with `docker/build-push-action`, pushes `:VERSION` and `:latest` to GHCR | No |
+| `deploy` | SSHes to the VPS, runs `deploy.sh`, health-checks `/up` | No |
 
-## Key Changes
+No separate validation job for `skip_tests` — GitHub Actions bills every job a minimum of one full
+minute regardless of actual runtime, and a job that only compares two strings would tax that minute
+onto *every* dispatch, including the overwhelming `skip_tests=false` majority, to serve the rare
+skip case. The comparison lives directly in `test`'s own `if:` instead.
 
-| Workflow File | Trigger Before | Trigger After | Why |
-|---------------|----------------|---------------|-----|
-| `test.yml` | Push to `main`, `develop`, `staging` | Push to `develop`, `staging` only | Avoid duplicate test runs on main |
-| `deploy-production.yml` | Push to `main` | Push tags `v*.*.*` | Deploy only on explicit version tags |
+Each job requires the previous one to have **succeeded or been deliberately skipped** — a job that
+*failed* or was *cancelled* stops the chain; nothing after it runs.
 
-## Trigger Matrix
+### `skip_tests` — re-deploying an already-tested tag
 
-| Event | test.yml | deploy-production.yml |
-|-------|----------|----------------------|
-| PR to develop | ✅ | ❌ |
-| Push to develop | ✅ | ❌ |
-| PR to main | ✅ | ❌ |
-| Push to main | ❌ | ❌ |
-| Push tag `v4.2.0` | ❌ | ✅ (test + build + deploy) |
-
-## Manual Deployment (Emergency)
-
-If you need to deploy without a tag (NOT recommended):
+Added 2026-08-16. Re-running the full pipeline against a tag that already passed it once (e.g. a
+deploy step failed for an infra reason and you're retrying the exact same, unchanged commit) used
+to pay for the test job a second time for an identical result.
 
 ```bash
-# Use workflow_dispatch in GitHub UI
-gh workflow run deploy-production.yml
+gh workflow run deploy-production.yml \
+  -f version=v4.2.0 \
+  -f skip_tests=true \
+  -f skip_tests_confirm=v4.2.0
 ```
 
-## Rollback Procedure
+Both `skip_tests=true` **and** `skip_tests_confirm` matching `version` **exactly** are required —
+this is deliberate, not an accident-tolerant boolean:
+- `skip_tests=false` (the default): tests always run. Nothing about `skip_tests_confirm` matters.
+- `skip_tests=true` + `skip_tests_confirm` **matching** `version`: tests are skipped.
+- `skip_tests=true` + `skip_tests_confirm` **not matching** (wrong tag, empty, typo, a value left
+  over from a previous dispatch): **fail-safe, not fail-loud** — the tests just run anyway, exactly
+  as if `skip_tests=false` had been set. The deploy is not aborted over a typo in a field whose only
+  job is opting into something optional.
 
-If deployment fails:
+Either way, `build`'s "Report skip_tests outcome" step prints a `::warning::` whenever
+`skip_tests=true` was requested at all — one message if the skip actually took effect, a different
+one if it didn't (confirm mismatch) and the tests ran instead. Check that step's log if you're
+unsure whether a deploy was tested. This lives in `build` (which always runs once `test` has
+succeeded or been skipped) rather than a dedicated validation job, for the same per-job billing
+reason noted above.
 
+**Only use this for a tag that has already passed `test` in this exact pipeline once.** It does not
+check that for you — no automated "has this tag passed before" lookup was built (considered and
+rejected: matching a tag to a prior successful run by tag name is fragile if the tag is ever
+re-pointed at a different commit, and an automated green-light is exactly the kind of "looks safe by
+itself" mechanism this flag is designed to avoid — see `.claude/rules/ci-cd-troubleshooting.md`).
+
+### Docker layer cache
+
+`build`'s "Build and push image" step now caches Docker layers via
+`cache-from/cache-to: type=gha` (GitHub Actions cache, scope `registro-image`, `mode=max` so the
+frontend-builder stage's `npm ci`/`npm run build` layers are cached too, not just the final image).
+Chosen over a GHCR registry cache (`type=registry`) because this pipeline only ever builds from a
+git **tag** via `workflow_dispatch`, never a branch push, and GitHub's cache access rule ("current
+ref, base ref, default branch") is unverified for whether a tag ref gets its own permanently
+isolated cache scope — `type=registry` has no such ambiguity but costs GHCR storage that would need
+its own cleanup. `type=gha` costs nothing to get wrong: worst case is zero cache hit (same build
+time as before), no registry storage, nothing to clean up. `cleanup-cache.yml` targets a
+`buildcache-*` GHCR tag scheme unrelated to this cache and untouched by this change — it predates
+this decision and has never had anything to clean (verified: zero `buildcache-*` package versions
+exist).
+
+**What to check after your first two real dispatches** (this could not be verified without a live
+run): dispatch two different version tags back to back, and look at the `build` job's "Build and
+push image" step log on the *second* run. Steps that hit the cache are annotated `CACHED` in
+BuildKit's output. If the apt-get/`docker-php-ext-install`/`composer install`/`npm ci` layers show
+`CACHED` on the second run, cross-tag cache reuse works as designed. If none do, GitHub's ref-ACL is
+scoping the cache per-tag and it is providing zero benefit for this pipeline shape — the fallback is
+`type=registry` with a single reused tag (e.g. `buildcache-latest`) and `provenance: false` to keep
+the untagged-manifest surface minimal.
+
+## Rollback
+
+If a deploy fails after `build` succeeded (i.e. after the image was pushed), re-dispatch with the
+previous known-good version:
 ```bash
-# Option 1: Re-tag previous version
-git tag -d v4.2.0                    # Delete failed tag locally
-git push origin --delete v4.2.0      # Delete failed tag remotely
-git push origin v4.1.0               # Re-push previous good version (triggers deploy)
-
-# Option 2: Create hotfix
-git checkout -b hotfix/v4.2.1 main
-# ... fix issue ...
-git tag -a v4.2.1 -m "Hotfix: ..."
-git push origin v4.2.1
+gh workflow run deploy-production.yml -f version=v4.1.0
 ```
+`deploy.sh` on the server is the actual rollback mechanism — see
+`app/docs/deployment/instalacja-tenanta-od-zera.md`. There is no tag-push-triggers-rollback
+mechanism; nothing in this repo triggers off tag pushes at all.
 
 ## Best Practices
 
-1. **Always test on staging** before creating production tag
-2. **Use semantic versioning** for tags (v4.2.0, v4.2.1, v4.3.0)
-3. **Write detailed tag messages** with changelog summary
-4. **Wait for CI tests** to pass before creating tag
-5. **Never force-push tags** - use new patch version instead
-
-## Example Tag Message
-
-```bash
-git tag -a v4.2.0 -m "Release v4.2.0 - Google Maps Picker Fix
-
-Added:
-- Geographic service area restriction system
-- Google Maps picker component for admin panel
-
-Fixed:
-- CRITICAL: Livewire/Alpine.js state conflict
-- 95%+ improvement in map interaction
-
-See: CHANGELOG.md"
-```
-
-## Troubleshooting
-
-### Multiple Workflows Running
-**Problem**: Tests and deployments running simultaneously
-
-**Solution**: Check that you're using the updated workflow files (push tags only for deployment)
-
-### Deployment Not Triggering
-**Problem**: Pushed tag but deployment didn't run
-
-**Solution**: Verify tag format matches `v*.*.*` (e.g., v4.2.0, NOT 4.2.0)
-
-### Tests Failing on Main
-**Problem**: Can't merge PR because tests fail
-
-**Solution**: Fix tests on release branch, push changes, tests will re-run
+1. Dispatch `test.yml` on `develop` before tagging, if you want a signal before committing to a tag.
+2. Use semantic versioning for tags (`v4.2.0`, `v4.2.1`, `v4.3.0`) — `deploy-production.yml`'s
+   "Resolve version" step rejects anything not shaped `vMAJOR.MINOR.PATCH[-suffix]`.
+3. Never force-push tags — cut a new patch version instead.
+4. Treat `skip_tests` as an escape hatch for a known-tested tag, not a way to go faster on a tag
+   you haven't run through this pipeline yet.
