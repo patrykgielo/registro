@@ -209,10 +209,4 @@ class EmailRetryTest extends TestCase
         $this->assertSame(1, EmailSend::count());
         $this->assertNotNull($second->fresh()->error_message);
     }
-
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
-    }
 }

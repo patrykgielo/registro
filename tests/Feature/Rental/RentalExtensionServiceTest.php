@@ -53,11 +53,23 @@ class RentalExtensionServiceTest extends TestCase
         app('request')->attributes->set('tenant', $this->org);
     }
 
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
-    }
+    // Deliberately NO custom tearDown() here. Illuminate\Foundation\Testing\TestCase's
+    // own tearDown() already calls Mockery::close() -- but only AFTER it runs
+    // RefreshDatabase's rollback (via callBeforeApplicationDestroyedCallbacks()), and
+    // it does so inside a try/catch that lets InvalidCountException surface without
+    // skipping cleanup. A `tearDown() { Mockery::close(); parent::tearDown(); }`
+    // override (removed here 2026-08-15) calls Mockery::close() BEFORE that rollback:
+    // when a shouldReceive(...)->once() expectation goes unmet, Mockery::close()
+    // throws and parent::tearDown() -- and therefore the rollback -- never runs. On
+    // MySQL that leaves the whole per-test transaction (RolePermissionSeeder's ~150
+    // rows included) open on an abandoned connection, holding an exclusive lock on
+    // permissions.name='settings.manage' (the first row TestCase::setUp() seeds on
+    // every RefreshDatabase test) until PHP's GC eventually reclaims the leaked
+    // Application container. Every later RefreshDatabase test in the run -- any
+    // class -- then blocks on that lock for the full innodb_lock_wait_timeout (50s)
+    // before itself throwing SQLSTATE[HY000]: 1205, cascading for several tests.
+    // SQLite never surfaces this: FOR UPDATE/row-level gap locks don't apply. See
+    // .claude/rules/tests.md.
 
     // -------------------------------------------------------------------------
     // Helper: mock EmailService so ShouldQueueAfterCommit tests observe whether

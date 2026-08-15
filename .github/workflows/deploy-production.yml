@@ -129,6 +129,17 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: secret
 
+      # QUEUE_CONNECTION/CACHE_DRIVER/CACHE_STORE are deliberately sync/array here,
+      # matching .env.testing exactly -- NOT redis, despite production running
+      # redis for both. This block only needs to override what .env.testing can't
+      # (DB_*, to point at this job's ephemeral MySQL 8.0 service instead of
+      # SQLite). QUEUE_CONNECTION=redis here (inherited unvalidated from this
+      # workflow's very first commit, never exercised until this suite's first
+      # real MySQL run) silently defers every ShouldQueueAfterCommit notification
+      # dispatch -- hundreds of Feature tests are written assuming .env.testing's
+      # synchronous pipeline (see e.g. ProcessRentalReturnRemindersJobTest's own
+      # docblock) and fail on an unrelated queue driver mismatch, not a real bug.
+      # See .claude/rules/tests.md and .claude/rules/ci-cd-troubleshooting.md.
       - name: Run PHPUnit tests
         run: |
           php artisan config:clear
@@ -140,11 +151,9 @@ jobs:
           DB_DATABASE: registro_test
           DB_USERNAME: root
           DB_PASSWORD: secret
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: 6379
-          QUEUE_CONNECTION: redis
-          CACHE_DRIVER: redis
-          CACHE_STORE: redis
+          QUEUE_CONNECTION: sync
+          CACHE_DRIVER: array
+          CACHE_STORE: array
           SESSION_DRIVER: array
           MAIL_MAILER: array
 

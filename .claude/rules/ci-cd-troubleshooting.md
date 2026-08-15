@@ -789,3 +789,50 @@ plik, który nigdy nie został faktycznie uruchomiony, nie jest zweryfikowaną i
 jej opisem. `gh run list` przed zaufaniem dowolnemu `.github/workflows/*.yml` — zero przebiegów w
 historii znaczy dokładnie to samo, co "nieprzetestowany kod": spodziewaj się więcej niż jednego
 błędu przy pierwszym realnym uruchomieniu, nie tylko tego, który akurat zgłosił CI.
+
+---
+
+## Incydent 2026-08-15 (kontynuacja powyższego): silnik naprawiony, bramka i tak padała — 27
+## failures niewidocznych na SQLite, trzy niezależne przyczyny + jeden zaszły w CI od zawsze błąd
+
+Bezpośrednia kontynuacja incydentu powyżej (PR #187 naprawił `mariadb:10.11` → `mysql:8.0`). Ten
+sam commit (`v0.13.0-rc11`): `docker compose exec app php artisan test` → 833 passed na SQLite,
+zero failures. Bramka na `mysql:8.0` → **27 failed, 5 skipped, 806 passed**, 440s. Pełna analiza
+mechanizmów + fix: `.claude/rules/tests.md` → "MySQL 8.0 gate — what SQLite hides" (nie duplikowane
+tutaj). Skrót czterech przyczyn:
+
+1. Raw `PRAGMA foreign_keys = OFF` (SQLite-only) w jednym teście — 1064 syntax error na MySQL.
+2. Fixture wstawiająca `payments.status = 'verified'`, wartość spoza realnego enuma
+   (`pending|success|failed|refunded`) — SQLite nie egzekwuje ENUM-a, MySQL odrzuca (1265).
+3. **Realny, poważny mechanizm:** cztery pliki testowe miały `tearDown() { Mockery::close();
+   parent::tearDown(); }` — odwrócona kolejność względem WŁASNEGO bezpiecznego `tearDown()`
+   Laravela (który wywołuje `Mockery::close()` DOPIERO po rollbacku `RefreshDatabase`). Gdy
+   oczekiwanie mocka nie zostało spełnione, `Mockery::close()` rzucał PRZED rollbackiem — cała
+   transakcja testu (~150 wierszy z `RolePermissionSeeder`) zostawała otwarta na porzuconym
+   połączeniu, trzymając blokadę na `permissions.name = 'settings.manage'` aż PHP-owy GC w końcu
+   posprząta zerwany kontener aplikacji — dłużej niż jeden `innodb_lock_wait_timeout` (50s).
+   KAŻDY kolejny test RefreshDatabase w CAŁYM pozostałym przebiegu (dowolna klasa) blokował się na
+   pełne 50s zanim sam rzucił `SQLSTATE[HY000]: 1205`, kaskadowo przez kilka testów z rzędu.
+4. **Faktyczny wyzwalacz #3, obecny w workflow od PIERWSZEGO commita repo, nigdy niezweryfikowany:**
+   krok "Run PHPUnit tests" ustawiał `QUEUE_CONNECTION=redis`/`CACHE_DRIVER=redis`/`CACHE_STORE=redis`,
+   nadpisując celowe `sync`/`array` z `.env.testing`, na którym oparte są setki istniejących testów
+   (dokumentowane wprost w docblockach, np. `ProcessRentalReturnRemindersJobTest`). Pod `redis`
+   każdy `ShouldQueueAfterCommit` po prostu czekał nieprzetworzony w Redisie zamiast wykonać się
+   synchronicznie w teście.
+
+**Naprawa:** krok "Run PHPUnit tests" w `deploy-production.yml` — `QUEUE_CONNECTION`/`CACHE_DRIVER`/
+`CACHE_STORE` z powrotem na `sync`/`array` (ten krok legalnie nadpisuje tylko `DB_*`, żeby wskazać
+efemeryczny `mysql:8.0` zamiast SQLite). 4 pliki testowe: usunięty szkodliwy `tearDown()` override
+(bazowa klasa Laravela już bezpiecznie wywołuje `Mockery::close()`). 2 pliki testowe: naprawione
+fixture/asercje (enum, PRAGMA→`Schema::disableForeignKeyConstraints()`). 2 kolejne pliki testowe:
+naprawione osobne, niezwiązane założenia "zawsze SQLite" (`OrganizationSingletonLockMigrationTest`,
+`TenantProvisioningGuardsTest`). Zweryfikowane realnym `mysql:8.0` (tymczasowy kontener, nigdy
+dev-baza): 27/27 uprzednio failing testów → PASS pojedynczo i w grupie; pełny `--testsuite=Feature`
+raz na końcu → **0 failed, 5 skipped (zaszłe, niezwiązane), 833 passed**.
+
+**Zasada:** ten sam bug klasy "plik nigdy faktycznie nie uruchomiony" (patrz zasada incydentu
+powyżej) — `QUEUE_CONNECTION: redis` siedziało w tym kroku od `4d20ef4` (initial commit), zero
+przebiegów przez całą historię repo aż do tego dnia. Migracja z projektu-szablonu bez lokalnej
+walidacji = dług, który czeka cicho aż ktoś faktycznie uruchomi ścieżkę. Osobno: `Mockery::close()`
+w customowym `tearDown()` PRZED `parent::tearDown()` to wzorzec do unikania zawsze, niezależnie od
+silnika bazy — Laravel już robi to bezpiecznie sam; SQLite tylko maskował konsekwencję.

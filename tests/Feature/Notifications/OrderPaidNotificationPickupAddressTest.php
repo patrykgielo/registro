@@ -188,10 +188,4 @@ class OrderPaidNotificationPickupAddressTest extends TestCase
         $this->assertStringNotContainsString(', Poznań', $send->body_html);
         $this->assertStringContainsString('Poznań', $send->body_html);
     }
-
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
-    }
 }

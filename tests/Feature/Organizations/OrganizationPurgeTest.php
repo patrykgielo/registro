@@ -220,7 +220,13 @@ class OrganizationPurgeTest extends TestCase
             'p24_order_id' => 'ord-456',
             'amount' => 10000,
             'currency' => 'PLN',
-            'status' => 'verified',
+            // payments.status enum is pending|success|failed|refunded (see
+            // 2026_03_26_000005_create_payments_table.php) -- 'verified' isn't a
+            // member and is a 1265 data-truncation warning-turned-error on MySQL's
+            // default strict mode; SQLite doesn't enforce the ENUM so this silently
+            // "worked" there. 'success' matches what Przelewy24Service actually
+            // writes on a verified payment (Przelewy24Service.php:177).
+            'status' => 'success',
             'webhook_payload' => json_encode(['email' => 'x@x.com', 'amount' => 10000]),
             'created_at' => now(),
             'updated_at' => now(),
@@ -237,7 +243,7 @@ class OrganizationPurgeTest extends TestCase
         $this->assertSame('sess-123', $payment->p24_session_id);
         $this->assertSame('ord-456', $payment->p24_order_id);
         $this->assertSame(10000, (int) $payment->amount);
-        $this->assertSame('verified', $payment->status);
+        $this->assertSame('success', $payment->status);
     }
 
     public function test_anonymize_clears_appointment_pii_but_keeps_invoice_fields(): void

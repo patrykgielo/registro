@@ -118,7 +118,10 @@ Priorytet env variables (od najwyższego):
 ### CRITICAL: Tests MUST pass in CI environment
 
 **CI Environment Differences:**
-- Uses SQLite in-memory database (`.env.testing` + `phpunit.xml`)
+- Uses SQLite in-memory database (`.env.testing` + `phpunit.xml`) for `docker compose exec app php artisan test`
+- The RELEASE GATE (`deploy-production.yml`'s "PHPUnit Tests" job) runs the SAME Feature suite
+  against a real ephemeral **`mysql:8.0`** service, matching production's engine — see the
+  "MySQL 8.0 gate" section below. A change that only passes on SQLite is NOT done.
 - Uses `APP_LOCALE=pl` (configured in phpunit.xml)
 - No Docker services (Redis may use `array` driver)
 - `.env.testing` is committed to repo — provides safe test defaults
@@ -154,6 +157,75 @@ $this->assertEquals($expected, $errorMessage);
 1. Run `./vendor/bin/pint --test` - code style check
 2. Run `docker compose exec app php artisan test` - tests in Docker
 3. OR run tests with SQLite: `php artisan test` (requires pdo_sqlite)
+
+## MySQL 8.0 gate (`deploy-production.yml`) — what SQLite hides
+
+The Feature suite ran against real `mysql:8.0` for the first time on 2026-08-15 (v0.13.0-rc11,
+after PR #187 fixed the gate's DB image from `mariadb:10.11`) and immediately surfaced **27
+failures that were invisible on SQLite** — 0 on `docker compose exec app php artisan test`, same
+commit. Three genuinely independent mechanisms, none of them a MySQL "flakiness" issue:
+
+**1. Raw `PRAGMA foreign_keys = OFF/ON` is SQLite-only syntax** — 1064 syntax error on MySQL.
+Use `Schema::disableForeignKeyConstraints()` / `Schema::enableForeignKeyConstraints()` instead —
+Laravel compiles the right statement per driver (`PRAGMA` on SQLite, `SET FOREIGN_KEY_CHECKS` on
+MySQL). Grep for `PRAGMA` in `tests/**` before adding a new one.
+
+**2. SQLite never enforces `ENUM`.** A fixture inserting a string outside a column's real enum
+(`payments.status = 'verified'` when the migration declares `pending|success|failed|refunded`)
+silently "works" on SQLite (stored as plain text, no constraint) and throws
+`1265 Data truncated for column` on MySQL. Any `DB::table(...)->insert([...])` fixture bypassing a
+factory must be checked against the column's REAL enum in its migration, not assumed correct
+because it didn't crash — the codebase's real orders/order_items status columns are plain
+`string()`, not enum, so this only bites the columns that genuinely are enums (grep
+`$table->enum(` in `database/migrations/**` for the current list).
+
+**3. `tearDown() { Mockery::close(); parent::tearDown(); }` inverts Laravel's own safe cleanup
+order and can leak the per-test transaction on MySQL.** `Illuminate\Foundation\Testing\TestCase`'s
+own `tearDown()` already calls `Mockery::close()` — but only AFTER
+`callBeforeApplicationDestroyedCallbacks()` (which runs `RefreshDatabase`'s rollback), and inside a
+try/catch that still lets `InvalidCountException` surface without skipping cleanup. A test file
+that manually calls `Mockery::close()` FIRST, before `parent::tearDown()`, bypasses that ordering:
+if a `shouldReceive(...)->once()` expectation goes unmet, `Mockery::close()` throws right there and
+`parent::tearDown()` — the rollback — never runs. On SQLite this is harmless (no InnoDB-style
+cross-connection row/gap locking). On MySQL the whole per-test transaction (RolePermissionSeeder's
+~150 rows from `TestCase::setUp()` included) is left open on an abandoned connection, holding an
+exclusive lock on `permissions.name = 'settings.manage'` (the first row every RefreshDatabase test
+seeds) until PHP's GC eventually reclaims the leaked Application container — which can take longer
+than one MySQL `innodb_lock_wait_timeout` (default 50s). Every OTHER RefreshDatabase test that
+reaches its own seeding in the meantime — any class, unrelated to the one that leaked — blocks for
+the full 50s before itself throwing `SQLSTATE[HY000]: 1205 Lock wait timeout exceeded`, cascading
+for several tests in a row. **Never write a custom `tearDown()` that calls `Mockery::close()`
+yourself** — the base class already does it, correctly ordered; if you need extra teardown logic,
+put it in a method Laravel calls via `setUpTraits()`'s `tearDown{TraitName}` convention, not a raw
+override that runs before `parent::tearDown()`.
+
+The actual TRIGGER for #3 in this incident was unrelated to MySQL itself: `deploy-production.yml`'s
+"Run PHPUnit tests" step set `QUEUE_CONNECTION: redis` / `CACHE_DRIVER: redis` / `CACHE_STORE:
+redis` (inherited unvalidated from the workflow's very first commit — this job had literally never
+run before), overriding `.env.testing`'s deliberate `sync`/`array` defaults that hundreds of
+existing tests are written against (see e.g. `ProcessRentalReturnRemindersJobTest`'s own docblock).
+Under `redis`, every `ShouldQueueAfterCommit` notification dispatch just sits unprocessed in Redis
+instead of running synchronously inside the test — `EmailSend::where(...)->firstOrFail()` throws
+`ModelNotFoundException`, a `Mockery::mock(EmailService::class)->shouldReceive('sendFromTemplate')
+->once()` sees 0 calls, etc. Fixed by making that step's queue/cache vars match `.env.testing`
+(`sync`/`array`) — this job only legitimately needs to override `DB_*`, to point at the ephemeral
+MySQL 8.0 service instead of SQLite. Test suites should be deterministic; if a real Redis-queue
+integration test is ever wanted, it should be a small, explicitly-scoped test, not the default
+queue driver for the entire Feature suite.
+
+**Two more failures were pre-existing SQLite-vs-MySQL environment-parity gaps in the tests
+themselves, not the mechanisms above** — `OrganizationSingletonLockMigrationTest` hardcoded
+`assertSame('sqlite', DB::connection()->getDriverName())` when the actual invariant under test
+("column absent when `TENANT_SLUG` is unset") holds on any driver; and
+`TenantProvisioningGuardsTest::test_assert_passes_when_slug_and_database_agree` set `TENANT_SLUG`
+via `config()->set()` at runtime, which can never retroactively trigger the singleton-lock
+migration's own `shouldLockSingleton()` guard (mysql + tenant_slug already set at **migrate** time)
+in a harness that migrates once, before any test runs — fixed by adding the column directly in the
+test, matching what the real migration would have built.
+
+**Full incident + fix**: `.claude/rules/ci-cd-troubleshooting.md` → "Incydent 2026-08-15" and the
+one directly above it (DB engine). Before adding a NEW raw `DB::statement()`/fixture-with-a-status/
+custom `tearDown()` to any Feature test: check this list first.
 
 ## tests/Browser (Pest v4 real-browser E2E)
 
