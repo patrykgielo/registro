@@ -260,16 +260,40 @@ jobs:
 
       - name: Health Check (Post-Deployment)
         timeout-minutes: 5
+        env:
+          # secrets.VPS_HOST is the SSH-only hostname (srv1342834.hstgr.cloud) and
+          # is deliberately NOT reused here: the TLS certificate only covers the
+          # app domain (registrolabs.com and its SANs), so hitting VPS_HOST over
+          # HTTPS fails on the TLS handshake before the app is ever asked
+          # anything -- a deploy can succeed while this job goes red for a
+          # reason that has nothing to do with the deploy.
+          #
+          # vars.HEALTH_CHECK_HOST must name a host the *current* certificate
+          # covers. No fallback to VPS_HOST or to a hardcoded domain on purpose:
+          # a fallback that "just works" today is exactly how this broke in the
+          # first place (an app-domain migration on 2026-08-08 left this check
+          # silently pointed at the wrong host for a week). An unset variable
+          # fails the job immediately instead of quietly checking nothing.
+          HEALTH_CHECK_HOST: ${{ vars.HEALTH_CHECK_HOST }}
         run: |
-          echo "Verifying application health..."
+          if [ -z "$HEALTH_CHECK_HOST" ]; then
+            echo "::error::vars.HEALTH_CHECK_HOST is not set. Set it to the app domain covered by the TLS certificate (currently registrolabs.com) in repo/environment variables -- do NOT reuse secrets.VPS_HOST, it is SSH-only and outside the cert's SAN list."
+            exit 1
+          fi
+          echo "Verifying application health against https://${HEALTH_CHECK_HOST}/up ..."
           for i in {1..30}; do
-            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" https://${{ secrets.VPS_HOST }}/up 2>/dev/null || echo "000")
+            CURL_RC=0
+            HTTP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://${HEALTH_CHECK_HOST}/up" 2>/tmp/health_check_err)" || CURL_RC=$?
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Health check passed (HTTP $HTTP_CODE)"
               exit 0
             fi
-            echo "Attempt $i/30: HTTP $HTTP_CODE, retrying..."
+            if [ "$CURL_RC" -ne 0 ]; then
+              echo "Attempt $i/30: curl failed (exit $CURL_RC): $(tr '\n' ' ' < /tmp/health_check_err)"
+            else
+              echo "Attempt $i/30: HTTP $HTTP_CODE"
+            fi
             sleep 10
           done
-          echo "Health check failed after 5 minutes"
+          echo "::error::Health check failed after 5 minutes against https://${HEALTH_CHECK_HOST}/up"
           exit 1
