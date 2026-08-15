@@ -22,21 +22,36 @@ jobs:
       contents: read
 
     services:
-      mariadb:
-        image: mariadb:10.11
+      # mysql:8.0, not mariadb -- must match docker-compose.prod.yml's `mysql`
+      # service exactly. Production runs MySQL 8.0.46 (verified from the UAT
+      # dump header, "mysqldump 10.13 Distrib 8.0.46"); MariaDB rejects the
+      # `->>` JSON operator MySQL 8 accepts, so a MariaDB gate can never pass
+      # a migration that is valid on the engine we actually deploy to. See
+      # ci-cd-troubleshooting.md, incident dated the day this was fixed.
+      mysql:
+        image: mysql:8.0
         ports:
           - 3306:3306
         env:
           MYSQL_ROOT_PASSWORD: secret
           MYSQL_DATABASE: registro_test
+        # Command and flags unchanged from the old mariadb block on purpose --
+        # verified directly against mysql:8.0 (not assumed): `mysqladmin ping
+        # -h127.0.0.1 -psecret --silent` with no explicit -u succeeds the same
+        # way it did against mariadb, and a root@% grant exists on mysql:8.0
+        # by default (confirmed via `SELECT user,host FROM mysql.user`), so
+        # the plain TCP root login below needs no extra flags either.
         options: >-
           --health-cmd="mysqladmin ping -h127.0.0.1 -psecret --silent"
           --health-interval=5s
           --health-timeout=3s
           --health-retries=10
 
+      # 7.2-alpine, not 7.0 -- must match docker-compose.prod.yml's `redis`
+      # service (image: redis:7.2-alpine). Same class of drift as mysql/mariadb
+      # above: a gate that never ran on the engine we deploy against.
       redis:
-        image: redis:7.0
+        image: redis:7.2-alpine
         ports:
           - 6379:6379
         options: >-
