@@ -9,12 +9,12 @@ on:
         required: true
         type: string
       skip_tests:
-        description: 'DANGEROUS: skip the PHPUnit gate and deploy UNVERIFIED code. Requires skip_tests_confirm below to exactly match "version". Only for re-deploying a tag that already passed this exact pipeline.'
+        description: 'DANGEROUS: skip the PHPUnit gate and deploy UNVERIFIED code. Requires skip_tests_confirm below to exactly match "version". A mismatch is safe: the tests just run anyway (see the build job log for a warning either way). Only for re-deploying a tag that already passed this exact pipeline.'
         required: false
         type: boolean
         default: false
       skip_tests_confirm:
-        description: 'To actually skip tests, retype the exact value of "version" above. Any mismatch fails the run immediately, before anything is built.'
+        description: 'To actually skip tests, retype the exact value of "version" above. Any mismatch (typo, empty, stale value) is safe: tests run as normal.'
         required: false
         type: string
         default: ''
@@ -25,45 +25,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single source of truth for "are we skipping tests", so the three jobs
-  # below never each re-implement the boolean+confirm comparison and risk
-  # drifting apart. Fails the whole run in seconds (before checkout, before
-  # any MySQL/Redis service container spins up) if skip_tests=true was set
-  # with a confirm value that does NOT match -- silently falling back to
-  # "run tests anyway" would be safe, but it would also be invisible: the
-  # operator asked to skip, got a slower deploy instead, and nothing told
-  # them why. Fail loud instead of fail quiet-but-safe.
-  preflight:
-    name: Resolve skip_tests
-    runs-on: ubuntu-latest
-    permissions: {}
-    outputs:
-      skip_tests: ${{ steps.resolve.outputs.skip }}
-    steps:
-      - name: Validate skip_tests confirmation
-        id: resolve
-        env:
-          SKIP_TESTS: ${{ inputs.skip_tests }}
-          CONFIRM: ${{ inputs.skip_tests_confirm }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          if [ "$SKIP_TESTS" != "true" ]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$CONFIRM" = "$VERSION" ]; then
-            echo "::warning::skip_tests=true -- the PHPUnit gate is being SKIPPED for $VERSION by explicit operator request. This deploy is NOT verified by this pipeline run. Only correct for re-deploying a tag that already passed here once."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::skip_tests=true but skip_tests_confirm ('$CONFIRM') does not match version ('$VERSION'). Refusing to guess: set skip_tests_confirm to exactly '$VERSION' to skip, or leave skip_tests=false to run the tests."
-            exit 1
-          fi
-
   test:
     name: PHPUnit Tests
     runs-on: ubuntu-latest
-    needs: preflight
-    if: needs.preflight.outputs.skip_tests != 'true'
+    # Deliberately fail-safe, not fail-loud: skip ONLY when BOTH
+    # skip_tests=true AND skip_tests_confirm matches version EXACTLY. Any
+    # mismatch (typo, empty, a value left over from a previous dispatch)
+    # makes this condition false and the tests just run -- the same, safe
+    # default as skip_tests=false. No dedicated job validates this first:
+    # running the tests on a mismatch IS the safe fallback, not an error
+    # condition to report before the fact -- a prior version of this
+    # workflow used a separate `preflight` job for that validation and was
+    # corrected (GitHub Actions bills every job a minimum of one full
+    # minute regardless of runtime; a ~10s validation job would tax EVERY
+    # dispatch, including the overwhelming skip_tests=false majority, to
+    # serve the rare skip case -- see ci-cd-troubleshooting.md, 2026-08-16).
+    # Visibility on the outcome (skipped, or attempted-but-mismatched) lives
+    # in `build`'s "Report skip_tests outcome" step instead, which costs
+    # nothing extra: it's a step inside a job that already runs and is
+    # already billed for its own ~3 min.
+    if: |
+      !(inputs.skip_tests == true && inputs.skip_tests_confirm == inputs.version)
     permissions:
       contents: read
 
@@ -205,17 +187,16 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [preflight, test]
+    needs: test
     # Default `needs:` semantics only run this job when every job in `needs`
     # succeeded -- a job whose `if:` made it report "skipped" (the normal,
-    # deliberate outcome of skip_tests=true) does NOT count as success by
+    # deliberate outcome of a matched skip_tests) does NOT count as success by
     # default, so without this explicit condition build would silently never
     # run on any skip_tests deploy. `!cancelled()` (not the default
     # `success()`) is required for the `needs.test.result == 'skipped'`
     # branch to even be evaluated -- see GitHub's own docs on skipped jobs.
     if: |
       !cancelled() &&
-      needs.preflight.result == 'success' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
     permissions:
       contents: read
@@ -232,6 +213,25 @@ jobs:
           # existence check in "Resolve version".
           ref: ${{ inputs.version || github.ref }}
           fetch-depth: 0
+
+      # Only place skip_tests is surfaced to the operator (see `test`'s `if:`
+      # comment for why there's no dedicated validation job). Silent -- and
+      # cheap, just an `if:` check -- for the overwhelming skip_tests=false
+      # default. TEST_RESULT is guaranteed 'success' or 'skipped' here: this
+      # step only runs when build itself does, and build's own `if:` above
+      # already restricts it to exactly those two outcomes.
+      - name: Report skip_tests outcome
+        if: inputs.skip_tests == true
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          VERSION: ${{ inputs.version }}
+          CONFIRM: ${{ inputs.skip_tests_confirm }}
+        run: |
+          if [ "$TEST_RESULT" = "skipped" ]; then
+            echo "::warning::skip_tests=true -- the PHPUnit gate was SKIPPED for $VERSION by explicit operator request (skip_tests_confirm matched). This deploy is NOT verified by this pipeline run."
+          else
+            echo "::warning::skip_tests=true was requested but skip_tests_confirm ('$CONFIRM') did not match version ('$VERSION') -- the PHPUnit gate ran anyway (fail-safe default, not an error). Re-dispatch with skip_tests_confirm set to exactly '$VERSION' if you actually intended to skip."
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
@@ -312,11 +312,10 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [preflight, test, build]
+    needs: [test, build]
     # Same "skipped test job still counts" reasoning as build's `if:` above.
     if: |
       !cancelled() &&
-      needs.preflight.result == 'success' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped') &&
       needs.build.result == 'success'
     # This job never checks out code and never calls the GitHub API -- it only

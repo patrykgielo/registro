@@ -40,10 +40,14 @@ This is the **only** thing that builds, tests, and deploys. It runs three-to-fou
 
 | Job | What | Skippable |
 |-----|------|-----------|
-| `preflight` | Validates `skip_tests`/`skip_tests_confirm`, always runs, ~5s | No |
 | `test` (PHPUnit) | Full Feature suite against `mysql:8.0`+`redis:7.2-alpine` | Only via `skip_tests` (below) |
 | `build` | Builds the image with `docker/build-push-action`, pushes `:VERSION` and `:latest` to GHCR | No |
 | `deploy` | SSHes to the VPS, runs `deploy.sh`, health-checks `/up` | No |
+
+No separate validation job for `skip_tests` — GitHub Actions bills every job a minimum of one full
+minute regardless of actual runtime, and a job that only compares two strings would tax that minute
+onto *every* dispatch, including the overwhelming `skip_tests=false` majority, to serve the rare
+skip case. The comparison lives directly in `test`'s own `if:` instead.
 
 Each job requires the previous one to have **succeeded or been deliberately skipped** — a job that
 *failed* or was *cancelled* stops the chain; nothing after it runs.
@@ -64,13 +68,18 @@ gh workflow run deploy-production.yml \
 Both `skip_tests=true` **and** `skip_tests_confirm` matching `version` **exactly** are required —
 this is deliberate, not an accident-tolerant boolean:
 - `skip_tests=false` (the default): tests always run. Nothing about `skip_tests_confirm` matters.
-- `skip_tests=true` + `skip_tests_confirm` **matching** `version`: tests are skipped. A
-  `::warning::` is printed in the `preflight` job log saying so — check for it if you're unsure
-  whether a deploy was tested.
-- `skip_tests=true` + `skip_tests_confirm` **not matching** (wrong tag, empty, typo): the whole run
-  fails in the `preflight` job, in seconds, before anything is built or an image is pushed. It does
-  **not** silently fall back to running the tests — if it did, an operator who thought they'd
-  skipped could watch a slow-but-successful deploy and wrongly conclude the flag worked.
+- `skip_tests=true` + `skip_tests_confirm` **matching** `version`: tests are skipped.
+- `skip_tests=true` + `skip_tests_confirm` **not matching** (wrong tag, empty, typo, a value left
+  over from a previous dispatch): **fail-safe, not fail-loud** — the tests just run anyway, exactly
+  as if `skip_tests=false` had been set. The deploy is not aborted over a typo in a field whose only
+  job is opting into something optional.
+
+Either way, `build`'s "Report skip_tests outcome" step prints a `::warning::` whenever
+`skip_tests=true` was requested at all — one message if the skip actually took effect, a different
+one if it didn't (confirm mismatch) and the tests ran instead. Check that step's log if you're
+unsure whether a deploy was tested. This lives in `build` (which always runs once `test` has
+succeeded or been skipped) rather than a dedicated validation job, for the same per-job billing
+reason noted above.
 
 **Only use this for a tag that has already passed `test` in this exact pipeline once.** It does not
 check that for you — no automated "has this tag passed before" lookup was built (considered and

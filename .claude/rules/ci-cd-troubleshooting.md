@@ -1189,3 +1189,49 @@ zweryfikować bez realnego dispatcha, wybierz backend, którego najgorszy przypa
 nie "cichy koszt" (tu: `type=gha` nad `type=registry`, z tego samego powodu co
 `ignore-error=true` na `cache-to` — cache to optymalizacja, nigdy nie powinna umieć zablokować albo
 spowolnić poniżej baseline realnego deployu).
+
+### Poprawka tego samego dnia (przegląd koordynatora, przed shippingiem): `preflight` sam dokładał
+### stały koszt do KAŻDEGO wdrożenia — dokładnie temu, co miało zadanie ciąć
+
+Punkt 3 powyżej opisuje pierwszą wersję `skip_tests` — osobny job `preflight` jako jedyne miejsce
+porównania boolean+confirm, z twardym `::error::`+`exit 1` przy niezgodności. Odesłane w code
+review PRZED mergem, nie znalezione przez uruchomienie.
+
+**Problem, którego nie uwzględniła pierwsza wersja:** GitHub Actions nalicza KAŻDY job z
+zaokrągleniem w górę do pełnej minuty, niezależnie od realnego czasu trwania. `preflight` wykonywał
+się w kilkanaście sekund, ale liczył się jako minuta — **przy każdym wdrożeniu, także tym z
+`skip_tests=false`**, czyli w zdecydowanej większości dispatchy. W zadaniu, którego celem jest
+obcięcie rachunku za minuty Actions, stały dodatkowy job dokładał minutę do KAŻDEGO przebiegu, żeby
+obsłużyć przypadek używany rzadko — zjadając część zysku z cache'u warstw (punkt 2 powyżej).
+
+**Naprawa:** `preflight` usunięty całkowicie. Warunek pominięcia wyrażony wprost w `if:` joba
+`test` (`!(inputs.skip_tests == true && inputs.skip_tests_confirm == inputs.version)`), bez
+pośrednictwa osobnego joba/outputów. **Fail-safe zamiast fail-loud jako świadoma zmiana, nie tylko
+efekt uboczny usunięcia joba:** niezgodność potwierdzenia teraz oznacza "testy się wykonują"
+(dokładnie domyślne zachowanie `skip_tests=false`), zamiast wywalać CAŁY przebieg przed
+jakimkolwiek buildem. To strefa lepsza na dwóch osiach naraz, nie kompromis: operator z literówką w
+`skip_tests_confirm` dostaje pełny, bezpieczny deploy zamiast zera — bezpieczniejsze zachowanie
+(uruchom testy) było o krok, a stara wersja i tak do niego nie spadała, tylko przerywała wszystko.
+Głośność zachowana, przeniesiona tam, gdzie nic nie kosztuje: krok "Report skip_tests outcome" w
+istniejącym jobie `build` (uruchamia się zawsze, gdy `test` zakończył się sukcesem lub został
+pominięty — czyli w każdym scenariuszu poza realną, niezwiązaną porażką testów), emitujący
+`::warning::` w dwóch sytuacjach: testy faktycznie pominięto, LUB poproszono o pominięcie a
+potwierdzenie się nie zgadzało i testy poszły mimo to. Krok wewnątrz już-uruchamianego, już-płatnego
+joba nie dokłada osobnej zaokrąglonej minuty — to nie optymalizacja tej samej klasy co osobny job,
+to zupełnie inna kategoria kosztu (sekundy wewnątrz ~3-minutowego joba, nie nowy wpis w billing).
+
+**Co POZOSTAJE niezweryfikowane, tak jak w wersji z `preflight`:** czy `needs.test.result ==
+'skipped'` faktycznie zachowuje się jak udokumentowano (build/deploy uruchamiają się mimo
+pominiętego `test`) — nie do sprawdzenia bez realnego dispatcha (zakaz dispatchowania w tej
+sesji). Zmiana architektury (jeden job mniej) nie zmienia tego, co dokumentacja GitHuba twierdzi o
+`needs`/skipped jobs — tylko usuwa TRZECIE miejsce (`needs.preflight.result`), które musiałoby się
+zgadzać.
+
+**Zasada:** przy projektowaniu bramki, która uruchamia się RZADKO (tu: `skip_tests=true`) —
+policz koszt WSPÓLNEJ ścieżki (częsty przypadek), nie tylko koszt samej bramki. Osobny job do
+walidacji dwóch stringów wygląda tanio przy czytaniu kodu — jest tani per-job, ale w GitHub
+Actions minimalna jednostka rozliczeniowa to cały job, nie krok, więc "tani" job i tak kosztuje
+pełną zaokrągloną minutę, płaconą przez WSZYSTKIE wywołania, nie tylko te korzystające z bramki. Gdy
+walidacja może zamiast tego żyć jako `if:` na już-istniejącym jobie (lub krok wewnątrz
+już-istniejącego, już-płatnego joba) — to jest tańsze z definicji, niezależnie od tego, jak mało
+faktycznej pracy wykonuje sam osobny job.
