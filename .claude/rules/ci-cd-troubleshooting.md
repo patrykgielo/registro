@@ -1024,3 +1024,58 @@ sprawdź nowy `grep | cut` przeciw `.env` bez tego klucza, nie tylko z pustą wa
 różne stany, tylko pierwszy odtwarza tę klasę błędu). Osobno, dla samych testów: przy łapaniu kodu
 wyjścia podpowłoki z jawnym `set -e` w środku — NIGDY jako operand `||`/`&&`, zawsze jako
 samodzielna instrukcja z `RC=$?` zaraz po niej.
+
+---
+
+## Incydent 2026-08-15 (kontynuacja incydentów z tego samego dnia wyżej): ten sam rozjazd silnika
+## siedział w TRZECH workflowach naraz — dwa z nich mają zero przebiegów do dziś
+
+`deploy-production.yml`'s `mariadb:10.11`→`mysql:8.0`/`redis:7.0`→`redis:7.2-alpine`/
+`QUEUE_CONNECTION: redis`→`sync` (incydenty wyżej, PR #187/#188) okazał się skopiowany identycznie
+do `ci-staging.yml` i `test.yml` — nie oddzielnymi błędami, tym samym z projektu-szablonu, wklejonym
+trzy razy. `gh run list --workflow=ci-staging.yml` i `--workflow=test.yml` → oba puste, zero
+przebiegów w całej historii repo. Odkryte tym samym mechanizmem co incydent `deploy-production.yml`
+wyżej (pierwsze realne uruchomienie znalazło błąd), ale odwrotnie: dla tych dwóch plików nie było
+żadnego uruchomienia — błąd znaleziono przez ANALOGIĘ do pliku, który dopiero co padł, nie przez
+własny przebieg. To znaczy, że naprawa jest **niezweryfikowana na tych dwóch plikach w GitHub
+Actions** — zweryfikowana lokalnie (patrz niżej), ale nie w środowisku runnera.
+
+**Naprawa (identyczna w obu plikach, ten sam komentarz co `deploy-production.yml`):**
+`mariadb:10.11` → `mysql:8.0`, `redis:7.0` → `redis:7.2-alpine` w `services:`; krok testów:
+`QUEUE_CONNECTION`/`CACHE_DRIVER`/`CACHE_STORE` z `redis` na `sync`/`array` (dopasowane do
+`.env.testing`), `REDIS_HOST`/`REDIS_PORT` usunięte jako martwe (nic ich już nie czyta z tym
+sterownikiem). Rozróżnienie zachowane wprost w komentarzu: silnik **bazy** ma odpowiadać produkcji
+(decyduje o poprawności testowanego kodu — MariaDB nie zna operatora `->>`), sterownik **kolejki**
+ma odpowiadać `.env.testing` (decyduje o determinizmie testu — pod `redis`
+`ShouldQueueAfterCommit` nie wykonuje się synchronicznie).
+
+**Zweryfikowane realnym uruchomieniem `test.yml`'s dokładnych kroków lokalnie** (efemeryczne
+`mysql:8.0`+`redis:7.2-alpine` w Dockerze, obraz `app-app:latest` z `--network host`, repo
+skopiowane do piaskownicy z `vendor/` podpiętym bind-mountem read-only z realnego katalogu —
+NIE dev-stack, osobne kontenery, posprzątane po teście): `php artisan migrate --force` przeszło
+WSZYSTKIE migracje, łącznie z `2026_06_16_100002_add_analytics_virtual_columns` (dokładnie tą, która
+odrzucała `->>` na MariaDB w incydencie `deploy-production.yml`) — `DONE` na `mysql:8.0`. Zamiast
+pełnego apartamentu Feature (już zweryfikowanego dziś w prawdziwym CI na `deploy-production.yml`,
+833 passed) — wąski `--filter=ProcessRentalReturnRemindersJobTest` (9 testów jawnie zależnych od
+synchronicznego `ShouldQueueAfterCommit`) uruchomiony DWA RAZY na tym samym kontenerze: pod
+`QUEUE_CONNECTION=redis` (stara, błędna wartość) → **5 z 9 failed** (powiadomienia odroczone do
+Redisa, nigdy nie wykonane w teście); pod `QUEUE_CONNECTION=sync` (naprawiona wartość) →
+**9/9 passed**. Czerwono-potem-zielono na PRAWDZIWEJ przyczynie, nie tylko na literalnej zmianie
+YAML.
+
+**Co POZOSTAJE niezweryfikowane, wprost:** `ci-staging.yml` **nie da się** sprawdzić end-to-end —
+`deploy` job celuje w `docker-compose.staging.yml` i sekrety `STAGING_VPS_*` na maszynie PreProd,
+która nie jest kupiona. Test/build/gate część tego pliku ma identyczny kształt do `test.yml`
+(zweryfikowany lokalnie jak wyżej, te same kroki), ale sam plik jako całość nigdy nie przebiegł w
+GitHub Actions i nadal nie przebiegnie, dopóki maszyna PreProd nie istnieje. Nie zaokrąglać tego do
+"zweryfikowane" — zweryfikowany jest wzorzec silnika/sterownika, nie ten konkretny plik w tym
+konkretnym środowisku.
+
+### Zapobieganie
+
+Ten sam wzorzec co "6 bugów w `apply.sh`" i oba incydenty `deploy-production.yml` wyżej: plik bez
+przebiegów w historii nie jest zweryfikowaną infrastrukturą. **Dodatkowo tutaj:** gdy jeden plik z
+tej klasy okazuje się zepsuty, przeszukaj CAŁY `.github/workflows/` pod kątem TEGO SAMEGO
+skopiowanego bloku (`services:`, wersje obrazów, override'y env) — kopiowanie z projektu-szablonu
+oznacza, że błąd prawie na pewno nie jest odosobniony. `gh run list --workflow=<plik>` przed
+zaufaniem KAŻDEMU workflow, nie tylko temu, nad którym akurat się pracuje.
