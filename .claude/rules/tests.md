@@ -178,14 +178,15 @@ for it). Run with:
 bash tests/shell/run.sh
 ```
 
-Runs in ~5 s, offline. Nearly all of it is one case: `19_nginx_*` is the sole
-case that starts a real container (`nginx:1.25-alpine`, `--network none`,
-`nginx -t`), because the property it guards — nginx still starts when no
-upstream container exists — is not decidable by inspecting the file. Its
-predecessor was a regex, and a regex pins the *spelling* of today's bug, not
-the property: a space before the semicolon slipped through, and so did an
-`upstream {}` block, which the recommended `resolver`+variable fix cannot even
-repair (`resolve=` is nginx-plus only). Both variants were verified fatal.
+Runs in ~15 s. Most of it is offline; two cases start real containers because
+the property they guard is not decidable by inspecting the file alone:
+`19_nginx_*` (`nginx:1.25-alpine`, `--network none`, `nginx -t` — nginx still
+starts when no upstream container exists; its regex predecessor missed a
+trailing-space variant and an `upstream {}` block, the latter unfixable by
+the recommended fix) and `30_deploy_production_db_engine_matches_prod.sh`
+(`mysql:8.0` + a `mariadb:10.11` negative control — the CI test gate's DB
+engine must actually accept the JSON-operator syntax production's migrations
+use, not just be *named* the same as production's compose file).
 
 Every other case is offline and instant, with no real Docker daemon/server/network —
 every `docker`/`certbot`/`su`/`git`/`restic` call is a fake executable on

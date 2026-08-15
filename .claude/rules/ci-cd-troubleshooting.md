@@ -720,3 +720,72 @@ deweloper, którego `node` już nie działał (crash `npm install`, ręczne `doc
 albo — jak w tej sesji — kontener po prostu wyszedł) i który potem zrestartował/przebudował `nginx`.
 `composer run dev` to osobna, nie-Dockerowa ścieżka (`npx concurrently` + `php artisan serve` +
 `npm run dev` na hoście) — nie dotyka tego pliku w ogóle.
+
+---
+
+## Incydent 2026-08-15: pierwszy realny przebieg `deploy-production.yml` — bramka testowa nigdy
+## nie stała na silniku bazy, na którym cokolwiek wdrażamy
+
+`deploy-production.yml` istniało od dawna jako 300-linijkowy `workflow_dispatch`, ale
+`gh run list --workflow=deploy-production.yml` pokazywał dokładnie JEDEN przebieg w całej
+historii: dzisiejszy, pierwszy w ogóle wykonany, i padł na kroku "Run migrations and seeders":
+
+```
+2026_06_16_100002_add_analytics_virtual_columns .......... FAIL
+SQLSTATE[42000]: 1064 ... near '>>'$.service_slug') VIRTUAL
+```
+
+### Przyczyna
+
+`services.mariadb: image: mariadb:10.11` w bramce testowej, podczas gdy `docker-compose.prod.yml`
+(to, na czym faktycznie stoi UAT) używa `mysql:8.0` — zweryfikowane z nagłówka zrzutu produkcji
+(`mysqldump 10.13 Distrib 8.0.46`). Migracja z 16 czerwca (nie należąca do wydania, które utknęło
+na tym blokerze) generuje kolumnę wirtualną przez `properties->>'$.service_slug'` — operator JSON
+MySQL 8, którego MariaDB nie zna. Migracja była poprawna dla silnika, na którym faktycznie
+wdrażamy; błędny był wybór silnika w samej bramce.
+
+Ten sam mismatch (`mariadb:10.11` + `redis:7.0` zamiast `redis:7.2-alpine`) siedzi też w
+`ci-staging.yml` i `test.yml` — NIE naprawione w tym samym diffie (świadomie, żeby nie mieszać
+niezwiązanych plików), zostaje jako otwarty dług tej samej klasy.
+
+### Rozwiązanie
+
+`deploy-production.yml`: `mariadb:10.11` → `mysql:8.0`, `redis:7.0` → `redis:7.2-alpine` (oba
+dokładnie dopasowane do `docker-compose.prod.yml`). Health-cmd, brak `-u` w `mysqladmin ping`,
+`DB_USERNAME: root` — wszystko zostało bez zmian, bo zweryfikowane wprost, że działa identycznie
+na `mysql:8.0`.
+
+**Zweryfikowane realnym uruchomieniem (nie inspekcją), obie strony:**
+- `mariadb:10.11`: dokładna DDL z migracji → `ERROR 1064 (42000) ... near '>>'`.
+- `mysql:8.0`: ta sama DDL → sukces, exit 0.
+- `root@%` istnieje domyślnie na `mysql:8.0` z samym `MYSQL_ROOT_PASSWORD` (`SELECT user,host FROM
+  mysql.user` → `root | % | caching_sha2_password`) — TCP login jako root z hosta działa bez
+  dodatkowych flag, obalając obawę o `caching_sha2_password`/`--default-authentication-plugin`
+  (dotyczy tylko PHP <7.1.16/7.2.4, nieistotne dla PHP 8.3 tego projektu).
+- PHP 8.3 `pdo_mysql` (ten sam obraz `app`, który uruchamia testy) połączył się z `mysql:8.0.46`
+  (dokładnie ta sama wersja patch co produkcja) jako `root@%` przez `caching_sha2_password` bez
+  żadnej dodatkowej konfiguracji.
+
+**Test regresyjny:** `tests/shell/cases/30_deploy_production_db_engine_matches_prod.sh` — czyta
+REALNE tagi obrazów z `deploy-production.yml` i `docker-compose.prod.yml` (nigdy na sztywno),
+odpala prawdziwy kontener zadeklarowanego przez workflow silnika i przepuszcza przez niego DDL
+wyciągnięty wprost z realnej migracji; negatywna kontrola na hardcoded `mariadb:10.11` musi
+odrzucić tę samą DDL, inaczej test nie jest dyskryminujący. Dowiedzione czerwono-potem-zielono:
+podstawienie starej wersji pliku (`mariadb:10.11`) daje czytelny FAIL z realnym błędem SQL w
+komunikacie; przywrócenie fixu → PASS.
+
+**Pułapka znaleziona przy pisaniu testu, nie w produkcyjnym kodzie:** pierwsza wersja ekstrakcji
+obrazu przez `awk` dopasowywała luźne `/redis:\s*$/` bez kotwiczenia wcięcia — złapała `redis:`
+zagnieżdżone w `depends_on:` (głębiej wcięte niż definicja serwisu) w `docker-compose.prod.yml` i
+w rezultacie zwróciła obraz `mysql:8.0` jako rzekomy obraz redisa. Naprawa: kotwiczenie na
+DOKŁADNYM wcięciu klucza serwisu najwyższego poziomu (`^  redis:$` w compose, `^      redis:$` w
+workflow), nie samo `\s*`. Osobno: `mawk` (awk tej maszyny) nie zna `\s` — tylko klasy POSIX
+(`[ \t]`), pierwsza wersja skryptu cicho nie dopasowywała niczego zamiast błędu.
+
+### Zapobieganie
+
+Ten sam wzorzec co incydent "6 bugów w `apply.sh`" i incydent nginx-upstream wyżej w tym pliku:
+plik, który nigdy nie został faktycznie uruchomiony, nie jest zweryfikowaną infrastrukturą, tylko
+jej opisem. `gh run list` przed zaufaniem dowolnemu `.github/workflows/*.yml` — zero przebiegów w
+historii znaczy dokładnie to samo, co "nieprzetestowany kod": spodziewaj się więcej niż jednego
+błędu przy pierwszym realnym uruchomieniu, nie tylko tego, który akurat zgłosił CI.
