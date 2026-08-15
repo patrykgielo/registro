@@ -946,3 +946,81 @@ hardeningu KAŻDEJ usługi w compose naraz — zweryfikuj każdą osobno przeciw
 NAPRAWDĘ na produkcji (wolumen z danymi, nie pusty), nie przeciw temu, co najwygodniej postawić w
 piaskownicy. "Działa na fresh volume" i "działa" to dwa różne twierdzenia, i tylko drugie ma
 znaczenie dla usługi, która nigdy nie startuje od zera na żywym serwerze.
+
+---
+
+## Incydent 2026-08-15: `deploy.sh` — instalacja NOWEJ wersji na UAT padała na `status`, jedynej
+## bezpiecznej diagnostyce jaką daje forced command, dokładnie na konfiguracji legacy
+
+### Problem
+
+Nowa wersja `deploy.sh` (task 4, stack-per-tenant) zainstalowana na UAT. Najbezpieczniejsza możliwa
+akcja, `status`, zwracała kod 1 i zero wyjścia. `bash -x` zatrzymał się dokładnie tu:
+
+```
++ case "${ACTION:-}" in
+++ grep -m1 '^TENANT_PREFIX=' /var/www/registro/.env
+++ cut -d= -f2-
++ prefix=
+```
+i dalej nic, mimo że kolejna linia to `docker ps`.
+
+### Przyczyna
+
+`deploy.sh` ma `set -euo pipefail`. Linia
+```bash
+prefix="$(grep -m1 '^TENANT_PREFIX=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2-)"
+```
+przy **braku** klucza `TENANT_PREFIX` w `.env` (nie pustej wartości — braku linii w ogóle): `grep`
+zwraca 1 (brak dopasowania), `cut` zwraca 0, `pipefail` bierze WYŻSZY z obu — pipeline zgłasza 1,
+`set -e` zabija skrypt w tym miejscu, przed jakimkolwiek `docker ps`. **Brak `TENANT_PREFIX` to
+dokładnie stan legacy** (`deployment.md`: „`TENANT_PREFIX=` PUSTE na legacy") — skrypt padał w
+jedynej konfiguracji, w jakiej dziś realnie działa. UAT miał ten klucz nieustawiony —
+zweryfikowane. Wzorzec wystąpił DWA razy w tym samym pliku: akcja `status` (linia ~100) i
+`force_clear_flag()` (linia ~201, recovery function dla utkniętej flagi `maintenance.php`).
+
+Przeszukanie CAŁEGO `scripts/server/` (`grep -n '\$(' *.sh | grep '|'`) pokazało, że **wszystkie
+pozostałe pliki** (`apply.sh`, `sync-certificate.sh`, `tenant-backup.sh`, `tenant-check.sh`,
+`tenant-restore.sh`, `check-certificate-expiry.sh`) już mają `|| true` na dokładnie tym samym
+kształcie `grep -m1 '^KEY=' .env | cut -d= -f2-` — bug był izolowany do `deploy.sh`, jedynego pliku
+gdzie ten wzorzec pojawił się bez ochrony.
+
+### Rozwiązanie
+
+`|| true` na SAMYM PODSTAWIENIU (`cut -d= -f2- || true`), nie na całej linii przypisania — zgodne z
+konwencją już istniejącą w pięciu innych plikach `scripts/server/`. Brak klucza staje się legalnym
+`prefix=""`, konsumowanym przez istniejący `${prefix:-registro}` fallback w obu miejscach —
+identyczne zachowanie do „dziś" (przed refaktorem na per-tenant stacki), tylko bez zabijania
+skryptu po drodze.
+
+**Zweryfikowane realnym uruchomieniem, oba kierunki, oba wystąpienia:** `.env` bez linii
+`TENANT_PREFIX` pod gołym `bash -c 'set -euo pipefail; ...'` — stara linia: exit 1, zero wyjścia
+(dokładna reprodukcja objawu z UAT); nowa linia: exit 0, `prefix=[]`. Cały skrypt `status` z
+prawdziwym `case` z pliku (nie kopią) i fakenym `docker` na PATH: stara wersja zabija się PRZED
+`docker ps`; naprawiona dochodzi do `docker ps -a --filter name=registro-` i `exit 0`.
+
+### Pułapka metodyczna znaleziona przy pisaniu testu regresyjnego, nie w kodzie produkcyjnym
+
+Pierwsza wersja testu dla `force_clear_flag()` łapała kod wyjścia przez
+`RC=0; ( set -euo pipefail; eval "$FN_SRC"; force_clear_flag ) || RC=$?` — i **przechodziła nawet
+przeciwko niepoprawionemu źródłu**, mimo identycznej logiki wewnątrz. Przyczyna udokumentowana
+wprost w manualu bash (`set`, opis `-e`): *"If a compound command ... sets -e while executing in a
+context where -e is ignored, that setting will not have any effect until the compound command ...
+completes."* Prawa strona `||` jest DOKŁADNIE takim ignorowanym kontekstem — `set -e` WEWNĄTRZ
+podpowłoki, która sama jest operandem `||`, jest więc kompletnym no-opem, niezależnie od tego, że
+został ustawiony jawnie w pierwszej linii tej podpowłoki. Naprawa: podpowłoka jako samodzielna
+instrukcja (`( set -euo pipefail; ...; force_clear_flag )` na własnej linii), kod wyjścia
+odczytywany osobną instrukcją `RC=$?` zaraz po niej — nigdy jako operand `||`/`&&`.
+
+### Zapobieganie
+
+**Ten sam mechanizm co incydent nginx-upstream i incydent `stage_volume()` wyżej w tym pliku: linia
+wygląda poprawnie przy czytaniu, wyłapało ją dopiero uruchomienie.** `grep -m1 '^KEY=' plik | cut
+...` pod `pipefail`, bez `|| true`, zabija skrypt dokładnie wtedy, gdy KEY jest opcjonalny i legalnie
+nieobecny — czyli dokładnie w przypadku, po który ten wzorzec sięga się najczęściej (odczyt
+pojedynczego, opcjonalnego klucza z `.env` bez `source`). Przy dodawaniu NOWEGO takiego odczytu w
+`scripts/server/**`: `|| true` na podstawieniu jest domyślną, już ustaloną konwencją tego katalogu —
+sprawdź nowy `grep | cut` przeciw `.env` bez tego klucza, nie tylko z pustą wartością klucza (dwa
+różne stany, tylko pierwszy odtwarza tę klasę błędu). Osobno, dla samych testów: przy łapaniu kodu
+wyjścia podpowłoki z jawnym `set -e` w środku — NIGDY jako operand `||`/`&&`, zawsze jako
+samodzielna instrukcja z `RC=$?` zaraz po niej.
