@@ -69,13 +69,23 @@ class TenantFeatureTest extends TestCase
         $this->assertFalse(TenantFeature::active('mobile_service'));
     }
 
+    /**
+     * Regression note (2026-08-15): this test 404'd at step 4 ("review") because
+     * the fixture Service was created with organization_id=null. BelongsToOrganization's
+     * global scope filters Service::findOrFail() by the resolved tenant's organization_id
+     * (see showReviewStep()), so the service was invisible to the tenant and the request
+     * genuinely 404'd — nothing to do with the step-count logic this test targets. Every
+     * other feature test that creates a Service under a resolved tenant scopes it explicitly
+     * (see AppointmentDoubleBookingTest, ServiceControllerPaginationTest, etc.); this one
+     * never did. Fixed by scoping the fixture, not by loosening the assertion.
+     */
     public function test_booking_wizard_has_4_steps_without_vehicles(): void
     {
         $org = $this->createTenantWithFeatures([]); // No features enabled
         $owner = $org->owner;
         $owner->assignRole('customer');
 
-        $service = \App\Models\Service::factory()->create();
+        $service = \App\Models\Service::factory()->create(['organization_id' => $org->id]);
 
         // Set up booking session with enough data
         $this->withSession([
@@ -122,6 +132,14 @@ class TenantFeatureTest extends TestCase
         $response->assertRedirect(route('booking.step', 1));
     }
 
+    /**
+     * Hardened preemptively (2026-08-15), not in response to a failure: this test
+     * carried the same organization_id gap as test_booking_wizard_has_4_steps_without_vehicles
+     * (see that test's docblock), but happens not to trip it today because it only exercises
+     * step 3 ("vehicle-location"), which never calls Service::findOrFail() under the tenant
+     * scope. Scoped the fixture here too so it doesn't become a 404 landmine the moment this
+     * test is extended to cover step 4/5.
+     */
     public function test_booking_wizard_has_5_steps_with_vehicles(): void
     {
         $org = $this->createTenantWithFeatures([
@@ -131,7 +149,7 @@ class TenantFeatureTest extends TestCase
         $owner = $org->owner;
         $owner->assignRole('customer');
 
-        $service = \App\Models\Service::factory()->create();
+        $service = \App\Models\Service::factory()->create(['organization_id' => $org->id]);
 
         // Step 3 should show vehicle-location when features are enabled
         $response = $this->actingAs($owner)
