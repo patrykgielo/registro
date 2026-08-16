@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Events\OrderAcceptedOffline;
 use App\Exceptions\PaymentGatewayNotConfiguredException;
+use App\Exceptions\RentalUnavailableException;
 use App\Http\Requests\Checkout\SubmitCheckoutRequest;
 use App\Models\Cart;
 use App\Models\Order;
@@ -121,6 +122,15 @@ class CheckoutController extends Controller
                 $cart,
                 array_merge($request->validated(), ['ip' => $request->ip()])
             );
+        } catch (RentalUnavailableException $e) {
+            // MUST be caught before the generic \Throwable below — equipment
+            // becoming unavailable between "add to cart" and checkout is normal
+            // business reality, not a payment failure, and must not be reported
+            // as "Nie udało się przetworzyć płatności": nothing was ever charged,
+            // and convertToOrder() throws before creating any Order row here, so
+            // there is nothing to compensate. Dedicated 'availability' bag — see
+            // CartController::add() for why it stays out of the default bag.
+            return redirect()->back()->withErrors($e->messages(), 'availability');
         } catch (\Throwable $e) {
             Log::error('Checkout failed: could not convert cart to order', ['exception' => $e, 'user_id' => auth()->id()]);
 

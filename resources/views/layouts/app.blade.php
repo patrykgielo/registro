@@ -74,7 +74,7 @@
     {{-- ─── Main Content ─── --}}
     <main id="main-content" class="flex-1">
         {{-- Flash Messages --}}
-        @if (session('success') || session('error') || session('info') || $errors->any())
+        @if (session('success') || session('error') || session('info') || $errors->any() || $errors->availability->any())
             <x-layout.container class="pt-6">
                 @if (session('success'))
                     <x-ui.alert variant="success" dismissible>{{ session('success') }}</x-ui.alert>
@@ -84,6 +84,20 @@
                 @endif
                 @if (session('error'))
                     <x-ui.alert variant="error" dismissible>{{ session('error') }}</x-ui.alert>
+                @endif
+                {{-- Equipment availability is a normal business situation, not a
+                     failure — rendered as an informational notice via its own
+                     named error bag ('availability'), separate from validation
+                     errors below. See CartController/CheckoutController and
+                     app/docs/features/cart-order-system.md. --}}
+                @if ($errors->availability->any())
+                    <x-ui.alert variant="warning" title="Dostępność sprzętu" dismissible>
+                        <ul class="list-disc list-inside mt-1 space-y-1">
+                            @foreach ($errors->availability->all() as $message)
+                                <li>{{ $message }}</li>
+                            @endforeach
+                        </ul>
+                    </x-ui.alert>
                 @endif
                 @if ($errors->any())
                     <x-ui.alert variant="error" title="Wystąpiły błędy" dismissible>
