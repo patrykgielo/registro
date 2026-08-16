@@ -5,6 +5,26 @@ paths:
 
 # Release Documentation Rules
 
+## Zakres (od 2026-08-16, model trzywarstwowy: `feature/* → develop → staging → main`)
+
+Do tego dnia `docs/releases/` nie istniało w ogóle — zero dokumentów przy 19 dotychczasowych tagach,
+mimo że ta reguła istniała. Nieprzestrzegana, nie do naśladowania. **Od dzisiaj obowiązuje, ale nie
+wstecz** — nie twórz dokumentów dla historycznych tagów, tylko dla każdego NOWEGO tagu od
+2026-08-16, i to zróżnicowane wg tego, skąd tag jest cięty:
+
+- **Tag `rc*`, cięty z `staging`** (`vX.Y.Z-rc.N`) — **adnotowany tag gita wystarczy.**
+  `git tag -a vX.Y.Z-rc.N -m "..."` z treścią wiadomości opisującą zmiany jako listę (nie jedno
+  zdanie) — bez osobnego pliku w `docs/releases/`. Uzasadnienie: rc-tagi tną się często (osiem w
+  jeden dzień 2026-08-16) — pełny dokument na każdy byłby szumem, nie dyscypliną, i szybko
+  zniechęciłby do pisania czegokolwiek.
+- **Tag produkcyjny (`vX.Y.Z`, bez `-rc`), cięty z `main` po promocji `staging → main`** — WYMAGA
+  `docs/releases/vX.Y.Z.md` wg szablonu poniżej, PRZED wypchnięciem tagu.
+
+**Pułapka trigera:** ta reguła ma `paths: docs/releases/**`, więc ładuje się dopiero gdy Claude już
+dotyka pliku w tym katalogu — samo cięcie taga zwykle nie dotyka żadnego pliku tam. Punkt wejścia
+dla operatora/agenta jest w `.github/workflows/RELEASE_PROCESS.md` (krok "Tag a Release"), nie tutaj
+— stamtąd trafiasz do tego pliku PRZED wypchnięciem tagu produkcyjnego, nie po.
+
 ## Struktura dokumentu release
 
 Każdy dokument release (`docs/releases/vX.Y.Z.md`) MUSI zawierać trzy oddzielne sekcje zmian:
@@ -47,7 +67,8 @@ Przykłady:
 # Release vX.Y.Z
 
 **Data:** YYYY-MM-DD
-**Branch:** `release/vX.Y.Z`
+**Branch:** `main` (promowany z `staging` przez PR)
+**Poprzedzające rc\*:** vX.Y.Z-rc.1, vX.Y.Z-rc.2, ... (tagi na `staging`, jeśli były)
 **Status:** W przygotowaniu | Wydany
 
 ---
@@ -98,12 +119,11 @@ Kroki do wykonania po deploy (jeśli wymagane).
 
 ## Weryfikacja
 
-- [ ] Testy przeszły
+- [ ] Testy przeszły (`deploy-production.yml`'s `test` job, na tagu rc* poprzedzającym ten release)
 - [ ] Pint przeszedł
-- [ ] Staging zweryfikowany
-- [ ] Zgoda użytkownika na production deploy
-- [ ] Production wdrożony
-- [ ] Merge back do develop
+- [ ] rc* zweryfikowany na UAT (`staging` → UAT, patrz `RELEASE_PROCESS.md`)
+- [ ] Zgoda użytkownika na production deploy — patrz ZASADA 0, `.claude/rules/self-improvement.md`
+- [ ] Production wdrożony (kiedy PreProd istnieje; dziś: brak maszyny, patrz `deployment.md`)
 ```
 
 ---

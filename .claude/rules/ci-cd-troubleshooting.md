@@ -1418,3 +1418,58 @@ tenant-facing content pipeline.
 **Pełny zestaw testów raz, na końcu (nie w pętli):** `./vendor/bin/pint --test` (832 pliki, czysto)
 + `php artisan test` (SQLite, `.env.testing`) → **1331 passed / 5 skipped / 0 failed** — identyczny
 zestaw skipped co przed zmianą, brak nowych failures.
+
+---
+
+## 2026-08-16: model trzywarstwowy (`feature/* → develop → staging → main`) — gałąź domyślna
+## zmieniona z `main` na `develop`, `staging` przywrócona jako realna gałąź promocyjna
+
+Decyzja użytkownika, nie znaleziony bug — zapisane tu, bo to DOKŁADNIE ten rodzaj strukturalnej
+zmiany, o której każda przyszła sesja dotykająca gałęzi/workflowów musi wiedzieć, żeby nie
+zdiagnozować jej jako niespójność.
+
+**Gałąź domyślna repo: `main` → `develop`.** Powód zmierzony, nie założony: GitHub rejestruje NOWY
+plik workflow (potrzebny do `gh workflow run <plik>`) tylko wtedy, gdy ten plik istnieje na gałęzi
+domyślnej — dodany gdziekolwiek indziej (np. na `feature/*` przed mergem) daje `HTTP 404` przy
+próbie dispatchu, nawet jeśli plik jest syntaktycznie poprawny. Przy gałęzi domyślnej `main`
+(chronionej, wymagającej pełnego łańcucha PR) każdy nowy/zmieniony workflow musiał przejść cały
+`develop → staging → main` zanim dało się go w ogóle URUCHOMIĆ choćby raz do testu — `develop` jako
+domyślna usuwa tę blokadę bez osłabiania samej ochrony `main` (PreToolUse hook, wymagany PR).
+
+**`staging` przywrócona jako stała gałąź promocyjna, nie ephemeral `release/*`.** Istniała już w
+repo (`origin/staging`), ale wskazywała na pierwszy commit projektu z marca — martwa referencja.
+Przewinięta (`git reset`/fast-forward, nie `--force` na cudzą historię) do czubka `develop`. Rola:
+`staging` tnie tagi `rc*`, promowane do `main` przez PR dopiero po weryfikacji na UAT. `release/*`
+(dawne „z develop, do main" z poprzedniego, dwuwarstwowego modelu) superseded — gałąź promocyjna
+jest teraz TRWAŁA, nie tworzona na nowo przy każdym wydaniu. `hotfix/*` zostaje jako świadomy
+wyjątek: łatka awaryjna prosto z `main`, gdy nie ma czasu na przelot przez `staging`.
+
+**Realny stan dziś, nie aspiracja:** `deploy-production.yml`'s `deploy` job ma DOKŁADNIE JEDEN cel
+(`secrets.VPS_HOST` — UAT), bez logiki wybierającej maszynę po gałęzi/kształcie taga. Tabela
+`staging → UAT` / `main → PreProd` w `git-workflow.md` opisuje stan DOCELOWY, prawdziwy dopiero gdy
+PreProd zostanie kupiony i wpięty do tego (albo drugiego) workflow — dziś dispatch DOWOLNEGO taga,
+`rc*` czy produkcyjnego, ląduje na tej samej, jedynej maszynie. Nierozróżnienie to NIE bug do
+naprawienia w tej sesji — to właściwy opis obecnego stanu, dopóki druga maszyna nie istnieje.
+
+**Hook (`.claude/hooks/pre-tool-use.sh`) miał dwie realne luki wobec tego modelu, obie znalezione
+przez URUCHOMIENIE (JSON na stdin, prawdziwy `git branch --show-current` w tymczasowym repo), nie
+przez czytanie:** REGUŁA 5 (`gh pr create`) traktowała `staging` jak każdą inną gałąź spoza
+`release/*`/`hotfix/*`, więc PR `staging → main` — czyli DOKŁADNIE promocja produkcyjna, jedyny
+sensowny cel PR-a z tej gałęzi — był blokowany, wymagając `--base develop`/`--base staging`. REGUŁA 1
+(`git commit`) chroniła `develop` i `main` przed bezpośrednim commitem, ale nie `staging`, mimo że
+`staging` ma być merge-only tak samo jak te dwie. Test regresyjny:
+`tests/shell/cases/34_pretooluse_hook_three_tier_branch_model.sh` — uruchamia PRAWDZIWY plik hooka
+(nie kopię, nie ekstrakcję) w tymczasowym gicie, jeden test z ośmioma asercjami, dowiedzione
+czerwono-potem-zielono: podstawienie poprzedniej wersji hooka (via `git stash`) łapie WSZYSTKIE
+TRZY luki naraz z czytelnym komunikatem dla każdej; przywrócenie fixu → PASS. Pełny pakiet:
+`bash tests/shell/run.sh` → 34/34 (było 33/33 przed tym case'em).
+
+### Zapobieganie
+
+Ten sam wzorzec co reszta tego pliku: strukturalna zmiana w JEDNYM miejscu (gałąź domyślna, nowa
+stała gałąź) rzadko zostaje wyłącznie tam — sprawdź hook (`.claude/hooks/pre-tool-use.sh`), reguły
+(`git-workflow.md`, `self-improvement.md` ZASADA 0/1 — okazały się już fałszywe niezależnie od tej
+zmiany, patrz commit tej sesji), i każdy dokument opisujący flow (`RELEASE_PROCESS.md`,
+`release-documentation.md`) w JEDNEJ sesji, nie po kawałku między sesjami — inaczej któryś zostaje
+w tyle i zaczyna kłamać cicho, dokładnie jak `ci-staging.yml` kłamało o istnieniu środowiska
+staging przez miesiące zanim ktokolwiek to sprawdził.
