@@ -1,0 +1,85 @@
+# registro-base: everything about the PHP runtime that is NOT the application.
+#
+# Built and pushed by .github/workflows/build-base-image.yml (workflow_dispatch
+# only -- this changes a handful of times a year, not on every release). The
+# application Dockerfile pins a specific tag of this image
+# (ghcr.io/patrykgielo/registro-base:<tag>), never `latest` -- see
+# app/docs/deployment/base-image-split.md section 5.
+#
+# Tag convention: sha-<first 12 hex chars of sha256sum of this exact file>,
+# e.g. sha-4f2a91c8e0d3. Computed by the workflow, not hand-picked, so the
+# tag always reflects what is actually in this file.
+#
+# Contents mirror the "environment" stage of the pre-split Dockerfile
+# byte-for-byte where it comes to packages/extensions -- this file is a
+# structural split, not a package audit. The known-unused dev packages
+# (libc6-dev, libpng-dev's *-dev counterparts pulled transitively, perl,
+# etc.) are carried over on purpose; removing them is a separate, later
+# change (see base-image-split.md section 8 / the plan's opening note) so
+# that a regression can be attributed to exactly one change.
+#
+# What deliberately stays OUT of this file:
+#   - Composer's own dependencies (composer.json/lock, vendor/) -- code.
+#   - BROWSER_TESTING (Playwright/Chromium) -- see Dockerfile for why this
+#     stays entirely in the application stage instead of becoming a second
+#     base variant.
+#   - OPCACHE_MODE's ini selection -- a `cp` of a static file, not an
+#     environment install; stays in the application stage so local dev
+#     (docker-compose.yml, OPCACHE_MODE=dev) and CI/production
+#     (OPCACHE_MODE=production) don't require two base image variants.
+FROM php:8.3-fpm
+
+# Runtime and build dependencies (Debian) -- unchanged set, see header note.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpng-dev \
+    libjpeg-dev \
+    libzip-dev \
+    libonig-dev \
+    libicu-dev \
+    libxml2-dev \
+    libsqlite3-dev \
+    unzip \
+    git \
+    curl \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# PHP extensions (v0.3.5 + composer.lock requirements + pdo_sqlite for tests
+# + sockets for Pest browser) -- unchanged set, see header note.
+RUN docker-php-ext-configure gd --with-jpeg && \
+    docker-php-ext-install -j$(nproc) \
+    pdo_mysql \
+    pdo_sqlite \
+    mbstring \
+    intl \
+    pcntl \
+    posix \
+    gd \
+    zip \
+    bcmath \
+    fileinfo \
+    dom \
+    exif \
+    opcache \
+    sockets
+
+# Redis extension via PECL (not a core extension)
+RUN pecl install redis && \
+    docker-php-ext-enable redis
+
+# Composer binary -- a tool the environment provides, not application code.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# CRITICAL DOCKER USER MODEL DECISION (ADR-013)
+#
+# Container runs as 'laravel:laravel' (UID 1000, GID 1000), NOT www-data!
+# See app/docs/decisions/ADR-013-docker-user-model.md for the full
+# rationale (dev/prod UID parity, non-root, no runtime chown needed).
+#
+# Ownership of application files (chown -R laravel:laravel /var/www) happens
+# in the application Dockerfile, AFTER the code is copied in -- there is no
+# code here to own yet.
+RUN groupadd -g 1000 laravel && \
+    useradd -u 1000 -g laravel -m laravel
+
+WORKDIR /var/www
