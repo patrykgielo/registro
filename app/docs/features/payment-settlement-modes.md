@@ -1,6 +1,8 @@
 # Metody rozliczenia i wymienność bramki płatniczej — plan
 
-**Status:** plan, nic z tego nie jest zaimplementowane.
+**Status:** Faza 1 (tryb rozliczenia offline) zaimplementowana — `feature/offline-settlement-mode`,
+2026-08-16. Fazy 2–4 nadal planem, patrz sekcja 4 niżej. Sekcje 1–3 opisują stan **sprzed** Fazy 1 i
+są zachowane jako kontekst historyczny — realny stan po Fazie 1 opisuje sekcja 4.1.
 **Data:** 2026-08-16.
 **Powód powstania:** przy pierwszej próbie przejścia pełnej ścieżki wypożyczenia na UAT okazało się, że zamówienia nie da się domknąć. Poniżej jest opis stanu faktycznego, podział na fazy i decyzje, które trzeba podjąć **przed** pisaniem kodu.
 
@@ -104,34 +106,64 @@ Bez odpowiedzi na te pytania każda implementacja będzie zgadywaniem.
 4. **Czy klient końcowy widzi wybór metody**, czy tenant ustawia jedną na sztywno.
 5. **Czy dopuszczamy zaliczkę** (część online, reszta przy odbiorze). Jeśli tak, to zmienia model danych znacznie mocniej.
 
-### Faza 1 — tryb rozliczenia offline
+### Faza 1 — tryb rozliczenia offline ✅ ZAIMPLEMENTOWANA (2026-08-16)
 
 Cel: klient może zarezerwować sprzęt i zapłacić przy odbiorze; obsługa odnotowuje wpłatę w panelu.
 
-Zakres:
-- ustawienie per tenant: dozwolone metody rozliczenia (online / przy odbiorze / obie)
-- kolumna metody płatności na `orders`
-- konfigurowalny TTL rezerwacji, odczepiony od `p24_token`
-- akcja w panelu „odnotuj wpłatę" — wzorowana na `collect_deposit`, z kwotą, metodą, notatką i zapisem kto odnotował
-- rekord `Payment` dla wpłaty offline (wymaga zdjęcia `NOT NULL` z `p24_session_id`)
-- osobny szablon maila „zamówienie przyjęte — zapłata przy odbiorze"; dzisiejszy `ORDER_PAID` mówi „zostało opłacone", co byłoby nieprawdą
-- adnotacja o zapłacie w protokole wydania
+**Decyzje właściciela produktu, wiążące dla tej fazy** (nie renegocjowane w trakcie implementacji):
+1. Rezerwacja trzyma sprzęt konfigurowalny czas, domyślnie 48h.
+2. Rezerwacja nieopłacona blokuje sprzęt przez ten czas.
+3. Bez potwierdzania przez obsługę przed zablokowaniem sprzętu.
+4. Metody rozliczenia ustawia tenant; gdy włączy obie, klient wybiera przy zamówieniu.
+5. Bez zaliczek — częściowa płatność poza zakresem (kwota w akcji „odnotuj wpłatę" jest jawnie
+   wpisywana przez obsługę, bez walidacji zgodności z `total_amount` — świadomie, do rozstrzygnięcia
+   w przyszłej fazie jeśli zajdzie potrzeba).
 
-Pliki dotknięte — lista z rozpoznania, do weryfikacji przed startem:
+**Co dokładnie zostało zbudowane:**
 
-| Obszar | Pliki |
+| Element | Gdzie |
 |---|---|
-| Checkout | `CheckoutController.php:77-86,98-149,154-168`, `SubmitCheckoutRequest.php:25-62` |
-| Maszyna stanów | `OrderStatusStateMachine.php:27-64,73-88,96-156` |
-| Model | `Order.php:301-309,324-327,344-357`, `OrderItem.php:115-137`, `Payment.php:15-35` |
-| Panel | `OrderResource.php:282-316,348-396,397-570`, `Pages/EditOrder.php:25-168` |
-| Maile | `AppServiceProvider.php:357-371`, `OrderPaidNotification.php`, `EmailTemplateSeeder.php:351-383` |
-| Protokoły | `OrderProtocolPdfService.php:51,60,81,129`, `views/orders/protocols/handover.blade.php` |
-| Widoki | `checkout/show.blade.php:1361-1407`, `checkout/return.blade.php`, `orders/show.blade.php`, `orders/index.blade.php` |
-| TTL | `CartService.php:263`, `OrderService.php:52-62`, `CleanupExpiredOrders.php`, `routes/console.php:115-120` |
-| Migracje | `orders` (metoda), `payments` (`p24_session_id`, `method`, `recorded_by`, enum `status`) |
+| Ustawienia per tenant (`checkout.settlement_online_enabled` domyślnie `true`, `checkout.settlement_offline_enabled` domyślnie `false`, `checkout.offline_reservation_hold_hours` domyślnie 48, zakres 1–168h) | `SettingsManager::isOnlineSettlementEnabled()`/`isOfflineSettlementEnabled()`/`availableSettlementMethods()`/`offlineReservationHoldHours()`, zakładka Checkout w `SystemSettings.php` |
+| Kolumna `orders.settlement_method` (`online`\|`offline`, domyślnie `online` — każde istniejące zamówienie zachowuje znaczenie „poszło przez P24") | `2026_08_16_120000_add_settlement_method_to_orders_table.php` |
+| TTL odczepiony od `p24_token` | **Nie wymagało zmiany `Order::scopeExpired()`/`OrderItem::scopeBlockingAvailability()`** — oba scope'y i tak czytają wyłącznie `expires_at` w gałęzi „brak `p24_token`"; wystarczyło, że `CartService::convertToOrder()` zaczął PISAĆ inną wartość `expires_at` zależnie od `settlement_method` (20 min dla online — bez zmian; `offlineReservationHoldHours()` dla offline). Zero ryzyka rozjazdu obu scope'ów, bo żaden z nich w ogóle nie wie o `settlement_method`. |
+| `payments.p24_session_id` rozluźnione do `nullable` (nadal UNIQUE); nowe kolumny `method` (`p24`\|`cash`\|`bank_transfer`, domyślnie `p24`), `recorded_by` (FK users, nullOnDelete), `notes` | `2026_08_16_120001_add_offline_settlement_fields_to_payments_table.php` |
+| `OrderService::recordOfflinePayment()` — lockForUpdate, guard `status === 'pending_payment'`, tworzy `Payment(status: success)`, `transitionTo('paid')`, `paid_at`, dispatch `OrderPaid` **poza** transakcją (nie wewnątrz, w przeciwieństwie do istniejącego wzorca w `Przelewy24Service` — patrz `.claude/rules/notifications.md`) | `app/Services/Order/OrderService.php` |
+| Akcja panelu „Odnotuj wpłatę" (`record_offline_payment`) — kwota/metoda/notatka, widoczna dla `pending_payment` + `settlement_method=offline` | `OrderResource.php` (table) **i** `Pages/EditOrder.php` (header) — zduplikowana świadomie, patrz uwaga niżej |
+| Nowy event `OrderAcceptedOffline` + notyfikacja `OrderAcceptedOfflineNotification` (tylko klient) — dispatch od razu po checkoucie offline, **przed** jakąkolwiek płatnością | `app/Events/OrderAcceptedOffline.php`, `app/Notifications/OrderAcceptedOfflineNotification.php` |
+| Nowy szablon `order-accepted-offline` (PL+EN) — „zamówienie przyjęte, zapłacisz przy odbiorze", **nie** „zostało opłacone" | seeder (`EmailTemplateSeeder.php`) + migracja produkcyjna (patrz niżej) |
+| Rozgałęzienie w `CheckoutController::submit()` — `$order->isOfflineSettlement()` pomija P24 całkowicie, zwraca `redirect()->route('checkout.return', ['order' => $order->id])` | `app/Http/Controllers/CheckoutController.php` |
+| `checkout.return` rozszerzone o lookup po `?order=` (obok istniejącego `?sessionId=`), zawsze scoped do `organization_id` + `user_id` zalogowanego — offline order nigdy nie ma `p24_session_id` | `CheckoutController::return()` |
+| UI: wybór metody rozliczenia w `checkout/show.blade.php` (tylko gdy tenant włączył obie), ekran „zarezerwowano" w `checkout/return.blade.php`, baner z terminem rezerwacji w `orders/show.blade.php` | Blade — polerowanie UX zostawione `frontend-ui-architect` w kolejnym przeglądzie |
 
-**Uwaga wykonawcza:** akcje panelu są celowo zduplikowane między `OrderResource` a `Pages/EditOrder` — zmiana w jednym miejscu bez drugiego daje niespójny panel.
+**Dlaczego nie ma migracji do maszyny stanów (`OrderStatusStateMachine`):** `pending_payment → paid`
+już istniała jako legalne przejście (P24 webhook jej używa) — `recordOfflinePayment()` woła
+dokładnie to samo przejście, więc cały downstream (guard rekoncyliacyjny, kaucja, protokoły) działa
+bez zmian.
+
+**Email templates — pułapka, o której trzeba pamiętać przy każdym nowym `TemplateKey`:**
+`EmailTemplateSeeder` biegnie tylko raz, przy pierwszym provisioning tenanta
+(`ProvisionTenantCommand::runGlobalSeedersOnce()`). Każdy już-działający stack (włącznie z UAT-em)
+NIGDY więcej go nie uruchomi — nowy klucz szablonu musi więc dodatkowo trafić do osobnej migracji
+danych produkcyjnych (`insertOrIgnore`, `organization_id => null`), inaczej pierwszy offline
+checkout na UAT skończy się cichym „template not found" w `failed_jobs`. Zrobione w
+`2026_08_16_120002_seed_order_accepted_offline_email_templates.php`, pinowane testem
+`OrderAcceptedOfflineEmailTemplateMigrationTest`. Ten sam wzorzec dotyczy `order-handed-over`,
+`order-returned`, `rental-return-due-soon`, `rental-return-overdue` (już naprawione wcześniej) —
+i, jak odnotowano w tamtych migracjach, `order-paid`/`order-confirmed`/`order-cancelled`/
+`admin-new-order`/`rental-cancelled`/`service-area-available` NADAL nie mają odpowiednika
+(pre-existing, poza zakresem tej gałęzi).
+
+**Uwaga wykonawcza (potwierdzona w implementacji):** akcje panelu są celowo zduplikowane między
+`OrderResource` a `Pages/EditOrder` — zmiana w jednym miejscu bez drugiego daje niespójny panel.
+Oba miejsca wołają identyczną logikę z `OrderService::recordOfflinePayment()` — zduplikowany jest
+tylko opis akcji Filamentowej (label/ikona/formularz/widoczność), nie logika biznesowa.
+
+**Nieukończone / świadomie odłożone w tej fazie:**
+- Adnotacja o metodzie rozliczenia w protokole wydania (`OrderProtocolPdfService`/
+  `handover.blade.php`) — z listy rozpoznania, NIE zrobiona w tym PR-ze (protokoły mają własną,
+  szerszą logikę uprawnień i wymagają osobnego przeglądu, żeby nie zepsuć istniejącego zachowania).
+- UX wyboru metody rozliczenia w `checkout/show.blade.php` jest funkcjonalny, ale nie przeszedł
+  przeglądu `frontend-ui-architect` (accessibility, spójność wizualna z resztą formularza).
 
 ### Faza 2 — abstrakcja bramki
 
@@ -198,8 +230,10 @@ Jeśli celem jest **przetestowanie ścieżki online bez zakładania konta produk
 
 ## 7. Powiązane
 
-- `app/docs/features/payment-flow.md`, `checkout-order-flow.md`, `cart-order-system.md` — opisują dziś P24 jako jedyne źródło prawdy; **wymagają aktualizacji przy fazie 1**
+- `app/docs/features/cart-order-system.md` — zaktualizowany przy Fazie 1 (TTL, tabela `payments`)
 - `docs/architecture/status-machines.md` — maszyna stanów zamówienia
+- `.claude/rules/notifications.md` — wzorzec `notify()`/`event()` poza `DB::transaction()`
+- `.claude/rules/migrations.md` — wzorzec migracji danych produkcyjnych dla nowych `email_templates`
 - `.claude/rules/` — reguły projektu
 
 **Rozpoznanie stanu kodu i research dostawców: 2026-08-16.** Odniesienia `plik:linia` były prawdziwe w tym dniu i przy zmianach w kodzie mogą się rozjechać — traktuj je jako punkt wejścia, nie jako pewnik.

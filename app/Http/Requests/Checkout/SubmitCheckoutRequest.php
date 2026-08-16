@@ -7,6 +7,7 @@ namespace App\Http\Requests\Checkout;
 use App\Rules\ValidPolishNIP;
 use App\Rules\ValidPolishPESEL;
 use App\Rules\ValidPolishREGON;
+use App\Support\Settings\SettingsManager;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,6 +26,10 @@ class SubmitCheckoutRequest extends FormRequest
         return [
             // === COMMON (all customer types) ===
             'customer_type' => ['required', Rule::in(['natural_person', 'business'])],
+            // Only whatever the tenant currently allows — NOT a static ['online','offline']
+            // list. A tenant with offline disabled must not accept it even if a stale/
+            // tampered client still submits it.
+            'settlement_method' => ['required', Rule::in(app(SettingsManager::class)->availableSettlementMethods())],
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_phone' => ['required', 'string', 'max:20'],
             'terms_accepted' => ['required', 'accepted'],
@@ -70,6 +75,8 @@ class SubmitCheckoutRequest extends FormRequest
         return [
             'customer_type.required' => 'Proszę wybrać typ klienta.',
             'customer_type.in' => 'Nieprawidłowy typ klienta.',
+            'settlement_method.required' => 'Proszę wybrać sposób rozliczenia.',
+            'settlement_method.in' => 'Wybrany sposób rozliczenia jest niedostępny.',
             'customer_email.required' => 'Adres email jest wymagany.',
             'customer_email.email' => 'Podaj prawidłowy adres email.',
             'customer_phone.required' => 'Numer telefonu jest wymagany.',
