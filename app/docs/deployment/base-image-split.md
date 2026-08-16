@@ -1,7 +1,12 @@
 # Podział obrazu: środowisko osobno, aplikacja osobno — plan
 
-**Status:** plan, nic z tego nie jest zaimplementowane.
-**Data:** 2026-08-16.
+**Status:** Faza 1 (podział i pomiar) zaimplementowana i zweryfikowana lokalnie, PR
+`feature/base-image-split-phase1`. **Nie wdrożone na UAT** — `Dockerfile` w tej gałęzi pinuje
+`ghcr.io/patrykgielo/registro-base:sha-87912b1fea29`, obraz zbudowany i przetestowany wyłącznie
+lokalnie (workflow `build-base-image.yml` nigdy nie dispatchowany na GitHubie — zakaz w tej sesji).
+Zanim ta gałąź zostanie zmergowana i wydana, ktoś z dostępem do Actions musi realnie odpalić ten
+workflow, żeby ten sam tag istniał w GHCR.
+**Data planu:** 2026-08-16. **Data realizacji Fazy 1:** 2026-08-16.
 **Powód:** każde wydanie kompiluje od nowa rozszerzenia PHP, mimo że zmieniają się rzędu razy w roku.
 
 ---
@@ -36,7 +41,10 @@ Rozbicie buildu na zimno (`--progress=plain`):
 
 Sama kompilacja rozszerzeń PHP to **62% całego buildu**.
 
-W CI job `build` trwa **3 min 29 s – 3 min 38 s** (zmierzone na `v0.13.0-rc15` i `rc16`).
+W CI job `build` trwa **3 min 29 s – 3 min 38 s** (zmierzone na `v0.13.0-rc15` i `rc16`). Od
+dodania kroku Trivy (2026-08-16, patrz `ci-cd-troubleshooting.md`, wpis "composer audit + skan
+obrazu") urósł do **~4,2 min** — skan sam w sobie nie jest kosztem tego podziału i Faza 1 go nie
+dotyka, ale jest to aktualny punkt odniesienia dla przyszłych pomiarów tego joba.
 
 ---
 
@@ -67,6 +75,41 @@ System, `apt-get`, skompilowane rozszerzenia PHP, `pecl`, użytkownik `laravel` 
 Etap `frontend-builder` (`node:20-alpine`) **zostaje w obrazie aplikacji** — `npm ci` i build to razem 8,1 s i zależą od kodu, nie od środowiska. Przeniesienie ich do bazy nic nie kupuje, a zmusza do przebudowy bazy przy każdej zmianie zależności frontendu.
 
 Oczekiwany czas buildu aplikacji: **35–40 s** (18 s pracy + ~17 s eksportu).
+
+**Zmierzone w Fazie 1: 34,459 s** (`--no-cache` na warstwach aplikacji, baza już lokalnie obecna,
+`OPCACHE_MODE=production`, `BROWSER_TESTING=false`) — poniżej progu zaliczenia (< 60 s) i zgodne z
+oczekiwaniem sprzed implementacji. Pełny log: `composer install` + `check-platform-reqs` (nowy
+strażnik, Faza 2 z tego planu wprowadzona już w Fazie 1 — patrz sekcja 6.1) + `COPY . .` +
+`dump-autoload` + `chown` + eksport OCI, RAZEM z pełnym `npm ci`+`npm run build` frontend-buildera
+(też bez cache'u w tym pomiarze, bo `--no-cache` obejmuje CAŁY plik, obie stage'y).
+
+### 3.1 Gdzie wylądowały `ARG OPCACHE_MODE` i `ARG BROWSER_TESTING`
+
+Obie zostały w `Dockerfile` aplikacji, nie w `Dockerfile.base`. Nie jest to przeniesienie
+bezmyślne — poniżej uzasadnienie osobno dla każdej.
+
+**`OPCACHE_MODE`:** wybiera, który z dwóch STATYCZNYCH plików `.ini` skopiować
+(`opcache-dev.ini`/`opcache-prod.ini`) — to `cp`, nie kompilacja, kosztuje ułamek sekundy.
+Zapieczenie w bazie wymagałoby DWÓCH wariantów bazy (dev/prod) dla zerowej korzyści czasowej, a
+`docker-compose.yml` (lokalnie `OPCACHE_MODE=dev`) i CI/produkcja (`OPCACHE_MODE=production`)
+musiałyby wybierać między TAGAMI bazy zamiast argumentem builda — droższa zmiana, żadnego zysku.
+
+**`BROWSER_TESTING`:** technicznie JEST pracą środowiskową (apt-get, systemowe biblioteki Chromium)
+— naiwna odpowiedź brzmiałaby "to środowisko, przenieś do bazy". Odrzucone z dwóch powodów:
+
+1. Binarki Playwrighta (Chromium) są PRZYPIĘTE do wersji z `package.json` tego repo — kodu, którego
+   przy budowaniu `Dockerfile.base` jeszcze nie ma. Przeniesienie samego `apt-get` (biblioteki
+   systemowe) do bazy zostawiłoby krok zależny od kodu w aplikacji i tak — zero uproszczenia, za to
+   DRUGI wariant bazy do budowania, tagowania i utrzymywania w nieskończoność.
+2. Ta flaga jest wyłącznie dev/E2E — ani `test.yml`, ani `deploy-production.yml`
+   (`build-args: OPCACHE_MODE=production` i nic więcej) nigdy jej nie ustawiają. Nie była częścią
+   zmierzonych 135,7 s/83% "środowiska" z sekcji 1, które uzasadniają cały ten podział — przeniesienie
+   jej nie skróciłoby ścieżki, dla której ta zmiana istnieje.
+
+Skutek: **jeden wariant `registro-base`**, nie dwa. Gdyby w przyszłości pomiar pokazał, że sam
+`apt-get install` dla Chromium jest kosztowny i uruchamiany często (np. CI zaczyna regularnie
+budować obrazy E2E) — rewizja tej decyzji jest tania: to jeden warunkowy blok do przeniesienia, bez
+zmiany reszty podziału.
 
 ---
 
@@ -115,11 +158,70 @@ Uwaga: przy cyklicznej przebudowie sam skrót `Dockerfile.base` **nie wystarczy 
 
 ## 7. Fazy
 
-### Faza 1 — podział i pomiar
-Wydzielenie `Dockerfile.base`, zbudowanie bazy raz, zapięcie tagu w `Dockerfile` aplikacji, przebudowa workflow o osobny krok. **Warunek zaliczenia: zmierzony czas buildu aplikacji poniżej minuty, obraz działa na UAT.**
+### Faza 1 — podział i pomiar — WYKONANA (lokalnie), NIEWDROŻONA na UAT
+
+Wydzielone `Dockerfile.base`, zbudowana baza raz lokalnie, tag zapięty w `FROM` `Dockerfile`
+aplikacji (`ghcr.io/patrykgielo/registro-base:sha-87912b1fea29`), nowy workflow
+`build-base-image.yml` (`workflow_dispatch`, oddzielny od `deploy-production.yml`).
+
+**Warunek zaliczenia z tego planu: zmierzony czas buildu aplikacji poniżej minuty.**
+**Zmierzone: 34,459 s.** Zaliczone.
+
+**"Obraz działa na UAT" — NIE zweryfikowane, jawnie.** Zakaz w tej sesji: żaden SSH do serwera,
+żaden dispatch workflowów. Co ZOSTAŁO zweryfikowane, realnym uruchomieniem, lokalnie:
+
+- **Baza, build na zimno:** `docker build -f Dockerfile.base .` → **2 min 16,711 s** (system
+  packages + `docker-php-ext-install` + `pecl install redis` + composer binary + user
+  `laravel:laravel`, bez kodu aplikacji).
+- **Aplikacja na gotowej bazie:** `docker build -f Dockerfile --no-cache
+  --build-arg OPCACHE_MODE=production --build-arg BROWSER_TESTING=false .` (baza już lokalnie,
+  warstwy aplikacji WYMUSZONE bez cache'u) → **34,459 s**, poniżej progu.
+- **`composer check-platform-reqs` (nowy strażnik z sekcji 6.1, wprowadzony już w Fazie 1, nie
+  odłożony do Fazy 2):** pozytywnie — 19/19 wymagań `success` na prawdziwym `composer.lock` tego
+  repo. Negatywnie — dopisanie `"ext-doesnotexist12345": "*"` do `composer.json` wewnątrz
+  zbudowanego obrazu i ponowne uruchomienie komendy dało `missing` i **kod wyjścia 2** — potwierdzone,
+  że strażnik faktycznie wywala `RUN`, nie tylko wypisuje ostrzeżenie.
+- **`php -m` identyczne przed i po**, zestawiony z DZIAŁAJĄCEGO kontenera `registro-app` (obraz
+  sprzed podziału) i ze świeżo zbudowanego obrazu Fazy 1 — `diff` bez różnic, plik po plik
+  identyczny (48 linii z nagłówkami `[PHP Modules]`/`[Zend Modules]` po obu stronach).
+- **Kontener realnie startuje, nie tylko buduje się:** `docker run` (bez `--entrypoint`, prawdziwy
+  `ENTRYPOINT`) podłączony do sieci `app_registro` (żeby dosięgnąć prawdziwy `registro-mysql`),
+  `DB_HOST=registro-mysql`. Entrypoint przeszedł walidację użytkownika (`✅ Container user:
+  laravel`), połączył się z bazą, utworzył symlink `storage`, i wykonał finalne `php artisan
+  --version` → `Laravel Framework 12.66.0`. Osobno: domyślne `CMD ["php-fpm"]` uruchomione w tle —
+  kontener `Up`, log `fpm is running, pid 1` / `ready to handle connections`.
+- **`actionlint`** na `build-base-image.yml` (samodzielnie) → czysto. Uruchomiony też na całym
+  `.github/workflows/*.yml` — jedno istniejące, niezwiązane ostrzeżenie `shellcheck` w
+  `deploy-production.yml:338` (SC2086), sprzed tej zmiany, nie dotyczy nowego pliku.
+- Obrazy testowe posprzątane po sesji (`docker rmi`).
+
+**Czego NIE dowodzi to wszystko:** że `build-base-image.yml` faktycznie wypycha obraz do GHCR z
+działającymi uprawnieniami (`packages: write`, `GITHUB_TOKEN`), że pakiet `registro-base` faktycznie
+ląduje jako prywatny (oczekiwane z domyślnego zachowania GHCR dla prywatnego repo — NIE
+zweryfikowane wprost), ani że produkcyjny `docker compose pull` na UAT poprawnie ściąga oba obrazy
+(`registro-base` pośrednio, przy każdym buildzie `registro`, i `registro` bezpośrednio) — żadne z
+tych trzech nie da się sprawdzić bez realnego dispatcha na GitHubie lub dostępu do serwera, oba
+zakazane w tej sesji.
+
+**Procedura przebudowy bazy (do wykonania przez kogoś z dostępem do Actions, przed mergem tej
+gałęzi):**
+
+1. `git diff Dockerfile.base` — upewnij się, że treść jest tym, co ma zostać zbudowane.
+2. Dispatch `build-base-image.yml` z `main`/gałęzi zawierającej ten `Dockerfile.base`.
+3. Workflow liczy tag jako `sha-<12 pierwszych znaków sha256sum Dockerfile.base>` — identyczny
+   algorytm co w tej sesji lokalnie (`sha-87912b1fea29` dla treści na dzień 2026-08-16). Jeśli
+   `Dockerfile.base` się nie zmienił, workflow wykrywa istniejący tag przez `docker manifest
+   inspect` i NIE buduje ponownie (raportuje to w step summary).
+4. Po sukcesie: zaktualizuj `FROM` w `Dockerfile` aplikacji na wypisany tag (workflow tego NIE robi
+   automatycznie — patrz Faza 4 poniżej), otwórz PR.
+5. Stare tagi bazy NIE są usuwane automatycznie przez nic w tym repo — `cleanup-cache.yml` celuje w
+   inny schemat (`buildcache-*`). Retencja obrazów bazowych zostaje otwartym pytaniem (sekcja 9,
+   punkt 2) — usunięcie tagu, na którym zbudowano wydanie wciąż wdrożone, łamie rollback (sekcja 6.2).
 
 ### Faza 2 — strażnicy
-`composer check-platform-reqs` w buildzie. Reguła retencji obrazów bazowych. Wpis do `ci-cd-troubleshooting.md`.
+`composer check-platform-reqs` w buildzie — **zrobione już w Fazie 1** (wymóg brief'u tego zadania,
+patrz sekcja 6.1 i weryfikacja w sekcji "Faza 1" powyżej), nie odkładane. Zostaje z tej fazy:
+reguła retencji obrazów bazowych (sekcja 9, punkt 2).
 
 ### Faza 3 — łatki bezpieczeństwa
 Cykliczna przebudowa bazy (proponuję tygodniowo) z tagiem niosącym datę.
@@ -136,6 +238,21 @@ Automatyczne otwieranie PR-a podbijającego zapięcie bazy po jej przebudowie. P
 Sprawdzone: `scripts/server/deploy.sh` nie ma żadnej ścieżki synchronizującej pliki aplikacji do działającego kontenera. Rezygnacja z obrazu na rzecz wgrywania kodu odebrałaby nam odtwarzalność i rollback po tagu — a to jedyna część tego potoku, która działa dokładnie tak, jak zaprojektowano.
 
 **`type=gha`** zostaje albo znika — bez znaczenia, bo nic nie robi. Do decyzji przy okazji.
+
+**Zestaw pakietów `apt`/`pecl`.** `Dockerfile.base` przenosi obecny zestaw **jeden do jednego** —
+`libc6-dev`, `libpng-dev`, `libsqlite3-dev`, `libxml2-dev`, `zlib1g-dev`, `linux-libc-dev` (część
+jako zależności `-dev` innych pakietów, część transitywnie) i cały `perl` jadą dalej, mimo że żaden
+z nich nie jest potrzebny w runtime — to potwierdzone skanowaniem Trivy z 2026-08-16
+(`ci-cd-troubleshooting.md`, wpis "composer audit + skan obrazu"): **2275 znalezisk w warstwie OS**,
+z czego **19 CRITICAL, wszystkie bez dostępnego fixa upstream**, i wszystkie sprowadzają się do
+JEDNEGO źródła — `perl`/`libperl5.40`/`perl-base`/`perl-modules-5.40` (4 CVE) i `libxml2`/
+`libxml2-dev` + `linux-libc-dev` (2 CVE) — pakietów, których runtime aplikacji nie wykonuje ani
+razu. Wielostopniowe budowanie (kompilacja w jednym etapie, kopiowanie tylko skompilowanych `.so`
+do czystszego etapu runtime, bez `-dev`/`perl`/narzędzi budowlanych) zmniejszyłoby tę powierzchnię
+realnie — ale to jest **osobna, warta zrobienia zmiana, świadomie NIE ta**: dwie zmiany na raz
+(podział na base/app I redukcja pakietów) uniemożliwiłyby przypisanie ewentualnej regresji jednej
+przyczynie. Kandydat na kolejną fazę tego planu lub osobny plan, z własnym pomiarem "przed/po" na
+Trivy.
 
 ---
 

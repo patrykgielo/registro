@@ -1,0 +1,100 @@
+name: Build Base Image
+
+# workflow_dispatch only, deliberately -- registro-base changes a handful of
+# times a year (system packages, compiled PHP extensions), not on every
+# application release. A job inside deploy-production.yml would add a
+# fixed cost to EVERY deploy to serve a rebuild that is needed on almost
+# none of them. See app/docs/deployment/base-image-split.md section 7
+# (Faza 1) and the 2026-08-16 "preflight" entry in ci-cd-troubleshooting.md
+# for the same reasoning applied to a different flag in this repo.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-base:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # Content-addressed, not hand-picked: the tag IS the sha256 of the
+      # exact file that produced the image, so identical content always
+      # gets the identical tag and different content always gets a
+      # different one. See base-image-split.md section 5.
+      - name: Compute base image tag
+        id: tag
+        run: |
+          HASH="$(sha256sum Dockerfile.base | cut -c1-12)"
+          echo "TAG=sha-${HASH}" >> "$GITHUB_OUTPUT"
+          echo "Computed tag: sha-${HASH}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dockerfile.base is unchanged content -> unchanged tag -> the image
+      # already exists in the registry. Rebuilding would produce a
+      # bit-for-bit identical image at real cost (the ~2m40s this whole
+      # split exists to avoid paying repeatedly) for zero benefit -- skip
+      # it. `docker manifest inspect` is a plain registry read, no pull.
+      - name: Check whether this tag already exists
+        id: check
+        run: |
+          IMAGE="ghcr.io/patrykgielo/registro-base:${{ steps.tag.outputs.TAG }}"
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE already exists -- nothing to build."
+          else
+            echo "EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE does not exist yet -- will build."
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.EXISTS != 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Build and push base image
+        if: steps.check.outputs.EXISTS != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          file: Dockerfile.base
+          push: true
+          pull: true
+          # Same reasoning as deploy-production.yml's app image build: no
+          # supply-chain need on an internal image, and disabling avoids
+          # extra untagged manifests in the same GHCR package.
+          provenance: false
+          sbom: false
+          tags: |
+            ghcr.io/patrykgielo/registro-base:${{ steps.tag.outputs.TAG }}
+          # No `latest` tag on purpose -- the application Dockerfile always
+          # pins the exact content-addressed tag (base-image-split.md
+          # section 5); a floating tag here would only invite someone to
+          # reach for it "just this once" and reintroduce the
+          # reproducibility problem the pin exists to prevent.
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Base image build"
+            echo
+            if [ "${{ steps.check.outputs.EXISTS }}" = "true" ]; then
+              echo "\`ghcr.io/patrykgielo/registro-base:${{ steps.tag.outputs.TAG }}\` already existed -- no build performed."
+            else
+              echo "Built and pushed \`ghcr.io/patrykgielo/registro-base:${{ steps.tag.outputs.TAG }}\`."
+              echo
+              echo "**Next step (manual, not automated):** update the \`FROM\` line in \`Dockerfile\`"
+              echo "to \`ghcr.io/patrykgielo/registro-base:${{ steps.tag.outputs.TAG }}\` and open a PR."
+              echo "The application image will keep building against its currently-pinned base tag"
+              echo "until that PR merges -- this workflow never edits \`Dockerfile\` itself."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

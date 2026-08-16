@@ -20,55 +20,53 @@ COPY scripts ./scripts
 RUN npm run build
 
 # Stage 2: PHP runtime
-# Using Debian-based image for Playwright compatibility (Alpine's musl libc is incompatible)
-FROM php:8.3-fpm
+#
+# Built FROM registro-base, not php:8.3-fpm directly -- the apt/pecl/
+# docker-php-ext-install work (system packages, compiled PHP extensions,
+# composer binary, the laravel:laravel user) lives in Dockerfile.base and
+# changes a handful of times a year. This stage adds only what changes on
+# every release: application code. Pin a specific tag, NEVER `latest` --
+# see app/docs/deployment/base-image-split.md section 5 for why (without a
+# pin, the same app commit built twice could silently land on two different
+# environments, which defeats the entire point of building images).
+#
+# To rebuild against a newer base: bump this tag after running
+# build-base-image.yml (workflow_dispatch), never edit Dockerfile.base
+# without also bumping this line -- see base-image-split.md for the full
+# procedure.
+FROM ghcr.io/patrykgielo/registro-base:sha-87912b1fea29
 
 # Build argument to control OPcache configuration
 # Default: dev (safe for local development with bind mounts)
 # Production/staging CI must pass --build-arg OPCACHE_MODE=production
+#
+# Stays here, not in the base image: this is a `cp` of one of two static
+# ini files, not an environment install -- baking it into the base would
+# require two base image variants (dev/prod) for zero build-time benefit,
+# and would force docker-compose.yml (OPCACHE_MODE=dev) and CI/production
+# (OPCACHE_MODE=production) to select between base image tags instead of a
+# build arg.
 ARG OPCACHE_MODE=dev
 
 # Build argument to enable browser testing support (Playwright + Chromium)
 # Default: false (production) - keeps image small
 # Set to true for local development with E2E tests
+#
+# Stays here, not in the base image, even though installing Chromium's
+# system libraries below IS environment-class work (apt-get). Two reasons:
+#   1. The Playwright *browser binaries* (further down, after `COPY . .`)
+#      are pinned to the exact version in this repo's package.json -- code
+#      that does not exist yet at Dockerfile.base build time. Splitting only
+#      the apt-get half into base would still leave a code-dependent step
+#      here, buying no simplification, only a second base variant to build,
+#      tag and keep in sync forever.
+#   2. This flag is dev/E2E-only: neither the CI test job (test.yml) nor the
+#      production build (deploy-production.yml, build-args: OPCACHE_MODE=
+#      production only) ever sets it. It was NOT part of the 135.7s/83%
+#      "environment" cost measured in base-image-split.md that motivated
+#      this split -- moving it would not shorten the path this change exists
+#      to shorten.
 ARG BROWSER_TESTING=false
-
-# Runtime and build dependencies (Debian)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpng-dev \
-    libjpeg-dev \
-    libzip-dev \
-    libonig-dev \
-    libicu-dev \
-    libxml2-dev \
-    libsqlite3-dev \
-    unzip \
-    git \
-    curl \
-    netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions (v0.3.5 + composer.lock requirements + pdo_sqlite for tests + sockets for Pest browser)
-RUN docker-php-ext-configure gd --with-jpeg && \
-    docker-php-ext-install -j$(nproc) \
-    pdo_mysql \
-    pdo_sqlite \
-    mbstring \
-    intl \
-    pcntl \
-    posix \
-    gd \
-    zip \
-    bcmath \
-    fileinfo \
-    dom \
-    exif \
-    opcache \
-    sockets
-
-# Install Redis extension via PECL (not a core extension)
-RUN pecl install redis && \
-    docker-php-ext-enable redis
 
 # Copy PHP configuration files
 # - OPcache: Mode-dependent (dev vs production)
@@ -136,8 +134,7 @@ RUN if [ "$BROWSER_TESTING" = "true" ]; then \
         echo "⊘ Browser testing disabled (BROWSER_TESTING=false)"; \
     fi
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Composer binary comes from registro-base (see Dockerfile.base).
 
 WORKDIR /var/www
 
@@ -146,6 +143,13 @@ COPY composer.json composer.lock ./
 
 # Install dependencies
 RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+
+# Fail the BUILD, not the container start, if composer.lock ever requires a
+# PHP extension registro-base doesn't ship. Without this, a mismatch between
+# the two files is invisible until the image is deployed and php-fpm (or an
+# artisan command in the entrypoint) fatals on a missing extension -- the
+# worst possible moment to find out. See base-image-split.md section 6.1.
+RUN composer check-platform-reqs
 
 # Copy ALL code (bez --link!)
 COPY . .
@@ -217,11 +221,13 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 #
 # See: app/docs/decisions/ADR-013-docker-user-model.md
 #
+# laravel:laravel (UID/GID 1000) already exists -- created in
+# registro-base (Dockerfile.base). Only the chown of application code is
+# this stage's job.
+#
 # /opt/playwright-browsers only exists when BROWSER_TESTING=true; chown is
 # skipped otherwise so this step doesn't fail on the production image.
-RUN groupadd -g 1000 laravel && \
-    useradd -u 1000 -g laravel -m laravel && \
-    chown -R laravel:laravel /var/www && \
+RUN chown -R laravel:laravel /var/www && \
     chown -R laravel:laravel /tmp/public && \
     if [ -d /opt/playwright-browsers ]; then chown -R laravel:laravel /opt/playwright-browsers; fi
 
