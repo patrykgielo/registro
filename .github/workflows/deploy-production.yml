@@ -117,6 +117,97 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
+      # --locked reads composer.lock directly (Auditor::getPackages() pulls
+      # from $composer->getLocker() when --locked is set, never touching
+      # installed/vendor state) -- verified by running `composer audit
+      # --locked` with zero vendor/ present and getting the identical
+      # advisory count as with a full install. This means the result here is
+      # independent of whether "Install Composer dependencies" above ever
+      # gains a --no-dev flag; it does not have one today, so the run without
+      # --locked would currently give the same answer, but --locked removes
+      # that coupling instead of relying on it staying true.
+      #
+      # No --no-dev on the audit itself: require-dev runs the same way in
+      # this job as require does, so its advisories are real CI-surface risk
+      # too, not noise -- measured delta on this repo (2026-08-16) was 3
+      # low-severity symfony/yaml advisories, i.e. cheap to keep visible.
+      #
+      # Report-only: composer audit exits 1 when it finds advisories, which
+      # would otherwise fail this job. `|| true`-equivalent capture below
+      # keeps the job green regardless of findings -- see
+      # ci-cd-troubleshooting.md (2026-08-16 entry) for the count measured
+      # on this repo and the one-line change to make this blocking.
+      #
+      # Fail-safe, not fail-shrink: an audit that could not run at all
+      # (network failure reaching the advisory API, a corrupt lock file) is
+      # NOT reported as "no vulnerabilities" -- composer audit prints
+      # nothing to stdout in that case (verified: an unauditable project
+      # produces an empty stdout and a STATUS_FAILED exit, same exit code as
+      # "advisories found"), so the step distinguishes "ran clean" from
+      # "could not tell" by checking whether stdout is valid JSON, not by
+      # exit code alone.
+      - name: Composer security audit
+        if: always() && !cancelled()
+        run: |
+          AUDIT_EXIT=0
+          composer audit --locked --format=json --abandoned=report > /tmp/composer-audit.json 2>/tmp/composer-audit.err || AUDIT_EXIT=$?
+
+          if ! jq -e . /tmp/composer-audit.json >/dev/null 2>&1; then
+            echo "::warning::composer audit did not complete (exit $AUDIT_EXIT) -- this is NOT the same as a clean report. See the job summary."
+            {
+              echo "## Composer security audit"
+              echo
+              echo "**DID NOT COMPLETE** (exit $AUDIT_EXIT). stderr:"
+              echo '```'
+              cat /tmp/composer-audit.err
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          TOTAL=$(jq '[.advisories[][]] | length' /tmp/composer-audit.json)
+          PKGS=$(jq '.advisories | length' /tmp/composer-audit.json)
+          ABANDONED=$(jq '.abandoned | length' /tmp/composer-audit.json)
+
+          {
+            echo "## Composer security audit (\`composer audit --locked\`)"
+            echo
+            if [ "$TOTAL" -eq 0 ] && [ "$ABANDONED" -eq 0 ]; then
+              echo "No known vulnerabilities and no abandoned packages in composer.lock."
+            else
+              if [ "$TOTAL" -gt 0 ]; then
+                echo "**${TOTAL} advisories across ${PKGS} packages** (full composer.lock, including require-dev):"
+                echo
+                echo "| Severity | Count |"
+                echo "|---|---|"
+                jq -r '
+                  def sevrank: if .=="critical" then 0 elif .=="high" then 1 elif .=="medium" then 2 elif .=="low" then 3 else 4 end;
+                  [.advisories[][] | .severity] | group_by(.) | sort_by(.[0]|sevrank) | map("| \(.[0]) | \(length) |") | .[]
+                ' /tmp/composer-audit.json
+                echo
+                echo "<details><summary>Full list (${TOTAL})</summary>"
+                echo
+                echo "| Package | Severity | CVE | Advisory |"
+                echo "|---|---|---|---|"
+                jq -r '
+                  def sevrank: if .=="critical" then 0 elif .=="high" then 1 elif .=="medium" then 2 elif .=="low" then 3 else 4 end;
+                  [.advisories[][]] | sort_by(.severity|sevrank) | .[]
+                  | "| \(.packageName) | \(.severity) | \(.cve // "n/a") | [\(.advisoryId)](\(.link)) |"
+                ' /tmp/composer-audit.json
+                echo
+                echo "</details>"
+              fi
+              if [ "$ABANDONED" -gt 0 ]; then
+                echo
+                echo "**${ABANDONED} abandoned package(s):**"
+                jq -r '.abandoned | to_entries[] | "- `\(.key)`" + (if (.value|type)=="string" then " (replacement: \(.value))" else "" end)' /tmp/composer-audit.json
+              fi
+            fi
+            echo
+            echo "Mode: **report only** -- findings above do not fail this job. To make this"
+            echo "blocking, see the 2026-08-16 entry in ci-cd-troubleshooting.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Node.js
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
@@ -309,6 +400,144 @@ jobs:
           # copied whole into it. ignore-error=true: a cache-service hiccup
           # must never fail an actual deploy over a lost optimization.
           cache-to: type=gha,scope=registro-image,mode=max,ignore-error=true
+
+      # OS layer only, not `vuln-type: os,library` (the action's default):
+      # application dependencies are already covered by the "Composer
+      # security audit" step in the `test` job above, using Packagist's own
+      # advisory feed. Verified locally (2026-08-16) that Trivy's own
+      # composer-vendor scan of this exact image reports the SAME 10
+      # packages as `composer audit --locked --no-dev` -- scanning it again
+      # here would only ever duplicate composer audit's finding on the same
+      # package, or (if the two advisory databases ever disagree) contradict
+      # it, with no way for an operator reading both summaries to know which
+      # one is authoritative. npm devDependencies never reach this stage
+      # either -- only the compiled public/build assets are copied into the
+      # final image (see Dockerfile) -- confirmed by the same local scan:
+      # zero javascript/npm findings.
+      #
+      # `scanners: vuln` drops the action's default `secret` scanner --
+      # secret scanning is a different check with a different false-positive
+      # profile, out of scope for this change.
+      #
+      # No account or token needed by default: aquasecurity/setup-trivy
+      # installs the trivy CLI on the runner (not a nested container) and
+      # pulls the vulnerability DB from a public OCI registry. The action's
+      # built-in DB cache (`cache: true`, the default) is kept on because
+      # ghcr.io/aquasecurity/trivy-db has a documented history of
+      # rate-limiting anonymous pulls under aggregate GitHub Actions load
+      # (aquasecurity/trivy-action#389, aquasecurity/trivy discussion #8009)
+      # -- caching is the difference between "no DB download most runs" and
+      # "compete with every other trivy-action user in the world for the
+      # same anonymous quota". Not verified against this exact rate limit
+      # from a real dispatch (forbidden here); if a future run fails with
+      # TOOMANYREQUESTS, that history is where to start.
+      #
+      # image-ref pulls the tag this job just pushed, from GHCR, rather than
+      # scanning the local daemon's copy -- this job's `docker/build-push-
+      # action` call above does not set `load: true`, so there is no local
+      # copy to scan without adding a second, redundant export. The GHCR
+      # credentials `docker/login-action` established earlier in this job
+      # are expected to carry over via Docker's standard credential store,
+      # which Trivy's registry client reads by default -- NOT verified end
+      # to end (would require an actual dispatch); if this step ever fails
+      # to pull, check auth first, before assuming it's a real scan failure.
+      - name: Scan image for OS vulnerabilities (Trivy)
+        id: trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }}
+          format: json
+          output: trivy-results.json
+          vuln-type: os
+          scanners: vuln
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          # Flip this one value to '1' to fail the pipeline on any finding in
+          # the severity list above. Report-only for now -- see
+          # ci-cd-troubleshooting.md (2026-08-16 entry) for why: this image's
+          # OS layer had 19 CRITICAL findings that day, and EVERY one of them
+          # had no upstream fix yet (verified: FixedVersion empty on all 19,
+          # 6 distinct CVEs across debian's perl/libxml2/linux-libc-dev
+          # packages) -- blocking on raw severity today would deadlock every
+          # release rather than catch a real regression. A sane blocking
+          # policy needs ignore-unfixed and a triaged severity floor first,
+          # not a bare exit-code flip.
+          exit-code: '0'
+
+      # Bounded summary, not the full report: the OS layer alone had 2275
+      # findings when measured locally (2026-08-16), most without a
+      # severity-driving CVSS score from Debian's own tracker (UNKNOWN is
+      # its own bucket below, not folded into LOW -- collapsing it would
+      # misrepresent how much of this is actually unscored, not
+      # low-priority). Dumping all 2275 rows into $GITHUB_STEP_SUMMARY would
+      # be unreadable and risks the step summary's 1 MiB cap; the full
+      # machine-readable report is uploaded as an artifact instead.
+      - name: Summarize Trivy findings
+        if: always() && !cancelled() && steps.trivy.outcome != 'skipped'
+        run: |
+          if [ ! -s trivy-results.json ]; then
+            echo "::warning::trivy-results.json is missing or empty -- the scan did not produce a report. Not the same as a clean scan."
+            {
+              echo "## Image vulnerability scan (Trivy, OS packages)"
+              echo
+              echo "**DID NOT COMPLETE** -- no report file was produced."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-results.json)
+          {
+            echo "## Image vulnerability scan (Trivy, OS packages only)"
+            echo
+            echo "Scanned \`ghcr.io/patrykgielo/registro:${{ steps.version.outputs.VERSION }}\`. Application"
+            echo "dependencies (composer.lock) are covered separately by the Composer security"
+            echo "audit step in the \`test\` job -- not duplicated here."
+            echo
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "No known OS-package vulnerabilities found."
+            else
+              echo "**${TOTAL} findings** in the base image's OS packages:"
+              echo
+              echo "| Severity | Count | With a fix available |"
+              echo "|---|---|---|"
+              jq -r '
+                def sevrank: if .=="CRITICAL" then 0 elif .=="HIGH" then 1 elif .=="MEDIUM" then 2 elif .=="LOW" then 3 else 4 end;
+                [.Results[]?.Vulnerabilities[]?]
+                | group_by(.Severity) | sort_by(.[0]|sevrank)
+                | .[]
+                | "| \(.[0].Severity) | \(length) | \([.[] | select(.FixedVersion != null and .FixedVersion != "")] | length) |"
+              ' trivy-results.json
+              CRIT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
+              if [ "$CRIT" -gt 0 ]; then
+                echo
+                echo "<details><summary>CRITICAL findings (${CRIT})</summary>"
+                echo
+                echo "| Package | Installed | Fixed in | CVE |"
+                echo "|---|---|---|---|"
+                jq -r '
+                  [.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")]
+                  | unique_by(.VulnerabilityID + "|" + .PkgName)
+                  | .[]
+                  | "| \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "no fix yet") | [\(.VulnerabilityID)](\(.PrimaryURL // "")) |"
+                ' trivy-results.json
+                echo
+                echo "</details>"
+              fi
+              echo
+              echo "Full report (all severities, every package): download the \`trivy-results\` artifact from this run."
+            fi
+            echo
+            echo "Mode: **report only** -- findings above do not fail this job. To make this"
+            echo "blocking, see the 2026-08-16 entry in ci-cd-troubleshooting.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Trivy report
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: trivy-results-${{ steps.version.outputs.VERSION }}
+          path: trivy-results.json
+          retention-days: 30
+          if-no-files-found: warn
 
   deploy:
     runs-on: ubuntu-latest
