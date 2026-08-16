@@ -662,3 +662,99 @@ industry-agnostic ("Coming soon", "Got questions?") or it should be absent, with
 rendering nothing — never a specific fabricated identity (an email/phone/address that looks real)
 and never copy describing a business this project doesn't sell (equipment rental only). "Neutral" is
 not "invent different neutral copy" — if in doubt, seed nothing and let it stay blank.
+
+## Sixth pass (2026-08-16, `feature/auth-card-branding`): the dead `primary-*` scale finally hit a real report
+
+The "Fifth pass" section above already named the mechanism and flagged `components/ios/` as
+carrying it "pervasively", explicitly out of scope at the time because nothing in that pass
+rendered on the page under investigation. This pass is the report that mechanism was waiting for:
+a user landed on `/login` from "Zaloguj aby zarezerwować", found **white heading text on a white
+background**, and separately couldn't find the registration link at all (it was rendering, just
+invisible — same root cause, not a second bug).
+
+**Root cause, confirmed:** `components/ios/auth-card.blade.php` (the shared shell behind both
+`auth/login.blade.php` and `auth/register.blade.php`) set its page background with
+`bg-primary-600` — a `primary` Tailwind scale `design-tokens.css` never registers (only `brand`).
+Tailwind v4 silently drops unresolvable utilities, so the "colored auth backdrop" was actually
+transparent, i.e. the plain white `<body>`. Every heading/link on it used `text-white` (opaque,
+survives) or `text-primary`/`text-primary/80` (equally dead, so effectively unstyled/default-black
+in most contexts, but here just added to the same broken scale) — the visible defect was white
+title text on that see-through "backdrop", landing on white.
+
+**Fixed, mechanically, single mapping** (`bg-primary-600` → `bg-brand`, `text-primary` →
+`text-brand`, the three `from-primary-{500,400,300}/{15,12,10}` gradient-orb stops → `from-brand`
+at the same three opacities — the file's own comment already called these "Monochrome Gradient
+Orbs", so collapsing three shades into one hue at three opacities is what the name always claimed,
+not a redesign): `components/ios/auth-card.blade.php`, `auth/login.blade.php`,
+`auth/register.blade.php`, `components/ios/input.blade.php`, `components/ios/checkbox.blade.php`
+(the last two are shared, rendered on both auth pages, and needed no shade judgment — `text-primary`/
+`bg-primary`/`border-primary`/`ring-primary` were used bare, with no numbered scale, so the mapping
+to `brand`/`brand`/`brand`/`brand` was unambiguous for both variants of the checkbox component, not
+just the one auth pages use).
+
+**A second, independent contrast bug found while fixing the first:** once `bg-brand` made the
+backdrop opaque again, `text-white/90` (subtitle, footer "Nie masz konta?"/"Masz już konto?") and
+`text-white/70` (footer secondary line) both measured below the WCAG AA 4.5:1 floor for this text
+size against the default brand color (`oklch(55% 0.2 250)` ≈ `#0071DF`) — computed via the OKLCH→
+sRGB→relative-luminance chain (`APCA`/`WCAG 2.x` contrast formula), not assumed:
+
+| Text | Contrast vs `bg-brand` | AA (4.5:1) |
+|---|---|---|
+| `text-white` (opaque) | 4.74:1 | pass |
+| `text-white/90` | 4.13:1 | **fail** |
+| `text-white/80` | 3.58:1 | **fail** |
+| `text-white/70` | 3.09:1 | **fail** |
+
+Fixed by making every text token placed directly on `bg-brand` fully opaque (title, subtitle, both
+footer lines) — hierarchy now comes from size/weight, not opacity. Deliberately not tuned to "the
+minimum opacity that still passes today's default brand color": a per-tenant `design.brand_color`
+override (this app supports per-tenant brand colors — see the `@theme` override mechanism at the
+top of this doc's neighbors) could shift the default's 4.74:1 margin either direction, and opacity
+math that's fragile against a color the branch owner doesn't control is the same class of bug as
+everything else in this document, just for contrast instead of identity. Hover-state opacity
+(`hover:text-white/80` on links) was deliberately left alone — a transient, pointer-only state, not
+the default rendered contrast WCAG 1.4.3 governs, and the same dimming pattern already used
+throughout this codebase's hover states.
+
+**Scope decision — fixed the reported path, listed the rest, did not do a mechanical sweep:** the
+same `grep` this pass started with found the identical `primary-*` pattern in **~45 files**, several
+hundred occurrences, spanning `booking-wizard/*`, `checkout/*`, `cart/show.blade.php`,
+`orders/*`, `profile/*`, `components/ios/{button,service-card,hero-banner,breadcrumbs}.blade.php`,
+`components/cms/*`, `components/interactive/{modal,drawer,toast,tooltip}.blade.php`, and more —
+not the ~27 files this task's brief estimated, an undercount corrected here for whoever picks up
+the follow-up. Unlike the auth-path fix above, most of these use the **full numbered scale**
+(`primary-50` through `primary-900`, `ring-primary-500`, `border-primary-400`, gradient stops at
+several different shades) against a design system that only registers **three** brand tokens
+(`brand`, `brand-hover`, `brand-subtle`). Collapsing a 10-step scale into 3 tokens is not a
+1:1 mechanical substitution — which numbered shade becomes which token, and where a genuinely
+different treatment (e.g. an outline instead of a fill) is the right fix instead of any brand
+token, is a per-file design call, and several of the files carrying it are business-critical
+checkout/cart/booking flows that deserve their own focused pass and review, not a bundled
+mechanical sweep riding along on a login-page bug fix. Filament admin pages
+(`filament/pages/*`, `filament/components/*`) were excluded from this count entirely — they compile
+through `resources/css/filament/admin.css`/`platform.css`, a separate Vite entry with its own
+Filament-managed `primary` color scale, so `bg-primary-*` there is not the same bug.
+
+Not fixed here, flagged for a dedicated follow-up branch:
+`resources/views/components/ios/{button,service-card,hero-banner,breadcrumbs}.blade.php`,
+`resources/views/components/cms/{card,partials/builder-blocks,partials/content-header,partials/sidebar}.blade.php`,
+`resources/views/components/interactive/{modal,drawer,toast,tooltip}.blade.php`,
+`resources/views/components/content-blocks/feature-list.blade.php`,
+`resources/views/components/booking-wizard/{calendar,time-grid}.blade.php`,
+`resources/views/components/nav/header.blade.php`,
+`resources/views/{home-fallback,rentals/index,rentals/category,portfolio/category,posts/category}.blade.php`,
+`resources/views/{cart/show,checkout/show,checkout/return,orders/index,orders/show,booking/create}.blade.php`,
+`resources/views/booking-wizard/{layout,confirmation,steps/datetime,steps/contact,steps/vehicle-location}.blade.php`,
+`resources/views/profile/{index,layout,modals/change-email,partials/tab-address,partials/tab-notifications,partials/tab-personal,partials/tab-security,partials/tab-vehicle}.blade.php`.
+
+## Regression coverage (sixth pass)
+
+`tests/Feature/Auth/LoginPageTest.php` — pins both defects independently: a regex assertion
+(word-boundary safe against the unrelated, legitimate `text-text-primary` semantic token) that
+neither `/login` nor `/customer/register` renders any `{bg,text,border,from,to,via,ring}-primary`
+class; a positive assertion that `bg-brand` is present; an assertion that no `text-white/90` or
+`text-white/70` remains in the login page's footer; and two behavioral tests (registration link
+visible by default, hidden when `auth.registration_enabled` is `false` for the resolved tenant) —
+the visibility logic itself was never broken, only unreadable, so this pins that the fix didn't
+change *when* the link renders, only that it's now visible when it does. All five proven red against
+the pre-fix templates, then green.
