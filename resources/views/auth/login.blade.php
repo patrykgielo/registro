@@ -40,7 +40,7 @@
 
             @if (Route::has('password.request'))
             <a href="{{ route('password.request') }}"
-               class="text-sm font-medium text-primary hover:text-primary/80 transition-colors ios-spring">
+               class="text-sm font-medium text-brand hover:text-brand/80 transition-colors ios-spring">
                 Zapomniałeś hasła?
             </a>
             @endif
@@ -57,9 +57,11 @@
     </form>
 
     {{-- Footer Slot: Register Link --}}
+    {{-- Solid text-white throughout (not /90, /70): see auth-card.blade.php's subtitle
+         comment for why translucent white text on bg-brand fails WCAG AA contrast. --}}
     <x-slot:footer>
         @if($registrationEnabled)
-            <p class="text-sm text-white/90">
+            <p class="text-sm text-white">
                 Nie masz konta?
                 <a href="{{ route('customer.register') }}"
                    class="font-semibold text-white hover:text-white/80 transition-colors ios-spring underline decoration-2 underline-offset-4">
@@ -67,7 +69,7 @@
                 </a>
             </p>
         @endif
-        <p class="text-sm text-white/70 mt-2">
+        <p class="text-sm text-white mt-2">
             Chcesz założyć konto dla swojej firmy?
             <a href="mailto:{{ $contactEmail }}" class="font-semibold text-white underline decoration-2 underline-offset-4 hover:text-white/80 transition-colors">
                 Skontaktuj się z nami

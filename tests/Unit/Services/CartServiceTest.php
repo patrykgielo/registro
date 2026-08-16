@@ -182,7 +182,7 @@ class CartServiceTest extends TestCase
         $service = new CartService($availabilityMock, app(SettingsManager::class));
 
         $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('Dostępnych tylko 2 szt.');
+        $this->expectExceptionMessage('dostępnych 2 szt.');
 
         $service->addItem(
             $cart,
@@ -337,7 +337,7 @@ class CartServiceTest extends TestCase
         $service = new CartService($availabilityMock, app(SettingsManager::class));
 
         $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('Dostępnych tylko 2 szt.');
+        $this->expectExceptionMessage('dostępnych 2 szt.');
 
         $service->updateQuantity($cart, $item, 5);
     }
@@ -640,6 +640,77 @@ class CartServiceTest extends TestCase
 
             $cartB->refresh();
             $this->assertEquals('active', $cartB->status);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // convertToOrder — availability messaging (reports ALL unavailable items)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Availability messaging must show the customer the full picture in one
+     * pass, not fail on the first unavailable item and hide the rest —
+     * see app/docs/features/cart-order-system.md ("Availability messaging").
+     */
+    public function test_convert_to_order_reports_every_unavailable_item_not_just_the_first(): void
+    {
+        $wiertarka = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'name' => 'Wiertarka udarowa',
+            'quantity_total' => 1,
+        ]);
+        $betoniarka = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'name' => 'Betoniarka',
+            'quantity_total' => 1,
+        ]);
+
+        // Another customer already holds the only unit of BOTH services for
+        // the exact dates our cart wants.
+        $competingOrder = Order::factory()->paid()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => User::factory()->create()->id,
+        ]);
+        foreach ([$wiertarka, $betoniarka] as $service) {
+            OrderItem::factory()->create([
+                'order_id' => $competingOrder->id,
+                'service_id' => $service->id,
+                'quantity' => 1,
+                'start_date' => '2026-05-01',
+                'end_date' => '2026-05-03',
+            ]);
+        }
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+        foreach ([$wiertarka, $betoniarka] as $service) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $service->id,
+                'quantity' => 1,
+                'start_date' => '2026-05-01',
+                'end_date' => '2026-05-03',
+                'rental_days' => 3,
+            ]);
+        }
+
+        $cartService = $this->makeService();
+
+        try {
+            $cartService->convertToOrder($cart, ['customer_email' => 'c@example.com']);
+            $this->fail('Expected RentalUnavailableException was not thrown.');
+        } catch (RentalUnavailableException $e) {
+            $this->assertCount(2, $e->items(), 'Both unavailable items must be reported, not just the first one.');
+
+            $reportedServiceNames = array_column($e->items(), 'service_name');
+            $this->assertContains('Wiertarka udarowa', $reportedServiceNames);
+            $this->assertContains('Betoniarka', $reportedServiceNames);
+
+            $messages = implode(' ', $e->messages());
+            $this->assertStringContainsString('Wiertarka udarowa', $messages);
+            $this->assertStringContainsString('Betoniarka', $messages);
         }
     }
 

@@ -16,7 +16,7 @@
     @if($style === 'toggle')
         {{-- iOS Toggle Switch --}}
         <label for="{{ $inputId }}" class="flex items-center justify-between cursor-pointer group">
-            <span class="text-base text-gray-900 font-medium group-hover:text-primary transition-colors ios-spring">
+            <span class="text-base text-gray-900 font-medium group-hover:text-brand transition-colors ios-spring">
                 {{ $label }}
             </span>
 
@@ -48,13 +48,13 @@
                     class="sr-only peer"
                     {{ $attributes }}
                 >
-                <div class="ios-checkbox w-6 h-6 border-2 border-gray-300 rounded-lg peer-checked:bg-primary peer-checked:border-primary peer-focus:ring-4 peer-focus:ring-primary/20 transition-all duration-200 ios-spring flex items-center justify-center">
+                <div class="ios-checkbox w-6 h-6 border-2 border-gray-300 rounded-lg peer-checked:bg-brand peer-checked:border-brand peer-focus:ring-4 peer-focus:ring-brand/20 transition-all duration-200 ios-spring flex items-center justify-center">
                     <x-heroicon-m-check class="w-4 h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity duration-200" />
                 </div>
             </div>
 
             @if($label)
-            <span class="ml-3 text-base text-gray-900 group-hover:text-primary transition-colors ios-spring">
+            <span class="ml-3 text-base text-gray-900 group-hover:text-brand transition-colors ios-spring">
                 {{ $label }}
             </span>
             @endif

@@ -17,15 +17,15 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="antialiased">
-    <div class="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden bg-primary-600">
+    <div class="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden bg-brand">
     {{-- Noise Texture Overlay (App Store style) --}}
     <div class="absolute inset-0 opacity-5 mix-blend-overlay" style="background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E');"></div>
 
-    {{-- Monochrome Gradient Orbs --}}
+    {{-- Monochrome Gradient Orbs — single brand hue at varying opacity --}}
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
-        <div class="absolute top-0 -left-4 w-96 h-96 rounded-full bg-gradient-radial from-primary-500/15 to-transparent blur-3xl animate-blob"></div>
-        <div class="absolute top-0 -right-4 w-96 h-96 rounded-full bg-gradient-radial from-primary-400/12 to-transparent blur-3xl animate-blob animation-delay-2000"></div>
-        <div class="absolute -bottom-8 left-20 w-96 h-96 rounded-full bg-gradient-radial from-primary-300/10 to-transparent blur-3xl animate-blob animation-delay-4000"></div>
+        <div class="absolute top-0 -left-4 w-96 h-96 rounded-full bg-gradient-radial from-brand/15 to-transparent blur-3xl animate-blob"></div>
+        <div class="absolute top-0 -right-4 w-96 h-96 rounded-full bg-gradient-radial from-brand/12 to-transparent blur-3xl animate-blob animation-delay-2000"></div>
+        <div class="absolute -bottom-8 left-20 w-96 h-96 rounded-full bg-gradient-radial from-brand/10 to-transparent blur-3xl animate-blob animation-delay-4000"></div>
     </div>
 
     <div class="relative sm:mx-auto sm:w-full sm:max-w-md">
@@ -35,7 +35,7 @@
             <div class="bg-white/10 backdrop-blur-xl rounded-lg p-4 shadow-2xl border border-white/20">
                 {{-- Logo - You can customize this --}}
                 <div class="w-16 h-16 bg-white rounded-lg flex items-center justify-center">
-                    <svg class="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-10 h-10 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                 </div>
@@ -50,7 +50,12 @@
                 {{ $title }}
             </h2>
             @if($subtitle)
-            <p class="mt-2 text-lg text-white/90 drop-shadow">
+            {{-- Solid white, not white/90: at the default brand color this text sits on
+                 (oklch(55% 0.2 250)), white/90 measures ~4.13:1 against it -- below the
+                 4.5:1 WCAG AA floor for this text size. A per-tenant brand override could
+                 make that worse, so text placed directly on bg-brand stays fully opaque;
+                 hierarchy comes from size/weight instead of opacity. --}}
+            <p class="mt-2 text-lg text-white drop-shadow">
                 {{ $subtitle }}
             </p>
             @endif

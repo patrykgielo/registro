@@ -200,6 +200,47 @@ See full details: `app/docs/features/checkout-legal-compliance.md`
 
 ---
 
+## Availability messaging (feature/availability-messaging, 2026-08-16)
+
+Equipment being unavailable for the requested dates is a normal business situation — not a
+system failure, and not a form-validation mistake. It must never render inside the generic
+"Wystąpiły błędy" panel (`$errors->any()` in `resources/views/layouts/app.blade.php`), which is
+reserved for actual validation/submission failures.
+
+**Mechanism:** `RentalUnavailableException` (`app/Exceptions/RentalUnavailableException.php`) now
+optionally carries structured `items` (`service_name`, `requested`, `available`, `start_date`,
+`end_date`) alongside its plain message, via `::forItem()` (single item — `CartService::addItem()`/
+`updateQuantity()`) and `::forItems()` (multiple — `CartService::convertToOrder()`).
+`$exception->messages()` returns one Polish, user-facing line per item, in the same tone already
+used on the service page (`services/show.blade.php`: "Dostępnych: X szt." / "Brak dostępności w
+wybranym terminie") — e.g. `„Betoniarka": dostępnych 1 szt. w terminie 01.05.2026–03.05.2026
+(wybrano 2). Zmniejsz ilość lub wybierz inny termin.`
+
+`CartController::add()`/`updateQuantity()` and `CheckoutController::submit()` catch
+`RentalUnavailableException` and flash it into a **dedicated `availability` named error bag**
+(`withErrors($e->messages(), 'availability')`), never the default one. The layout renders it as its
+own informational notice (`variant="warning"`, title "Dostępność sprzętu"), visually and
+semantically separate from the default bag's error panel — `Illuminate\Support\ViewErrorBag::any()`/
+`all()` only ever look at the `default` bag, so a named bag is invisible to that block for free (no
+manual exclusion needed).
+
+**`CheckoutController::submit()` catches `RentalUnavailableException` BEFORE its generic
+`\Throwable` catch** around `convertToOrder()`. Before this fix, `RentalUnavailableException`
+(a `RuntimeException`) was swallowed by that generic catch and reported as "Nie udało się
+przetworzyć płatności. Spróbuj ponownie." — actively misleading: nothing was ever charged, no
+Order row was even created (the exception is thrown before `Order::create()`), so there's nothing
+to compensate. This bug predates PR #208 (which only widened that catch from `\Exception` to
+`\Throwable` for an unrelated reason — `RentalUnavailableException` was already an `\Exception`
+subtype either way).
+
+**`convertToOrder()` collects every unavailable item across the whole cart before throwing once**,
+instead of failing on the first one — a customer with two unavailable items now sees both in one
+attempt instead of fixing them one at a time. All Service rows for the cart are still locked
+(deterministic order by `service_id`, unchanged) before the decision is made; the transaction rolls
+back regardless of how many items failed.
+
+---
+
 ## Known limitation — status write and timestamp write are not atomic (pre-existing)
 
 `OrderStatusStateMachine::transitionTo()` (vendor code) writes the `status` column and
@@ -243,8 +284,9 @@ introduce the underlying issue.
 
 ## Tests
 
-- `tests/Feature/Cart/AddToCartTest.php` — 11 tests
-- `tests/Feature/Cart/CheckoutFlowTest.php` — 9 tests
+- `tests/Feature/Cart/AddToCartTest.php` — 12 tests (incl. availability bag isolation)
+- `tests/Feature/Cart/CheckoutFlowTest.php` — 15 tests (incl. availability-vs-payment-failure, multi-item availability)
+- `tests/Unit/Services/CartServiceTest.php` — incl. `convertToOrder` reporting every unavailable item, not just the first
 - `tests/Feature/Orders/CustomerOrdersTest.php` — 10 tests (IDOR coverage)
 - `tests/Feature/Legacy/DeprecatedRentalRoutesTest.php` — 11 tests (410 + API preserved)
 - `tests/Unit/Commands/CleanupExpiredOrdersTest.php` — 8 tests

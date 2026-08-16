@@ -79,7 +79,7 @@
             {{ $attributes->class([
                 'ios-input w-full px-4 py-3.5 rounded-xl border-2 transition-all duration-200 ios-spring text-gray-900 text-base placeholder:text-gray-400',
                 'pl-12' => $icon,
-                'border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10' => !$hasError,
+                'border-gray-200 focus:border-brand focus:ring-4 focus:ring-brand/10' => !$hasError,
                 'border-red-500 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 bg-red-50' => $hasError,
             ]) }}
         >
@@ -89,7 +89,7 @@
         <button
             type="button"
             onclick="togglePasswordVisibility('{{ $inputId }}')"
-            class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors ios-spring focus:outline-none focus:ring-2 focus:ring-primary rounded-lg p-1"
+            class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors ios-spring focus:outline-none focus:ring-2 focus:ring-brand rounded-lg p-1"
             aria-label="Toggle password visibility">
             <x-heroicon-o-eye class="w-5 h-5 eye-icon" />
             <x-heroicon-o-eye-slash class="w-5 h-5 eye-slash-icon hidden" />

@@ -184,7 +184,7 @@ it('refuses a second customer\'s stale add-to-cart for equipment already sold fo
     // word, via CartService::addItem()'s forUpdate: true re-check. ---
     $page->click('Dodaj do koszyka')
         ->waitForEvent('load')
-        ->assertSee('Dostępnych tylko 0 szt.');
+        ->assertSee('brak dostępności w terminie');
 
     // --- DB-level proof: B never got a cart item at all, and exactly one
     // order exists for this service on this date — A's. ---

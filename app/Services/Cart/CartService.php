@@ -98,7 +98,7 @@ class CartService
             $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true);
 
             if ($quantity > $available) {
-                throw new RentalUnavailableException("Dostępnych tylko {$available} szt.");
+                throw RentalUnavailableException::forItem($service->name, $quantity, $available, $start, $end);
             }
 
             $rentalDays = (int) $start->diffInDays($end) + 1;
@@ -173,6 +173,13 @@ class CartService
                 throw CartNotActiveException::make('Koszyk jest pusty.');
             }
 
+            // Collected across ALL items instead of throwing on the first miss —
+            // the customer needs the full picture (every unavailable item) in a
+            // single checkout attempt, not one-at-a-time whack-a-mole. Locks are
+            // still acquired for every item before we decide whether to throw;
+            // the whole transaction rolls back together either way.
+            $unavailableItems = [];
+
             foreach ($items as $item) {
                 $service = Service::lockForUpdate()->findOrFail($item->service_id);
 
@@ -190,13 +197,21 @@ class CartService
                 );
 
                 if ($item->quantity > $available) {
-                    throw new RentalUnavailableException(
-                        "Dostępnych tylko {$available} szt. dla \"{$service->name}\" w wybranym terminie."
+                    $unavailableItems[] = RentalUnavailableException::describeItem(
+                        $service->name,
+                        $item->quantity,
+                        $available,
+                        Carbon::parse($item->start_date),
+                        Carbon::parse($item->end_date)
                     );
                 }
 
                 // Reuse the locked, fresh instance below — avoids a second N+1 query per item.
                 $item->setRelation('service', $service);
+            }
+
+            if ($unavailableItems !== []) {
+                throw RentalUnavailableException::forItems($unavailableItems);
             }
 
             $orderNumber = $this->generateOrderNumber($cart->organization_id);
@@ -449,7 +464,7 @@ class CartService
             $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true);
 
             if ($quantity > $available) {
-                throw new RentalUnavailableException("Dostępnych tylko {$available} szt.");
+                throw RentalUnavailableException::forItem($service->name, $quantity, $available, $start, $end);
             }
 
             $pricing = $this->availability->calculatePricing($service, $item->rental_days, $quantity);
