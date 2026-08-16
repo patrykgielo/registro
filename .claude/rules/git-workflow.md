@@ -22,8 +22,6 @@ run`). `staging` = tnie tagi `rc*`, dziś UAT. `main` = produkcja, PreProd po za
 - `gh pr create` ze `staging` bez `--base main`; z innej gałęzi bez `--base develop`/`staging`
 - `migrate:fresh`, `FILESYSTEM_DISK=local`
 
-**False positive:** `git merge main` blokowane (string match), użyj `git merge origin/main`.
-
 ```bash
 git checkout -b feature/nazwa develop
 gh pr create --base develop --title "feat: opis"
