@@ -567,6 +567,28 @@ class SettingsManager
     }
 
     /**
+     * Whether PESEL is required for natural-person customers at checkout.
+     * Default false — data minimization: PESEL is not used anywhere downstream
+     * of checkout (not on handover/return protocols, not needed for identity
+     * verification at pickup — see the corrected hint text in
+     * checkout/show.blade.php), so collecting it is an explicit tenant opt-in
+     * rather than the default. Regardless of this setting, a PESEL the
+     * customer DOES submit is still checksum-validated (ValidPolishPESEL) —
+     * this only controls whether the field is mandatory, never whether it is
+     * validated once present.
+     *
+     * Named `checkout.pesel_required` (not `checkout.required_fields.pesel`)
+     * to match the existing flat-boolean shape of this settings group
+     * (`settlement_online_enabled`, `settlement_offline_enabled`); a future
+     * per-field toggle follows the same `checkout.{field}_required` +
+     * `is{Field}Required()` pattern rather than a new structure.
+     */
+    public function isPeselRequired(): bool
+    {
+        return (bool) $this->get('checkout.pesel_required', false);
+    }
+
+    /**
      * Check if user registration is enabled.
      */
     public function isRegistrationEnabled(): bool

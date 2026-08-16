@@ -23,13 +23,15 @@ class SubmitCheckoutRequest extends FormRequest
      */
     public function rules(): array
     {
+        $settings = app(SettingsManager::class);
+
         return [
             // === COMMON (all customer types) ===
             'customer_type' => ['required', Rule::in(['natural_person', 'business'])],
             // Only whatever the tenant currently allows — NOT a static ['online','offline']
             // list. A tenant with offline disabled must not accept it even if a stale/
             // tampered client still submits it.
-            'settlement_method' => ['required', Rule::in(app(SettingsManager::class)->availableSettlementMethods())],
+            'settlement_method' => ['required', Rule::in($settings->availableSettlementMethods())],
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_phone' => ['required', 'string', 'max:20'],
             'terms_accepted' => ['required', 'accepted'],
@@ -40,7 +42,14 @@ class SubmitCheckoutRequest extends FormRequest
             // === NATURAL PERSON (required_if:customer_type,natural_person) ===
             'customer_first_name' => ['required_if:customer_type,natural_person', 'nullable', 'string', 'max:100'],
             'customer_last_name' => ['required_if:customer_type,natural_person', 'nullable', 'string', 'max:100'],
-            'customer_pesel' => ['required_if:customer_type,natural_person', 'nullable', new ValidPolishPESEL],
+            // Mandatory only when the tenant opted in (checkout.pesel_required, default
+            // false — see SettingsManager::isPeselRequired()). Whether required or not,
+            // a value the customer DOES submit is always checksum-validated.
+            'customer_pesel' => [
+                Rule::requiredIf(fn (): bool => $this->input('customer_type') === 'natural_person' && $settings->isPeselRequired()),
+                'nullable',
+                new ValidPolishPESEL,
+            ],
             'customer_street' => ['required_if:customer_type,natural_person', 'nullable', 'string', 'max:255'],
             'customer_building' => ['required_if:customer_type,natural_person', 'nullable', 'string', 'max:20'],
             'customer_apartment' => ['nullable', 'string', 'max:20'],
@@ -90,7 +99,7 @@ class SubmitCheckoutRequest extends FormRequest
             // Natural person
             'customer_first_name.required_if' => 'Imię jest wymagane dla osoby fizycznej.',
             'customer_last_name.required_if' => 'Nazwisko jest wymagane dla osoby fizycznej.',
-            'customer_pesel.required_if' => 'PESEL jest wymagany dla osoby fizycznej.',
+            'customer_pesel.required' => 'PESEL jest wymagany dla osoby fizycznej.',
             'customer_street.required_if' => 'Ulica jest wymagana.',
             'customer_building.required_if' => 'Numer budynku jest wymagany.',
             'customer_city.required_if' => 'Miasto jest wymagane.',

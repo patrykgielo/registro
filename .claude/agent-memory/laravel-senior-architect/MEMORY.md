@@ -86,5 +86,8 @@
 ## Runbook Completeness (2026-08-09, branch feature/runbook-completeness)
 - [project_runbook_completeness.md](project_runbook_completeness.md) — new `registro:password-setup-link` command; offboarding (Część 7) + restore-from-backup (Część 8) procedures added to `instalacja-tenanta-od-zera.md`. Key finds: `docker-compose.prod.yml`'s top-level `name:` key (not cwd) drives volume naming; `sync-certificate.sh` dies platform-wide if a stack dir outlives its containers; legal retention survives teardown only via the restic backup (nothing else does)
 
+## PESEL Per-Tenant Toggle (2026-08-17, branch feature/pesel-per-tenant-toggle)
+- [project_pesel_per_tenant_toggle.md](project_pesel_per_tenant_toggle.md) — `checkout.pesel_required` (default false), `Rule::requiredIf(closure)` pattern; found but did NOT fix: `signatory_id_number` (B2B) is an unvalidated PESEL side-door
+
 ## Security Dependency Updates (2026-08-16, PR #200, branch feature/security-dependency-updates)
 - [project_security_dependency_updates_2026-08-16.md](project_security_dependency_updates_2026-08-16.md) — composer audit 35→0, 11 packages, no composer.json changes. Reusable verification pattern: dompdf via git-stash-on-lock-only + real PDF pdftotext diff; guzzle/commonmark risk via grepping actual usage against the specific CVE, not assuming exposure

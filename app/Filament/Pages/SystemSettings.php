@@ -301,6 +301,7 @@ class SystemSettings extends Page implements HasForms
                     'settlement_online_enabled' => ['nullable', 'boolean'],
                     'settlement_offline_enabled' => ['nullable', 'boolean'],
                     'offline_reservation_hold_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+                    'pesel_required' => ['nullable', 'boolean'],
                 ],
             ],
             'integrations' => [
@@ -1466,6 +1467,15 @@ class SystemSettings extends Page implements HasForms
                             ->default(48)
                             ->helperText('Ile godzin sprzęt jest zablokowany dla zamówienia z płatnością przy odbiorze, zanim zostanie automatycznie anulowane. Zakres: 1–168 h (7 dni).')
                             ->visible(fn (Get $get): bool => (bool) $get('checkout.settlement_offline_enabled')),
+                    ]),
+
+                Section::make('Dane osobowe')
+                    ->description('Zakres danych zbieranych od klienta indywidualnego przy zamówieniu.')
+                    ->schema([
+                        Toggle::make('checkout.pesel_required')
+                            ->label('Wymagaj numeru PESEL')
+                            ->helperText('Domyślnie wyłączone (minimalizacja danych — zgodnie z RODO). Numer PESEL nie jest używany do niczego w systemie — nie trafia na protokół wydania/zwrotu. Jeśli mimo to potrzebujesz go zbierać, klient go poda; podany numer jest zawsze weryfikowany sumą kontrolną, niezależnie od tego ustawienia.')
+                            ->default(false),
                     ]),
 
                 \Filament\Schemas\Components\Actions::make([

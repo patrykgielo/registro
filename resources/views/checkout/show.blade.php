@@ -314,11 +314,16 @@
 
                             </div>
 
-                            {{-- Row: PESEL (full width) --}}
+                            {{-- Row: PESEL (full width). Mandatory only when the tenant opted in
+                                 (checkout.pesel_required) — otherwise still offered, just optional. --}}
                             <div class="space-y-1.5">
                                 <label for="customer_pesel" class="block text-sm font-medium text-text-primary">
                                     PESEL
-                                    <span class="text-error ml-0.5" aria-hidden="true">*</span>
+                                    @if($peselRequired)
+                                        <span class="text-error ml-0.5" aria-hidden="true">*</span>
+                                    @else
+                                        <span class="text-text-muted font-normal">(opcjonalnie)</span>
+                                    @endif
                                 </label>
                                 <input
                                     type="text"
@@ -329,7 +334,7 @@
                                     maxlength="11"
                                     pattern="[0-9]{11}"
                                     autocomplete="off"
-                                    aria-required="true"
+                                    aria-required="{{ $peselRequired ? 'true' : 'false' }}"
                                     aria-invalid="{{ $errors->has('customer_pesel') ? 'true' : 'false' }}"
                                     aria-describedby="customer_pesel-hint{{ $errors->has('customer_pesel') ? ' customer_pesel-error' : '' }}"
                                     @class([
@@ -345,7 +350,11 @@
                                     <p id="customer_pesel-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
                                 @enderror
                                 <p id="customer_pesel-hint" class="text-xs text-text-muted mt-1 leading-relaxed">
-                                    Wymagany do weryfikacji tożsamości przy odbiorze sprzętu.
+                                    @if($peselRequired)
+                                        Wymagany do zawarcia umowy najmu.
+                                    @else
+                                        Opcjonalny — podaj tylko jeśli chcesz go dołączyć do umowy najmu. Nie jest drukowany na protokole wydania/zwrotu sprzętu.
+                                    @endif
                                 </p>
                             </div>
 
