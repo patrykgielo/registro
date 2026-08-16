@@ -57,7 +57,7 @@
     // Variant-based classes
     $cardClasses = $isDark
         ? 'service-card-dark shadow-dark-glow hover:shadow-dark-glow-hover hover:border-[#0AB1EA]/30'
-        : 'bg-white shadow-md hover:shadow-2xl border border-gray-100 hover:border-primary-300';
+        : 'bg-white shadow-md hover:shadow-2xl border border-gray-100 hover:border-brand/30';
 
     $titleClasses = $isDark ? 'text-white group-hover:text-[#0AB1EA]' : 'text-gray-900 group-hover:text-brand';
     $descriptionClasses = $isDark ? 'text-white/70' : 'text-gray-600';
@@ -72,7 +72,12 @@
     $urgencyClasses = $isDark ? 'urgency-footer-dark text-white/80' : 'bg-orange-50 text-gray-600';
     $urgencyIconClasses = $isDark ? 'text-[#0AB1EA]' : 'text-orange-500';
     $urgencyCountClasses = $isDark ? 'text-[#0AB1EA]' : 'text-orange-700';
-    $iconBgColor = $isDark ? 'bg-[#0AB1EA]' : 'bg-primary-500';
+    // NOT bg-primary-500 — this project has no `primary` Tailwind color scale
+    // (design-tokens.css only defines a `brand` scale, see design-tokens.md);
+    // that class compiled to nothing, leaving the icon container transparent
+    // and its white heroicon invisible against the card's white background —
+    // the "empty rectangle" every icon-only card showed with no featured_image.
+    $iconBgColor = $isDark ? 'bg-[#0AB1EA]' : 'bg-brand';
 @endphp
 
 <article

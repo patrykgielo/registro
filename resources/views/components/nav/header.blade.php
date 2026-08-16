@@ -26,12 +26,13 @@
                 @php
                     $__headerLogo = app(\App\Support\Settings\SettingsManager::class)->headerLogo();
                     $__logoAlt = app(\App\Support\Settings\SettingsManager::class)->logoAlt();
+                    $__brandName = app(\App\Support\Settings\SettingsManager::class)->brandName();
                 @endphp
                 <a href="{{ route('home') }}" class="flex items-center shrink-0">
                     @if($__headerLogo)
                         <img src="{{ $__headerLogo }}" alt="{{ $__logoAlt }}" class="h-9 w-auto max-w-[160px] object-contain">
                     @else
-                        <span class="text-lg font-semibold text-text-primary tracking-tight">{{ config('app.name') }}</span>
+                        <span class="text-lg font-semibold text-text-primary tracking-tight">{{ $__brandName }}</span>
                     @endif
                 </a>
 
