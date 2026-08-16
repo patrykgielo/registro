@@ -2,14 +2,15 @@
 
 ## ZASADA 0: PRODUCTION WYMAGA ZGODY (BEZWZGLĘDNA)
 
-**NIGDY nie taguj/deployuj na produkcję bez zgody użytkownika!**
-`git tag vX.Y.Z` i `git push origin vX.Y.Z` → STOP, zapytaj najpierw.
-Tag triggeruje automatyczny deploy = NIEODWRACALNE.
+**NIGDY nie deployuj na produkcję bez zgody użytkownika!**
+`git push origin vX.Y.Z` sam w sobie nic nie triggeruje (workflowy = `workflow_dispatch`, patrz
+`RELEASE_PROCESS.md`) — ale `gh workflow run deploy-production.yml` TAK i to jest NIEODWRACALNE.
+STOP i zapytaj przed KAŻDYM dispatchem tego workflow.
 
 ## ZASADA 1: Czekaj na Deploy
 
-Po każdym merge do develop: sprawdź `gh run list --branch develop --limit 1`.
-Jeśli FAILED → diagnozuj i napraw ZANIM przejdziesz dalej.
+`workflow_dispatch` — nic nie odpala się samo po merge. Po ręcznym dispatchu:
+`gh run list --workflow=<plik> --limit 1`. FAILED → diagnozuj i napraw ZANIM dalej.
 
 ## ZASADA 2: Analiza Błędów
 

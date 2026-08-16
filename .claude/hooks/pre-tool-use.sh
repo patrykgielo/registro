@@ -12,7 +12,9 @@ tool_name=$(echo "$input" | jq -r '.tool_name // empty')
 command=$(echo "$input" | jq -r '.tool_input.command // empty')
 
 # =============================================================================
-# RULE 1: Block direct commits to develop/main
+# RULE 1: Block direct commits to develop/staging/main
+# Three-tier promotion model (2026-08-16): feature/* -> develop -> staging -> main.
+# staging is where rc* tags are cut for UAT and is merge-only, same as develop/main.
 # =============================================================================
 if [[ "$tool_name" == "Bash" && "$command" == *"git commit"* ]]; then
     branch=$(git branch --show-current 2>/dev/null || echo "unknown")
@@ -24,9 +26,16 @@ EOF
         exit 0
     fi
 
+    if [[ "$branch" == "staging" ]]; then
+        cat <<'EOF'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: Direct commit to staging is FORBIDDEN! staging only advances via PR from develop (feature/* -> develop -> staging -> main). See: .claude/rules/git-workflow.md"}}
+EOF
+        exit 0
+    fi
+
     if [[ "$branch" == "main" ]]; then
         cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: Direct commit to main is FORBIDDEN! Only release/* and hotfix/* branches can be merged to main. See: .claude/rules/git-workflow.md"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: Direct commit to main is FORBIDDEN! main only advances via PR from staging (or release/*, hotfix/* for an emergency patch). See: .claude/rules/git-workflow.md"}}
 EOF
         exit 0
     fi
@@ -34,6 +43,13 @@ fi
 
 # =============================================================================
 # RULE 2: Block push to main without release/hotfix branch
+# Evaluated against the three-tier model (2026-08-16), left unchanged: promotion
+# to main is staging -> main via PR (gh pr merge calls GitHub's merge API, not
+# `git push origin main`), so this rule never needs to know about staging.
+# Unchanged also means staging itself still cannot push straight to main --
+# correct, that would bypass the PR/review gate the whole model exists for.
+# release/*, hotfix/* remain the only direct-push escape hatch, for a genuine
+# production emergency that cannot wait for a staging round-trip.
 # =============================================================================
 if [[ "$tool_name" == "Bash" && "$command" == *"git push"* && ("$command" == *"origin main"* || "$command" == *"push main"*) ]]; then
     branch=$(git branch --show-current 2>/dev/null || echo "unknown")
@@ -73,8 +89,14 @@ fi
 
 # =============================================================================
 # RULE 5: Block gh pr create without proper --base target
-# - feature/* and bugfix/* branches must target develop or staging
-# - release/* and hotfix/* branches can target main
+# Three-tier promotion model (2026-08-16): feature/* -> develop -> staging -> main.
+# - feature/*, bugfix/*, and any other branch not matched below: --base develop or staging
+# - staging (the promotion branch that cuts rc* tags for UAT): --base main ONLY.
+#   staging is not release/* or hotfix/*, so it needs its own branch, not the
+#   release/hotfix bucket below -- falling through to the catch-all would
+#   require --base develop/staging and block exactly the PR that promotes to
+#   production (Gap found 2026-08-16, see git-workflow.md).
+# - release/* and hotfix/* (emergency-only, direct from main): --base main
 # =============================================================================
 if [[ "$tool_name" == "Bash" && "$command" == *"gh pr create"* ]]; then
     branch=$(git branch --show-current 2>/dev/null || echo "unknown")
@@ -87,7 +109,16 @@ if [[ "$tool_name" == "Bash" && "$command" == *"gh pr create"* ]]; then
 EOF
             exit 0
         fi
-    # All other branches must target develop or staging
+    # staging is the promotion branch to production -- it must target main only.
+    elif [[ "$branch" == "staging" ]]; then
+        if [[ "$command" != *"--base main"* ]]; then
+            cat <<'EOF'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: gh pr create from staging must use --base main! staging -> main is the production promotion (feature/* -> develop -> staging -> main). See: .claude/rules/git-workflow.md"}}
+EOF
+            exit 0
+        fi
+    # All other branches (feature/*, bugfix/*, develop itself for a develop->staging
+    # promotion PR, ...) must target develop or staging.
     elif [[ "$command" != *"--base develop"* && "$command" != *"--base staging"* ]]; then
         cat <<'EOF'
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: gh pr create without --base develop or --base staging! PRs from feature/* must target develop, not main. Use: gh pr create --base develop. See: .claude/rules/git-workflow.md"}}

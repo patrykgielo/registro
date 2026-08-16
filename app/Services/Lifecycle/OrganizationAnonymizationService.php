@@ -214,28 +214,41 @@ class OrganizationAnonymizationService
     }
 
     /**
-     * Anonymize Payment webhook_payload.
+     * Anonymize Payment webhook_payload and staff-entered notes.
      *
      * webhook_payload is a P24 webhook JSON blob that may contain PII (buyer name,
      * email, IP from the payment gateway). Amounts, status, and P24 session/order IDs
      * are preserved via the parent Order's fields — we do not need the raw payload.
      *
-     * PRESERVED: p24_session_id, p24_order_id, amount, currency, status, verified_at,
-     *            order_id, organization_id, created_at, updated_at.
+     * notes is a free-text field staff fill in when recording an offline (cash/bank
+     * transfer) payment — see OrderService::recordOfflinePayment() — and nothing
+     * constrains what goes in it (receipt number, but just as easily a customer's
+     * name or ID number). Same PII risk class as Order's deposit_notes/notes, which
+     * anonymizeOrders() already nulls.
      *
-     * ANONYMIZED: webhook_payload (nulled — raw gateway response, PII risk).
+     * PRESERVED: p24_session_id, p24_order_id, method, recorded_by, amount, currency,
+     *            status, verified_at, order_id, organization_id, created_at, updated_at.
+     *
+     * ANONYMIZED: webhook_payload (nulled — raw gateway response, PII risk),
+     *             notes (nulled — free-text, may contain customer PII entered by staff).
      */
     private function anonymizePayments(int $orgId): int
     {
         $count = DB::table('payments')
             ->where('organization_id', $orgId)
-            ->whereNotNull('webhook_payload')
+            ->where(function ($query) {
+                $query->whereNotNull('webhook_payload')
+                    ->orWhereNotNull('notes');
+            })
             ->count();
 
         DB::table('payments')
             ->where('organization_id', $orgId)
-            ->whereNotNull('webhook_payload')
-            ->update(['webhook_payload' => null]);
+            ->where(function ($query) {
+                $query->whereNotNull('webhook_payload')
+                    ->orWhereNotNull('notes');
+            })
+            ->update(['webhook_payload' => null, 'notes' => null]);
 
         return $count;
     }

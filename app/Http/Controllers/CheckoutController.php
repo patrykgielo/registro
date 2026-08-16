@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Events\OrderAcceptedOffline;
 use App\Http\Requests\Checkout\SubmitCheckoutRequest;
+use App\Models\Cart;
 use App\Models\Order;
 use App\Services\Analytics\AnalyticsEventDispatcher;
 use App\Services\Cart\CartService;
@@ -89,7 +91,17 @@ class CheckoutController extends Controller
         // instead of being summed twice in checkout/show.blade.php (JS payload + display block).
         $depositTotal = $cart->items->sum(fn ($item) => ($item->service->deposit_amount ?? 0) * $item->quantity);
 
-        return view('checkout.show', compact('cart', 'profileData', 'checkoutSettings', 'depositTotal'));
+        $availableSettlementMethods = $this->settings->availableSettlementMethods();
+        $offlineReservationHoldHours = $this->settings->offlineReservationHoldHours();
+
+        return view('checkout.show', compact(
+            'cart',
+            'profileData',
+            'checkoutSettings',
+            'depositTotal',
+            'availableSettlementMethods',
+            'offlineReservationHoldHours',
+        ));
     }
 
     /**
@@ -112,6 +124,10 @@ class CheckoutController extends Controller
             Log::error('Checkout failed: could not convert cart to order', ['exception' => $e, 'user_id' => auth()->id()]);
 
             return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
+        }
+
+        if ($order->isOfflineSettlement()) {
+            return $this->submitOffline($cart, $order);
         }
 
         try {
@@ -149,7 +165,32 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Handle the return from Przelewy24 payment gateway.
+     * Converts the cart into an order settled offline (pay at pickup) — no
+     * Przelewy24 involvement at all. The order sits in pending_payment
+     * (blocking inventory, per Order::scopeExpired()/OrderItem::
+     * scopeBlockingAvailability()) until staff records the actual cash/
+     * transfer payment in the panel (OrderService::recordOfflinePayment()).
+     */
+    private function submitOffline(Cart $cart, Order $order): RedirectResponse
+    {
+        $this->analytics->trackForCart($cart, 'checkout.submitted', [
+            'order_id' => $order->id,
+            'total_amount' => $order->total_amount,
+            'settlement_method' => 'offline',
+        ]);
+
+        event(new OrderAcceptedOffline($order));
+
+        return redirect()->route('checkout.return', ['order' => $order->id]);
+    }
+
+    /**
+     * Handle the return from Przelewy24 payment gateway, or the immediate
+     * redirect after an offline (pay-at-pickup) checkout submission.
+     *
+     * Both lookups are scoped to the authenticated user's own orders in the
+     * current tenant — an `order` id alone never identifies someone else's
+     * order (same trust boundary as `orders.show`).
      */
     public function return(Request $request): View
     {
@@ -158,11 +199,13 @@ class CheckoutController extends Controller
         abort_unless($org !== null, 404);
 
         $sessionId = $request->query('sessionId') ?? $request->query('p24_session_id');
+        $orderId = $request->query('order');
 
-        $order = Order::where('p24_session_id', $sessionId)
-            ->where('organization_id', $org->id)
-            ->where('user_id', auth()->id())
-            ->first();
+        $query = Order::where('organization_id', $org->id)->where('user_id', auth()->id());
+
+        $order = $sessionId !== null
+            ? $query->where('p24_session_id', $sessionId)->first()
+            : ($orderId !== null ? $query->find($orderId) : null);
 
         return view('checkout.return', compact('order'));
     }

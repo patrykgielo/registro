@@ -30,6 +30,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
@@ -297,6 +298,9 @@ class SystemSettings extends Page implements HasForms
                     'withdrawal_label' => ['nullable', 'string', 'max:5000'],
                     'deposit_policy_note' => ['nullable', 'string', 'max:2000'],
                     'inquiry_email' => ['nullable', 'email', 'max:255'],
+                    'settlement_online_enabled' => ['nullable', 'boolean'],
+                    'settlement_offline_enabled' => ['nullable', 'boolean'],
+                    'offline_reservation_hold_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
                 ],
             ],
             'integrations' => [
@@ -1438,6 +1442,30 @@ class SystemSettings extends Page implements HasForms
                             ->email()
                             ->placeholder('kontakt@twoja-wypozyczalnia.pl')
                             ->helperText('Adres email na który trafiają zapytania "Zapytaj o cenę". Domyślnie: adres z ustawień email.'),
+                    ]),
+
+                Section::make('Sposoby rozliczenia')
+                    ->description('Jak klient może opłacić zamówienie. Jeśli włączysz oba, klient wybiera przy checkoucie.')
+                    ->schema([
+                        Toggle::make('checkout.settlement_online_enabled')
+                            ->label('Płatność online (Przelewy24)')
+                            ->helperText('Standardowa płatność kartą/BLIK/przelewem przez Przelewy24, od razu przy zamówieniu.')
+                            ->default(true),
+
+                        Toggle::make('checkout.settlement_offline_enabled')
+                            ->label('Płatność przy odbiorze (gotówka / przelew)')
+                            ->helperText('Klient rezerwuje sprzęt bez płatności online — wpłatę odnotowuje obsługa w panelu przy odbiorze.')
+                            ->live()
+                            ->default(false),
+
+                        TextInput::make('checkout.offline_reservation_hold_hours')
+                            ->label('Czas blokady rezerwacji przy odbiorze (godziny)')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(168)
+                            ->default(48)
+                            ->helperText('Ile godzin sprzęt jest zablokowany dla zamówienia z płatnością przy odbiorze, zanim zostanie automatycznie anulowane. Zakres: 1–168 h (7 dni).')
+                            ->visible(fn (Get $get): bool => (bool) $get('checkout.settlement_offline_enabled')),
                     ]),
 
                 \Filament\Schemas\Components\Actions::make([

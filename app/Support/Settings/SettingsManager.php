@@ -499,6 +499,61 @@ class SettingsManager
     }
 
     /**
+     * Whether Przelewy24 checkout is offered. Default true — keeps existing
+     * tenants unchanged (online-only, exactly like before this feature).
+     */
+    public function isOnlineSettlementEnabled(): bool
+    {
+        return (bool) $this->get('checkout.settlement_online_enabled', true);
+    }
+
+    /**
+     * Whether "pay at pickup" (cash/bank transfer, settled in person) is
+     * offered. Default false — a tenant must explicitly opt in.
+     */
+    public function isOfflineSettlementEnabled(): bool
+    {
+        return (bool) $this->get('checkout.settlement_offline_enabled', false);
+    }
+
+    /**
+     * Settlement methods available to the customer at checkout, in display
+     * order. Fail-safe: NEVER returns an empty list — if a tenant somehow
+     * disabled both (e.g. mid-edit in the settings panel), online is kept as
+     * the guaranteed fallback rather than making checkout impossible.
+     *
+     * @return list<string> subset of ['online', 'offline']
+     */
+    public function availableSettlementMethods(): array
+    {
+        $methods = [];
+
+        if ($this->isOnlineSettlementEnabled()) {
+            $methods[] = 'online';
+        }
+
+        if ($this->isOfflineSettlementEnabled()) {
+            $methods[] = 'offline';
+        }
+
+        return $methods === [] ? ['online'] : $methods;
+    }
+
+    /**
+     * How many hours an offline-settlement (pay-at-pickup) reservation holds
+     * its inventory before `orders:cleanup-expired` cancels it. Unlike the
+     * online flow's fixed 20-minute TTL (CartService::convertToOrder()) —
+     * there's no P24 gateway session to wait on here, so the hold is
+     * inherently longer and tenant-configurable. Clamped to [1, 168] hours
+     * (1h–7 days): a misconfigured value must not cancel a cash reservation
+     * near-instantly, nor block inventory indefinitely.
+     */
+    public function offlineReservationHoldHours(): int
+    {
+        return max(1, min(168, (int) $this->get('checkout.offline_reservation_hold_hours', 48)));
+    }
+
+    /**
      * Check if user registration is enabled.
      */
     public function isRegistrationEnabled(): bool

@@ -17,6 +17,9 @@ class Payment extends Model
         'organization_id',
         'p24_session_id',
         'p24_order_id',
+        'method',
+        'recorded_by',
+        'notes',
         'amount',
         'currency',
         'status',
@@ -31,6 +34,7 @@ class Payment extends Model
             'verified_at' => 'datetime',
             'amount' => 'integer',
             'status' => 'string',
+            'method' => 'string',
         ];
     }
 
@@ -40,5 +44,16 @@ class Payment extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo('App\Models\Order');
+    }
+
+    /**
+     * Staff member who manually recorded this payment (cash/transfer offline
+     * settlement). NULL for gateway (P24) payments — those are system-recorded.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function recordedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
     }
 }

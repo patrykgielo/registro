@@ -246,6 +246,55 @@ class OrganizationPurgeTest extends TestCase
         $this->assertSame('success', $payment->status);
     }
 
+    /**
+     * `payments.notes` is a free-text field staff fill in when recording an
+     * offline (cash/bank transfer) payment — see
+     * OrderService::recordOfflinePayment(). Nothing constrains its content, so
+     * it carries the same PII risk class as Order's `deposit_notes`/`notes`,
+     * which anonymizeOrders() already clears.
+     */
+    public function test_anonymize_clears_payment_notes_but_preserves_method_and_recorded_by(): void
+    {
+        $org = Organization::factory()->create();
+        $staff = User::factory()->create();
+
+        DB::table('orders')->insert([
+            'id' => 9001, 'organization_id' => $org->id, 'user_id' => $org->owner_id,
+            'order_number' => 'P-002', 'status' => 'completed', 'currency' => 'PLN',
+            'subtotal' => '100.00', 'discount_amount' => '0.00', 'tax_amount' => '0.00',
+            'total_amount' => '100.00', 'customer_email' => 'y@y.com',
+            'customer_first_name' => 'Payer', 'customer_last_name' => 'Test',
+            'expires_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('payments')->insert([
+            'organization_id' => $org->id,
+            'order_id' => 9001,
+            'p24_session_id' => null,
+            'method' => 'cash',
+            'recorded_by' => $staff->id,
+            'notes' => 'Odebrał Jan Kowalski, dowód ABC123456',
+            'amount' => 10000,
+            'currency' => 'PLN',
+            'status' => 'success',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->service->anonymize($org);
+
+        $payment = DB::table('payments')->where('organization_id', $org->id)->first();
+
+        // Free-text notes may contain customer PII entered by staff — must be cleared.
+        $this->assertNull($payment->notes);
+
+        // Accounting/audit identifiers preserved — WHO recorded it and HOW is not PII
+        // about the customer, it's an internal accountability record.
+        $this->assertSame('cash', $payment->method);
+        $this->assertSame($staff->id, $payment->recorded_by);
+        $this->assertSame(10000, (int) $payment->amount);
+        $this->assertSame('success', $payment->status);
+    }
+
     public function test_anonymize_clears_appointment_pii_but_keeps_invoice_fields(): void
     {
         $org = Organization::factory()->create();

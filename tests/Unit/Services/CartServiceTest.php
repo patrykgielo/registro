@@ -13,6 +13,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Services\Cart\CartService;
 use App\Services\RentalAvailabilityService;
+use App\Support\Settings\SettingsManager;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -178,7 +179,7 @@ class CartServiceTest extends TestCase
         $availabilityMock = $this->createMock(RentalAvailabilityService::class);
         $availabilityMock->method('getAvailableQuantity')->willReturn(2);
 
-        $service = new CartService($availabilityMock);
+        $service = new CartService($availabilityMock, app(SettingsManager::class));
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Dostępnych tylko 2 szt.');
@@ -301,7 +302,7 @@ class CartServiceTest extends TestCase
         $availabilityMock->method('getAvailableQuantity')->willReturn(5);
         $availabilityMock->method('calculatePricing')->willReturn($newPricing);
 
-        $service = new CartService($availabilityMock);
+        $service = new CartService($availabilityMock, app(SettingsManager::class));
 
         $updated = $service->updateQuantity($cart, $item, 2);
 
@@ -333,7 +334,7 @@ class CartServiceTest extends TestCase
         $availabilityMock = $this->createMock(RentalAvailabilityService::class);
         $availabilityMock->method('getAvailableQuantity')->willReturn(2);
 
-        $service = new CartService($availabilityMock);
+        $service = new CartService($availabilityMock, app(SettingsManager::class));
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Dostępnych tylko 2 szt.');
@@ -640,5 +641,98 @@ class CartServiceTest extends TestCase
             $cartB->refresh();
             $this->assertEquals('active', $cartB->status);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // convertToOrder — settlement_method / TTL (offline settlement mode)
+    // -------------------------------------------------------------------------
+
+    private function cartWithOneItem(): Cart
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 1,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+            'rental_days' => 3,
+            'unit_price' => 100.00,
+            'total_price' => 300.00,
+        ]);
+
+        return $cart;
+    }
+
+    public function test_convert_to_order_defaults_to_online_settlement_with_twenty_minute_ttl(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 12:00:00'));
+
+        $cart = $this->cartWithOneItem();
+
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+            // settlement_method deliberately omitted — must default to 'online',
+            // matching every caller written before this feature (e.g. Dev/FakePaymentController).
+        ]);
+
+        $this->assertSame('online', $order->settlement_method);
+        $this->assertTrue($order->expires_at->equalTo(Carbon::parse('2026-04-01 12:20:00')));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_convert_to_order_offline_settlement_uses_configured_hold_hours(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 12:00:00'));
+        app(\App\Support\Settings\SettingsManager::class)->set('checkout.offline_reservation_hold_hours', 72);
+
+        $cart = $this->cartWithOneItem();
+
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+            'settlement_method' => 'offline',
+        ]);
+
+        $this->assertSame('offline', $order->settlement_method);
+        $this->assertTrue($order->expires_at->equalTo(Carbon::parse('2026-04-04 12:00:00')));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_convert_to_order_rejects_settlement_method_values_other_than_offline(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 12:00:00'));
+
+        $cart = $this->cartWithOneItem();
+
+        // Anything that isn't exactly 'offline' (typo, tampered value that slipped past
+        // SubmitCheckoutRequest's Rule::in()) must fail safe to the online 20-minute TTL,
+        // never silently grant the long offline hold.
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+            'settlement_method' => 'bogus',
+        ]);
+
+        $this->assertSame('online', $order->settlement_method);
+        $this->assertTrue($order->expires_at->equalTo(Carbon::parse('2026-04-01 12:20:00')));
+
+        Carbon::setTestNow();
     }
 }

@@ -40,6 +40,30 @@ on re-seed (`->withoutGlobalScope('organization')->updateOrCreate([..., 'organiz
 tenant's override or create a duplicate global row. If you add ANOTHER NULL-org-by-design table
 with an `updateOrCreate` seeder, copy this pattern, not the old single-column unique.
 
+## Nowy `email_templates`/`sms_templates` key = też migracja danych (nie tylko seeder)
+
+`EmailTemplateSeeder`/`SmsTemplateSeeder` biegną **tylko raz**, przy pierwszym provisioningu
+tenanta (`ProvisionTenantCommand::runGlobalSeedersOnce()`, gated by `TenantProvisioningState`).
+Dodanie nowego `TemplateKey` tylko do seedera nigdy nie dotrze do już-działającego stacku (UAT,
+produkcja) — pierwsza wysyłka tym kluczem skończy się cichym „template not found" w
+`failed_jobs`. Każdy nowy klucz MUSI dostać też osobną migrację danych:
+
+```php
+DB::table('email_templates')->insertOrIgnore([
+    'organization_id' => null,   // global row only — never a tenant's own override
+    'key' => 'nowy-klucz',
+    'language' => 'pl',
+    // ...
+    'created_at' => now(), 'updated_at' => now(),
+]);
+```
+
+`down()` usuwa WYŁĄCZNIE `WHERE key = 'nowy-klucz' AND organization_id IS NULL` — nigdy tenant
+override tego samego klucza. Wzorzec + testy pinujące:
+`2026_08_12_120000_seed_order_handover_return_email_templates.php`,
+`2026_08_14_160000_seed_rental_return_reminder_email_templates.php`,
+`2026_08_16_120002_seed_order_accepted_offline_email_templates.php`.
+
 ## FK onDelete Policy — tenant lifecycle (Faza 5.2)
 
 `organization_id` FK behaviour is **category-driven**, not uniform:

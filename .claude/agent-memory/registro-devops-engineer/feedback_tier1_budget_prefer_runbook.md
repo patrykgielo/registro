@@ -22,3 +22,22 @@ ZAKAZ), and even then, measure the total four-file+index character count first a
 adding. Confirmed as the right call when building the certificate-expiry-probe and backup dead-man's-
 switch (2026-08-14, `feature/silent-failure-probes`) -- put all operator-facing detail in the runbook,
 touched deployment.md not at all.
+
+**Confirmed again 2026-08-16** (`feature/branch-model-hook-and-rules`, three-tier branch model
+`develop → staging → main`): `git-workflow.md` genuinely needed to grow (new tier, new hook
+behavior to document) and even the terse version blew the budget by ~1.6k chars on the first draft.
+Put the deep reasoning (why `staging` isn't a server, why `deploy-production.yml` has one target
+today, the default-branch-404 mechanism) in `.github/workflows/RELEASE_PROCESS.md` and a new
+`ci-cd-troubleshooting.md` incident entry (both TIER 2 / doc, zero budget cost) instead of TIER 1 --
+then trimmed `git-workflow.md` itself sentence-by-sentence, re-running `cc-doctor.sh` after every
+cut, until it landed at 11,997/12,000.
+
+**Correction, 2026-08-16** ([[tier1-rules-audit-2026-08-16]]): "zero headroom is the steady state"
+above turned out to be an artifact of never having audited for what could be CUT, not a hard floor.
+A correctness audit of all six files moved every Docker/tenant-stack/shell-line-count DETAIL that
+already had a `paths`-triggered TIER 2 home (`ci-cd-troubleshooting.md`) out of `deployment.md`,
+keeping only the one-liner version of each fact that can bite through a bare Bash command with no
+file touched (same test as `FILESYSTEM_DISK=public`). Recovered 1,312 chars: 11,997 -> 10,685/12,000.
+The lesson isn't "budget is always full" -- it's "an unaudited TIER 1 accumulates detail that
+belongs in TIER 2 and nobody notices because the budget check only measures total size, not
+placement." Re-run this kind of audit periodically, not just when a new addition forces a cut.

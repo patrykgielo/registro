@@ -607,6 +607,19 @@
                                 </time>
                             </div>
                         @endif
+
+                        @if($order->status === 'pending_payment' && $order->settlement_method === 'offline')
+                            <div class="mt-3 rounded-lg bg-info/10 ring-1 ring-inset ring-info/20 px-3 py-2.5">
+                                <p class="text-xs text-info leading-relaxed">
+                                    Płatność przy odbiorze.
+                                    @if($order->expires_at)
+                                        Rezerwacja jest ważna do
+                                        <time datetime="{{ $order->expires_at->toIso8601String() }}" class="font-medium tabular-nums">{{ $order->expires_at->format('d.m.Y H:i') }}</time>
+                                        — po tym czasie zamówienie zostanie automatycznie anulowane.
+                                    @endif
+                                </p>
+                            </div>
+                        @endif
                     </div>
 
                     {{-- Deposit (kaucja) — shown only when deposit_amount > 0 --}}

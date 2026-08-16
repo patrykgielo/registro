@@ -16,6 +16,7 @@ use App\Services\Order\OrderService;
 use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
+use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -474,6 +475,67 @@ class OrderResource extends BaseResource
                         ->visible(fn (Order $record): bool => app(OrderProtocolPdfService::class)->canDownloadReturnProtocol($record))
                         ->url(fn (Order $record): string => route('orders.protocol.return', $record))
                         ->openUrlInNewTab(),
+
+                    Actions\Action::make('record_offline_payment')
+                        ->label('Odnotuj wpłatę')
+                        ->icon('heroicon-o-banknotes')
+                        ->color('success')
+                        ->visible(fn (Order $record): bool => $record->status === 'pending_payment' && $record->settlement_method === 'offline')
+                        ->form([
+                            TextInput::make('amount')
+                                ->label('Kwota')
+                                ->numeric()
+                                ->minValue(0.01)
+                                ->step(0.01)
+                                ->suffix('zł')
+                                ->required()
+                                ->live(onBlur: true)
+                                ->default(fn (Order $record): float => (float) $record->total_amount),
+                            Select::make('method')
+                                ->label('Sposób płatności')
+                                ->options([
+                                    'cash' => 'Gotówka',
+                                    'bank_transfer' => 'Przelew',
+                                ])
+                                ->required(),
+                            // Only shown once the entered amount diverges from the order total —
+                            // a mismatch (e.g. a discount given in person at pickup) is a real,
+                            // supported scenario, but must never slip through by accident (a typo
+                            // marking the order paid for the wrong amount). Domain-level enforcement
+                            // lives in OrderService::recordOfflinePayment() — this checkbox is what
+                            // makes the confirmation reachable, not what makes it real.
+                            Checkbox::make('amount_mismatch_confirmed')
+                                ->label('Kwota celowo różni się od sumy zamówienia')
+                                ->helperText(fn (Order $record): string => 'Suma zamówienia: '.number_format((float) $record->total_amount, 2, ',', ' ').' zł. Opisz powód w notatce poniżej (np. rabat przy odbiorze).')
+                                ->visible(fn (Get $get, Order $record): bool => round((float) ($get('amount') ?? 0), 2) !== round((float) $record->total_amount, 2))
+                                ->default(false),
+                            Textarea::make('notes')
+                                ->label('Notatka')
+                                ->helperText('Wymagana, jeśli kwota różni się od sumy zamówienia — opisz powód.')
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Order $record, array $data): void {
+                            try {
+                                app(OrderService::class)->recordOfflinePayment(
+                                    $record,
+                                    (float) $data['amount'],
+                                    $data['method'],
+                                    $data['notes'] ?? null,
+                                    (int) auth()->id(),
+                                    (bool) ($data['amount_mismatch_confirmed'] ?? false),
+                                );
+                                \Filament\Notifications\Notification::make()
+                                    ->success()
+                                    ->title('Wpłata odnotowana')
+                                    ->send();
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->danger()
+                                    ->title('Nie udało się odnotować wpłaty')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
 
                     Actions\Action::make('collect_deposit')
                         ->label('Pobrano kaucję')
