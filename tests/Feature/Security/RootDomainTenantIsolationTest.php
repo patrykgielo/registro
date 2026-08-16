@@ -44,7 +44,7 @@ class RootDomainTenantIsolationTest extends TestCase
     {
         $this->get('http://registro.local/')
             ->assertOk()
-            ->assertSee('Homepage Not Configured');
+            ->assertSee('Strona w przygotowaniu');
     }
 
     public function test_post_show_returns_404_on_root_domain(): void

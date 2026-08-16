@@ -100,3 +100,13 @@ Uruchom ręcznie: `php artisan onboarding:seed-vertical {id_lub_slug}`
 | general_services | SeedGeneralServices | 1 placeholder usługa |
 
 Guard: jeśli org ma już usługi lub kategorie — komenda odmawia (użyj `--force` aby ominąć).
+
+## Homepage + menu — osobny seeder od katalogu produktowego
+
+`onboarding:seed-website {org} [--force] [--dry-run]` (`app/docs/features/tenant-website-seeder.md`)
+tworzy stronę główną + minimalne menu (uniwersalne, industry-neutral). Celowo NIE jest częścią
+`SeedEquipmentRental`/vertical seederów — strona to warstwa prezentacji wspólna dla branż, a
+`SeedVerticalDataCommand::purgeExistingData()` kasuje tylko `Service`/`RentalCategory`, więc
+dopisanie stron tam zostawiłoby sieroty przy `--force` tamtej komendy. Zapisuje
+`cms.homepage_page_id` bezpośrednio przez `Setting::withoutGlobalScope()` (NIGDY
+`SettingsManager::set()` w konsoli — patrz PUŁAPKA 1 w dokumencie funkcji).

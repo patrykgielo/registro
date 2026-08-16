@@ -203,6 +203,7 @@ Reference implementation: `onboarding:seed-vertical` (`app/Console/Commands/Seed
 - `TestEmailFlowCommand` - testuj flow emaili
 - `Reset*BookingStats` - resetuj statystyki
 - `SeedVerticalDataCommand` - ręczne seedowanie danych branżowych (dry-run + confirm + audit log)
+- `SeedWebsiteCommand` (`onboarding:seed-website`) - ręczne seedowanie uniwersalnej strony głównej + minimalnego menu (dane z organizacji w czasie działania, nie hardcoded) — `app/docs/features/tenant-website-seeder.md`
 - `ProvisionTenantCommand` (`registro:tenant-provision`) - provisionuje org+ownera dla dedykowanego tenant-stacka; global seedery (role/settings/e-mail templates) tylko raz per stack, gated przez `TenantProvisioningState` — patrz `app/docs/features/tenant-stack-provisioning.md`
 - `TenantProvisioningStatusCommand` (`registro:tenant-provisioned`) - bezstanowy check dla shell tooling, exit code only
 - `ResendPasswordSetupLinkCommand` (`registro:password-setup-link {email}`) - generuje nowy link do ustawienia hasła gdy pierwszy (z `registro:tenant-provision`/UserResource) wygasł; drukuje link zawsze (jak `registro:tenant-provision`), dispatch `AdminCreatedUser` best-effort z `--no-email` do pominięcia; odmawia kontu z już ustawionym hasłem bez `--force` (link resetowałby hasło bez znajomości starego) — operator runbook: `app/docs/deployment/instalacja-tenanta-od-zera.md` krok 4.1

@@ -1,5 +1,8 @@
 # CMS Page Menu Management
 
+> For seeding a homepage + minimal working menu on a brand-new tenant, see
+> `tenant-website-seeder.md` (`onboarding:seed-website`).
+
 ## Overview
 
 Pages can be dynamically added to the frontend navigation menu through the Filament admin panel. Each page can be configured to appear in the header, footer, or both menus with a customizable order and label.
