@@ -28,8 +28,11 @@ Registro uses **Przelewy24 (P24)** as its sole online payment provider. The flow
 
 ### Initiation (`CheckoutController::submit`)
 
-1. `SubmitCheckoutRequest` validates the checkout form.
+1. `SubmitCheckoutRequest` validates the checkout form — including `settlement_method`, which is
+   restricted to `SettingsManager::availableSettlementMethods()` (never a static `['online','offline']`).
 2. `CartService::convertToOrder()` materialises the cart into an `Order` with `status = pending_payment`.
+   **An order with `settlement_method = 'offline'` returns here** via `CheckoutController::submitOffline()`
+   — pay-at-pickup never touches Przelewy24 at all (no client construction, no config read, no network).
 3. `Przelewy24Service::registerTransaction()` calls `$p24->transactions()->register()` with:
    - `sessionId` = `"ORDER-{$order->id}-{time()}"` — unique per attempt
    - `amount` = `total_amount * 100` (integer grosz)
@@ -299,7 +302,64 @@ Defence-in-depth: the controller calls `abort_if(app()->isProduction(), 404)` in
 
 ### Checkout initiation failure
 
-If `Przelewy24Service::registerTransaction()` throws after `CartService::convertToOrder()` has already saved the order, the order will exist with `status = pending_payment` but no `p24_session_id`. `CheckoutController::submit` catches any `\Exception`, logs it, and redirects back with a generic error message. These orphaned orders are cleaned up by the TTL expiry job.
+`CartService::convertToOrder()` has already committed by the time
+`Przelewy24Service::registerTransaction()` runs, so a throw there leaves an order at
+`status = pending_payment` with no `p24_session_id` (blocking inventory until TTL) and a cart marked
+`converted` — i.e. the customer's cart is empty and unusable. `CheckoutController::submit` therefore
+**compensates immediately** rather than leaving it to TTL cleanup:
+
+1. `Log::error` with the exception, order id and user id.
+2. `OrderService::cancel($order, 'P24 registration failed', notify: false)` — `notify: false` because
+   the customer never saw a completed order; a "your order was cancelled" email would be noise ahead
+   of a retry.
+3. `CartService::reactivate($cart)` — the same cart comes back `active` with every item intact, so
+   the customer retries without re-adding anything.
+4. Redirect back with an error flash.
+
+**The catch is `\Throwable`, not `\Exception`, and that is load-bearing.** See "Unconfigured gateway"
+below: a `TypeError` out of the payment SDK is an `\Error`, so a `catch (\Exception)` here silently
+skips all four steps and returns a 500 with the order orphaned. Same reasoning in
+`WebhookController::przelewy24`, where an escaping `\Error` would turn a webhook delivery into a 500
+that P24 keeps redelivering.
+
+### Unconfigured gateway (incident 2026-08-16)
+
+Empty P24 credentials used to be a **500 on every online checkout submit**, not a graceful refusal.
+
+`.env.production.example` ships `P24_MERCHANT_ID=`/`P24_POS_ID=`/`P24_CRC=`/`P24_REPORTS_KEY=` —
+present but empty. `env()` returns `''` for those, and the old `config/przelewy24.php` mapped an
+empty `P24_POS_ID` to `int(0)` (it only null-checked, and `''` is not `null`). The SDK declares
+`?string $posId`; `Przelewy24Service` is `declare(strict_types=1)`, so strict mode applies at the
+call site and `int(0)` is a fatal `TypeError` — thrown inside the constructor, before any network
+I/O. Being an `\Error` it went straight through the `catch (\Exception)` compensation block above.
+Production trace: `__construct(0, '', '', false, 0)`.
+
+Three layers now, outermost first:
+
+| Layer | Where | Effect |
+|-------|-------|--------|
+| Config types | `config/przelewy24.php` | Every value cast to what the SDK declares; empty/absent `P24_POS_ID` → `null`, never `0`/`''` |
+| Not offered | `SettingsManager::isOnlineSettlementEnabled()` → `Przelewy24Service::isConfigured()` | An unconfigured gateway is dropped from `availableSettlementMethods()`, so the checkout form does not show it and `SubmitCheckoutRequest`'s `Rule::in` rejects it — no order is ever created |
+| Graceful refusal | `Przelewy24Service::client()` → `PaymentGatewayNotConfiguredException` | Typed exception thrown before any network call; compensated exactly like any other registration failure, with copy that does **not** promise a pointless retry |
+
+`availableSettlementMethods()` is deliberately never empty: a tenant with online unconfigured **and**
+pay-at-pickup disabled still gets `['online']` as a last resort, because an empty list would make
+checkout impossible outright. That tenant lands on the third layer — refusal, order cancelled, cart
+restored — which is why the message there points at contacting the rental company rather than at an
+alternative method they do not have.
+
+`P24_POS_ID` is **not** part of `isConfigured()`: the SDK falls back to the merchant id when it is
+null (`Przelewy24\Config::posId()`), so absent is a valid state for it. The required trio is
+`P24_MERCHANT_ID`, `P24_CRC`, `P24_REPORTS_KEY`.
+
+**Detected at deploy time too:** `scripts/validate-env.sh` checks the trio all-or-nothing — all three
+set passes, none set warns (a pay-at-pickup-only tenant is a supported configuration), and any
+partial combination is an **error**. The partial state is the dangerous one: it looks configured and
+fails only when a real customer submits a real order.
+
+Pinned by `tests/Feature/Cart/CheckoutGatewayUnconfiguredTest.php`,
+`tests/Unit/Config/Przelewy24ConfigTest.php` (feeds the real config output to the real SDK
+constructor from a `strict_types` file) and `tests/shell/cases/35_validate_env_p24_all_or_nothing.sh`.
 
 ### Webhook signature invalid
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Payment;
 
 use App\Events\OrderPaid;
+use App\Exceptions\PaymentGatewayNotConfiguredException;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
@@ -20,13 +21,80 @@ use Przelewy24\Przelewy24;
 
 class Przelewy24Service
 {
+    /**
+     * Env vars that must all be non-empty for the gateway to work at all.
+     * `P24_POS_ID` is deliberately NOT here — the SDK falls back to the
+     * merchant id when it is null (Przelewy24\Config::posId()).
+     *
+     * @var list<string>
+     */
+    private const REQUIRED_ENV = ['P24_MERCHANT_ID', 'P24_CRC', 'P24_REPORTS_KEY'];
+
+    /**
+     * Whether this machine has credentials the gateway can actually be called
+     * with.
+     *
+     * STATIC ON PURPOSE. It answers a question about global env/config, not
+     * about any instance, and callers outside the payment flow ask it —
+     * SettingsManager::availableSettlementMethods() most importantly. Making
+     * it an instance method would mean resolving Przelewy24Service out of the
+     * container on every checkout render, which the feature suites replace
+     * with a Mockery double that has no expectation for it (`$this->mock(
+     * Przelewy24Service::class, ...)` in CheckoutFlowTest et al.) — the
+     * settings layer would then explode on an unexpected method call in tests
+     * that have nothing to do with configuration. A static call bypasses the
+     * container entirely and reads the same config() the client does.
+     */
+    public static function isConfigured(): bool
+    {
+        return self::missingConfig() === [];
+    }
+
+    /**
+     * @return list<string> env var names that are missing or empty
+     */
+    public static function missingConfig(): array
+    {
+        $missing = [];
+
+        if ((int) config('przelewy24.merchant_id') <= 0) {
+            $missing[] = 'P24_MERCHANT_ID';
+        }
+
+        if (trim((string) config('przelewy24.crc')) === '') {
+            $missing[] = 'P24_CRC';
+        }
+
+        if (trim((string) config('przelewy24.reports_key')) === '') {
+            $missing[] = 'P24_REPORTS_KEY';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @throws PaymentGatewayNotConfiguredException
+     */
     protected function client(): Przelewy24
     {
+        // Guard BEFORE the constructor, not after. With an unconfigured
+        // gateway the SDK call below used to raise a TypeError (\Error) deep
+        // inside vendor code — see config/przelewy24.php's header — which the
+        // callers' `catch (\Exception)` blocks could never catch, so the
+        // customer got a 500 and the order was left orphaned. A typed
+        // exception thrown here is catchable, carries a message an operator
+        // can act on, and costs no network round-trip.
+        $missing = self::missingConfig();
+
+        if ($missing !== []) {
+            throw PaymentGatewayNotConfiguredException::forPrzelewy24($missing);
+        }
+
         return new Przelewy24(
-            merchantId: config('przelewy24.merchant_id'),
-            reportsKey: config('przelewy24.reports_key'),
-            crc: config('przelewy24.crc'),
-            isLive: config('przelewy24.is_live'),
+            merchantId: (int) config('przelewy24.merchant_id'),
+            reportsKey: (string) config('przelewy24.reports_key'),
+            crc: (string) config('przelewy24.crc'),
+            isLive: (bool) config('przelewy24.is_live'),
             posId: config('przelewy24.pos_id'),
         );
     }

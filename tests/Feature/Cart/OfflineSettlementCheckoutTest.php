@@ -82,6 +82,20 @@ class OfflineSettlementCheckoutTest extends TestCase
         app('request')->attributes->remove('tenant');
     }
 
+    /**
+     * Give this machine a usable Przelewy24 gateway. Only tests that assert
+     * the ONLINE method is offered need it — see
+     * SettingsManager::isOnlineSettlementEnabled().
+     */
+    private function configureP24(): void
+    {
+        config([
+            'przelewy24.merchant_id' => 12345,
+            'przelewy24.reports_key' => 'reports-key',
+            'przelewy24.crc' => 'crc-value',
+        ]);
+    }
+
     private function validOfflinePayload(): array
     {
         return [
@@ -244,6 +258,13 @@ class OfflineSettlementCheckoutTest extends TestCase
 
     public function test_online_checkout_still_works_when_tenant_has_both_methods_enabled(): void
     {
+        // "Both methods enabled" now requires the gateway to actually be
+        // usable, not just the tenant toggle to be on: an unconfigured
+        // Przelewy24 is no longer offered at checkout at all (2026-08-16
+        // incident — an unconfigured gateway 500'd the customer). phpunit.xml
+        // sets no P24 credentials, so this test has to supply them to be
+        // testing what its name says.
+        $this->configureP24();
         $this->enableOfflineSettlement($this->org);
 
         $fakePaymentUrl = 'https://sandbox.przelewy24.pl/trnRequest/fake-token';
