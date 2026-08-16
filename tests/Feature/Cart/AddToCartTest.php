@@ -177,11 +177,42 @@ class AddToCartTest extends TestCase
             ]);
 
         $response->assertRedirect();
-        $response->assertSessionHasErrors('availability');
+
+        // Availability lives in its own named error bag, not the default one —
+        // see resources/views/layouts/app.blade.php and CartController::add().
+        $response->assertSessionHasErrors([], null, 'availability');
 
         $this->assertDatabaseMissing('cart_items', [
             'service_id' => $service->id,
         ]);
+    }
+
+    /**
+     * Equipment being unavailable is normal business reality, not a failed
+     * form submission — it must never land in the default validation error
+     * bag ($errors->any() / the "Wystąpiły błędy" panel).
+     */
+    public function test_availability_error_does_not_pollute_default_validation_error_bag(): void
+    {
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->actingAsTenant($this->org)
+            ->post(route('cart.add'), [
+                'service_id' => $service->id,
+                'start_date' => now()->addDay()->toDateString(),
+                'end_date' => now()->addDays(3)->toDateString(),
+                'quantity' => 5, // exceeds stock
+            ]);
+
+        $errors = session('errors');
+
+        $this->assertNotNull($errors);
+        $this->assertTrue($errors->getBag('availability')->any());
+        $this->assertFalse($errors->getBag('default')->any(), 'Availability messages must not leak into the default error bag.');
     }
 
     // -------------------------------------------------------------------------

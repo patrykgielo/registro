@@ -55,7 +55,12 @@ class CartController extends Controller
                 (int) $request->quantity
             );
         } catch (RentalUnavailableException $e) {
-            return redirect()->back()->withErrors(['availability' => $e->getMessage()]);
+            // Dedicated 'availability' error bag — kept OUT of the default bag
+            // ($errors->any()/$errors->all()) on purpose. This is normal business
+            // reality (equipment already booked), not a failed submission, so it
+            // must not render inside the generic "Wystąpiły błędy" panel — see
+            // resources/views/layouts/app.blade.php and app/docs/features/cart-order-system.md.
+            return redirect()->back()->withErrors($e->messages(), 'availability');
         }
 
         return redirect()->back()->with('success', 'Dodano do koszyka.');
@@ -101,7 +106,8 @@ class CartController extends Controller
         } catch (CartItemOwnershipException) {
             abort(403);
         } catch (RentalUnavailableException $e) {
-            return redirect()->back()->withErrors(['availability' => $e->getMessage()]);
+            // See add() above — same dedicated 'availability' bag, same reasoning.
+            return redirect()->back()->withErrors($e->messages(), 'availability');
         }
 
         return redirect()->route('cart.show');
