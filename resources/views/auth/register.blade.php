@@ -74,16 +74,16 @@
                         name="terms"
                         type="checkbox"
                         required
-                        class="w-5 h-5 rounded-lg border-2 border-gray-300 text-primary focus:ring-4 focus:ring-primary/20 transition-all ios-spring"
+                        class="w-5 h-5 rounded-lg border-2 border-gray-300 text-brand focus:ring-4 focus:ring-brand/20 transition-all ios-spring"
                     >
                 </div>
                 <label for="terms" class="ml-3 text-sm text-gray-700">
                     Akceptuję
-                    <a href="{{ route('page.show', 'regulamin') }}" target="_blank" class="text-primary font-semibold hover:text-primary/80 transition-colors ios-spring underline">
+                    <a href="{{ route('page.show', 'regulamin') }}" target="_blank" class="text-brand font-semibold hover:text-brand/80 transition-colors ios-spring underline">
                         Regulamin
                     </a>
                     oraz
-                    <a href="{{ route('page.show', 'polityka-prywatnosci') }}" target="_blank" class="text-primary font-semibold hover:text-primary/80 transition-colors ios-spring underline">
+                    <a href="{{ route('page.show', 'polityka-prywatnosci') }}" target="_blank" class="text-brand font-semibold hover:text-brand/80 transition-colors ios-spring underline">
                         Politykę Prywatności
                     </a>
                 </label>
@@ -101,8 +101,9 @@
     </form>
 
     {{-- Footer Slot: Login Link --}}
+    {{-- Solid text-white, not /90: see auth-card.blade.php's subtitle comment. --}}
     <x-slot:footer>
-        <p class="text-sm text-white/90">
+        <p class="text-sm text-white">
             Masz już konto?
             <a href="{{ route('login') }}"
                class="font-semibold text-white hover:text-white/80 transition-colors ios-spring underline decoration-2 underline-offset-4">
