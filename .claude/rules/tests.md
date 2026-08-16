@@ -255,17 +255,23 @@ try/catch that still lets `InvalidCountException` surface without skipping clean
 that manually calls `Mockery::close()` FIRST, before `parent::tearDown()`, bypasses that ordering:
 if a `shouldReceive(...)->once()` expectation goes unmet, `Mockery::close()` throws right there and
 `parent::tearDown()` — the rollback — never runs. On SQLite this is harmless (no InnoDB-style
-cross-connection row/gap locking). On MySQL the whole per-test transaction (RolePermissionSeeder's
-~150 rows from `TestCase::setUp()` included) is left open on an abandoned connection, holding an
-exclusive lock on `permissions.name = 'settings.manage'` (the first row every RefreshDatabase test
-seeds) until PHP's GC eventually reclaims the leaked Application container — which can take longer
-than one MySQL `innodb_lock_wait_timeout` (default 50s). Every OTHER RefreshDatabase test that
-reaches its own seeding in the meantime — any class, unrelated to the one that leaked — blocks for
-the full 50s before itself throwing `SQLSTATE[HY000]: 1205 Lock wait timeout exceeded`, cascading
-for several tests in a row. **Never write a custom `tearDown()` that calls `Mockery::close()`
-yourself** — the base class already does it, correctly ordered; if you need extra teardown logic,
-put it in a method Laravel calls via `setUpTraits()`'s `tearDown{TraitName}` convention, not a raw
-override that runs before `parent::tearDown()`.
+cross-connection row/gap locking). On MySQL the whole per-test transaction is left open on an
+abandoned connection, holding locks on whatever rows that test's own body touched, until PHP's GC
+eventually reclaims the leaked Application container — which can take longer than one MySQL
+`innodb_lock_wait_timeout` (default 50s). Every OTHER RefreshDatabase test that needs one of those
+same rows in the meantime — any class, unrelated to the one that leaked — blocks for the full 50s
+before itself throwing `SQLSTATE[HY000]: 1205 Lock wait timeout exceeded`, cascading for several
+tests in a row. At the time this was found (2026-08-15), `RolePermissionSeeder`'s ~150 rows were
+reseeded inside every single test's own transaction via `TestCase::setUp()`, which made
+`permissions.name = 'settings.manage'` — the first row that seeding wrote — a guaranteed universal
+collision point, so a leak anywhere cascaded to nearly the whole suite. PR #192 (2026-08-16) moved
+that seeding to run exactly once per process, before any test's transaction begins (see "Reference
+data seeding" above) — a leaked transaction today only blocks tests that happen to touch the same
+rows the leaking test's body did, not automatically every RefreshDatabase test in the run. The
+underlying rule is unchanged either way. **Never write a custom `tearDown()` that calls
+`Mockery::close()` yourself** — the base class already does it, correctly ordered; if you need
+extra teardown logic, put it in a method Laravel calls via `setUpTraits()`'s `tearDown{TraitName}`
+convention, not a raw override that runs before `parent::tearDown()`.
 
 The actual TRIGGER for #3 in this incident was unrelated to MySQL itself: `deploy-production.yml`'s
 "Run PHPUnit tests" step set `QUEUE_CONNECTION: redis` / `CACHE_DRIVER: redis` / `CACHE_STORE:

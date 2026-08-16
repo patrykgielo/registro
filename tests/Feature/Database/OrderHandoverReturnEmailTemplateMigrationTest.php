@@ -11,10 +11,11 @@ use Tests\TestCase;
 
 /**
  * Pins database/migrations/2026_08_12_120000_seed_order_handover_return_email_templates.php
- * in isolation from EmailTemplateSeeder (which TestCase::setUp() also runs for every
- * RefreshDatabase test, and would otherwise mask a broken migration — see that
- * setUp() for why both paths exist: EmailTemplateSeeder for dev/test, this data
- * migration for already-provisioned production stacks, per
+ * in isolation from EmailTemplateSeeder (which TestReferenceDataSeeder also runs,
+ * once per test process via Tests\TestCase::$seeder, and would otherwise mask a
+ * broken migration — see tests.md's "Reference data seeding" for why both paths
+ * exist: EmailTemplateSeeder for dev/test, this data migration for
+ * already-provisioned production stacks, per
  * ProvisionTenantCommand::runGlobalSeedersOnce()'s "only seeds on first-ever
  * provisioning" gate).
  *
@@ -124,9 +125,11 @@ class OrderHandoverReturnEmailTemplateMigrationTest extends TestCase
      * key, but no data migration ships it, so every already-provisioned tenant
      * (this method's whole point is to simulate exactly that state — production
      * data migrations only, deliberately NOT EmailTemplateSeeder, which
-     * TestCase::setUp() runs for every other test in this suite and would mask
-     * this) never receives it. Directly re-invokes every migration file that is
-     * known to seed `email_templates` in production (bypassing the Migrator's
+     * TestReferenceDataSeeder runs once per test process, via
+     * Tests\TestCase::$seeder, and which every other test in this suite already
+     * benefits from and would mask this) never receives it. Directly re-invokes
+     * every migration file that is known to seed `email_templates` in production
+     * (bypassing the Migrator's
      * "already run" bookkeeping, since RefreshDatabase already recorded them in
      * this same batch) against a wiped table, then resolves both new keys the
      * same way `EmailService::sendFromTemplate()` does.

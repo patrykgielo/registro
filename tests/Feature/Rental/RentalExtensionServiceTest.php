@@ -61,13 +61,20 @@ class RentalExtensionServiceTest extends TestCase
     // override (removed here 2026-08-15) calls Mockery::close() BEFORE that rollback:
     // when a shouldReceive(...)->once() expectation goes unmet, Mockery::close()
     // throws and parent::tearDown() -- and therefore the rollback -- never runs. On
-    // MySQL that leaves the whole per-test transaction (RolePermissionSeeder's ~150
-    // rows included) open on an abandoned connection, holding an exclusive lock on
-    // permissions.name='settings.manage' (the first row TestCase::setUp() seeds on
-    // every RefreshDatabase test) until PHP's GC eventually reclaims the leaked
-    // Application container. Every later RefreshDatabase test in the run -- any
-    // class -- then blocks on that lock for the full innodb_lock_wait_timeout (50s)
-    // before itself throwing SQLSTATE[HY000]: 1205, cascading for several tests.
+    // MySQL that leaves the whole per-test transaction open on an abandoned
+    // connection, holding locks on whatever rows this test's own body touched, until
+    // PHP's GC eventually reclaims the leaked Application container. Every later
+    // RefreshDatabase test that needs one of those same rows -- any class -- then
+    // blocks on that lock for the full innodb_lock_wait_timeout (50s) before itself
+    // throwing SQLSTATE[HY000]: 1205, cascading for several tests. (At the time this
+    // was found, 2026-08-15, RolePermissionSeeder's ~150 rows were reseeded inside
+    // every test's own transaction via TestCase::setUp(), making
+    // permissions.name='settings.manage' -- the first row that seeding wrote -- a
+    // guaranteed universal collision point. PR #192, 2026-08-16, moved that seeding
+    // to run once per process, before any test's transaction begins, via
+    // Tests\TestCase::$seeder -- so a leak here today only blocks tests that happen
+    // to touch the same rows this test's body does, not automatically every
+    // RefreshDatabase test in the run. The rule below is unchanged either way.)
     // SQLite never surfaces this: FOR UPDATE/row-level gap locks don't apply. See
     // .claude/rules/tests.md.
 

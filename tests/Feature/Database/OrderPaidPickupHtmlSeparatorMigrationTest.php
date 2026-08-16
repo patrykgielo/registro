@@ -22,12 +22,16 @@ use Tests\TestCase;
  * glued-together html_body. This migration corrects that row directly, by exact-value
  * match, rather than re-seeding it.
  *
- * TestCase::setUp() runs EmailTemplateSeeder for every RefreshDatabase test, which writes
- * the ALREADY-FIXED content directly (EmailTemplateSeeder.php was fixed in the same
- * change) — so by the time a test body runs, the row already has the new separator
+ * TestReferenceDataSeeder runs EmailTemplateSeeder exactly ONCE per test process (wired as
+ * Tests\TestCase::$seeder, via RefreshDatabase's own --seeder mechanism — see tests.md's
+ * "Reference data seeding"), before the first test's transaction begins. It writes the
+ * ALREADY-FIXED content directly (EmailTemplateSeeder.php was fixed in the same change) —
+ * every RefreshDatabase test's per-test transaction starts from that already-seeded
+ * baseline, so the row already has the new separator by the time any test body runs,
  * regardless of whether this migration's up() does anything. Each test below first
- * overwrites the row back to the pre-fix, glued content (simulating "a tenant provisioned
- * before this fix") to actually exercise the migration in isolation.
+ * overwrites the row back to the pre-fix, glued content (inside its own transaction, rolled
+ * back afterward — simulating "a tenant provisioned before this fix") to actually exercise
+ * the migration in isolation.
  *
  * Runs entirely against SQLite via the normal test harness (.env.testing) — never touches
  * dev MySQL.
@@ -83,11 +87,21 @@ class OrderPaidPickupHtmlSeparatorMigrationTest extends TestCase
         $this->assertStringNotContainsString(self::GLUED_FRAGMENT, $en->html_body);
     }
 
+    /**
+     * Despite the method name, the rollback+migrate below is NOT itself a no-op
+     * invocation of up() — down() mutates the row back to glued content first, so
+     * the up() call that follows genuinely rewrites it. What this asserts is that
+     * the down()/up() pair round-trips back to identical content. The actual
+     * no-op this method's name refers to happened once already, earlier: up()
+     * ran as part of RefreshDatabase's initial full migrate, before
+     * TestReferenceDataSeeder (Tests\TestCase::$seeder) had inserted the
+     * order-paid row at all, so it matched nothing and did nothing. That first,
+     * real no-op isn't re-observable from inside a test body — this method
+     * instead confirms the pair is safe to run a second time on a row that
+     * already has the fixed content, which is the closest re-creation available.
+     */
     public function test_up_is_a_no_op_when_the_row_already_has_the_fixed_content(): void
     {
-        // TestCase::setUp() already seeded the fixed content directly — up() has
-        // already run once (as a genuine no-op, since the row didn't exist yet
-        // at migration time) as part of RefreshDatabase's initial full migrate.
         $before = $this->currentGlobalRow('pl');
 
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();

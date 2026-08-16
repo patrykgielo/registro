@@ -22,8 +22,9 @@ use Tests\TestCase;
 |
 | Browser tests are Pest's functional style and run through the built-in
 | Playwright-driven server (same PHP process — see LaravelHttpServer),
-| so RefreshDatabase + the seeders in Tests\TestCase::setUp() work exactly
-| like any other Feature test.
+| so RefreshDatabase + the reference-data seeding wired via
+| Tests\TestCase::$seeder (see tests.md -> "Reference data seeding") work
+| exactly like any other Feature test.
 |
 */
 
