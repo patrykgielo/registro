@@ -217,6 +217,59 @@ class RentalAvailabilityServiceTest extends TestCase
         $this->assertEquals(8, $available);
     }
 
+    // -------------------------------------------------------------------------
+    // Offline settlement mode — hold TTL is just a longer expires_at, no
+    // p24_token involved. Pins that OrderItem::scopeBlockingAvailability()
+    // and Order::scopeExpired() agree on which offline orders are "alive"
+    // (this is the overbooking regression the two scopes must never diverge
+    // on — see both scopes' docblocks).
+    // -------------------------------------------------------------------------
+
+    public function test_deducts_active_offline_pending_payment_order_items(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create([
+            'organization_id' => $this->org->id,
+            'expires_at' => now()->addHours(40), // well within a 48h hold, no p24_token
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(8, $available, 'A still-held offline order must block inventory.');
+        $this->assertCount(0, Order::expired()->get(), 'The same order must NOT be eligible for TTL cleanup while still held.');
+    }
+
+    public function test_does_not_deduct_offline_order_after_its_hold_expires(): void
+    {
+        $order = Order::factory()->offline()->create([
+            'organization_id' => $this->org->id,
+            'status' => 'pending_payment',
+            // Past the hold window. No p24_token → no grace-period extension applies
+            // (that extension is exclusively for orders mid-P24-payment).
+            'expires_at' => now()->subHours(1),
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(10, $available, 'A lapsed offline hold must free the inventory it was blocking.');
+        $this->assertCount(1, Order::expired()->get(), 'The same order MUST be eligible for TTL cleanup once its hold has lapsed.');
+    }
+
     public function test_does_not_deduct_completed_order_items(): void
     {
         // completed = rental already happened and returned — should not block future bookings

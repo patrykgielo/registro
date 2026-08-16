@@ -27,6 +27,9 @@
 - Filament\Actions\EditAction NOT Filament\Tables\Actions\EditAction
 - New PanelProviders → register in bootstrap/providers.php + restart PHP-FPM
 
+## Offline Settlement Mode (feature/offline-settlement-mode — 2026-08-16)
+- [project_offline_settlement_mode.md](project_offline_settlement_mode.md) — Faza 1 of payment-settlement-modes.md: pay-at-pickup checkout, `orders.settlement_method`, `OrderService::recordOfflinePayment()`, TTL decoupling needed ZERO scope changes (write-path only), new TemplateKey needs its own production migration (documented in migrations.md now)
+
 ## Order Notifications (feature/order-notifications — 2026-03-29)
 - 3 domain events: OrderPaid, OrderConfirmed, OrderCancelled (app/Events/)
 - 3 notifications: OrderPaidNotification (customer+admin), OrderConfirmedNotification, OrderCancelledNotification (app/Notifications/)
@@ -82,3 +85,6 @@
 
 ## Runbook Completeness (2026-08-09, branch feature/runbook-completeness)
 - [project_runbook_completeness.md](project_runbook_completeness.md) — new `registro:password-setup-link` command; offboarding (Część 7) + restore-from-backup (Część 8) procedures added to `instalacja-tenanta-od-zera.md`. Key finds: `docker-compose.prod.yml`'s top-level `name:` key (not cwd) drives volume naming; `sync-certificate.sh` dies platform-wide if a stack dir outlives its containers; legal retention survives teardown only via the restic backup (nothing else does)
+
+## Security Dependency Updates (2026-08-16, PR #200, branch feature/security-dependency-updates)
+- [project_security_dependency_updates_2026-08-16.md](project_security_dependency_updates_2026-08-16.md) — composer audit 35→0, 11 packages, no composer.json changes. Reusable verification pattern: dompdf via git-stash-on-lock-only + real PDF pdftotext diff; guzzle/commonmark risk via grepping actual usage against the specific CVE, not assuming exposure

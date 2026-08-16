@@ -11,6 +11,7 @@ use App\Events\AppointmentCancelled;
 use App\Events\AppointmentConfirmed;
 use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
+use App\Events\OrderAcceptedOffline;
 use App\Events\OrderCancelled;
 use App\Events\OrderConfirmed;
 use App\Events\OrderHandedOver;
@@ -34,6 +35,7 @@ use App\Notifications\AppointmentCancelledNotification;
 use App\Notifications\AppointmentCreatedNotification;
 use App\Notifications\AppointmentRescheduledNotification;
 use App\Notifications\NewTenantRegisteredNotification;
+use App\Notifications\OrderAcceptedOfflineNotification;
 use App\Notifications\OrderCancelledNotification;
 use App\Notifications\OrderConfirmedNotification;
 use App\Notifications\OrderHandedOverNotification;
@@ -352,6 +354,21 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // ========== ORDER NOTIFICATIONS ==========
+
+        // Order Accepted Offline: notify customer only (order is reserved,
+        // NOT paid yet — staff records the actual payment later via
+        // OrderService::recordOfflinePayment(), which fires OrderPaid itself).
+        Event::listen(OrderAcceptedOffline::class, function (OrderAcceptedOffline $event) {
+            $order = $event->order->load('user');
+
+            if ($order->user) {
+                $order->user->notify(new OrderAcceptedOfflineNotification($order));
+            } else {
+                \Log::warning('OrderAcceptedOffline: no user attached, skipping customer notification', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        });
 
         // Order Paid: notify customer + admin/org owner
         Event::listen(OrderPaid::class, function (OrderPaid $event) {

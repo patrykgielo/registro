@@ -99,4 +99,11 @@ class OrderFactory extends Factory
             'expires_at' => now()->subMinutes(5),
         ]);
     }
+
+    public function offline(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'settlement_method' => 'offline',
+        ]);
+    }
 }

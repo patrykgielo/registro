@@ -51,6 +51,7 @@ enum TemplateKey: string
     case SERVICE_AREA_AVAILABLE = 'service-area-available';
 
     // ── Order lifecycle (Email only) ─────────────────────────────
+    case ORDER_ACCEPTED_OFFLINE = 'order-accepted-offline';
     case ORDER_PAID = 'order-paid';
     case ORDER_CONFIRMED = 'order-confirmed';
     case ORDER_CANCELLED = 'order-cancelled';
@@ -93,6 +94,7 @@ enum TemplateKey: string
             self::ACCOUNT_DELETION_REQUESTED => 'Usuwanie konta (zgloszenie)',
             self::ACCOUNT_DELETION_COMPLETED => 'Usuwanie konta (potwierdzenie)',
             self::SERVICE_AREA_AVAILABLE => 'Strefa serwisowa dostępna',
+            self::ORDER_ACCEPTED_OFFLINE => 'Zamówienie przyjęte (płatność przy odbiorze)',
             self::ORDER_PAID => 'Potwierdzenie zamówienia',
             self::ORDER_CONFIRMED => 'Zamówienie potwierdzone',
             self::ORDER_CANCELLED => 'Zamówienie anulowane',

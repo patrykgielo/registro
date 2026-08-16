@@ -41,6 +41,7 @@
         data-checkout-form
         x-data="{
             customerType: '{{ old('customer_type', $profileData['customer_type'] ?? 'natural_person') }}',
+            settlementMethod: '{{ old('settlement_method', $availableSettlementMethods[0] ?? 'online') }}',
 
             {{-- Natural person fields --}}
             firstName: '{{ old('customer_first_name', $profileData['first_name'] ?? '') }}',
@@ -112,6 +113,7 @@
     >
         @csrf
         <input type="hidden" name="customer_type" :value="customerType">
+        <input type="hidden" name="settlement_method" :value="settlementMethod">
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
 
@@ -1353,12 +1355,43 @@
                         </div>
                     @endif
 
+                    {{-- Sposób rozliczenia — only shown when the tenant offers a real choice --}}
+                    @if(count($availableSettlementMethods) > 1)
+                        <fieldset class="mt-4 pt-4 border-t border-border">
+                            <legend class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2.5">
+                                Sposób rozliczenia
+                            </legend>
+                            <div class="space-y-2">
+                                <label class="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer transition-colors duration-150
+                                              hover:border-brand/50"
+                                       :class="settlementMethod === 'online' ? 'border-brand ring-1 ring-brand/30 bg-brand/5' : ''">
+                                    <input type="radio" name="settlement_method_choice" value="online" x-model="settlementMethod"
+                                           class="mt-0.5 h-4 w-4 shrink-0 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50">
+                                    <span class="text-sm">
+                                        <span class="block font-medium text-text-primary">Płatność online (Przelewy24)</span>
+                                        <span class="block text-text-muted text-xs mt-0.5">Karta, BLIK lub przelew — od razu po złożeniu zamówienia.</span>
+                                    </span>
+                                </label>
+                                <label class="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer transition-colors duration-150
+                                              hover:border-brand/50"
+                                       :class="settlementMethod === 'offline' ? 'border-brand ring-1 ring-brand/30 bg-brand/5' : ''">
+                                    <input type="radio" name="settlement_method_choice" value="offline" x-model="settlementMethod"
+                                           class="mt-0.5 h-4 w-4 shrink-0 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50">
+                                    <span class="text-sm">
+                                        <span class="block font-medium text-text-primary">Płatność przy odbiorze</span>
+                                        <span class="block text-text-muted text-xs mt-0.5">Gotówka lub przelew przy odbiorze sprzętu. Rezerwacja ważna {{ $offlineReservationHoldHours }}&nbsp;h.</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
+                    @endif
+
                     {{-- Co się dzieje dalej? --}}
                     <div class="mt-4 pt-4 border-t border-border">
                         <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2.5">
                             Co się dzieje dalej?
                         </h3>
-                        <ol class="space-y-2 text-xs text-text-muted" role="list">
+                        <ol class="space-y-2 text-xs text-text-muted" role="list" x-show="settlementMethod !== 'offline'">
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">1</span>
                                 <span>Opłacasz zamówienie — otrzymasz e-mail z potwierdzeniem i szczegółami odbioru.</span>
@@ -1372,9 +1405,23 @@
                                 <span>Odbierasz sprzęt osobiście w umówionym terminie — miej przy sobie dokument tożsamości.</span>
                             </li>
                         </ol>
+                        <ol class="space-y-2 text-xs text-text-muted" role="list" x-show="settlementMethod === 'offline'" x-cloak>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">1</span>
+                                <span>Rezerwujemy sprzęt dla Ciebie na {{ $offlineReservationHoldHours }}&nbsp;h — otrzymasz e-mail z potwierdzeniem rezerwacji.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">2</span>
+                                <span>Odbierasz sprzęt osobiście w umówionym terminie i płacisz gotówką lub przelewem — miej przy sobie dokument tożsamości.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">3</span>
+                                <span>Jeśli nie odbierzesz sprzętu w tym czasie, rezerwacja zostanie automatycznie anulowana.</span>
+                            </li>
+                        </ol>
                     </div>
 
-                    {{-- Przelewy24 CTA --}}
+                    {{-- Submit CTA --}}
                     <div class="mt-6">
                         <button
                             type="submit"
@@ -1391,6 +1438,7 @@
                         >
                             {{-- Przelewy24 icon (P24 branded mark — inline SVG for reliability) --}}
                             <svg
+                                x-show="settlementMethod !== 'offline'"
                                 viewBox="0 0 24 24"
                                 class="h-5 w-5 shrink-0"
                                 fill="currentColor"
@@ -1399,10 +1447,12 @@
                             >
                                 <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-.5 14.5V13H8l5-7.5V11h3.5L12 16.5z"/>
                             </svg>
-                            Zamawiam i płacę {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł
+                            <span x-show="settlementMethod !== 'offline'">Zamawiam i płacę {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł</span>
+                            <span x-show="settlementMethod === 'offline'" x-cloak>Rezerwuję — zapłacę przy odbiorze</span>
                         </button>
                         <p id="payment-notice" class="mt-3 text-xs text-text-muted text-center">
-                            Zostaniesz przekierowany do bezpiecznej bramki płatności.
+                            <span x-show="settlementMethod !== 'offline'">Zostaniesz przekierowany do bezpiecznej bramki płatności.</span>
+                            <span x-show="settlementMethod === 'offline'" x-cloak>Sprzęt zostanie zarezerwowany, płatność nastąpi przy odbiorze.</span>
                         </p>
                     </div>
 

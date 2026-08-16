@@ -15,6 +15,7 @@ use App\Models\Organization;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\RentalAvailabilityService;
+use App\Support\Settings\SettingsManager;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,8 @@ use Illuminate\Support\Facades\DB;
 class CartService
 {
     public function __construct(
-        protected RentalAvailabilityService $availability
+        protected RentalAvailabilityService $availability,
+        protected SettingsManager $settings,
     ) {}
 
     /**
@@ -211,11 +213,30 @@ class CartService
 
             $now = now();
 
+            // Validated against the tenant's enabled methods in SubmitCheckoutRequest;
+            // defaults to 'online' for callers that don't pass it at all (e.g.
+            // Dev/FakePaymentController), preserving today's only behaviour.
+            $settlementMethod = ($checkoutData['settlement_method'] ?? 'online') === 'offline'
+                ? 'offline'
+                : 'online';
+
+            // Online keeps the original fixed 20-minute abandon-cart TTL (unchanged —
+            // Order::scopeExpired() layers an additional P24 grace period on top once
+            // registerTransaction() sets p24_token). Offline has no gateway session to
+            // wait on, so it gets its own, tenant-configurable hold instead — both
+            // branches only ever WRITE expires_at here; scopeExpired() and
+            // OrderItem::scopeBlockingAvailability() read it back unchanged, so the two
+            // stay trivially in sync without touching either scope.
+            $expiresAt = $settlementMethod === 'offline'
+                ? $now->copy()->addHours($this->settings->offlineReservationHoldHours())
+                : $now->copy()->addMinutes(20);
+
             $order = Order::create([
                 'organization_id' => $cart->organization_id,
                 'user_id' => $cart->user_id,
                 'order_number' => $orderNumber,
                 'status' => 'pending_payment',
+                'settlement_method' => $settlementMethod,
                 'currency' => 'PLN',
                 'subtotal' => $subtotal,
                 'discount_amount' => 0,
@@ -260,7 +281,7 @@ class CartService
                 // Meta
                 'cart_id' => $cart->id,
                 'ip_address' => $checkoutData['ip'] ?? null,
-                'expires_at' => $now->addMinutes(20),
+                'expires_at' => $expiresAt,
             ]);
 
             foreach ($items as $item) {

@@ -67,6 +67,10 @@ class CheckoutFlowTest extends TestCase
         return [
             // Customer type
             'customer_type' => 'natural_person',
+            // Settlement method — 'online' is the only method enabled by default
+            // (checkout.settlement_offline_enabled defaults false), matching this
+            // suite's pre-existing P24-only assumptions.
+            'settlement_method' => 'online',
             // Personal data
             'customer_first_name' => 'Jan',
             'customer_last_name' => 'Kowalski',

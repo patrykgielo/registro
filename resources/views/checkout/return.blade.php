@@ -2,10 +2,11 @@
 
 @php
     $isSuccess  = $order && in_array($order->status, ['paid', 'confirmed']);
-    $isPending  = $order && $order->status === 'pending_payment';
+    $isOfflineAccepted = $order && $order->status === 'pending_payment' && $order->settlement_method === 'offline';
+    $isPending  = $order && $order->status === 'pending_payment' && ! $isOfflineAccepted;
     $isCancelled = $order && $order->status === 'cancelled';
     $isNull     = $order === null;
-    $isOther    = $order && ! $isSuccess && ! $isPending && ! $isCancelled;
+    $isOther    = $order && ! $isSuccess && ! $isOfflineAccepted && ! $isPending && ! $isCancelled;
 @endphp
 
 @if($isPending)
@@ -73,6 +74,40 @@
                         <span class="font-semibold text-text-primary">#{{ $order->order_number }}</span>
                         zostało opłacone.
                     </p>
+                    <p class="text-sm text-text-muted mb-8">
+                        Potwierdzenie zostało wysłane na podany adres e-mail.
+                    </p>
+                    <x-ui.button href="{{ route('orders.show', $order) }}" icon-right="arrow-right">
+                        Szczegóły zamówienia
+                    </x-ui.button>
+                </div>
+
+            @elseif($isOfflineAccepted)
+
+                {{-- ── Offline (pay at pickup) accepted ── --}}
+                <div
+                    role="status"
+                    aria-live="polite"
+                    class="text-center py-12"
+                >
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success/10 mb-6"
+                         aria-hidden="true">
+                        <x-heroicon-o-check-circle class="h-8 w-8 text-success" aria-hidden="true" />
+                    </div>
+                    <h2 class="text-xl font-semibold text-text-primary mb-2">
+                        Zamówienie przyjęte!
+                    </h2>
+                    <p class="text-text-secondary mb-2">
+                        Zamówienie
+                        <span class="font-semibold text-text-primary">#{{ $order->order_number }}</span>
+                        zostało zarezerwowane. Zapłacisz przy odbiorze sprzętu.
+                    </p>
+                    @if($order->expires_at)
+                        <p class="text-sm text-text-muted mb-2">
+                            Rezerwacja jest ważna do
+                            <time datetime="{{ $order->expires_at->toIso8601String() }}" class="font-medium tabular-nums">{{ $order->expires_at->format('d.m.Y H:i') }}</time>.
+                        </p>
+                    @endif
                     <p class="text-sm text-text-muted mb-8">
                         Potwierdzenie zostało wysłane na podany adres e-mail.
                     </p>

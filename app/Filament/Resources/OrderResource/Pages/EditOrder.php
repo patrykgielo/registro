@@ -9,7 +9,9 @@ use App\Filament\Traits\StaysOnPageAfterSave;
 use App\Services\Order\OrderProtocolPdfService;
 use App\Services\Order\OrderService;
 use Filament\Actions;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
@@ -102,6 +104,47 @@ class EditOrder extends EditRecord
                         Notification::make()->success()->title('Zamówienie anulowane')->send();
                     } catch (\Exception $e) {
                         Notification::make()->danger()->title('Nie można anulować zamówienia')->body($e->getMessage())->send();
+                    }
+                }),
+
+            Actions\Action::make('record_offline_payment')
+                ->label('Odnotuj wpłatę')
+                ->icon('heroicon-o-banknotes')
+                ->color('success')
+                ->visible(fn (): bool => $this->record->status === 'pending_payment' && $this->record->settlement_method === 'offline')
+                ->form([
+                    TextInput::make('amount')
+                        ->label('Kwota')
+                        ->numeric()
+                        ->minValue(0.01)
+                        ->step(0.01)
+                        ->suffix('zł')
+                        ->required()
+                        ->default(fn (): float => (float) $this->record->total_amount),
+                    Select::make('method')
+                        ->label('Sposób płatności')
+                        ->options([
+                            'cash' => 'Gotówka',
+                            'bank_transfer' => 'Przelew',
+                        ])
+                        ->required(),
+                    Textarea::make('notes')
+                        ->label('Notatka (opcjonalnie)')
+                        ->helperText('Np. numer paragonu / KP / potwierdzenia przelewu.')
+                        ->maxLength(500),
+                ])
+                ->action(function (array $data): void {
+                    try {
+                        app(OrderService::class)->recordOfflinePayment(
+                            $this->record,
+                            (float) $data['amount'],
+                            $data['method'],
+                            $data['notes'] ?? null,
+                            (int) auth()->id(),
+                        );
+                        Notification::make()->success()->title('Wpłata odnotowana')->send();
+                    } catch (\Exception $e) {
+                        Notification::make()->danger()->title('Nie udało się odnotować wpłaty')->body($e->getMessage())->send();
                     }
                 }),
 

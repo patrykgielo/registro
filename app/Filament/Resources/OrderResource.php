@@ -475,6 +475,54 @@ class OrderResource extends BaseResource
                         ->url(fn (Order $record): string => route('orders.protocol.return', $record))
                         ->openUrlInNewTab(),
 
+                    Actions\Action::make('record_offline_payment')
+                        ->label('Odnotuj wpłatę')
+                        ->icon('heroicon-o-banknotes')
+                        ->color('success')
+                        ->visible(fn (Order $record): bool => $record->status === 'pending_payment' && $record->settlement_method === 'offline')
+                        ->form([
+                            TextInput::make('amount')
+                                ->label('Kwota')
+                                ->numeric()
+                                ->minValue(0.01)
+                                ->step(0.01)
+                                ->suffix('zł')
+                                ->required()
+                                ->default(fn (Order $record): float => (float) $record->total_amount),
+                            Select::make('method')
+                                ->label('Sposób płatności')
+                                ->options([
+                                    'cash' => 'Gotówka',
+                                    'bank_transfer' => 'Przelew',
+                                ])
+                                ->required(),
+                            Textarea::make('notes')
+                                ->label('Notatka (opcjonalnie)')
+                                ->helperText('Np. numer paragonu / KP / potwierdzenia przelewu.')
+                                ->maxLength(500),
+                        ])
+                        ->action(function (Order $record, array $data): void {
+                            try {
+                                app(OrderService::class)->recordOfflinePayment(
+                                    $record,
+                                    (float) $data['amount'],
+                                    $data['method'],
+                                    $data['notes'] ?? null,
+                                    (int) auth()->id(),
+                                );
+                                \Filament\Notifications\Notification::make()
+                                    ->success()
+                                    ->title('Wpłata odnotowana')
+                                    ->send();
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->danger()
+                                    ->title('Nie udało się odnotować wpłaty')
+                                    ->body($e->getMessage())
+                                    ->send();
+                            }
+                        }),
+
                     Actions\Action::make('collect_deposit')
                         ->label('Pobrano kaucję')
                         ->icon('heroicon-o-banknotes')

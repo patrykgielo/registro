@@ -22,6 +22,7 @@ class Order extends Model
     protected array $auditInclude = [
         'user_id',
         'status',
+        'settlement_method',
         'customer_type',
         'customer_first_name',
         'customer_last_name',
@@ -132,6 +133,7 @@ class Order extends Model
         'user_id',
         'order_number',
         'status',
+        'settlement_method',
         'currency',
         'subtotal',
         'discount_amount',
@@ -197,6 +199,7 @@ class Order extends Model
             'cancelled_at' => 'datetime',
             'completed_at' => 'datetime',
             'invoice_requested' => 'boolean',
+            'settlement_method' => 'string',
             'p24_amount' => 'integer',
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
@@ -306,6 +309,17 @@ class Order extends Model
     public function scopePaid(Builder $query): Builder
     {
         return $query->where('status', 'paid');
+    }
+
+    /**
+     * Whether the customer chose "pay at pickup" (cash/transfer) at checkout,
+     * as opposed to the Przelewy24 gateway. Distinct from `deposit_status` —
+     * this concerns the RENTAL total, deposits are always collected in person
+     * regardless of settlement_method.
+     */
+    public function isOfflineSettlement(): bool
+    {
+        return $this->settlement_method === 'offline';
     }
 
     /**

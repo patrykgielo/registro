@@ -2,10 +2,14 @@
 
 namespace Tests\Unit\Services;
 
+use App\Events\OrderPaid;
 use App\Models\Order;
+use App\Models\User;
 use App\Notifications\OrderCancelledNotification;
+use App\Notifications\OrderPaidNotification;
 use App\Services\Order\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -224,5 +228,101 @@ class OrderServiceTest extends TestCase
         Order::where('status', 'cancelled')->each(function (Order $order): void {
             $this->assertNotNull($order->cancelled_at);
         });
+    }
+
+    // -------------------------------------------------------------------------
+    // recordOfflinePayment()
+    // -------------------------------------------------------------------------
+
+    public function test_record_offline_payment_transitions_order_to_paid(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        $svc = $this->makeService();
+        $result = $svc->recordOfflinePayment($order, 300.0, 'cash', 'Paragon 123', $staff->id);
+
+        $this->assertSame('paid', $result->fresh()->status);
+        $this->assertNotNull($result->fresh()->paid_at);
+    }
+
+    public function test_record_offline_payment_creates_a_payment_row_with_recorded_by_and_notes(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 250]);
+        $staff = User::factory()->create();
+
+        $svc = $this->makeService();
+        $svc->recordOfflinePayment($order, 250.0, 'bank_transfer', 'Przelew 2026-08-16', $staff->id);
+
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $order->id,
+            'method' => 'bank_transfer',
+            'amount' => 25000,
+            'status' => 'success',
+            'recorded_by' => $staff->id,
+            'notes' => 'Przelew 2026-08-16',
+            'p24_session_id' => null,
+        ]);
+    }
+
+    public function test_record_offline_payment_dispatches_order_paid_event(): void
+    {
+        Event::fake([OrderPaid::class]);
+
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 100]);
+        $staff = User::factory()->create();
+
+        $this->makeService()->recordOfflinePayment($order, 100.0, 'cash', null, $staff->id);
+
+        Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event) => $event->order->id === $order->id);
+    }
+
+    public function test_record_offline_payment_sends_order_paid_notification_to_customer(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 100]);
+        $staff = User::factory()->create();
+
+        $this->makeService()->recordOfflinePayment($order, 100.0, 'cash', null, $staff->id);
+
+        Notification::assertSentTo($order->user, OrderPaidNotification::class);
+    }
+
+    public function test_record_offline_payment_throws_for_invalid_method(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create();
+        $staff = User::factory()->create();
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->makeService()->recordOfflinePayment($order, 100.0, 'crypto', null, $staff->id);
+    }
+
+    public function test_record_offline_payment_throws_when_order_is_not_pending_payment(): void
+    {
+        $order = Order::factory()->offline()->paid()->create();
+        $staff = User::factory()->create();
+
+        $this->expectException(\LogicException::class);
+
+        $this->makeService()->recordOfflinePayment($order, 100.0, 'cash', null, $staff->id);
+    }
+
+    public function test_record_offline_payment_does_not_persist_anything_when_it_throws(): void
+    {
+        $order = Order::factory()->offline()->paid()->create();
+        $staff = User::factory()->create();
+
+        try {
+            $this->makeService()->recordOfflinePayment($order, 100.0, 'cash', null, $staff->id);
+            $this->fail('Expected LogicException was not thrown.');
+        } catch (\LogicException $e) {
+            $this->assertDatabaseCount('payments', 0);
+        }
     }
 }
