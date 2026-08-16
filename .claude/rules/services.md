@@ -170,6 +170,39 @@ stdClass z `liveToCollection()` ma `$obj->date = $date->copy()` (Carbon) — obs
 
 ---
 
+## Pliki `config/*.php` to adaptery typów, nie worek na `env()` (2026-08-16)
+
+`config/przelewy24.php` mapował `P24_POS_ID` na `int`, a SDK deklaruje `?string $posId`. Pod
+`declare(strict_types=1)` w `Przelewy24Service` → `TypeError` przy KAŻDYM checkoutcie online na
+UAT. Wyzwalacz: `.env.production.example` wysyła klucze **obecne, ale puste** — `env()` zwraca `''`,
+nie `null`, więc `env(...) !== null ? (int) env(...) : null` dawało `int(0)`.
+
+```php
+// ❌ pusty env cicho staje się prawidłowo wyglądającym zerem
+'pos_id' => env('P24_POS_ID') !== null ? (int) env('P24_POS_ID') : null,
+
+// ✅ typ SDK + pusty/brak = wartość „nie ustawiono" wg SDK
+'pos_id' => ($v === null || trim((string) $v) === '') ? null : (string) $v,
+```
+
+Dwie zasady dla każdej wartości w `config/`:
+1. Rzutuj na typ, który deklaruje konsument (podpis konstruktora/metody), nie zostawiaj surowego `env()`.
+2. Pusty/nieobecny env → wartość „nie ustawiono" konsumenta (zwykle `null`), nigdy skoercowane
+   `0`/`''` — one wyglądają na poprawną konfigurację i wysypują się dopiero u klienta.
+
+**„Czy usługa jest w ogóle skonfigurowana" ma mieć JEDNO miejsce** (`Przelewy24Service::isConfigured()`),
+czytane zarówno przez samą usługę, jak i przez warstwę, która ją oferuje użytkownikowi
+(`SettingsManager::availableSettlementMethods()`) — nieskonfigurowanej bramki nie pokazuj w formularzu,
+zamiast pozwalać klientowi wybrać ścieżkę, która na pewno padnie.
+
+**Metoda „czy skonfigurowane" jako `static`, nie instancyjna** — pytanie dotyczy globalnego
+env/config, a nie instancji, i wołają ją miejsca spoza własnego przepływu. Instancyjna oznaczałaby
+`app(Service::class)` na każdym renderze checkoutu, a suity feature podmieniają ten serwis na mocka
+bez oczekiwania na tę metodę → wybuch w testach niezwiązanych z konfiguracją. `static` omija
+kontener i czyta ten sam `config()`.
+
+---
+
 ## Istniejące Services (reference)
 
 - `AppointmentService` - rezerwacje, dostępność staff

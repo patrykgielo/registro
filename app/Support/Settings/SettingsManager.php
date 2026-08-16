@@ -6,6 +6,7 @@ namespace App\Support\Settings;
 
 use App\Models\Organization;
 use App\Models\Setting;
+use App\Services\Payment\Przelewy24Service;
 use App\Support\TenantFeature;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -501,10 +502,17 @@ class SettingsManager
     /**
      * Whether Przelewy24 checkout is offered. Default true — keeps existing
      * tenants unchanged (online-only, exactly like before this feature).
+     *
+     * The tenant toggle is necessary but NOT sufficient: a gateway with no
+     * credentials on this machine cannot take money no matter what the tenant
+     * ticked. Offering it anyway is how a customer ends up creating an order
+     * that is immediately cancelled again (production, 2026-08-16). The env
+     * side of that question lives in Przelewy24Service::isConfigured().
      */
     public function isOnlineSettlementEnabled(): bool
     {
-        return (bool) $this->get('checkout.settlement_online_enabled', true);
+        return (bool) $this->get('checkout.settlement_online_enabled', true)
+            && Przelewy24Service::isConfigured();
     }
 
     /**
@@ -521,6 +529,11 @@ class SettingsManager
      * order. Fail-safe: NEVER returns an empty list — if a tenant somehow
      * disabled both (e.g. mid-edit in the settings panel), online is kept as
      * the guaranteed fallback rather than making checkout impossible.
+     *
+     * That fallback can therefore still name a gateway that is not configured.
+     * It is a last resort, not a promise: CheckoutController::submit() turns
+     * the resulting PaymentGatewayNotConfiguredException into a plain-language
+     * refusal with the order cancelled and the cart restored — never a 500.
      *
      * @return list<string> subset of ['online', 'offline']
      */

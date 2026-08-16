@@ -1548,3 +1548,108 @@ Zweryfikowane EMPIRYCZNIE, nie przez czytanie: `echo '{"tool_name":"Bash","tool_
 "użyj `git merge origin/main`" jest wciąż nieszkodliwa (dobra higiena niezależnie od hooka), ale
 premisa "hook to blokuje" jest fałszywa i została usunięta z `git-workflow.md` — trzymanie fałszywej
 premisy w regule zawsze-ładowanej uczy niepotrzebnego obejścia nieistniejącego problemu.
+
+---
+
+## Incydent 2026-08-16: pusta konfiguracja P24 = 500 przy każdym checkoucie online na UAT
+
+### Problem
+
+```
+[2026-08-16 22:31:32] production.ERROR:
+Przelewy24\Przelewy24::__construct(): Argument #5 ($posId) must be of type ?string, int given,
+called in /var/www/app/Services/Payment/Przelewy24Service.php on line 25
+#0 Przelewy24->__construct(0, '', '', false, 0)
+#1 Przelewy24Service.php(44): client()
+#2 CheckoutController.php(134): registerTransaction(Order)
+```
+
+Klient dostawał 500. Zamówienie zostawało osierocone w `pending_payment` (blokuje sprzęt do TTL),
+a koszyk `converted` — pusty i bezużyteczny. Ścieżka kompensacyjna (anuluj zamówienie + reaktywuj
+koszyk) **istniała w kodzie i nigdy się nie wykonała**.
+
+### Przyczyna — dwie niezależne wady
+
+1. **Typ w `config/przelewy24.php`.** `.env.production.example` wysyła `P24_MERCHANT_ID=`,
+   `P24_POS_ID=`, `P24_CRC=`, `P24_REPORTS_KEY=` — klucze **obecne, ale puste**. `env()` zwraca dla
+   nich `''`, nie `null`, więc `env('P24_POS_ID') !== null ? (int) env('P24_POS_ID') : null` dawało
+   `int(0)`. SDK deklaruje `?string $posId`, a `Przelewy24Service` ma `declare(strict_types=1)` —
+   strict mode obowiązuje w miejscu WYWOŁANIA, więc `TypeError`, w konstruktorze, **przed
+   jakimkolwiek połączeniem sieciowym**.
+2. **`catch (\Exception)` nie łapie `\Error`.** `TypeError` to `\Error`. Blok kompensacyjny w
+   `CheckoutController::submit()` łapał `\Exception`, więc błąd przez niego przeleciał do handlera
+   500. Ta wada jest niezależna od pierwszej: dowolny przyszły `\Error` z tej biblioteki (zmiana
+   sygnatury w SDK, `Error` z autoloadera) dawałby dokładnie ten sam skutek.
+
+### Wada trzecia — sprawdzona i ROZSTRZYGNIĘTA JAKO NIEISTNIEJĄCA
+
+Podejrzenie: rozgałęzienie po metodzie rozliczenia jest wadliwe i **zawsze** woła P24, mimo
+`settlement_offline_enabled` u tenanta. **Nieprawda** — prześledzone przez cały łańcuch:
+`SubmitCheckoutRequest` waliduje `settlement_method` przeciw `availableSettlementMethods()` →
+`CartService::convertToOrder()` zapisuje `'offline'` tylko dla dosłownej wartości `'offline'`,
+wszystko inne → `'online'` → `CheckoutController::submit()` sprawdza `$order->isOfflineSettlement()`
+i **wychodzi przez `submitOffline()` zanim dotknie `$this->p24`**. Zapięte testem
+`test_offline_settlement_never_calls_przelewy24` (`registerTransaction` z `->never()`).
+
+Żądanie poszło ścieżką online, bo **klient legalnie wybrał online**: `settlement_online_enabled`
+domyślnie `true` i było oferowane niezależnie od tego, czy bramka ma jakiekolwiek poświadczenia.
+Poprawne zachowanie to łagodna odmowa, nie 500 — i to jest naprawione. Trzecia poprawka do kodu
+rozgałęzienia **nie była potrzebna**; potrzebne było przestać oferować nieskonfigurowaną bramkę
+(patrz warstwa 2 niżej).
+
+### Rozwiązanie — trzy warstwy, od zewnątrz
+
+| Warstwa | Gdzie | Skutek |
+|---------|-------|--------|
+| Typy w configu | `config/przelewy24.php` | każda wartość rzutowana na typ deklarowany przez SDK; pusty/brak `P24_POS_ID` → `null`, nigdy `0`/`''` |
+| Nie oferuj | `SettingsManager::isOnlineSettlementEnabled()` → `Przelewy24Service::isConfigured()` | nieskonfigurowana bramka wypada z `availableSettlementMethods()` — formularz jej nie pokazuje, `Rule::in` ją odrzuca, **żadne zamówienie nie powstaje** |
+| Łagodna odmowa | `Przelewy24Service::client()` → `PaymentGatewayNotConfiguredException` | typowany wyjątek przed siecią; kompensacja jak przy każdej innej awarii rejestracji, komunikat NIE obiecuje bezsensownego „spróbuj ponownie" |
+
+`availableSettlementMethods()` celowo nigdy nie jest pusta — tenant z nieskonfigurowanym online
+I wyłączonym odbiorem osobistym dostaje `['online']` jako ostatnią deskę ratunku (pusta lista =
+checkout niemożliwy w ogóle). Ten tenant ląduje na warstwie trzeciej, dlatego jej komunikat kieruje
+do kontaktu z wypożyczalnią, a nie do metody, której ten tenant nie ma.
+
+`P24_POS_ID` świadomie NIE należy do `isConfigured()` — SDK podstawia merchant id, gdy jest `null`
+(`Przelewy24\Config::posId()`). Wymagana trójka: `P24_MERCHANT_ID`, `P24_CRC`, `P24_REPORTS_KEY`.
+
+`WebhookController::przelewy24` dostał tę samą zmianę `\Exception` → `\Throwable` — uciekający
+`\Error` zamieniłby dostarczenie webhooka w 500, który P24 ponawia w kółko.
+
+### Wykrywanie przy starcie / deployu
+
+`scripts/validate-env.sh` sprawdza trójkę **all-or-nothing**: wszystkie trzy = `pass`, żadna =
+`warn` (tenant tylko na odbiór osobisty to wspierana konfiguracja, nie błąd), dowolna kombinacja
+częściowa = **`error`**. Stan częściowy jest tym groźnym: wygląda na skonfigurowany, a wywala się
+dopiero przy realnym zamówieniu realnego klienta.
+
+### Testy — wszystkie dowiedzione czerwono-potem-zielono
+
+- `tests/Unit/Config/Przelewy24ConfigTest.php` — ładuje PRAWDZIWY plik configu przez podstawienie
+  `$_ENV`, wynik podaje PRAWDZIWEMU konstruktorowi SDK z pliku `declare(strict_types=1)`, czyli pod
+  dokładnie tą surowością, która uczyniła `int(0)` fatalnym. `git stash` na `config/przelewy24.php`
+  → 4 z 6 testów pada z DOKŁADNYM komunikatem z produkcji.
+- `tests/Feature/Cart/CheckoutGatewayUnconfiguredTest.php` — bez mocka na ścieżkach, które mają
+  znaczenie: prawdziwy `Przelewy24Service` przeciw celowo pustemu configowi. Pinuje ZACHOWANIE
+  (302 nie 500, zamówienie `cancelled`, koszyk `active` z pozycjami, treść komunikatu), nie
+  `TypeError`. Osobny test rzuca `\TypeError` z mocka — pada przy `catch (\Exception)`, przechodzi
+  przy `\Throwable`, niezależnie od configu.
+- `tests/shell/cases/35_validate_env_p24_all_or_nothing.sh` — uruchamia PRAWDZIWY `validate-env.sh`
+  end-to-end przez jego własny override `ENV_FILE`. Asercje na RÓŻNICY liczby błędów między
+  przebiegami różniącymi się wyłącznie liniami P24, nie na bezwzględnym exit code — inaczej case
+  padałby w dniu, w którym ktoś doda wymaganą zmienną niezwiązaną z P24.
+
+### Zapobieganie
+
+1. **`catch (\Exception)` wokół vendor SDK to luka**, gdy jedyną reakcją jest kompensacja — patrz
+   `.claude/rules/controllers.md`. `\Error` z biblioteki przelatuje i cofa całą ochronę, którą
+   wygląda na to, że masz.
+2. **Klucz `.env` obecny, ale pusty, to inny stan niż nieobecny** — dokładnie ta sama klasa błędu co
+   incydent `TENANT_PREFIX` w `deploy.sh` wyżej w tym pliku (tam: brak linii vs pusta wartość, tu:
+   `''` vs `null`). Przy każdym nowym odczycie `env()` sprawdź OBA stany, nie tylko wygodniejszy —
+   `.env*.example` w tym repo wysyła klucze puste, więc pusty jest stanem DOMYŚLNYM na świeżej
+   maszynie, nie skrajnym przypadkiem.
+3. **Nie oferuj użytkownikowi ścieżki, o której już wiesz, że padnie.** Bramka bez poświadczeń nie
+   jest „dostępna" tylko dlatego, że tenant zaznaczył przełącznik — obie rzeczy muszą być prawdziwe,
+   a wyłapanie tego w warstwie oferującej metody kosztuje jedno wywołanie i oszczędza cykl
+   utwórz-zamówienie → anuluj → pokaż błąd.

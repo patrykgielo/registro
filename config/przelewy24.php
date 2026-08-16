@@ -1,11 +1,42 @@
 <?php
 
+/*
+ * TYPES HERE ARE NOT COSMETIC — they are the SDK's constructor signature.
+ *
+ * Przelewy24\Przelewy24::__construct() takes (int $merchantId, string
+ * $reportsKey, string $crc, bool $isLive, ?string $posId). Przelewy24Service
+ * is a `declare(strict_types=1)` file, so strict mode applies at the CALL
+ * site: handing it an int for $posId is a fatal TypeError — an \Error, not an
+ * \Exception — thrown before any network I/O happens.
+ *
+ * That is exactly what took production down on 2026-08-16: an unconfigured
+ * gateway (`P24_POS_ID=` present-but-empty in .env, as .env.production.example
+ * ships it) made this file yield int(0), and every online checkout submit
+ * returned a 500 instead of a payment redirect.
+ *
+ * Two rules follow, and both must hold for EVERY value below:
+ *   1. Cast to the type the SDK declares — never leave a raw env() string.
+ *   2. An empty/absent env var must become the SDK's own "not set" value
+ *      (null for $posId), never a coerced 0 or ''. `(int) ''` is 0, a
+ *      perfectly valid-looking merchant id that fails much later and far
+ *      less clearly; and '' passed down to Config's ?int $posId is itself a
+ *      TypeError in the vendor's weak-mode coercion.
+ *
+ * "Is the gateway usable at all" is decided in one place only —
+ * Przelewy24Service::isConfigured() — which reads these values back.
+ */
+
+$posId = env('P24_POS_ID');
+
 return [
     'merchant_id' => (int) env('P24_MERCHANT_ID', 0),
-    'reports_key' => env('P24_REPORTS_KEY', ''),
-    'crc' => env('P24_CRC', ''),
+    'reports_key' => (string) env('P24_REPORTS_KEY', ''),
+    'crc' => (string) env('P24_CRC', ''),
     'is_live' => (bool) env('P24_LIVE', false),
-    'pos_id' => env('P24_POS_ID') !== null ? (int) env('P24_POS_ID') : null,
+
+    // ?string, per the SDK. Empty string and null both mean "not configured";
+    // the SDK then falls back to merchant_id (see Przelewy24\Config::posId()).
+    'pos_id' => ($posId === null || trim((string) $posId) === '') ? null : (string) $posId,
 
     /*
      * Extra grace period (minutes) applied ON TOP OF the normal expires_at TTL

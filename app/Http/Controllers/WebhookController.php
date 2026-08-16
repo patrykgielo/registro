@@ -15,9 +15,13 @@ class WebhookController extends Controller
 
     public function przelewy24(Request $request): Response
     {
+        // \Throwable for the same reason as CheckoutController::submit(): an
+        // \Error out of the payment SDK (e.g. an unconfigured gateway) is not
+        // an \Exception, and letting one escape here turns a webhook delivery
+        // into a 500 that P24 will keep redelivering.
         try {
             $this->p24->handleWebhook($request->all());
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('P24 webhook error', ['error' => $e->getMessage()]);
         }
 
