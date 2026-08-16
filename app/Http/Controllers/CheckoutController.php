@@ -95,6 +95,7 @@ class CheckoutController extends Controller
 
         $availableSettlementMethods = $this->settings->availableSettlementMethods();
         $offlineReservationHoldHours = $this->settings->offlineReservationHoldHours();
+        $peselRequired = $this->settings->isPeselRequired();
 
         return view('checkout.show', compact(
             'cart',
@@ -103,6 +104,7 @@ class CheckoutController extends Controller
             'depositTotal',
             'availableSettlementMethods',
             'offlineReservationHoldHours',
+            'peselRequired',
         ));
     }
 
