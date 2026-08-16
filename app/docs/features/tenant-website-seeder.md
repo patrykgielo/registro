@@ -100,11 +100,33 @@ at all (rather than added with `content_items: []`). An empty `content_grid` ren
 yellow "Brak elementów" warning box to every public visitor — exactly the kind of broken-looking
 placeholder this command exists to eliminate.
 
-### 5. `--force` purge order: setting before pages
+### 5. `--force` purge order: setting before pages — defense-in-depth, not a live necessity here
 
 `PageObserver::deleting()` throws if the page being deleted is the organization's current
-homepage. `purge()` therefore clears `cms.homepage_page_id` **first**, then deletes the pages —
-the reverse order throws on the very first `--force` re-run.
+homepage. `purge()` clears `cms.homepage_page_id` **first**, then deletes the pages.
+
+**Correction (2026-08-16 review):** the original version of this doc claimed this ordering was
+*required* to avoid that exception firing on the very first `--force` re-run. That claim is false
+for this command specifically, and was never verified before being written down — exactly the
+kind of unverified mechanism-claim this project has been burned by before (see
+`docker-compose.prod.yml`'s Redis `CHOWN` capability incident). Verified empirically instead:
+
+`PageObserver` reads the homepage ID via `SettingsManager::get()`, which resolves the tenant
+through `TenantFeature::currentTenant()`. In a console command there is no ambient
+request/session/Filament tenant, so `currentTenant()` always returns `null`, `get()` falls through
+to `getGlobal()` (`WHERE organization_id IS NULL`), and this codebase **never writes a global**
+`cms.homepage_page_id` row (confirmed: `Setting::withoutGlobalScope('organization')
+->whereNull('organization_id')->where('group', 'cms')->where('key', 'homepage_page_id')->exists()`
+is `false` on the dev database). The guard's condition (`$homepageId && $homepageId ==
+$page->id`) is therefore always false when this command runs it — **the exception this ordering
+supposedly prevents cannot fire in this code path today.**
+
+The ordering is kept anyway, as defense-in-depth: this exact `purge()` method would be reachable
+from a future tenant-context caller (e.g. a Filament bulk action run from inside `/admin`, where
+`currentTenant()` DOES resolve a real organization) — in that context the guard is live and the
+ordering is genuinely load-bearing. `SeedWebsiteCommandTest::test_force_flag_reseeds_and_replaces_the_homepage`
+only pins the end state (old homepage page gone, new one seeded, setting repointed) — identical
+under either ordering — so it does not, and cannot, prove this dependency for the console path.
 
 ## Rental menu link (`wypozyczalnia`)
 

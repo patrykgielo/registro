@@ -151,7 +151,7 @@ class SeedWebsiteCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
-    public function test_force_flag_reseeds_despite_page_observer_homepage_guard(): void
+    public function test_force_flag_reseeds_and_replaces_the_homepage(): void
     {
         $org = Organization::factory()->equipmentRental()->create();
 
@@ -163,8 +163,14 @@ class SeedWebsiteCommandTest extends TestCase
             ->where('slug', 'strona-glowna')
             ->firstOrFail();
 
-        // PageObserver::deleting() throws if the page being deleted is the current
-        // homepage — this only succeeds if the command clears the setting first.
+        // NOTE: this asserts end-state only (old page gone, new one seeded, setting
+        // repointed) — it does NOT prove purge()'s setting-before-pages ordering is
+        // load-bearing. In a console command PageObserver::deleting()'s homepage guard
+        // never fires (SettingsManager::get() resolves no ambient tenant, falls
+        // through to a global row this codebase never writes — confirmed empirically);
+        // the ordering is defense-in-depth for a hypothetical tenant-context caller,
+        // not something exercised here. See SeedTenantWebsite::purge()'s docblock and
+        // tenant-website-seeder.md.
         $this->artisan('onboarding:seed-website', [
             'organization' => (string) $org->id,
             '--force' => true,

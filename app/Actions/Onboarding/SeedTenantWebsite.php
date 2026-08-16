@@ -52,8 +52,19 @@ class SeedTenantWebsite
     /**
      * Removes every CMS page owned by the organization, plus the homepage setting.
      *
-     * Order matters: PageObserver::deleting() throws if the page being deleted is
-     * currently set as the homepage, so the setting MUST be cleared first.
+     * Setting cleared before pages are deleted, as defense-in-depth against
+     * PageObserver::deleting() — it throws if the page being deleted is currently set
+     * as the homepage. That guard is INERT for this command specifically:
+     * PageObserver reads via SettingsManager::get(), which resolves the tenant through
+     * TenantFeature::currentTenant() — always null in a console command with no
+     * ambient tenant — so the read falls through to getGlobal() (organization_id IS
+     * NULL), and this codebase never writes a global cms.homepage_page_id row.
+     * Confirmed empirically (2026-08-16): the guard's condition is always false here.
+     * The ordering is kept anyway because this same purge path would be reachable from
+     * a tenant-context caller (e.g. a future Filament bulk action) where
+     * currentTenant() DOES resolve and the guard DOES fire — see
+     * tenant-website-seeder.md's "Kolejność kasowania" section for the full
+     * writeup and why this is not currently exercised by a test.
      */
     public function purge(Organization $org): void
     {
