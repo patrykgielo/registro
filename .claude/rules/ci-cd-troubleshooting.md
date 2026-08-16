@@ -1371,3 +1371,50 @@ POTRAFI pokryć to, co już pokrywa dedykowane narzędzie (`composer audit`) —
 PRZED włączeniem obu na tej samej warstwie, nie zakładaj że "więcej skanerów" znaczy "więcej
 pokrycia"; tu znaczyło dokładnie zero dodatkowego pokrycia i realne ryzyko dwóch sprzecznych
 liczb dla tego samego findingu.
+
+## 2026-08-16: remediacja 35 podatności composer — `composer update` celowany, bez zmian w `composer.json`
+
+Follow-up do wpisu bezpośrednio powyżej (branch `feature/security-dependency-updates`).
+`laravel/framework`'s "WARTE osobnego sprawdzenia" (linia ~1275) i pozostałych 10 pakietów —
+zrobione tego samego dnia.
+
+**Metoda:** `composer update <pakiet...> --with-dependencies`, dwoma turami (najpierw
+`guzzlehttp/guzzle` + `guzzlehttp/psr7` + `dompdf/dompdf`, potem reszta) — nie pełny
+`composer update` bez listy pakietów, żeby promień rażenia diffu w `composer.lock` był
+ograniczony do pakietów faktycznie związanych z podatnościami. Żadna z 35 podatności wymagała
+zmiany ograniczenia w `composer.json` — wszystkie mieściły się w istniejących `^`. Wynik:
+**35 → 0** (`composer audit --locked`, oba stany zmierzone). `laravel/framework` wylądował na
+`v12.66.0` (cel z listy był `≥12.61.1` — `composer update` bez górnego pinu w `composer.json`
+naturalnie ciągnie najnowszy pasujący do `^12.60`, nie tylko najniższy naprawiający).
+
+**Weryfikacja dompdf (najwyższe ryzyko — jedna z podatności dotyczyła osadzonych SVG,
+`OrderProtocolPdfService` generuje realne dokumenty prawne):**
+- Oba blade widoki protokołów (`resources/views/orders/protocols/{handover,return}.blade.php`)
+  nie osadzają żadnego `<img>`/SVG — CVE nie dotyczy tej ścieżki w ogóle, potwierdzone grepem, nie
+  założeniem.
+- Realny PDF wygenerowany PRZED i PO (nie tylko "testy przeszły"): tymczasowy Feature test
+  (`RefreshDatabase`, nie dotyka dev-MySQL) zapisał oba dokumenty na dysk przez
+  `Barryvdh\DomPDF\Facade\Pdf` → `OrderProtocolPdfService::handoverProtocol()/returnProtocol()`,
+  raz z vendor przywróconym do 3.1.5 (`git stash` na `composer.lock` + `composer install`), raz z
+  3.1.6. `pdftotext` obu par → jedyne różnice to dane z fabryki (imię, data, kwota — losowe przy
+  każdym uruchomieniu), identyczny layout/nagłówki/tabela/linia kaucji. Rozmiar pliku: różnica
+  rzędu 14-15 bajtów.
+
+**`guzzlehttp/guzzle`** — jedyny bezpośredni klient w apce to SDK `mnastalski/przelewy24-php`
+(`Przelewy24Service::client()`), stały host P24, bez własnej logiki cookie/redirect/Referer —
+podatności (kanonikalizacja hosta, zakres ciasteczek, nagłówek Referer przy przekierowaniach)
+dotyczą klientów podążających za NIEZAUFANYMI przekierowaniami, czego tu nie ma. Zero
+bezpośredniego użycia `Http::`/`GuzzleHttp\Client` w `app/` poza tym SDK (zweryfikowane grepem).
+
+**`league/commonmark` / `symfony/html-sanitizer`** — `EmailTemplate::render()` (żywa, nierozwiązana
+sprawa escapowania, patrz `project_email_template_escaping.md`) używa własnego
+`preg_replace_callback` + `e()`/`strip_tags()`, ŻADNEGO z tych dwóch pakietów — aktualizacja nie
+mogła dotknąć tego zachowania. `symfony/html-sanitizer` nie ma żadnego bezpośredniego użycia w
+`app/` (tylko transitive, zweryfikowane grepem). `league/commonmark` używany wyłącznie przez
+`Str::markdown()` w `OrganizationResource.php` (super-admin, panel `/platform`) i Filament
+`->markdown()` form-preview w `SmsSendResource`/`EmailSendResource` — żadna z tych ścieżek nie jest
+tenant-facing content pipeline.
+
+**Pełny zestaw testów raz, na końcu (nie w pętli):** `./vendor/bin/pint --test` (832 pliki, czysto)
++ `php artisan test` (SQLite, `.env.testing`) → **1331 passed / 5 skipped / 0 failed** — identyczny
+zestaw skipped co przed zmianą, brak nowych failures.
