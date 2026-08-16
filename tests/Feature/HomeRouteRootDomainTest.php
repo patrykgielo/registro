@@ -49,7 +49,7 @@ class HomeRouteRootDomainTest extends TestCase
     {
         $this->get('http://registro.local/')
             ->assertOk()
-            ->assertSee('Homepage Not Configured');
+            ->assertSee('Strona w przygotowaniu');
     }
 
     public function test_tenant_subdomain_home_still_works(): void
@@ -66,7 +66,7 @@ class HomeRouteRootDomainTest extends TestCase
 
         $this->get('http://activehome.registro.local/')
             ->assertOk()
-            ->assertSee('Homepage Not Configured');
+            ->assertSee('Strona w przygotowaniu');
     }
 
     /**
@@ -111,6 +111,6 @@ class HomeRouteRootDomainTest extends TestCase
             ->get('http://registro.local/')
             ->assertOk()
             ->assertDontSee('Org B exclusive content')
-            ->assertSee('Homepage Not Configured');
+            ->assertSee('Strona w przygotowaniu');
     }
 }

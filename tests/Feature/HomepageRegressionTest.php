@@ -80,6 +80,30 @@ class HomepageRegressionTest extends TestCase
         $this->actingAsTenant($org)
             ->get('http://test-org-2.registro.local/')
             ->assertOk()
-            ->assertSee('Homepage Not Configured');
+            ->assertSee('Strona w przygotowaniu')
+            ->assertDontSee('Homepage Not Configured')
+            ->assertDontSee('Configure Homepage');
+    }
+
+    public function test_homepage_placeholder_hides_admin_cta_from_anonymous_visitor(): void
+    {
+        $owner = User::factory()->create();
+
+        $org = Organization::create([
+            'name' => 'Test Org 3',
+            'slug' => 'test-org-3',
+            'booking_type' => 'time_slot',
+            'owner_id' => $owner->id,
+            'is_active' => true,
+        ]);
+
+        // No auth — a guest must never see the "configure homepage" admin CTA, only
+        // the neutral "coming soon" message.
+        $this->actingAsTenant($org)
+            ->get('http://test-org-3.registro.local/')
+            ->assertOk()
+            ->assertSee('Strona w przygotowaniu')
+            ->assertDontSee('Skonfiguruj stronę główną')
+            ->assertDontSee('Please configure homepage in admin panel.');
     }
 }
