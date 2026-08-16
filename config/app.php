@@ -126,9 +126,15 @@ return [
     | by Laravel's translation / localization methods. This option can be
     | set to any locale for which you plan to have translation strings.
     |
+    | Default is 'pl', not Laravel's stock 'en': every public-facing storefront
+    | Blade view is hardcoded Polish (there is no translated public UI), and
+    | <html lang> (resources/views/layouts/app.blade.php) reads this value —
+    | an environment that never set APP_LOCALE explicitly served Polish
+    | content mislabeled as English to assistive tech and search engines.
+    |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => env('APP_LOCALE', 'pl'),
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 

@@ -75,18 +75,21 @@ class SettingsManagerLogoTest extends TestCase
     }
 
     /**
-     * logoAlt() itself was never buggy — its fallback-to-appName() already
-     * existed — but `appearance.logo_alt` (the key it reads) was seeded with
-     * "Registro - Mobilne Myjnie Parowe" for every tenant, so this contract
-     * was unreachable in practice until that seeded row was removed
-     * (2026_08_13_150000_remove_foreign_default_appearance_marketing_and_wizard_copy.php).
-     * Pins the contract so a future re-seed can't silently break it again.
+     * logoAlt()'s fallback source changed from appName() to brandName()
+     * (feature/tenant-branding-fixes): appName() reads general.app_name,
+     * which is seeded once with organization_id NULL ("Registro" — see
+     * SettingSeeder::seedGeneralSettings()) and so silently returns OUR
+     * brand for any tenant who never overrode it — the exact bug class this
+     * change fixes for the header/footer/title too. `appearance.logo_alt`
+     * itself was also previously seeded with "Registro - Mobilne Myjnie
+     * Parowe" for every tenant, removed in
+     * 2026_08_13_150000_remove_foreign_default_appearance_marketing_and_wizard_copy.php.
      */
-    public function test_logo_alt_falls_back_to_app_name_when_not_configured(): void
+    public function test_logo_alt_falls_back_to_brand_name_when_not_configured(): void
     {
         $alt = app(SettingsManager::class)->logoAlt();
 
-        $this->assertSame(app(SettingsManager::class)->appName(), $alt);
+        $this->assertSame(app(SettingsManager::class)->brandName(), $alt);
         $this->assertStringNotContainsString('Myjnie', $alt);
         $this->assertStringNotContainsString('Detailing', $alt);
     }

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $metaTitle ?? $title ?? config('app.name') }}</title>
+    <title>{{ $metaTitle ?? $title ?? app(\App\Support\Settings\SettingsManager::class)->brandName() }}</title>
     @if($metaDescription ?? null)
         <meta name="description" content="{{ $metaDescription }}">
     @endif

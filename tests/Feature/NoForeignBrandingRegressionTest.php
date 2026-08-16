@@ -63,8 +63,13 @@ class NoForeignBrandingRegressionTest extends TestCase
         $response->assertDontSee('images/logo', false);
 
         // The pre-existing text fallback (previously unreachable) must be
-        // what actually renders instead — header.blade.php's @else branch
-        // prints config('app.name'), not the tenant's own org name.
-        $response->assertSee(config('app.name'), false);
+        // what actually renders instead. header.blade.php's @else branch
+        // originally printed config('app.name') here — itself later found to
+        // be the same bug one level up (showing "Registro" instead of the
+        // tenant's own name, see SettingsManager::brandName()'s docblock and
+        // tenant-branding.md's "Fifth pass") — so this now asserts the
+        // tenant's own Organization::name, not the platform's.
+        $response->assertSee($org->name, false);
+        $response->assertDontSee(config('app.name'), false);
     }
 }

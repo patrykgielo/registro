@@ -33,8 +33,8 @@ Callers implementing this contract:
 
 | File | Fallback |
 |------|----------|
-| `resources/views/components/nav/header.blade.php` | `config('app.name')` text span |
-| `resources/views/components/nav/footer.blade.php` | never had a logo — `config('app.name')` text only |
+| `resources/views/components/nav/header.blade.php` | `SettingsManager::brandName()` text span (was `config('app.name')` — see "Fifth pass" below for why that was still the same bug, one level up) |
+| `resources/views/components/nav/footer.blade.php` | `SettingsManager::brandName()` text (was `config('app.name')`) |
 | `resources/views/components/ios/footer.blade.php` (legacy, unreferenced) | `SettingsManager::appName()` text |
 | `resources/views/components/ios/nav-logo.blade.php` (legacy, unreferenced) | `logoAlt()` text |
 | `resources/views/errors/maintenance-prelaunch.blade.php` | `logoAlt()` text, now sourced from `SettingsManager::headerLogo()`/`logoAlt()` instead of the dead `contact.logo_path` key |
@@ -482,6 +482,117 @@ which only ever looked at data.
   replacement), phone/email switched to `SettingsManager::contactInformation()` with the same
   absent-means-hidden guard used everywhere else in this document.
 
+## Fifth pass (2026-08-16, `feature/tenant-branding-fixes`): the text fallback itself was still our brand
+
+Everything above this section fixed callers falling back to a bundled *asset* or hardcoded copy.
+This pass found the text fallback the earlier passes correctly routed to (`config('app.name')`,
+`SettingsManager::appName()`) was **itself** wrong for a public storefront: `appName()` reads
+`general.app_name`, a setting seeded exactly once with `organization_id NULL` ("Registro" —
+`SettingSeeder::seedGeneralSettings()`). Any tenant who never explicitly overrode it in
+SystemSettings inherited that platform-wide default — the header, footer heading, footer
+copyright, and every page `<title>` showed "Registro" instead of the tenant's own name, on a page
+whose entire purpose (per the tenant's own sales use of it) is presenting the *client's* business.
+
+**Fix:** `SettingsManager::brandName()` no longer delegates to `appName()`. New chain:
+`design.brand_name_override` (explicit) → `Organization::name` (always present, never shared
+between tenants, unlike a Setting row) → `config('app.name')` (reached only when no tenant is
+resolved — root domain, where "Registro" is correct). `appName()`/`general.app_name` itself is
+unchanged — it stays reserved for the `{{app_name}}` placeholder in email/SMS templates, a
+separate surface not touched by this pass. `logoAlt()`'s fallback moved from `appName()` to
+`brandName()` for the same reason (a tenant's own uploaded logo image getting an `alt` of
+"Registro" is the identical leak, just in an attribute instead of visible text).
+
+Also fixed in the same pass, same root cause, three other places `config('app.name')` reached a
+tenant page:
+
+- `app/Support/Seo/MetaTagBuilder.php` — every Post/Page/Service/Category `<title>` suffix
+  (`"{$title} — {$appName}"`), used by all four content controllers. Homepage `<title>` was
+  literally `Strona główna — Registro`.
+- `resources/views/layouts/app.blade.php`'s raw `<title>` fallback (`$metaTitle ?? $title ??
+  config('app.name')`) — reached by every public page that sets neither, including
+  `services/index.blade.php`, `rentals/index.blade.php`, `promotions/show.blade.php` and others
+  with no per-page title at all.
+- The footer's marketing tagline ("Profesjonalna platforma do zarządzania rezerwacjami i
+  wypożyczeniami.") describes *Registro itself*, not any tenant's rental business — showing it
+  under a tenant's own name reads as the tenant claiming to be a booking-platform vendor. Hidden
+  on tenant domains (`request()->attributes->get('tenant')`, the same check `header.blade.php`
+  already used), kept on the root domain where it's Registro's own accurate copy.
+
+Root domain (no tenant resolved) is unaffected by all of the above — `brandName()`'s last fallback
+is still `config('app.name')`, so `registro.local` (and, in production, the marketing domain) keeps
+showing "Registro" throughout. Verified with two distinct local tenants side by side
+(`tests/Feature/TenantBrandNameRegressionTest.php`) — neither one's name leaks into the other's
+render, and the root domain shows neither tenant's name.
+
+### Same pass, unrelated mechanism: `<html lang>` defaulted to English
+
+`layouts/app.blade.php` already derived `<html lang>` from `app()->getLocale()` — not hardcoded —
+but `config('app.locale')` fell back to Laravel's stock `env('APP_LOCALE', 'en')`. Every public
+Blade view's content is hardcoded Polish (no i18n switch exists for the storefront); an
+environment that never set `APP_LOCALE` explicitly served that Polish content labeled `lang="en"`
+(confirmed on the live site via `curl`). Fixed the *default*, not the template — `config/app.php`
+now reads `env('APP_LOCALE', 'pl')`, and `.env.example` was updated to match so a fresh
+environment created by copying it gets the right default too. `fallback_locale` (governs missing
+translation-key lookups, unrelated to `<html lang>`) was deliberately left alone — out of scope,
+and `lang/en/*` still backs real fallback lookups for keys absent from `lang/pl/*`.
+
+### Same pass, unrelated mechanism: dead `bg-primary-500` made the no-image icon badge invisible
+
+`resources/views/components/ios/service-card.blade.php` shows an icon badge (heroicon `cube` for
+`ServiceType::ItemRental`) when a service has no `featured_image` — a deliberate, already-correct
+design choice, not a missing feature. Its background class, `bg-primary-500` (and the card's own
+`hover:border-primary-300`), does not exist in this project's Tailwind v4 theme — `design-tokens.css`
+only registers a `brand` color scale (`--color-brand`, mapped by `@theme`), never a `primary` one
+(confirmed: `grep -c "bg-primary-500" public/build/assets/app-*.css` → `0` before this fix), and
+`tailwind.config.js` defines no `theme.extend.colors.primary` either. Tailwind v4 only emits
+utilities for values it can resolve, so `bg-primary-500` silently compiled to nothing — the icon
+container had no background, and its `text-white` heroicon was invisible against the card's white
+background. Exactly the "empty white rectangle" every no-image product card showed. Fixed:
+`bg-primary-500` → `bg-brand`, `hover:border-primary-300` → `hover:border-brand/30`. The dark
+variant (`bg-[#0AB1EA]`) was never affected — arbitrary-value classes always compile regardless of
+theme registration.
+
+**Related, out-of-scope finding, same mechanism, not fixed here:**
+`resources/views/components/content-blocks/feature-list.blade.php` (the homepage's "features"/
+"atuty" section) has the identical dead classes — `bg-primary-100` icon containers and
+`text-primary-600` icons, both silently compiling to nothing, at lines ~79-80 and ~96-97.
+`resources/views/components/cms/card.blade.php` has a lighter version (`text-primary-600
+hover:text-primary-700` — an invisible-until-hover link color, not a fully invisible icon).
+Neither was in this task's four reported defects and neither is touched by this branch — flagged
+here so the next pass through `ios/`/`content-blocks/` fixes it with the same understanding
+(`bg-brand`/`text-brand`/`bg-brand-subtle`, not a `primary` scale that doesn't exist) rather than
+rediscovering the mechanism from scratch. The whole `components/ios/` directory carries this same
+`primary-*` pattern pervasively (button, checkbox, input, auth-card, hero-banner) — out of scope
+for the same reason: none of those render on the page this task was about.
+
+### Footer's empty "Nawigacja"/"Kontakt" columns — two independent causes
+
+The footer showed both column headings (`Nawigacja`, `Kontakt`) with nothing under them whenever a
+tenant had neither footer-location pages nor any `contact` settings — an empty column under a
+heading reads as broken, not as "nothing configured yet". Two unrelated root causes, both in
+`resources/views/components/nav/footer.blade.php`:
+
+1. **Nawigacja** — `NavigationService::getMenuItems('footer')` legitimately returns an empty
+   collection for a tenant with no `menu_location: footer` pages (a seeding/content gap, not a
+   bug — `onboarding:seed-website` only seeds `header` pages today). The column rendered its
+   heading unconditionally regardless. Fixed: wrapped in
+   `@if($footerMenuItems->isNotEmpty())`.
+2. **Kontakt** — a genuine dead-key bug, independent of whether the tenant has any contact data at
+   all: the column read `$contact['address']`, a key the Contact tab (`SystemSettings.php`) has
+   **never written** — the real keys are `contact.address_line`/`contact.city`/`contact.postal_code`
+   (same three-key shape `SettingsManager::contactDetailsFor()` already assembles for order
+   emails/PDFs, see the "Root-cause follow-up" section above — this call site just never used it).
+   So even a tenant who fully filled in their address in the admin panel never saw it in the
+   footer. Fixed: assembled from the real keys locally (this call site only has the raw
+   `contactInformation()` group array, not an `Organization` to call `contactDetailsFor()` with);
+   column hidden entirely (not just the address line) when phone, email, and address are all
+   absent.
+
+Both fixes also resize the footer's grid (`md:grid-cols-4` → `md:grid-cols-2` → `md:grid-cols-1`,
+brand column's `md:col-span-2` dropped to no span) so a tenant with zero or one of these columns
+doesn't leave a lopsided empty gap where the other one used to be — a purely visual consequence of
+making the columns conditional, not a separate bug.
+
 ## Regression coverage
 
 - `tests/Unit/Support/Settings/SettingsManagerLogoTest.php` — pins the null-by-default contract at
@@ -503,6 +614,33 @@ which only ever looked at data.
 - `tests/Feature/NoForeignBrandingFinalSweepTest.php` — pins the `ios/hero-banner.blade.php` fix from
   the final sweep: renders the component directly via `Blade::render()`, asserts no hardcoded
   detailing defaults and that a caller-supplied title/subtitle still renders correctly.
+
+**Fifth pass (2026-08-16):**
+
+- `tests/Unit/Support/Settings/SettingsManagerBrandNameTest.php` — pins `brandName()`'s fallback
+  chain (override → `Organization::name` → `config('app.name')`) and, most importantly, that two
+  distinct tenants resolve to two distinct names with neither leaking into the other. Also pins
+  that `appName()`/`general.app_name` is unchanged and still shared — the reason `brandName()`
+  cannot delegate to it.
+- `tests/Unit/Support/Settings/SettingsManagerLogoTest.php` — updated (not weakened) the
+  `logoAlt()` fallback test for the new `brandName()` source; the old assertion pinned the
+  now-intentionally-changed contract.
+- `tests/Feature/TenantBrandNameRegressionTest.php` — full HTTP render: a tenant with no logo shows
+  its own name and never "Registro"; the root domain still shows "Registro"; two distinct tenants
+  rendered back-to-back never see each other's name.
+- `tests/Feature/PublicSiteHtmlLangRegressionTest.php` — re-requires `config/app.php` with
+  `APP_LOCALE` genuinely unset (the test process's own `.env.testing` always sets it, which would
+  otherwise mask a regression to the default) to prove the fallback is `pl`; plus an end-to-end
+  assertion that the root domain's `<html>` tag is `lang="pl"`.
+- `tests/Feature/ServiceCardNoImagePlaceholderTest.php` — renders the real component via
+  `Blade::render()` with a `featured_image`-less rental service, asserts `bg-primary-500`/
+  `border-primary-300` are absent and `bg-brand` is present; a second test pins the dark variant
+  (`#0AB1EA`) is unaffected.
+- `tests/Feature/FooterEmptyColumnsRegressionTest.php` — both footer columns absent for a tenant
+  with neither nav pages nor contact settings; Nawigacja alone appears when a footer-location page
+  exists; Kontakt alone appears and renders the full assembled address
+  (`address_line`, `postal_code city`) when contact settings exist — pinning the dead-key fix, not
+  just the visibility toggle.
 
 All were verified red (asserting against the pre-fix fallback) then green (current code) before
 being kept.

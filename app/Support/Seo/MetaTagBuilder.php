@@ -30,7 +30,10 @@ class MetaTagBuilder
         $title = filled($explicitTitle) ? $explicitTitle : $fallbackTitle;
 
         if (! filled($explicitTitle) && filled($title)) {
-            $title .= ' — '.config('app.name');
+            // brandName(), not config('app.name') — every tenant page's <title>
+            // must end with the tenant's own name, not "Registro" (see
+            // SettingsManager::brandName() docblock for the fallback chain).
+            $title .= ' — '.app(\App\Support\Settings\SettingsManager::class)->brandName();
         }
 
         $description = $model->meta_description ?? self::fallbackDescription($model);

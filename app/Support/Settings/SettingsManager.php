@@ -720,7 +720,7 @@ class SettingsManager
 
         // Return default if value is null or empty
         if (empty($alt) || ! is_string($alt)) {
-            return $this->appName();
+            return $this->brandName();
         }
 
         return $alt;
@@ -784,9 +784,22 @@ class SettingsManager
     }
 
     /**
-     * Get the tenant's brand name for public display.
+     * Get the tenant's brand name for public display (header, footer, page
+     * titles — anywhere "the app's name" is shown to an end customer).
      *
-     * Returns brand_name_override if set, otherwise falls back to appName().
+     * Deliberately does NOT fall back to appName()/general.app_name: that
+     * setting is seeded once with organization_id NULL ("Registro" — see
+     * SettingSeeder::seedGeneralSettings()), so any tenant who has not
+     * explicitly customized it inherits the platform-wide default and shows
+     * OUR brand instead of theirs. general.app_name stays reserved for the
+     * {{app_name}} placeholder in email/SMS templates — a separate,
+     * lower-stakes surface (docs/features/tenant-branding.md) — not fixed
+     * here.
+     *
+     * Chain: explicit override → the tenant's own Organization name (always
+     * present, never shared between tenants) → config('app.name') — reached
+     * only when no tenant is resolved (root domain), where showing
+     * "Registro" is correct.
      */
     public function brandName(): string
     {
@@ -796,7 +809,13 @@ class SettingsManager
             return $override;
         }
 
-        return $this->appName();
+        $tenant = TenantFeature::currentTenant();
+
+        if ($tenant && ! empty($tenant->name) && is_string($tenant->name)) {
+            return $tenant->name;
+        }
+
+        return config('app.name', 'Registro');
     }
 
     /**
