@@ -22,14 +22,16 @@ $user->assignRole('admin');  // RoleDoesNotExist exception!
 
 - Role seedowane przez `RolePermissionSeeder` — ale seeder NIE JEST wywoływany w deploy
 - `deployment.md` zabrania: "NIGDY nie uruchamiaj seederów w CI/CD pipeline"
-- Testy przechodzą bo `TestCase::setUp()` ręcznie seeduje role
+- Testy przechodzą bo `TestReferenceDataSeeder` (wpięty jako `Tests\TestCase::$seeder`,
+  patrz `tests.md` -> "Reference data seeding") seeduje role raz na proces testowy
 - Produkcja/fresh dev DB nie ma ról → `assignRole()` rzuca `RoleDoesNotExist`
 
 ## Incident 2026-03-14
 
 **Problem:** Rejestracja biznesowa → `CreateOrganizationWithOwner` → `$user->assignRole('admin')` → `RoleDoesNotExist: There is no role named 'admin' for guard 'web'`
 
-**Root cause:** `migrate:fresh` bez `--seed` → tabela `roles` pusta. Testy przechodzą bo `TestCase::setUp()` seeduje role.
+**Root cause:** `migrate:fresh` bez `--seed` → tabela `roles` pusta. Testy przechodzą, bo zestaw
+testowy seeduje role sam (obecnie: `TestReferenceDataSeeder`, raz na proces).
 
 **Fix:** `Role::firstOrCreate()` przed każdym `assignRole()`.
 

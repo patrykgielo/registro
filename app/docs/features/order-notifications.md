@@ -90,8 +90,8 @@ AppServiceProvider::registerEventListeners()
 - `tests/Feature/Database/OrderHandoverReturnEmailTemplateMigrationTest.php` — pins the migration's
   `up()`/`down()`, that it never touches unrelated rows or a tenant's own override, and that both
   keys resolve from production migrations ALONE (i.e. without `EmailTemplateSeeder`, which every
-  other test in this suite relies on via `TestCase::setUp()` and which would otherwise mask exactly
-  this class of bug)
+  other test in this suite already has thanks to `TestReferenceDataSeeder` running once per test
+  process via `Tests\TestCase::$seeder`, and which would otherwise mask exactly this class of bug)
 
 **Modified:**
 - `app/Enums/TemplateKey.php` — 6 order-lifecycle cases: `ORDER_PAID`, `ORDER_CONFIRMED`,

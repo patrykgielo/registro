@@ -127,8 +127,10 @@ class RentalReturnReminderEmailTemplateMigrationTest extends TestCase
      * against a wiped table, then resolves both new keys the same way
      * EmailService::sendFromTemplate() does — proving they come from
      * production data migrations alone, not from EmailTemplateSeeder (which
-     * TestCase::setUp() runs for every other test in this suite and would
-     * otherwise mask exactly this class of bug).
+     * TestReferenceDataSeeder runs once per test process, via
+     * Tests\TestCase::$seeder, before any test's transaction begins — every
+     * other test in this suite already has these rows and would otherwise
+     * mask exactly this class of bug).
      */
     public function test_both_new_template_keys_resolve_from_production_migrations_alone(): void
     {

@@ -34,9 +34,12 @@ class CreateOwnerCommandTest extends TestCase
 
     public function test_it_seeds_roles_when_the_database_has_none(): void
     {
-        // Tests\TestCase::setUp() seeds RolePermissionSeeder for every test, so it
-        // has to be undone here to reproduce the case this command exists for: a
-        // fresh production install, where nothing has ever run that seeder.
+        // TestReferenceDataSeeder (wired as Tests\TestCase::$seeder) seeds
+        // RolePermissionSeeder exactly once per test process, before this or any
+        // other test's transaction begins, so the roles/permissions rows have to
+        // be deleted here — inside this test's own transaction, rolled back
+        // afterward — to reproduce the case this command exists for: a fresh
+        // production install, where nothing has ever run that seeder.
         \DB::table('role_has_permissions')->delete();
         \DB::table('model_has_roles')->delete();
         \DB::table('model_has_permissions')->delete();
