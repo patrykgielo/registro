@@ -325,4 +325,89 @@ class OrderServiceTest extends TestCase
             $this->assertDatabaseCount('payments', 0);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // recordOfflinePayment() — amount mismatch guard: possible, never accidental
+    // -------------------------------------------------------------------------
+
+    public function test_record_offline_payment_rejects_a_mismatched_amount_without_confirmation(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->makeService()->recordOfflinePayment($order, 250.0, 'cash', null, $staff->id);
+    }
+
+    public function test_record_offline_payment_rejects_a_mismatched_amount_confirmed_but_without_a_reason(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->makeService()->recordOfflinePayment($order, 250.0, 'cash', null, $staff->id, amountMismatchConfirmed: true);
+    }
+
+    public function test_record_offline_payment_rejects_a_mismatched_amount_with_only_a_blank_reason(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->makeService()->recordOfflinePayment($order, 250.0, 'cash', '   ', $staff->id, amountMismatchConfirmed: true);
+    }
+
+    public function test_record_offline_payment_accepts_a_mismatched_amount_when_confirmed_with_a_reason(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        $result = $this->makeService()->recordOfflinePayment(
+            $order,
+            250.0,
+            'cash',
+            'Rabat 50 zł udzielony przy odbiorze — uszkodzone opakowanie.',
+            $staff->id,
+            amountMismatchConfirmed: true,
+        );
+
+        $this->assertSame('paid', $result->fresh()->status);
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $order->id,
+            'amount' => 25000,
+        ]);
+    }
+
+    public function test_record_offline_payment_does_not_require_confirmation_when_amount_matches_exactly(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        // No $amountMismatchConfirmed passed — defaults to false — and no notes either.
+        // Must still succeed because the amount matches exactly.
+        $result = $this->makeService()->recordOfflinePayment($order, 300.0, 'cash', null, $staff->id);
+
+        $this->assertSame('paid', $result->fresh()->status);
+    }
+
+    public function test_record_offline_payment_rejects_mismatch_before_locking_the_row_no_payment_persisted(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create(['total_amount' => 300]);
+        $staff = User::factory()->create();
+
+        try {
+            $this->makeService()->recordOfflinePayment($order, 1.0, 'cash', null, $staff->id);
+            $this->fail('Expected InvalidArgumentException was not thrown.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertDatabaseCount('payments', 0);
+            $this->assertSame('pending_payment', $order->fresh()->status);
+        }
+    }
 }

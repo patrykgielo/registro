@@ -140,4 +140,57 @@ class RecordOfflinePaymentFilamentActionTest extends TestCase
 
         $this->assertSame('paid', $order->fresh()->status);
     }
+
+    // -------------------------------------------------------------------------
+    // Amount mismatch — possible, never accidental (see OrderServiceTest for the
+    // domain-layer guard this UI surfaces)
+    // -------------------------------------------------------------------------
+
+    public function test_mismatched_amount_without_confirmation_does_not_transition_the_order(): void
+    {
+        $order = Order::factory()->offline()->pendingPayment()->create([
+            'organization_id' => $this->org->id,
+            'total_amount' => 300,
+        ]);
+
+        // The action closure catches OrderService's exception and renders a Filament
+        // danger notification rather than throwing back into Livewire — so this is
+        // pinned by observing the order was NOT transitioned, same technique the
+        // other guard-rejection cases in this class use implicitly.
+        Livewire::test(EditOrder::class, ['record' => $order->getRouteKey()])
+            ->callAction('record_offline_payment', [
+                'amount' => 250,
+                'method' => 'cash',
+                'notes' => null,
+            ]);
+
+        $this->assertSame('pending_payment', $order->fresh()->status);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_mismatched_amount_confirmed_with_a_reason_transitions_the_order(): void
+    {
+        Notification::fake();
+
+        $order = Order::factory()->offline()->pendingPayment()->create([
+            'organization_id' => $this->org->id,
+            'total_amount' => 300,
+        ]);
+
+        Livewire::test(EditOrder::class, ['record' => $order->getRouteKey()])
+            ->callAction('record_offline_payment', [
+                'amount' => 250,
+                'method' => 'cash',
+                'amount_mismatch_confirmed' => true,
+                'notes' => 'Rabat przy odbiorze — uszkodzone opakowanie.',
+            ])
+            ->assertHasNoActionErrors();
+
+        $order->refresh();
+        $this->assertSame('paid', $order->status);
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $order->id,
+            'amount' => 25000,
+        ]);
+    }
 }

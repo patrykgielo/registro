@@ -66,7 +66,19 @@ class OrderService
      * notify()-inside-DB::transaction()) so a rollback can never leave a
      * "your order was paid" email in flight for a payment that didn't stick.
      *
-     * @throws \InvalidArgumentException when $method is not a valid offline payment method
+     * $amount is staff-entered and NOT required to equal $order->total_amount
+     * — we don't support partial payments (no instalments), but we DO support
+     * a deliberate discount given in person at pickup, which is a real thing
+     * in this business. A mismatch must therefore be POSSIBLE but never
+     * ACCIDENTAL: any amount that doesn't equal the order total requires
+     * $amountMismatchConfirmed = true AND a non-empty $notes explaining why —
+     * enforced here, not only in the Filament form, so no caller can silently
+     * mark an order paid for the wrong amount with nothing downstream
+     * (deposit workflow, protocols, state machine) ever re-checking it.
+     *
+     * @throws \InvalidArgumentException when $method is invalid, or the amount doesn't
+     *                                   match the order total and the mismatch wasn't
+     *                                   explicitly confirmed with a reason
      * @throws \LogicException when the order is not awaiting payment
      */
     public function recordOfflinePayment(
@@ -75,9 +87,27 @@ class OrderService
         string $method,
         ?string $notes,
         int $recordedByUserId,
+        bool $amountMismatchConfirmed = false,
     ): Order {
         if (! in_array($method, self::OFFLINE_PAYMENT_METHODS, strict: true)) {
             throw new \InvalidArgumentException("Nieprawidłowa metoda rozliczenia: '{$method}'.");
+        }
+
+        $amountCents = (int) round($amount * 100);
+        $expectedCents = (int) round(((float) $order->total_amount) * 100);
+
+        if ($amountCents !== $expectedCents) {
+            if (! $amountMismatchConfirmed) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Kwota (%s zł) różni się od sumy zamówienia (%s zł). Jeśli to zamierzone (np. rabat przy odbiorze), potwierdź rozbieżność.',
+                    number_format($amount, 2, ',', ' '),
+                    number_format((float) $order->total_amount, 2, ',', ' '),
+                ));
+            }
+
+            if ($notes === null || trim($notes) === '') {
+                throw new \InvalidArgumentException('Podaj powód rozbieżności kwoty w notatce.');
+            }
         }
 
         $order = DB::transaction(function () use ($order, $amount, $method, $notes, $recordedByUserId): Order {

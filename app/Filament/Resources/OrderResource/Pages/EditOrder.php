@@ -9,11 +9,13 @@ use App\Filament\Traits\StaysOnPageAfterSave;
 use App\Services\Order\OrderProtocolPdfService;
 use App\Services\Order\OrderService;
 use Filament\Actions;
+use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Schemas\Components\Utilities\Get;
 
 class EditOrder extends EditRecord
 {
@@ -120,6 +122,7 @@ class EditOrder extends EditRecord
                         ->step(0.01)
                         ->suffix('zł')
                         ->required()
+                        ->live(onBlur: true)
                         ->default(fn (): float => (float) $this->record->total_amount),
                     Select::make('method')
                         ->label('Sposób płatności')
@@ -128,9 +131,18 @@ class EditOrder extends EditRecord
                             'bank_transfer' => 'Przelew',
                         ])
                         ->required(),
+                    // Mirrors OrderResource.php's table action — see its comment for why this
+                    // exists: a mismatch must be POSSIBLE (e.g. a discount at pickup) but never
+                    // ACCIDENTAL. Domain enforcement lives in
+                    // OrderService::recordOfflinePayment(), not here.
+                    Checkbox::make('amount_mismatch_confirmed')
+                        ->label('Kwota celowo różni się od sumy zamówienia')
+                        ->helperText(fn (): string => 'Suma zamówienia: '.number_format((float) $this->record->total_amount, 2, ',', ' ').' zł. Opisz powód w notatce poniżej (np. rabat przy odbiorze).')
+                        ->visible(fn (Get $get): bool => round((float) ($get('amount') ?? 0), 2) !== round((float) $this->record->total_amount, 2))
+                        ->default(false),
                     Textarea::make('notes')
-                        ->label('Notatka (opcjonalnie)')
-                        ->helperText('Np. numer paragonu / KP / potwierdzenia przelewu.')
+                        ->label('Notatka')
+                        ->helperText('Wymagana, jeśli kwota różni się od sumy zamówienia — opisz powód.')
                         ->maxLength(500),
                 ])
                 ->action(function (array $data): void {
@@ -141,6 +153,7 @@ class EditOrder extends EditRecord
                             $data['method'],
                             $data['notes'] ?? null,
                             (int) auth()->id(),
+                            (bool) ($data['amount_mismatch_confirmed'] ?? false),
                         );
                         Notification::make()->success()->title('Wpłata odnotowana')->send();
                     } catch (\Exception $e) {
