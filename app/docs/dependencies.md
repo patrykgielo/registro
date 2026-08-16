@@ -375,10 +375,14 @@ docker compose exec app php -r "echo phpversion('redis');"
 - Creates PRs for security updates
 - Runs CI/CD tests automatically
 
-**Composer Audit (Weekly):**
+**Composer Audit:** runs as a step in CI since 2026-08-16 (`test` job of `test.yml` and
+`deploy-production.yml`), not on a weekly schedule — both workflows are `workflow_dispatch`-only,
+so this runs whenever someone dispatches one of them, and is report-only (does not fail the job).
+See `.claude/rules/ci-cd-troubleshooting.md`, 2026-08-16 entry, for measured counts and how to
+make it blocking.
 ```bash
-# Run in CI/CD weekly
-composer audit --format=json > composer-audit.json
+# What CI runs (reads composer.lock directly, independent of --no-dev)
+composer audit --locked --format=json
 ```
 
 **NPM Audit (Weekly):**

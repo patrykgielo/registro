@@ -40,9 +40,22 @@ This is the **only** thing that builds, tests, and deploys. It runs three-to-fou
 
 | Job | What | Skippable |
 |-----|------|-----------|
-| `test` (PHPUnit) | Full Feature suite against `mysql:8.0`+`redis:7.2-alpine` | Only via `skip_tests` (below) |
-| `build` | Builds the image with `docker/build-push-action`, pushes `:VERSION` and `:latest` to GHCR | No |
+| `test` (PHPUnit) | Full Feature suite against `mysql:8.0`+`redis:7.2-alpine`, plus `composer audit --locked` (report-only) | Only via `skip_tests` (below) — skips PHPUnit and the audit together, they're one job |
+| `build` | Builds the image with `docker/build-push-action`, pushes `:VERSION` and `:latest` to GHCR, then scans it for OS-package vulnerabilities with Trivy (report-only) | No |
 | `deploy` | SSHes to the VPS, runs `deploy.sh`, health-checks `/up` | No |
+
+### Security scanning (added 2026-08-16, report-only)
+
+`composer audit --locked` (in `test`) and a Trivy OS-layer scan of the built image (in `build`)
+are both **steps inside these existing jobs**, not new jobs — same per-job-billing reasoning as
+`skip_tests` above. Neither fails the pipeline today; both write their findings to the run's job
+summary (severity counts, full detail for `composer audit`, `CRITICAL`-only detail plus a
+downloadable `trivy-results` artifact for Trivy, since the OS layer alone had ~2300 findings when
+last measured). Trivy intentionally scans OS packages only — PHP dependency vulnerabilities are
+already covered by `composer audit` against the same `composer.lock`, and scanning both would
+either duplicate or, worse, silently disagree with the same finding. See the 2026-08-16 entry in
+`.claude/rules/ci-cd-troubleshooting.md` for the measured counts on this repo, why report-only is
+deliberate (not a placeholder), and the exact one-line change to flip either check to blocking.
 
 No separate validation job for `skip_tests` — GitHub Actions bills every job a minimum of one full
 minute regardless of actual runtime, and a job that only compares two strings would tax that minute

@@ -1235,3 +1235,139 @@ pełną zaokrągloną minutę, płaconą przez WSZYSTKIE wywołania, nie tylko t
 walidacja może zamiast tego żyć jako `if:` na już-istniejącym jobie (lub krok wewnątrz
 już-istniejącego, już-płatnego joba) — to jest tańsze z definicji, niezależnie od tego, jak mało
 faktycznej pracy wykonuje sam osobny job.
+
+---
+
+## 2026-08-16: `composer audit` + skan obrazu (Trivy) — dwa nowe kroki, zero nowych jobów, tryb
+## raportujący
+
+Dwa sprawdzenia bezpieczeństwa, których do tej pory nie było w ogóle (`grep -rn "composer audit"
+` w `.github/`/`scripts/`/`composer.json` — zero trafień; jedyne dopasowanie do "scan" w
+`deploy-production.yml` to `ssh-keyscan`). Zero Dependabota/Renovate. Oba dodane jako KROKI w
+już istniejących jobach (`test`, `build`) — nie osobne joby — z tego samego powodu co punkt
+bezpośrednio powyżej (`preflight`): GitHub Actions liczy każdy job z zaokrągleniem w górę do
+pełnej minuty, więc osobny job dokładałby stały koszt do KAŻDEGO wydania, nie tylko do tego,
+które faktycznie coś znajdzie.
+
+### `composer audit --locked`, krok w jobie `test` (`test.yml` I `deploy-production.yml`)
+
+**`--locked` czyta bezpośrednio `composer.lock`, nie zainstalowane pakiety** — zweryfikowane
+źródłowo (`AuditCommand::getPackages()`: przy `--locked` woła `$composer->getLocker()
+->getLockedRepository(...)`, nigdy `InstalledRepository`) I empirycznie (uruchomienie `composer
+audit --locked` bez `vendor/` w ogóle dało IDENTYCZNY wynik co z pełnym `composer install`).
+Domyślne zachowanie komendy (bez `--locked`) audytuje zainstalowane pakiety — więc gdyby krok
+`Install Composer dependencies` kiedykolwiek dostał `--no-dev`, audyt bez `--locked` cicho
+przestałby widzieć `require-dev`. `--locked` usuwa to sprzężenie zamiast polegać na tym, że nigdy
+się nie pojawi. Dziś ten krok NIE ma `--no-dev`, więc obie ścieżki dają ten sam wynik — ale
+`--locked` jest odporne na przyszłą zmianę tamtej linii, którą ten krok i tak nie kontroluje.
+
+**Bez `--no-dev` na samym audycie** — `require-dev` biegnie w CI z tym samym dostępem co
+`require`, więc jego podatności to realne ryzyko powierzchni CI, nie szum. Zmierzona różnica na
+tym repo (2026-08-16): 3 podatności `symfony/yaml` (niskiego ryzyka), reszta identyczna —
+tani koszt za pełny obraz.
+
+**Zmierzony wynik na tym repo, 2026-08-16 (dryfuje codziennie — bazy podatności aktualizują się
+non-stop, nie traktować jako trwały stan):** `composer audit --locked` → **35 podatności w 11
+pakietach** (5 high, 24 medium, 6 low). Najwięcej w `guzzlehttp/guzzle` (9) i `league/commonmark`
+(6, wszystkie DoS, brak CVE dla większości — publikowane przez GitHub Advisory bez przypisanego
+CVE). Bez `require-dev` (`--no-dev`): 32/11→10 pakietów — różnica to dokładnie 3 wpisy
+`symfony/yaml` (low). `laravel/framework` ma jedną podatność (temporary signed URL path
+confusion, `<12.61.1`) — WARTE osobnego sprawdzenia przy najbliższej okazji, poza zakresem tej
+zmiany.
+
+**Fail-safe, nie fail-shrink:** `composer audit` zwraca TYLKO 0 (`STATUS_OK`) albo 1
+(`STATUS_FAILED`) — ten sam kod dla "znaleziono podatności" i dla "audyt się nie wykonał"
+(zweryfikowane: projekt bez ŻADNYCH pakietów do audytu, mimo `--locked`, drukuje pusty stdout i
+zwraca 1 z komunikatem o błędzie na stderr, nie JSON). Krok NIE ufa samemu kodowi wyjścia —
+sprawdza, czy stdout to poprawny JSON (`jq -e . plik.json`); jeśli nie, raportuje **"DID NOT
+COMPLETE"** w summary i `::warning::`, nigdy "brak podatności". Zweryfikowane trzema realnymi
+przebiegami (nie inspekcją): 35 znalezisk na tym repo, projekt bez podatności (`psr/log` samo w
+sobie, exit 0), projekt bez żadnych zainstalowalnych pakietów (composer sam zwraca błąd, exit 1,
+pusty stdout) — wszystkie trzy dają poprawną gałąź w skrypcie.
+
+### Trivy, krok w jobie `build`, po `docker/build-push-action` (`deploy-production.yml` tylko —
+### `test.yml` nie buduje obrazu, więc nie ma czego skanować)
+
+**Trivy, nie Grype** — oba nie wymagają konta/tokenu, oba mają natywną akcję GitHuba. Trivy
+wybrany, bo jeden binarny skaner pokrywa jednocześnie warstwę OS i zależności językowe (co
+akurat tu jest planowo WYŁĄCZONE, patrz niżej), ma wbudowane cache'owanie bazy CVE w samej akcji
+(`cache: true` domyślnie) i szerszą adopcję (natywne pluginy GitLaba/Jenkinsa też, gdyby kiedyś
+było to istotne). Grype bywa ~30-40% szybszy na samym skanie obrazu, ale to różnica rzędu
+sekund przy budżecie tego joba (~3 min) — nieistotna tutaj.
+
+**Baza CVE: brak tokenu wymaganego, ale znany, udokumentowany rate-limit na anonimowe pobrania z
+`ghcr.io/aquasecurity/trivy-db`** (aquasecurity/trivy-action#389, aquasecurity/trivy discussion
+#8009 — realny, opisany szeroko incydent społeczności, nie hipoteza). Lokalny test (obraz
+`aquasec/trivy:latest`, nie akcja) pobrał bazę z `mirror.gcr.io/aquasec/trivy-db:2`, NIE z
+`ghcr.io` — więc źródło bazy najwyraźniej się zmieniło/zdywersyfikowało od czasu tamtych
+zgłoszeń, ale **nie zweryfikowane, czy `aquasecurity/trivy-action`/`aquasecurity/setup-trivy`
+(inny binarny installer niż obraz Dockera użyty do lokalnej weryfikacji) używa tego samego
+mirrora domyślnie**. Cache akcji (`cache: true`, zostawiony domyślnie włączony) jest tańszym
+zabezpieczeniem niż zakładanie, że problem zniknął — jeśli pierwszy realny dispatch złapie
+`TOOMANYREQUESTS`, oba zgłoszenia wyżej to punkt startowy.
+
+**Tylko warstwa OS (`vuln-type: os`, nie domyślne `os,library`) — zmierzone, nie zgadywane,
+że `library` dubluje `composer audit`.** Lokalny skan TEGO SAMEGO zbudowanego obrazu
+(`OPCACHE_MODE=production`, dokładnie build-arg używany w `deploy-production.yml`) pokazał, że
+Trivy własnym skanerem `composer-vendor` widzi DOKŁADNIE te same 10 pakietów co `composer audit
+--locked --no-dev` (`dompdf/dompdf`, `guzzlehttp/guzzle`, `guzzlehttp/psr7`,
+`laravel/framework`, `league/commonmark`, `psy/psysh`, `symfony/html-sanitizer`,
+`symfony/http-foundation`, `symfony/polyfill-intl-idn`, `symfony/routing`) — 32 znaleziska w obu
+narzędziach. Włączenie `library` obok dedykowanego `composer audit` dawałoby DWA sprawdzenia tej
+samej rzeczy, z ryzykiem że kiedyś zaczną się nie zgadzać (różne źródła danych o podatnościach —
+Packagist/FriendsOfPHP dla `composer audit`, GitHub Advisory DB + NVD dla Trivy) bez żadnego
+sposobu, żeby operator wiedział, które liczby są "prawdziwe". `npm`-owe devDependencies frontendu
+NIE trafiają do finalnego obrazu (Dockerfile kopiuje tylko `public/build`, nie `node_modules`) —
+potwierdzone tym samym lokalnym skanem: zero znalezisk językowych poza composerem.
+
+**Zmierzony wynik na tym repo, 2026-08-16, TYLKO warstwa OS (obraz zbudowany lokalnie,
+`OPCACHE_MODE=production`, Debian 13.6/"trixie" — baza `php:8.3-fpm`):** **2275 znalezisk.**
+Rozkład: 730 low, 729 medium, 701 UNKNOWN (Debian nie przypisał CVSS — osobny kubełek w
+podsumowaniu joba, celowo NIE złączony z "low", bo to inna kategoria: nieocenione, nie
+nisko-ocenione), 122 high, **19 critical**. Z fixem dostępnym: 854/2275. **Wszystkie 19 critical
+BEZ dostępnego fixa upstream** — sprowadzają się do 6 odrębnych CVE (4× `perl`/`libperl5.40`/
+`perl-base`/`perl-modules-5.40` — jeden pakiet źródłowy, cztery binarne; 1× `libxml2`+
+`libxml2-dev`; 1× `linux-libc-dev`), nie 19 niezależnych problemów. To bezpośrednio uzasadnia
+domyślny `exit-code: '0'`: bramka blokująca na surowej wadze dziś zablokowałaby KAŻDE wydanie na
+stałe (Debian jeszcze nie wydał poprawek), nie złapałaby żadnej realnej regresji. Ta sama liczba
+jest też mocnym, zmierzonym argumentem za już zaplanowanym, osobnym zadaniem (PR #198, podział
+obrazu bazowego) — mniejszy obraz runtime = mniejsza powierzchnia OS, ale ta zmiana świadomie NIE
+dotyka `Dockerfile`, żeby regresję dało się przypisać jednej przyczynie.
+
+**Podsumowanie w `$GITHUB_STEP_SUMMARY`, nie pełna lista.** 2275 wierszy byłoby nieczytelne i
+ryzykowałoby limit rozmiaru step summary (1 MiB). Krok publikuje: liczby wg wagi (z podziałem
+fixed/unfixed), pełną listę TYLKO dla `CRITICAL` (bo tych jest mało i są najważniejsze), i
+przesyła pełny JSON jako artefakt (`actions/upload-artifact`, 30 dni retencji) dla kogokolwiek,
+kto potrzebuje reszty. Ten sam wzorzec fail-safe co przy `composer audit`: brak pliku wyniku
+(`trivy-results.json` puste/nieobecne) raportuje **"DID NOT COMPLETE"**, nigdy "0 znalezisk".
+
+**Niezweryfikowane, nazwane wprost, nie zaokrąglone do "działa":**
+1. Czy dane logowania GHCR z wcześniejszego `docker/login-action` w tym samym jobie faktycznie
+   przenoszą się na klienta rejestru Trivy przy `image-ref: ghcr.io/...` (oczekiwane przez
+   standardowy Docker credential store, którego Trivy używa domyślnie — ale nie sprawdzone
+   realnym dispatchem, bo dispatchowanie zabronione w tej sesji).
+2. Czy `aquasecurity/setup-trivy` (installer używany przez `trivy-action`) pobiera bazę z tego
+   samego mirrora co obraz `aquasec/trivy:latest` użyty do lokalnej weryfikacji.
+3. Czy cache akcji (`cache: true`) faktycznie trafia/chybia zgodnie z dokumentacją przy
+   pierwszym i drugim realnym dispatchu — do sprawdzenia dopiero przy faktycznym użyciu.
+
+**Jak przełączyć na tryb blokujący (oba sprawdzenia, jedna wartość każde):**
+- `composer audit`: nie ma osobnej flagi — krok zawsze parsuje wynik do summary i kończy się
+  `exit 0`. Zamiana na blokujący: dodać `exit "$AUDIT_EXIT"` na końcu bloku `run:` (po sekcji
+  budującej summary), zamiast bezwarunkowego sukcesu. Rozważyć `--ignore-severity=low` najpierw,
+  żeby nie blokować na kategorii, która i tak nie jest priorytetem.
+- Trivy: `exit-code: '0'` → `'1'` w kroku "Scan image for OS vulnerabilities" (`deploy-
+  production.yml`). PRZED przełączeniem: dodać `ignore-unfixed: true` i zawęzić `severity` do
+  `CRITICAL,HIGH` — inaczej pierwsze włączenie zablokuje release na 19 critical bez fixa
+  (patrz wyżej), czyli dokładnie ten sam błąd co pierwsza wersja `skip_tests`/`preflight`
+  (bramka, która karze operatora za coś, na co nie ma wpływu).
+
+**Zasada:** przy włączaniu PIERWSZEGO skanera bezpieczeństwa na repo, które nigdy żadnego nie
+miało — zmierz realną skalę PRZED zaprojektowaniem progu blokującego, nie po. Tryb raportujący
+nie jest tu kompromisem tymczasowym, tylko jedynym sposobem, żeby dowiedzieć się, czy próg
+domyślny (surowa waga, bez `ignore-unfixed`) w ogóle nadaje się do włączenia — na tym repo,
+dzisiaj, nie nadaje się (19/19 critical bez fixa). Osobno: gdy jeden skaner (Trivy) technicznie
+POTRAFI pokryć to, co już pokrywa dedykowane narzędzie (`composer audit`) — zmierz nakładanie się
+PRZED włączeniem obu na tej samej warstwie, nie zakładaj że "więcej skanerów" znaczy "więcej
+pokrycia"; tu znaczyło dokładnie zero dodatkowego pokrycia i realne ryzyko dwóch sprzecznych
+liczb dla tego samego findingu.

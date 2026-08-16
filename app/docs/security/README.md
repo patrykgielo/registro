@@ -284,17 +284,26 @@ app/docs/security/
 
 ## Automated Scanning
 
-### Commands
+**Added 2026-08-16, report-only:** `composer audit --locked` runs as a step in the `test` job of
+`.github/workflows/test.yml` and `deploy-production.yml`, and a Trivy OS-package scan of the built
+image runs as a step in `deploy-production.yml`'s `build` job. Neither is scheduled — both are
+`workflow_dispatch`-only, same as every other workflow in this repo (see the top of
+`.github/workflows/RELEASE_PROCESS.md`), and neither fails the pipeline yet. Findings go to the
+run's job summary; see the 2026-08-16 entry in `.claude/rules/ci-cd-troubleshooting.md` for the
+counts measured on this repo and how to make either check blocking.
+
+### Commands (manual, ad hoc)
 
 ```bash
-# Composer dependency audit
-cd app && composer audit
+# Composer dependency audit (same command CI runs)
+cd app && composer audit --locked
 
 # npm dependency audit
 cd app && npm audit --audit-level=moderate
 
-# Docker image CVE scan
-docker scout cves registro-app:latest
+# Docker image CVE scan (same tool CI runs, against a locally built image)
+docker build --build-arg OPCACHE_MODE=production -t registro:local . && \
+  trivy image --vuln-type os registro:local
 
 # Laravel security check
 cd app && php artisan security:check  # If package installed
@@ -302,7 +311,9 @@ cd app && php artisan security:check  # If package installed
 
 ### Scheduled Scans (Future)
 
-**Weekly**: Automated dependency audit (GitHub Actions)
+**Weekly**: Automated dependency audit (GitHub Actions) — not yet true; today's `composer
+audit`/Trivy steps run only when someone dispatches `test.yml` or `deploy-production.yml`
+manually, not on a cron.
 **Monthly**: Manual penetration testing
 **Quarterly**: Third-party security audit
 

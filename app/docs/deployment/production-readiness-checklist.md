@@ -1041,6 +1041,10 @@ container IPv6 is needed. `ufw` covers v6 as well.
   to SSH into a decommissioned predecessor host by raw IP. Rewritten 2026-08-01 to
   describe what the pipeline actually does, with an explicit "nothing here has ever run" status
   banner, the forced-command SSH syntax, and the archived runbook link corrected.
+  **Superseded in part 2026-08-16**: a Trivy step now exists (`deploy-production.yml`'s `build`
+  job, OS packages only, report-only — not the auto-deploy/auto-rollback claims this bullet
+  corrected, which are still false). See `.github/workflows/RELEASE_PROCESS.md` and the
+  2026-08-16 entry in `.claude/rules/ci-cd-troubleshooting.md`.
 
 ## 6. Docs tree consolidation (architectural decision, not yet made)
 
