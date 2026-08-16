@@ -239,6 +239,39 @@ if check_var_set "GOOGLE_MAPS_API_KEY"; then
     check_var_set "GOOGLE_MAPS_MAP_ID"
 fi
 
+# Przelewy24 (online settlement)
+#
+# All-or-nothing on purpose. A PARTIALLY filled gateway is worse than an empty
+# one: it looks configured, the app keeps offering online payment, and the
+# breakage only surfaces when a real customer submits a real order. That is
+# exactly what shipped on 2026-08-16 -- `P24_POS_ID=` present-but-empty, as
+# .env.production.example itself ships it -- and every online checkout returned
+# a 500 (see .claude/rules/ci-cd-troubleshooting.md).
+#
+# Empty across the board is a LEGITIMATE configuration (a pay-at-pickup-only
+# tenant), so that is a warning, not an error: SettingsManager stops offering
+# the online method at all when Przelewy24Service::isConfigured() is false.
+#
+# P24_POS_ID is deliberately not checked -- the SDK falls back to the merchant
+# id when it is absent (Przelewy24\Config::posId()), so empty is valid for it.
+P24_SET_COUNT=0
+P24_EMPTY_VARS=""
+for p24_var in P24_MERCHANT_ID P24_CRC P24_REPORTS_KEY; do
+    if [ -n "${!p24_var:-}" ]; then
+        P24_SET_COUNT=$((P24_SET_COUNT + 1))
+    else
+        P24_EMPTY_VARS="${P24_EMPTY_VARS}${p24_var} "
+    fi
+done
+
+if [ "$P24_SET_COUNT" -eq 3 ]; then
+    pass "Przelewy24 fully configured (P24_MERCHANT_ID, P24_CRC, P24_REPORTS_KEY)"
+elif [ "$P24_SET_COUNT" -eq 0 ]; then
+    warn "Przelewy24 not configured - online payments will not be offered (pay-at-pickup only)"
+else
+    error "Przelewy24 partially configured - empty: ${P24_EMPTY_VARS% } (set all three or none; a partial gateway fails only at a real customer's checkout)"
+fi
+
 # Email (required for notifications)
 if [ "$ENV" == "production" ] || [ "$ENV" == "staging" ]; then
     check_var_set "MAIL_MAILER"

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Events\OrderAcceptedOffline;
+use App\Exceptions\PaymentGatewayNotConfiguredException;
 use App\Http\Requests\Checkout\SubmitCheckoutRequest;
 use App\Models\Cart;
 use App\Models\Order;
@@ -120,7 +121,7 @@ class CheckoutController extends Controller
                 $cart,
                 array_merge($request->validated(), ['ip' => $request->ip()])
             );
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Checkout failed: could not convert cart to order', ['exception' => $e, 'user_id' => auth()->id()]);
 
             return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
@@ -130,9 +131,16 @@ class CheckoutController extends Controller
             return $this->submitOffline($cart, $order);
         }
 
+        // \Throwable, NOT \Exception. A TypeError raised inside the payment
+        // SDK is an \Error: on 2026-08-16 it sailed straight through a
+        // `catch (\Exception)` here, so the customer saw a 500 AND the order
+        // stayed orphaned in pending_payment with a 'converted' (unusable)
+        // cart — the compensation below existed and simply never ran. There is
+        // nothing this method can do about ANY throwable from registration
+        // except compensate, so it catches everything it can catch.
         try {
             $paymentUrl = $this->p24->registerTransaction($order);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // convertToOrder() already committed (Order pending_payment + Cart
             // 'converted'). Leaving it that way would orphan the order (it
             // blocks inventory until TTL) and strand the customer with an
@@ -153,7 +161,9 @@ class CheckoutController extends Controller
             $this->orderService->cancel($order, 'P24 registration failed', notify: false);
             $this->cart->reactivate($cart);
 
-            return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
+            return redirect()->back()->withErrors([
+                'general' => $this->registrationFailureMessage($e),
+            ]);
         }
 
         $this->analytics->trackForCart($cart, 'checkout.submitted', [
@@ -162,6 +172,31 @@ class CheckoutController extends Controller
         ]);
 
         return redirect($paymentUrl);
+    }
+
+    /**
+     * User-facing copy for a failed P24 registration.
+     *
+     * "Spróbuj ponownie" is honest for a refused or timed-out gateway call, and
+     * a lie for a gateway that has no credentials on this machine: retrying can
+     * never work, and the customer would loop through order-create → cancel →
+     * retry forever. That case gets copy that sends them to a human instead.
+     *
+     * This is the LAST line of defence, not the first: with the gateway
+     * unconfigured, SettingsManager::availableSettlementMethods() already stops
+     * offering 'online' — and SubmitCheckoutRequest then rejects it — for any
+     * tenant that has pay-at-pickup enabled. What still reaches here is the
+     * tenant with no other method at all, for whom online is kept as the
+     * never-empty fallback, so the message must not point at an alternative
+     * they do not have.
+     */
+    private function registrationFailureMessage(\Throwable $e): string
+    {
+        if ($e instanceof PaymentGatewayNotConfiguredException) {
+            return 'Płatności online są chwilowo niedostępne. Prosimy o kontakt z wypożyczalnią — Twoje zamówienie nie zostało złożone i nic nie zostało pobrane.';
+        }
+
+        return 'Nie udało się przetworzyć płatności. Spróbuj ponownie.';
     }
 
     /**

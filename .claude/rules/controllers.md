@@ -145,3 +145,24 @@ try {
     return back()->withErrors(['error' => $e->getMessage()]);
 }
 ```
+
+## `catch (\Exception)` NIE łapie `\Error` — wokół SDK zawsze `\Throwable`
+
+Incydent 2026-08-16: pusta konfiguracja P24 → SDK rzucił `TypeError` (to `\Error`, nie
+`\Exception`), przeleciał przez `catch (\Exception)` w `CheckoutController::submit()` → klient
+dostał **500**, zamówienie osierocone w `pending_payment` (blokuje sprzęt do TTL), koszyk zostawiony
+jako `converted` czyli pusty i bezużyteczny. Ścieżka kompensacyjna (anuluj zamówienie + reaktywuj
+koszyk) **istniała i po prostu się nie wykonała**.
+
+**Reguła:** blok `catch` wokół wywołania biblioteki zewnętrznej, którego JEDYNĄ reakcją jest
+kompensacja/rollback + komunikat dla użytkownika — łap `\Throwable`. `\Exception` zostawiaj tylko
+tam, gdzie świadomie chcesz przepuścić `\Error` wyżej.
+
+Dotyczy każdego pliku z `declare(strict_types=1)` wołającego vendor SDK: strict mode obowiązuje w
+miejscu WYWOŁANIA, więc zły typ argumentu to `TypeError` u nas, nawet gdy sam vendor jest w trybie
+weak.
+
+**Nie każda porażka to „spróbuj ponownie".** Rozróżniaj przejściową (odmowa/timeout bramki — retry
+ma sens) od konfiguracyjnej (brak poświadczeń — retry nie zadziała NIGDY, klient zapętli się na
+tworzenie i anulowanie zamówienia). Typowany wyjątek (`PaymentGatewayNotConfiguredException`) +
+osobny komunikat, nie jeden generyczny tekst.
