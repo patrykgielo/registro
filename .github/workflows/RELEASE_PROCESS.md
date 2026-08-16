@@ -1,15 +1,27 @@
 # Release Process Guide
 
-**Rewritten 2026-08-16** — everything below the old version of this document described a
-push-to-tag / auto-deploy-staging model that predates the "Disabled for Registro migration"
-comment now sitting at the top of every workflow file. That model has not matched reality for a
-long time: **all workflows are `workflow_dispatch` only.** Nothing deploys automatically from a
-push, a PR merge, or a tag push. `git push origin v4.2.0` today does nothing but push a tag.
+**Rewritten 2026-08-16, corrected same day** — everything below the original version of this
+document described a push-to-tag / auto-deploy-staging model that predates the "Disabled for
+Registro migration" comment now sitting at the top of every workflow file. That model has not
+matched reality for a long time: **all workflows are `workflow_dispatch` only.** Nothing deploys
+automatically from a push, a PR merge, or a tag push. `git push origin v4.2.0` today does nothing
+but push a tag.
 
-There is no staging environment. UAT (`registrolabs.com`, live, one tenant) is the only real
-server; PreProd (`registroapps.com`) is a machine that has not been bought. `ci-staging.yml`, which
-used to describe a staging auto-deploy, was deleted 2026-08-16 — zero runs in its entire history,
-its `STAGING_VPS_*` secrets never existed. See `.claude/rules/ci-cd-troubleshooting.md`.
+**Branch model (adopted 2026-08-16):** `feature/* → develop (PR) → staging (PR) → main (PR)`.
+`develop` is the repo's **default branch** (GitHub only registers a new workflow file dispatched
+from the default branch — a workflow added on any other branch 404s on `gh workflow run` until it
+lands on default). `staging` is where `rc*` tags get cut. `main` is where production tags get cut.
+Full rules: `.claude/rules/git-workflow.md`.
+
+**This does not add a staging server.** UAT (`registrolabs.com`, live, one tenant) is still the
+only real machine, and it is what `staging`'s `rc*` tags deploy to via `deploy-production.yml` —
+there is no separate staging VPS to point at. PreProd (`registroapps.com`), the machine `main`'s
+production tags are meant for, has not been bought; until it is, tags cut from `main` have nowhere
+to deploy. `ci-staging.yml`, a DIFFERENT and now-deleted thing (an auto-deploy workflow that
+targeted a staging VPS which never existed), was removed 2026-08-16 — zero runs in its entire
+history, its `STAGING_VPS_*` secrets never existed. Do not confuse it with the `staging` git branch
+introduced the same day, which is a promotion tier, not a workflow. See
+`.claude/rules/ci-cd-troubleshooting.md`.
 
 ## Current Workflow
 
@@ -23,20 +35,36 @@ gh pr create --base develop --title "feat: ..."
 `test.yml` (Run Tests) is `workflow_dispatch` only — it does **not** run automatically on push or
 PR. Dispatch it manually if you want a clean-room check of `develop` before tagging.
 
+Promote `develop` to `staging` the same way, once develop is ready to cut a release candidate:
+`gh pr create --base staging --title "chore: promote develop to staging"` (from `develop`).
+
 ### 2. Tag a Release
 ```bash
-git checkout main   # or the branch you're releasing from
+git checkout staging   # rc* tags; use main for a production tag once PreProd exists
 git pull
-git tag -a v4.2.0 -m "Release v4.2.0 - Feature Description"
-git push origin v4.2.0
+git tag -a v4.2.0-rc.1 -m "Release candidate v4.2.0-rc.1 - Feature Description"
+git push origin v4.2.0-rc.1
 ```
-Pushing the tag triggers **nothing**. It only makes `v4.2.0` resolvable for the next step.
+Pushing the tag triggers **nothing**. It only makes `v4.2.0-rc.1` resolvable for the next step.
+
+**Documentation requirement differs by tag shape** (`.claude/rules/release-documentation.md`): an
+`rc*` tag from `staging` only needs a substantive `-m` message on the annotated tag itself — no
+separate file. A production tag (`vX.Y.Z`, no `-rc` suffix) cut from `main` after a `staging → main`
+promotion REQUIRES `docs/releases/vX.Y.Z.md` written before the tag is pushed.
 
 ### 3. Dispatch the Deploy
 ```bash
-gh workflow run deploy-production.yml -f version=v4.2.0
+gh workflow run deploy-production.yml -f version=v4.2.0-rc.1
 ```
 This is the **only** thing that builds, tests, and deploys. It runs three-to-four jobs in order:
+
+**One target today, regardless of branch.** `deploy-production.yml`'s `deploy` job SSHes to exactly
+one machine, named by the fixed secrets `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY` — it has no branch- or
+tag-shape-based logic to pick between UAT and PreProd. Dispatching this workflow with an `rc*` tag
+cut from `staging` or a `vX.Y.Z` tag cut from `main` deploys to the exact same place (UAT) today,
+because `VPS_HOST` only has UAT's address configured. The `staging → UAT` / `main → PreProd` split
+in `.claude/rules/git-workflow.md` describes the *intended* target once PreProd is bought and this
+workflow (or a second one) is wired to it — it is not yet enforced by any code in this file.
 
 | Job | What | Skippable |
 |-----|------|-----------|

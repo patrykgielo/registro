@@ -21,7 +21,8 @@ effort: high
 - **FILESYSTEM_DISK=public** always, never `local`.
 - **Tests:** `docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T app php artisan test`.
   Never bare `php artisan test` — Docker's `DB_HOST` wins and you hit dev MySQL.
-- **`feature/*` branch only.** Never commit to `develop`/`main`.
+- **`feature/*` branch only.** Never commit to `develop`/`staging`/`main` (three-tier model,
+  `.claude/rules/git-workflow.md`).
 - **Never touch the live server unless explicitly told to in this task.**
 
 ---

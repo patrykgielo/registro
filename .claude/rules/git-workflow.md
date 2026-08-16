@@ -2,44 +2,29 @@
 
 ## AI Attribution
 
-Wyłączone przez `.claude/settings.local.json` → `"attribution": {"commit": "", "pr": ""}`. System automatycznie NIE dodaje markerów.
+Wyłączone przez `.claude/settings.local.json` → `"attribution":{"commit":"","pr":""}`.
+
+## Model trzywarstwowy (od 2026-08-16)
+
+```
+feature/* → develop (PR) → staging (PR) → main (PR)
+```
+
+`develop` = integracyjna, gałąź DOMYŚLNA repo (workflow spoza niej → `HTTP 404` na `gh workflow
+run`). `staging` = tnie tagi `rc*`, dziś UAT. `main` = produkcja, PreProd po zakupie. `hotfix/*` =
+łatka awaryjna z `main`, omija `staging`. `release/*` superseded przez stałą `staging`. Flow:
+`.github/workflows/RELEASE_PROCESS.md`.
 
 ## PreToolUse Hook — Auto-Blokuje
 
-- Commit do `develop`/`main` bezpośrednio
-- Push `main` z nie-release/hotfix brancha
-- `gh pr create` bez `--base develop`
+- Commit do `develop`/`staging`/`main`
+- Push `main` z gałęzi innej niż `release/*`/`hotfix/*`
+- `gh pr create` ze `staging` bez `--base main`; z innej gałęzi bez `--base develop`/`staging`
 - `migrate:fresh`, `FILESYSTEM_DISK=local`
 
-**False positive workaround:** `git merge main` blokowane (string match). Użyj `git merge origin/main`.
-
-## BEZWZGLĘDNY ZAKAZ
-
-1. NIGDY commit bezpośrednio do `main` — przez release/* lub hotfix/*
-2. NIGDY commit bezpośrednio do `develop` — przez feature/*
-
-## Flow
-
-```
-feature/* → develop (PR) → main (PR)
-```
+**False positive:** `git merge main` blokowane (string match), użyj `git merge origin/main`.
 
 ```bash
-# Nowy feature
-git checkout develop && git pull
-git checkout -b feature/nazwa
-git push -u origin feature/nazwa
+git checkout -b feature/nazwa develop
 gh pr create --base develop --title "feat: opis"
-```
-
-## Nazewnictwo
-
-`feature/*` | `bugfix/*` | `release/*` (z develop) | `hotfix/*` (z main)
-
-## GitHub CLI
-
-```bash
-gh pr create --base develop --title "feat: opis" --body "## Summary\n..."
-gh pr merge 123 --squash
-gh pr list --state open
 ```

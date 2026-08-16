@@ -93,13 +93,15 @@ Docker 29+ requires API v1.44 minimum. Never use Docker client actions below thi
 
 ## Deployment Strategy
 
-```
-feature/* → develop (PR, squash merge)
-develop → main (PR, release branch)
-```
+Three-tier model (2026-08-16): `feature/* → develop (PR) → staging (PR) → main (PR)`. `develop` is
+the repo's default branch. `staging` cuts `rc*` tags (today's only real machine, UAT). `main` cuts
+production tags (PreProd, once bought). `hotfix/*` is the emergency escape hatch straight from
+`main`. Full model: `.claude/rules/git-workflow.md`. `release/*` (old two-tier naming) is
+superseded by the now-permanent `staging` branch — do not expect to see it used going forward.
 
-There is no auto-deploy. UAT is updated by running `scripts/server/apply.sh` over SSH.
-Any workflow claiming otherwise is stale — check `on:` before believing it.
+All workflows are `workflow_dispatch` only — nothing deploys automatically from a push, PR merge,
+or tag push. UAT is updated by dispatching `deploy-production.yml`, which SSHes and runs
+`deploy.sh`. Check `on:` before believing any workflow claims otherwise.
 
 **Production tags require EXPLICIT user approval** (ZASADA 0 in self-improvement.md).
 
