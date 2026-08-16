@@ -117,14 +117,24 @@ docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T ap
 ## Git Workflow
 
 ```
-feature/* → develop (PR) → main (PR)
+feature/* → develop (PR) → staging (PR) → main (PR)
 ```
 
-**CI/CD:** All workflows set to `workflow_dispatch` only (manual trigger). No auto-deploy configured.
+| Gałąź | Rola | Środowisko |
+|-------|------|------------|
+| `develop` | integracyjna, **gałąź domyślna repo**, nigdzie nie wdrażana | własny VPS — kiedyś |
+| `staging` | **stąd tnie się tagi `rc*`** | UAT (`registrolabs.com`) |
+| `main` | wydania produkcyjne | PreProd — po zakupie maszyny |
 
-**Protected by PreToolUse hook:**
-- Can't commit to develop/main directly
-- Can't `gh pr create` without `--base develop`
+**Gałąź domyślna to `develop`, nie `main`** — GitHub rejestruje workflowy z gałęzi domyślnej, więc
+nowy plik workflowa poza nią daje `HTTP 404` przy `gh workflow run`.
+
+**CI/CD:** wszystkie workflowy na `workflow_dispatch`. **Nic nie odpala się samo** — ani po merge,
+ani po wypchnięciu taga. Nieodwracalny jest dopiero `gh workflow run deploy-production.yml`.
+
+**Egzekwuje PreToolUse hook** (`.claude/hooks/pre-tool-use.sh`):
+- brak bezpośrednich commitów na `develop`, `staging`, `main`
+- `gh pr create` musi celować w `develop` lub `staging`; ze `staging` w `main`
 
 ---
 
