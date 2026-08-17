@@ -139,6 +139,23 @@ class AppServiceProvider extends ServiceProvider
             return $limits;
         });
 
+        // Checkout submission — only counts attempts that actually created an
+        // Order (CheckoutController::submit() marks the request attribute).
+        // The abuse vector here is order CREATION (it briefly holds
+        // inventory and, for online settlement, calls the P24 gateway), which
+        // is already bounded by equipment availability — not a customer
+        // iterating through a long, multi-field form's validation errors
+        // (PESEL/NIP/REGON checksums, required business fields, three
+        // consent checkboxes). Failed-validation and business-rule-rejected
+        // (RentalUnavailableException) attempts must not burn the same
+        // budget as a real submission. See routes/web.php for the route
+        // wiring and the before/after table in the PR description.
+        RateLimiter::for('checkout-submit', function (Request $request) {
+            return Limit::perMinute(10)
+                ->by($request->user()?->id ?: $request->ip())
+                ->after(fn ($response) => $request->attributes->get('checkout_order_created') === true);
+        });
+
         // Inject $pageType into frontend layout for analytics tracking
         view()->composer('layouts.app', \App\View\Composers\PageTypeComposer::class);
 
