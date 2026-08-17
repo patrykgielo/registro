@@ -151,10 +151,21 @@ class RootDomainTenantIsolationTest extends TestCase
      * that premise was wrong (see resources/views/components/nav/header.blade.php's
      * "Zaloguj" link, rendered on the root-domain home-fallback view). This test
      * asserts the actual load-bearing safety property: a customer authenticating
-     * via a root-domain /login still cannot reach cross-tenant data — the redirect
-     * target (appointments.index) is protected by RequireTenant (Layer 3) and 404s.
+     * via a root-domain /login still cannot reach cross-tenant data.
+     *
+     * Updated (post-login-return feature): the redirect target used to be the
+     * hardcoded route('appointments.index'), which RequireTenant (Layer 3) 404s
+     * on the root domain — a dead end, not a deliberate safety measure (see
+     * App\Http\Controllers\Auth\LoginController's docblock, "Przyczyna 3" in the
+     * originating plan). A customer with no organization at all now lands on
+     * `route('home')` (App\Support\Auth\CustomerLandingUrl's final fallback) —
+     * the ONE root-domain route deliberately exempt from RequireTenant, so it
+     * renders home-fallback (no tenant data) instead of 404ing. The safety
+     * property this test guards — no cross-tenant data ever reaches this
+     * customer — is unchanged: `home` renders no tenant-scoped content at all,
+     * proven separately by test_home_returns_ok_with_fallback_view_on_root_domain.
      */
-    public function test_customer_login_from_root_domain_redirects_to_404_not_cross_tenant_leak(): void
+    public function test_customer_login_from_root_domain_redirects_home_not_cross_tenant_leak(): void
     {
         $user = User::factory()->create([
             'password' => bcrypt('password'),
@@ -165,11 +176,11 @@ class RootDomainTenantIsolationTest extends TestCase
             'password' => 'password',
         ]);
 
-        $response->assertRedirect(route('appointments.index'));
+        $response->assertRedirect(route('home'));
         $this->assertAuthenticatedAs($user);
 
-        // Following the redirect on the root domain must 404, not leak any
-        // tenant's appointment data.
-        $this->get(route('appointments.index'))->assertNotFound();
+        // Following the redirect on the root domain must render the tenant-less
+        // fallback view, not leak any tenant's appointment data.
+        $this->get(route('home'))->assertOk()->assertSee('Strona w przygotowaniu');
     }
 }

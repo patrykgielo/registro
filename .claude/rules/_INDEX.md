@@ -22,6 +22,7 @@ Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigg
 - `tests.md` → `tests/**`
 - `migrations.md` → `database/migrations/**`
 - `security.md` → `app/Http/Controllers/Auth/**`
+- `auth-redirects.md` → `app/Support/Auth/**`, `app/Http/Responses/**`, `app/Providers/Filament/**` — powrót po zalogowaniu, walidacja origin
 - `notifications.md` → `app/Notifications/**`
 - `onboarding.md` → `app/Actions/Onboarding/**`, `ProvisionTenantCommand.php`
 - `services.md` → `app/Services/**`
