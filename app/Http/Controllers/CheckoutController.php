@@ -139,6 +139,22 @@ class CheckoutController extends Controller
             return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
         }
 
+        // Marks this attempt as a real order creation for the "checkout-submit"
+        // named rate limiter (AppServiceProvider::boot()) — set as soon as the
+        // Order row exists (inventory is already briefly held at this point),
+        // regardless of what happens downstream (P24 registration failure still
+        // compensates/cancels the order, but the resource-consuming action this
+        // limiter guards against already happened).
+        //
+        // Deliberately request()->attributes, NOT $request (the injected
+        // SubmitCheckoutRequest): FormRequestServiceProvider builds it via
+        // Request::createFrom($app['request'], $request), which snapshots
+        // attributes into a brand-new ParameterBag (Request::initialize()) —
+        // setting it on $request would be invisible to the RateLimiter
+        // closure, which closes over the ORIGINAL request instance the
+        // container bound in Kernel::sendRequestThroughRouter().
+        request()->attributes->set('checkout_order_created', true);
+
         if ($order->isOfflineSettlement()) {
             return $this->submitOffline($cart, $order);
         }

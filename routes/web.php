@@ -162,8 +162,12 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, 'auth', CheckRent
     Route::delete('/koszyk/usun/{item}', [CartController::class, 'remove'])->name('cart.remove');
     Route::patch('/koszyk/ilosc/{item}', [CartController::class, 'updateQuantity'])->name('cart.update');
     Route::get('/koszyk/zamowienie', [CheckoutController::class, 'show'])->name('checkout.show');
+    // "checkout-submit" (named limiter, AppServiceProvider::boot()) only counts
+    // attempts that actually created an Order — a failed-validation resubmit on
+    // this long, multi-field form (PESEL/NIP/REGON, business address, three
+    // consents) does not spend the same budget as a real order.
     Route::post('/koszyk/zamowienie', [CheckoutController::class, 'submit'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:checkout-submit')
         ->name('checkout.submit');
     Route::get('/koszyk/powrot', [CheckoutController::class, 'return'])->name('checkout.return');
     Route::get('/moje-zamowienia', [OrderController::class, 'index'])->name('orders.index');
@@ -196,11 +200,67 @@ Route::get('/login', [\App\Http\Controllers\Auth\LoginController::class, 'showLo
     ->middleware([ResolveTenant::class, 'guest'])
     ->name('login');
 
-// POST /login + other auth actions — brute-force protection (5/min per IP)
-Route::middleware([ResolveTenant::class, 'throttle:5,1'])->group(function () {
-    Auth::routes(['login' => false, 'register' => false]);
-    Route::post('/login', [\App\Http\Controllers\Auth\LoginController::class, 'login']);
+// POST /login — brute-force protection, own throttle bucket ("login" prefix).
+// Illuminate\Foundation\Auth\ThrottlesLogins (pulled in by LoginController via
+// AuthenticatesUsers) ALREADY throttles precisely — 5 FAILED attempts per
+// email+IP per minute — and only counts failures, never successful logins or
+// page views. This route-level limit is a coarser, IP-only backstop against
+// tools that spray many different emails from one IP; it is not the primary
+// brute-force defense and must never be removed together with ThrottlesLogins.
+Route::post('/login', [\App\Http\Controllers\Auth\LoginController::class, 'login'])
+    ->middleware([ResolveTenant::class, 'throttle:5,1,login']);
+
+// Password reset / confirm routes — previously all shared ONE 5/min-per-IP
+// bucket with POST /login (Laravel's default throttle key is domain+IP, not
+// per-route-URI), so a routine "forgot password" flow — open the form, submit
+// an email, then open the emailed link — burned 3 of that bucket's 5 slots on
+// its own, on top of anything already spent on login attempts. A user doing
+// nothing abnormal (two mistyped passwords, then a legitimate reset) could hit
+// 429 before ever reaching the reset form. Split by what each route actually
+// does: rendering a page carries no brute-force risk and gets no throttle at
+// all (same reasoning as GET /login above); anything that checks a credential,
+// validates a token, or sends mail to an attacker-controlled address gets its
+// own dedicated bucket so it can neither be exhausted by, nor exhaust, login.
+Route::middleware([ResolveTenant::class])->group(function () {
+    Route::get('/password/reset', [\App\Http\Controllers\Auth\ForgotPasswordController::class, 'showLinkRequestForm'])
+        ->name('password.request');
+    Route::get('/password/reset/{token}', [\App\Http\Controllers\Auth\ResetPasswordController::class, 'showResetForm'])
+        ->name('password.reset');
+    Route::get('/password/confirm', [\App\Http\Controllers\Auth\ConfirmPasswordController::class, 'showConfirmForm'])
+        ->name('password.confirm');
+
+    // POST /logout — no brute-force surface (requires an existing authenticated
+    // session via LoginController's own 'auth' middleware), so throttling it
+    // defends nothing and only risks blocking legitimate multi-tab use.
+    Route::post('/logout', [\App\Http\Controllers\Auth\LoginController::class, 'logout'])
+        ->name('logout');
 });
+
+// POST /password/email — sends a reset link to an attacker-supplied address.
+// Own bucket, stricter than login (3/min): the abuse here is inbox spam
+// against a THIRD PARTY, not credential guessing against the requester's own
+// account, so it warrants its own tighter ceiling regardless of login traffic.
+// Laravel's password broker also enforces a 60s per-ACCOUNT cooldown
+// (config('auth.passwords.users.throttle')) independently of this — that
+// protects one target account from repeat mail, this route limit protects
+// against spraying many different target addresses from a single IP.
+Route::post('/password/email', [\App\Http\Controllers\Auth\ForgotPasswordController::class, 'sendResetLinkEmail'])
+    ->middleware([ResolveTenant::class, 'throttle:3,1,password-email'])
+    ->name('password.email');
+
+// POST /password/reset — validates a reset token and sets a new password. Own
+// bucket: this is the one endpoint where a leaked/guessed token could be
+// brute-forced, so it keeps a dedicated limit independent of login/email.
+Route::post('/password/reset', [\App\Http\Controllers\Auth\ResetPasswordController::class, 'reset'])
+    ->middleware([ResolveTenant::class, 'throttle:5,1,password-reset'])
+    ->name('password.update');
+
+// POST /password/confirm — re-checks the ALREADY-authenticated user's own
+// password before a sensitive action (ConfirmPasswordController requires
+// 'auth' in its constructor). Own bucket so a burst of confirm attempts can't
+// be starved by, or starve, unrelated login traffic from the same IP.
+Route::post('/password/confirm', [\App\Http\Controllers\Auth\ConfirmPasswordController::class, 'confirm'])
+    ->middleware([ResolveTenant::class, 'throttle:5,1,password-confirm']);
 
 // Business registration used to live here: a public 2-step self-serve wizard
 // (root domain only, `BusinessRegisterController`). Removed -- the model is
