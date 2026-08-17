@@ -6,6 +6,8 @@ use App\Events\UserRegistered;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Auth\CustomerLandingUrl;
+use App\Support\Auth\IntendedDestination;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -15,11 +17,6 @@ class RegisterController extends Controller
 {
     use RegistersUsers;
 
-    /**
-     * Where to redirect users after registration.
-     */
-    protected $redirectTo = '/';
-
     public function __construct()
     {
         $this->middleware('guest');
@@ -27,6 +24,12 @@ class RegisterController extends Controller
 
     /**
      * Show the customer registration form.
+     *
+     * Captures where the visitor came from (see IntendedDestination) before
+     * the tenant check below — covers card → /login → "Nie mam konta" →
+     * /customer/register, where previousRoute() here is 'login' itself and
+     * IntendedDestination::capture() keeps the value login already captured
+     * rather than overwriting it with the auth page.
      *
      * On root domain (no tenant resolved) there is nothing to register a
      * customer against -- the public business-registration wizard this used
@@ -36,6 +39,8 @@ class RegisterController extends Controller
      */
     public function showRegistrationForm(Request $request)
     {
+        IntendedDestination::capture($request);
+
         $tenant = $request->attributes->get('tenant');
 
         if (! $tenant) {
@@ -79,9 +84,10 @@ class RegisterController extends Controller
      * The user has been registered.
      *
      * Assigns 'customer' role, attaches to tenant organization (if on subdomain),
-     * and dispatches UserRegistered event for welcome email.
-     *
-     * @return void
+     * dispatches UserRegistered event for welcome email, and returns the
+     * captured IntendedDestination (or CustomerLandingUrl as a fallback) —
+     * a non-null return here short-circuits RegistersUsers::register()'s own
+     * `redirect($this->redirectPath())` fallback.
      */
     protected function registered(Request $request, User $user)
     {
@@ -101,5 +107,7 @@ class RegisterController extends Controller
         }
 
         event(new UserRegistered($user));
+
+        return redirect(IntendedDestination::consume($request) ?? CustomerLandingUrl::for($request));
     }
 }

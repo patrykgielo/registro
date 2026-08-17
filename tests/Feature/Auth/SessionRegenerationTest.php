@@ -54,7 +54,9 @@ class SessionRegenerationTest extends TestCase
             'password_confirmation' => 'password123',
         ]);
 
-        $response->assertRedirect('/');
+        // Not '/' — App\Support\Auth\CustomerLandingUrl resolves the tenant's
+        // own landing page (time_slot org, booking enabled by default).
+        $response->assertRedirect('http://tenant-salon.registro.local/my-appointments');
 
         $sessionIdAfter = $this->app['session']->getId();
 

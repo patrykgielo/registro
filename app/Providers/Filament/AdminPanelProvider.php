@@ -9,11 +9,11 @@ use App\Filament\Widgets\RevenueChartWidget;
 use App\Filament\Widgets\TenantStatsOverviewWidget;
 use App\Http\Responses\LoginResponse;
 use App\Support\Settings\SettingsManager;
+use Filament\Auth\Http\Responses\Contracts\LoginResponse as LoginResponseContract;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Http\Responses\Auth\Contracts\LoginResponse as LoginResponseContract;
 use Filament\Navigation\NavigationGroup;
 use Filament\Pages;
 use Filament\Panel;
@@ -34,15 +34,30 @@ class AdminPanelProvider extends PanelProvider
     /**
      * Register services.
      *
-     * Overrides LoginResponse to always redirect to admin panel after login,
-     * preventing redirect to "/" during maintenance mode.
+     * Overrides LoginResponse: honors a captured `url.intended` ONLY when it
+     * falls under this panel's own path (e.g. "/admin/orders/123", captured
+     * by Laravel's own auth-middleware interception) — anything else,
+     * including a public-site URL left over from
+     * App\Support\Auth\IntendedDestination's customer-facing /login flow (see
+     * app/docs/features/post-login-return.md), falls back to
+     * Filament::getUrl() instead of following it into the admin panel.
+     *
+     * Until 2026-08-17 this bind pointed at the WRONG (Filament v3) contract
+     * namespace, `Filament\Http\Responses\Auth\Contracts\LoginResponse` —
+     * which does not exist in v4 at all. `::class` on a non-existent
+     * class/interface still compiles (it's just a string), so this silently
+     * bound the wrong container key: Filament's own Login page resolves the
+     * REAL v4 contract, `Filament\Auth\Http\Responses\Contracts\LoginResponse`,
+     * which was never bound here — the vendor default (a bare
+     * `redirect()->intended(...)`) ran instead, and our App\Http\Responses\
+     * LoginResponse (which ALSO implemented the wrong interface) was fully
+     * dead code that would have fataled with "Interface ... not found" had
+     * anything ever tried to load it.
      */
     public function register(): void
     {
         parent::register();
 
-        // Override LoginResponse to always redirect to admin panel
-        // This fixes the issue where intended URL "/" causes redirect to maintenance page
         $this->app->bind(LoginResponseContract::class, LoginResponse::class);
     }
 
