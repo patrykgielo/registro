@@ -20,6 +20,7 @@ Complete security documentation for the Registro application.
 - [VULN-007: P24 Payment Reconciliation Gaps](vulnerabilities/VULN-007-payment-reconciliation.md) (HIGH — FIXED)
 - [VULN-008: Audit Log PII Protection](vulnerabilities/VULN-008-audit-log-pii-protection.md) (MEDIUM — FIXED)
 - [VULN-009: Low-Severity Cleanup Batch](vulnerabilities/VULN-009-low-severity-cleanup.md) (LOW — FIXED)
+- [VULN-010: Throttle Bucket Over-Sharing (Auth + Checkout)](vulnerabilities/VULN-010-throttle-bucket-over-sharing.md) (MEDIUM — FIXED)
 
 ### Fix Guides
 - [Rate Limiting Guide](remediation-guides/rate-limiting.md)
