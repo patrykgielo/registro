@@ -84,6 +84,7 @@ for the conceptual overview these deep-dive.
 | SMS System | `features/sms-system/` | Stable |
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
 | Order Handover/Return Protocols | `features/order-protocols.md` | Download-only PDFs, generated on demand |
+| Post-Login/Registration Return | `features/post-login-return.md` | `IntendedDestination` + `CustomerLandingUrl`, session-only (no `?redirect=`) |
 
 ### Guides
 
