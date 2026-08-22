@@ -58,9 +58,50 @@ wildcardem między subdomenami — to klasa VULN-003. Strażnik:
 ## `url.intended` jest współdzielony z Filamentem
 
 Ten sam klucz czyta panel (`Filament\Auth\Http\Responses\LoginResponse` → `redirect()->intended()`).
-Każda **nieklientowska** gałąź `LoginController::authenticated()` musi wołać
+Każda **nieklientowska** gałąź `PostAuthDestination::for()` musi wołać
 `IntendedDestination::discard()`, inaczej admin wyląduje w losowym miejscu. Kto pisze do tego
 klucza, czyści **oba** — razem z `url.intended_at`.
+
+## Cel po uwierzytelnieniu jest JEDEN — `PostAuthDestination`
+
+Logowanie i **reset hasła** kończą w tym samym stanie: `ResetsPasswords::resetPassword()` woła
+`guard()->login()`. Rozjechały się mimo to — `ResetPasswordController` miał
+`$redirectTo = '/home'`, a **nic nie jest routowane pod `/home`** (trasa o nazwie `home` to `/`).
+Zmierzone end-to-end: hasło ustawiane poprawnie, potem 404 na własnej subdomenie tenanta, bez
+drogi powrotnej do panelu. Zero sygnału — dla użytkownika reset po prostu „nie działa".
+
+Nowy przepływ kończący się zalogowanym użytkownikiem → `PostAuthDestination::for()`, nigdy własny
+`$redirectTo`. **Wyjątek: `ConfirmPasswordController`** — to brama w trakcie sesji, rozwiązywana
+przez `redirect()->intended()`; `PostAuthDestination` kasuje `url.intended` z założenia, więc
+zabrałoby powrót do strony, która wymusiła potwierdzenie. Tam wyłącznie żywy fallback
+(`route('home')`).
+
+`VerificationController` ma ten sam martwy `/home`, ale jego trasy **nie są zarejestrowane**
+(`MustVerifyEmail` zakomentowane w `User`) — martwy kod, celowo nietknięty.
+
+## Powiadomienie o resecie NIE MOŻE stać się `ShouldQueue`
+
+Link w mailu jest poprawny (subdomena tenanta) **tylko dlatego**, że Laravelowe
+`Illuminate\Auth\Notifications\ResetPassword` nie jest kolejkowane — renderuje się w żądaniu, gdzie
+`ResolveTenant` już wywołał `URL::forceRootUrl()`. Dopisanie `implements ShouldQueue` wygląda na
+czystą optymalizację, a przenosi renderowanie na workera bez kontekstu żądania: `url()` spada wtedy
+na `APP_URL`, czyli **domenę główną, gdzie `/admin/login` zwraca 404**.
+
+Zestaw testów tego nie złapie sam z siebie — `.env.testing` ma `QUEUE_CONNECTION=sync`, więc
+kolejkowane powiadomienie i tak wykona się w żądaniu. Strażnik:
+`PasswordResetRedirectTest::test_the_emailed_link_points_at_the_tenant_subdomain`.
+
+## `App\Notifications\PasswordResetNotification` jest MARTWE
+
+Nie jest wysyłane. `User` nie nadpisuje `sendPasswordResetNotification()`, nikt nie rzuca
+`PasswordResetRequested`, więc listener w `AppServiceProvider` nigdy nie biegnie. Wychodzi
+**standardowe powiadomienie Laravela**, kanałem `mail`, z pominięciem `EmailService`,
+`EmailTemplate` i ustawień SMTP tenanta. Skutek produktowy: szablon „Reset hasła"
+(`TemplateKey::PASSWORD_RESET`) jest edytowalny w panelu tenanta i **nigdy nie zostaje użyty**,
+a mail idzie po angielsku, bez brandingu.
+
+Zmierzone 2026-08-22 sondą na prawdziwym przepływie. Nie „naprawiaj" tego samym podpięciem
+listenera — patrz `app/docs/features/password-reset-flow.md`.
 
 ## Bind do nieistniejącego interfejsu NIE rzuca błędu
 
