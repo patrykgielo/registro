@@ -6,6 +6,8 @@ namespace App\Filament\Traits;
 
 use App\Support\Settings\SettingsManager;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Component as SchemaComponent;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -73,7 +75,18 @@ trait HasGroupedSettings
         $this->form->callBeforeStateDehydrated($state);
 
         $config = $groups[$group];
-        $groupData = $this->data[$group] ?? [];
+
+        // Build the group's data from each of ITS OWN field components' getState(),
+        // not from $this->data[$group] directly. Field-level getState() (Filament\Schemas\
+        // Components\Concerns\HasState::getState(), NOT the container-level
+        // Schema::getState() that validates the whole form) applies that field's own
+        // StateCasts to the raw Livewire state — e.g. RichEditorStateCast::get() turns the
+        // raw Tiptap document into the HTML string the field's dehydrated value actually is,
+        // FileUploadStateCast::get() extracts the stored path from the UUID-keyed upload
+        // array. Reading $this->data[$group] raw skips all of that and validates the
+        // pre-cast internal representation instead, which for RichEditor is never a string
+        // — see filament-settings-pages.md "RichEditor w grupie z HasGroupedSettings".
+        $groupData = $this->getGroupStateFromComponents($group);
 
         // Validate only this group's fields
         $validator = Validator::make($groupData, $config['rules']);
@@ -108,6 +121,60 @@ trait HasGroupedSettings
             ->title($config['label'])
             ->success()
             ->send();
+    }
+
+    /**
+     * Read a settings group's data from its own field components' `getState()`,
+     * applying each field's StateCasts (RichEditor JSON→HTML, FileUpload UUID→path, ...)
+     * instead of reading `$this->data[$group]` raw.
+     *
+     * This deliberately does NOT use `$this->form->getState()` — that validates the
+     * ENTIRE form (all tabs), which is exactly what this trait exists to avoid (see
+     * "CRITICAL: Problem z $this->form->getState()" in filament-settings-pages.md).
+     * Instead it walks the schema tree once, keeps only the fields whose absolute state
+     * path is `data.{$group}.<key>` (skipping deeper nesting — those belong to a
+     * top-level Repeater/FileUpload field and are folded into ITS OWN getState() call),
+     * and calls `getState()` on each field individually. That method
+     * (Filament\Schemas\Components\Concerns\HasState::getState()) reads the raw Livewire
+     * state for that one field and applies only that field's own casts — it does not
+     * validate or touch any other field.
+     *
+     * @return array<string, mixed>
+     */
+    protected function getGroupStateFromComponents(string $group): array
+    {
+        $prefix = "data.{$group}.";
+        $data = [];
+
+        foreach ($this->form->getFlatComponents(withHidden: true) as $component) {
+            if (! ($component instanceof SchemaComponent)) {
+                // Filament\Actions\Action (e.g. the tab's own "Zapisz" button) —
+                // not a state-bearing field.
+                continue;
+            }
+
+            if (! $component->hasStatePath()) {
+                continue;
+            }
+
+            $statePath = $component->getStatePath();
+
+            if (! str_starts_with($statePath, $prefix)) {
+                continue;
+            }
+
+            $relativeKey = substr($statePath, strlen($prefix));
+
+            if (str_contains($relativeKey, '.')) {
+                // Nested field inside a Repeater/complex component — handled by its
+                // top-level parent's own getState() call above, not individually.
+                continue;
+            }
+
+            Arr::set($data, $relativeKey, $component->getState());
+        }
+
+        return $data;
     }
 
     /**
