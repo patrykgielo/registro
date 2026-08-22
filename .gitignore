@@ -170,3 +170,8 @@ docker/nginx/edge/tenant-pages/*/
 # hand-edit the next time either ran. See app/docs/deployment/tenant-apply.md.
 docker-compose.edge.tenants.override.yml
 docker-compose.tenant-network.override.yml
+
+# Measured deployment-model facts (scripts/architecture-facts.sh) — per-machine
+# snapshots with timestamps, regenerated on demand. Never a source of truth in
+# git: the whole point is that they reflect a live installation, not a file.
+.claude/.architecture-facts/
