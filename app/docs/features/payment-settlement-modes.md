@@ -252,14 +252,16 @@ nie ma tu żadnego wiersza do sprawdzenia, cały fallback jest w `SettingsManage
 nie `Unit/`, bo dotyka bazy (`RefreshDatabase` + `Organization::factory()`).
 
 Drugi strażnik, `tests/Feature/Filament/SystemSettingsCheckoutOfflineDefaultTest.php`, pina
-konkretnie mechanizm opisany wyżej: mount()/fill() prawdziwe (`Livewire::test(SystemSettings::class)`),
-`persistSettingsGroup()` wywołane refleksją z prawdziwym, niezmodyfikowanym post-mount
-`$this->data['checkout']`. **Nie idzie przez `saveCheckoutSettings()`** — ta metoda jest dziś
-niewykonalna dla ŻADNEGO tenanta w ŻADNYM stanie z niezwiązanego powodu (4 pola `RichEditor` w tej
-samej grupie zawsze failują walidację `'string'`, bo `HasGroupedSettings::saveSettingsGroup()`
-czyta `$this->data[$group]` z pominięciem castów Filamenta — RichEditor trzyma tam zawsze surowy
-dokument JSON Tiptapa, nigdy string). Osobny, poważniejszy, nienaprawiony tu bug — patrz docblock
-testu.
+konkretnie mechanizm opisany wyżej — od naprawy 2026-08-22 (feature/checkout-settings-unsaveable,
+patrz `.claude/rules/filament-settings-pages.md` → "RichEditor w grupie z HasGroupedSettings —
+NAPRAWIONE") idzie przez prawdziwy `Livewire::test(SystemSettings::class)->call('saveCheckoutSettings')`,
+nie refleksję. Do tej naprawy `saveCheckoutSettings()` było niewykonalne dla ŻADNEGO tenanta w
+ŻADNYM stanie z niezwiązanego powodu — 4 pola `RichEditor` w tej samej grupie zawsze failowały
+walidację `'string'`, bo `HasGroupedSettings::saveSettingsGroup()` czytało `$this->data[$group]`
+z pominięciem castów Filamenta (RichEditor trzyma tam zawsze surowy dokument JSON Tiptapa, nigdy
+string) — ten test wtedy obchodził tę (wówczas osobną, poważniejszą) usterkę refleksją na
+`persistSettingsGroup()`. Zobacz też `tests/Feature/Filament/SystemSettingsCheckoutTabSaveTest.php`
+— strażnik dla samej naprawy walidacji RichEditor.
 
 Dowód mutacyjny wykonany na obu: po cofnięciu defaultu na `false` w `isOfflineSettlementEnabled()`
 oba przypadki `SettingsManagerOfflineSettlementDefaultTest` czerwienią się na `['online']`; po

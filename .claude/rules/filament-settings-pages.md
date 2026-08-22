@@ -90,25 +90,73 @@ potwierdzone empirycznie: świeży tenant z realnie skonfigurowanym P24 dostaje
 `offline_reservation_hold_hours` (ląduje jako `1h` zamiast `48h`).
 
 **Test-strażnik musi przejść przez prawdziwy round-trip** (`Livewire::test(SystemSettings::class)`,
-mount+fill realne), nie tylko sprawdzić `SettingsManager` bezpośrednio — sama asercja na
-`SettingsManager` nie widzi tej klasy błędu. Jeśli grupa zawiera pole `RichEditor`, prawdziwe
-`->call('saveXxxSettings')` może być niewykonalne (zobacz `RichEditor` w
-`filament-settings-pages.md` niżej i docblock testu wzorcowego) — wtedy wywołaj
-`persistSettingsGroup()` refleksją z prawdziwym post-mount `$this->data[$group]`, nie
-reimplementuj mechanizmu ręcznie. Wzór:
+mount+fill realne, `->call('saveXxxSettings')`), nie tylko sprawdzić `SettingsManager`
+bezpośrednio — sama asercja na `SettingsManager` nie widzi tej klasy błędu. Od naprawy 2026-08-22
+(patrz sekcja niżej) real `->call()` jest wykonalne nawet z polami `RichEditor` w grupie — nie ma
+już powodu wywoływać `persistSettingsGroup()` refleksją. Wzór:
+`tests/Feature/Filament/SystemSettingsCheckoutTabSaveTest.php`,
 `tests/Feature/Filament/SystemSettingsCheckoutOfflineDefaultTest.php`.
 
-### RichEditor w grupie z `HasGroupedSettings` — walidacja może być niewykonalna
+**Tenant w teście, który używa `Livewire::test()` na stronie:** `Filament::setTenant($org)`,
+NIE `$this->app['request']->attributes->set('tenant', $org)`. Zweryfikowane empirycznie
+2026-08-22: `Livewire::test(SomePage::class)` (pełnostronicowy komponent) dispatchuje realny
+sub-request przez kernel HTTP, co podmienia singleton `request` w kontenerze na NOWĄ instancję
+`Request` — każdy atrybut ustawiony na request PRZED tym wywołaniem znika, zanim
+`TenantFeature::currentTenant()`'s fallback (`app('request')->attributes->get('tenant')`) w ogóle
+zdąży zapytać. Ten panel (`AdminPanelProvider`) nie ma skonfigurowanego `->tenant()`, więc gałąź 1
+(`filament()->getTenant()`) też domyślnie zwraca `null` — bez `Filament::setTenant()` KAŻDY zapis
+przez realny `->call()` ląduje po cichu w wierszu globalnym (`organization_id = NULL`), nie
+wiersz tenanta, a test i tak "przechodzi" (asercje czytają ten sam globalny wiersz). Format
+request-attribute nadal działa dla testów, które NIE wołają `Livewire::test()` na pełnostronicowym
+komponencie (np. bezpośrednie wywołania statyczne na klasie Resource) — `RentalAvailabilityGuard
+Test`, `ServiceResourceTenantLabelTest`. `Filament::setTenant()` zapisuje do `FilamentManager`,
+zarejestrowanego przez `$this->app->scoped('filament', ...)` — ten scope przeżywa podmianę
+instancji requestu (czyści go dopiero `forgetScopedInstances()`/koniec requestu), więc
+`filament()->getTenant()` widzi go zarówno przed, jak i po `Livewire::test()`.
 
-**Nienaprawione, znalezione 2026-08-22:** `HasGroupedSettings::saveSettingsGroup()` waliduje
-`$this->data[$group]` BEZPOŚREDNIO, z pominięciem castów Filamenta (deliberatnie — patrz sekcja
-"Problem z `$this->form->getState()`" wyżej). Dla pól `RichEditor` internal `$this->data[...]`
-jest ZAWSZE surowym dokumentem JSON Tiptapa (`RichEditorStateCast::set()` zawsze zwraca
-`getDocument()`), nigdy stringiem HTML — więc reguła `['nullable', 'string', ...]` faluje
-walidację przy KAŻDYM zapisie tej grupy, dla KAŻDEGO tenanta, nawet nietkniętym polu. Sprawdzone
-na `checkout` (4 pola RichEditor) — `saveCheckoutSettings()` dziś nigdy się nie udaje. Prawdziwa
-naprawa wymaga zastosowania castu pola (np. `$component->getState()`) przed walidacją tej JEDNEJ
-grupy — szerszy refaktor `HasGroupedSettings`, poza zakresem pojedynczej poprawki na jednym polu.
+### RichEditor w grupie z `HasGroupedSettings` — NAPRAWIONE 2026-08-22
+
+**Był problem:** `HasGroupedSettings::saveSettingsGroup()` walidowało `$this->data[$group]`
+BEZPOŚREDNIO, z pominięciem castów Filamenta (deliberatnie — patrz sekcja "Problem z
+`$this->form->getState()`" wyżej). Dla pól `RichEditor` internal `$this->data[...]` jest ZAWSZE
+surowym dokumentem JSON Tiptapa (`RichEditorStateCast::set()` zawsze zwraca `getDocument()`),
+nigdy stringiem HTML — więc reguła `['nullable', 'string', ...]` waliła walidację przy KAŻDYM
+zapisie tej grupy, dla KAŻDEGO tenanta, nawet nietkniętym polu. Dotyczyło `checkout` (4 pola
+RichEditor) — `saveCheckoutSettings()` nigdy się nie udawał, dla żadnego tenanta, w żadnym stanie.
+
+**Naprawa:** `HasGroupedSettings::getGroupStateFromComponents($group)` zastępuje
+`$this->data[$group] ?? []` jako źródło danych do walidacji. Idzie po
+`$this->form->getFlatComponents(withHidden: true)`, filtruje komponenty których absolutny
+`getStatePath()` zaczyna się od `data.{$group}.` i nie ma dalszej kropki w reszcie ścieżki (czyli
+pomija pola zagnieżdżone wewnątrz Repeatera/FileUploada — te są zwinięte we własny `getState()`
+rodzica), po czym woła `$component->getState()` na KAŻDYM z osobna.
+
+**Dlaczego to bezpieczne — sprawdzone w vendorze:** `Component::getState()`
+(`vendor/filament/schemas/src/Components/Concerns/HasState.php:934`, trait `Filament\Schemas\
+Components\Concerns\HasState` — UWAGA, inna klasa niż walidujący `Filament\Schemas\Concerns\
+HasState::getState()` na poziomie Schema/kontenera, patrz "Problem z `$this->form->getState()`")
+robi tylko: `getRawState()` (czyta surowy stan Livewire tego JEDNEGO pola) + iteruje
+`getStateCasts()`. Nie waliduje, nie dotyka żadnego innego pola. Dla `RichEditor`:
+`RichEditorStateCast::get()` (`vendor/filament/forms/src/Components/RichEditor/StateCasts/
+RichEditorStateCast.php`) renderuje dokument Tiptap do HTML przez `$editor->getHtml()`
+(`isJson()` zwraca `false` tu — SystemSettings nie jest Eloquent-backed, `getContentAttribute()`
+zwraca `null`). Dla `FileUpload`: `FileUploadStateCast::get()` (`vendor/filament/schemas/src/
+Components/StateCasts/FileUploadStateCast.php`) wyciąga string ścieżki z tablicy indeksowanej
+UUID (`Arr::first($state)`) — dla pól niewielokrotnych to ta sama transformacja, którą
+`normalizeFileUploadValue()` w `persistSettingsGroup()` robiła ręcznie; ten kod zostaje
+nietknięty (nadal potrzebny dla Repeatera, który nie ma własnego `StateCast`, więc trafia tam
+nadal jako surowa tablica UUID-kluczowana).
+
+**Zweryfikowany dowód mutacyjny:** cofnięcie `getGroupStateFromComponents()` z powrotem na
+`$this->data[$group] ?? []` daje dosłownie: `Component has errors: "data.checkout.terms_label",
+"data.checkout.rodo_label", "data.checkout.withdrawal_label", "data.checkout.deposit_policy_note"`
+w `SystemSettingsCheckoutTabSaveTest`.
+
+**DesignHub (druga strona na tym traicie) — bez regresji, sprawdzone testem.** Nie ma pól
+RichEditor, więc nigdy nie było zablokowane tym bugiem, ale zmiana wpływa na WSZYSTKIE grupy na
+obu stronach — `saveBrandIdentitySettings()` łączy DWIE grupy (`appearance` + `design`) z pól w
+JEDNEJ Section, więc filtr po prefiksie `data.{group}.` (nie po granicy Section) musiał zostać
+zweryfikowany osobno. Zobacz `tests/Feature/Filament/DesignHubSaveRegressionTest.php`.
 
 ### Dodawanie Nowego Taba (3 kroki)
 
