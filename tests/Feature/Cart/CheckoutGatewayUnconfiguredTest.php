@@ -91,6 +91,13 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
         app('request')->attributes->remove('tenant');
     }
 
+    private function disableOfflineSettlement(Organization $org): void
+    {
+        app('request')->attributes->set('tenant', $org);
+        app(SettingsManager::class)->set('checkout.settlement_offline_enabled', false);
+        app('request')->attributes->remove('tenant');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -148,6 +155,11 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
 
     public function test_online_submit_with_empty_p24_config_is_a_redirect_not_a_500(): void
     {
+        // Offline is enabled by default; this test isolates the gateway's own
+        // compensation path, so it needs 'online' to actually be a valid
+        // submission (i.e. offline explicitly off) rather than being rejected
+        // by SubmitCheckoutRequest's Rule::in before the controller runs.
+        $this->disableOfflineSettlement($this->org);
         Notification::fake();
         $this->cartWithItem();
 
@@ -162,6 +174,9 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
 
     public function test_online_submit_with_empty_p24_config_cancels_the_orphaned_order(): void
     {
+        // See test_online_submit_with_empty_p24_config_is_a_redirect_not_a_500 —
+        // same reason for disabling offline explicitly.
+        $this->disableOfflineSettlement($this->org);
         Notification::fake();
         $this->cartWithItem();
 
@@ -177,6 +192,9 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
 
     public function test_online_submit_with_empty_p24_config_restores_the_cart_with_items_intact(): void
     {
+        // See test_online_submit_with_empty_p24_config_is_a_redirect_not_a_500 —
+        // same reason for disabling offline explicitly.
+        $this->disableOfflineSettlement($this->org);
         Notification::fake();
         $cart = $this->cartWithItem();
 
@@ -195,6 +213,11 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
         // "Spróbuj ponownie" is right for a refused/timed-out gateway and a lie
         // for one with no credentials — retrying loops the customer through
         // order-create → cancel forever. Separate copy, asserted separately.
+        //
+        // Offline is enabled by default; disable it explicitly so 'online' is
+        // still a valid submission and this reaches the controller's own
+        // compensation path rather than Rule::in.
+        $this->disableOfflineSettlement($this->org);
         Notification::fake();
         $this->cartWithItem();
 
@@ -239,6 +262,10 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
         // The regression in its purest form: \TypeError is an \Error. Against
         // `catch (\Exception)` this test 500s and leaves the order orphaned;
         // against `catch (\Throwable)` it compensates. No config involved.
+        //
+        // Offline is enabled by default; disable it explicitly so 'online'
+        // still passes SubmitCheckoutRequest and reaches registerTransaction().
+        $this->disableOfflineSettlement($this->org);
         Notification::fake();
 
         $this->mock(Przelewy24Service::class, function ($mock) {
@@ -309,10 +336,14 @@ class CheckoutGatewayUnconfiguredTest extends TestCase
 
     public function test_available_settlement_methods_keep_online_as_the_last_resort_when_nothing_else_exists(): void
     {
-        // Offline disabled AND the gateway unconfigured: the list must still
-        // never be empty (an empty list makes checkout impossible and breaks
-        // SubmitCheckoutRequest's Rule::in). Online stays as the fallback, and
-        // submitting it is the graceful-refusal path pinned above.
+        // Offline is enabled by default (SettingsManager::isOfflineSettlementEnabled()),
+        // so this scenario requires the tenant to have explicitly turned it off too.
+        // With BOTH unavailable, the list must still never be empty (an empty list
+        // makes checkout impossible and breaks SubmitCheckoutRequest's Rule::in).
+        // Online stays as the fallback, and submitting it is the graceful-refusal
+        // path pinned above.
+        $this->disableOfflineSettlement($this->org);
+
         app('request')->attributes->set('tenant', $this->org);
         $methods = app(SettingsManager::class)->availableSettlementMethods();
         app('request')->attributes->remove('tenant');

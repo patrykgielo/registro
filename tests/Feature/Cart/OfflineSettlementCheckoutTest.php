@@ -82,6 +82,13 @@ class OfflineSettlementCheckoutTest extends TestCase
         app('request')->attributes->remove('tenant');
     }
 
+    private function disableOfflineSettlement(Organization $org): void
+    {
+        app('request')->attributes->set('tenant', $org);
+        app(SettingsManager::class)->set('checkout.settlement_offline_enabled', false);
+        app('request')->attributes->remove('tenant');
+    }
+
     /**
      * Give this machine a usable Przelewy24 gateway. Only tests that assert
      * the ONLINE method is offered need it — see
@@ -148,9 +155,11 @@ class OfflineSettlementCheckoutTest extends TestCase
     // Gated by tenant settings
     // -------------------------------------------------------------------------
 
-    public function test_offline_settlement_is_rejected_when_tenant_has_not_enabled_it(): void
+    public function test_offline_settlement_is_rejected_when_tenant_has_explicitly_disabled_it(): void
     {
-        // Default: checkout.settlement_offline_enabled = false — never explicitly enabled.
+        // Default is enabled (SettingsManager::isOfflineSettlementEnabled()) — this
+        // pins the tenant's ability to turn it back off, not the default itself.
+        $this->disableOfflineSettlement($this->org);
         $this->mock(Przelewy24Service::class, fn ($mock) => $mock->shouldReceive('registerTransaction')->never());
 
         $this->cartWithItem();
