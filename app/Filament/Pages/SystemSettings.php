@@ -1457,7 +1457,36 @@ class SystemSettings extends Page implements HasForms
                             ->label('Płatność przy odbiorze (gotówka / przelew)')
                             ->helperText('Klient rezerwuje sprzęt bez płatności online — wpłatę odnotowuje obsługa w panelu przy odbiorze.')
                             ->live()
-                            ->default(false),
+                            ->default(true)
+                            // ->default() alone does NOT work here — verified empirically.
+                            // Two compounding Filament v4 mechanics, both independent of
+                            // ->default():
+                            // 1. SystemSettings::mount() calls
+                            //    $this->form->fill($settingsManager->all()) with a REAL
+                            //    (non-null) array whenever the tenant has ANY setting at all.
+                            //    Schema::fill() only ever consults ->default() when the WHOLE
+                            //    form is filled with a literal null (fresh "Create page, no
+                            //    record" case) — see vendor/filament/schemas/src/Concerns/
+                            //    HasState.php's fill()/hydrateDefaultState(). A key absent
+                            //    from a non-null fill hydrates to raw null instead.
+                            // 2. Toggle's own built-in state cast — BooleanStateCast(isNullable:
+                            //    false), see Toggle::getDefaultStateCasts() — then
+                            //    unconditionally coerces that null to `false` DURING
+                            //    hydrateState(), before any hydration hook (incl.
+                            //    afterStateHydrated) even runs. So by the time any hook could
+                            //    inspect the state, "no row at all" and "tenant explicitly
+                            //    chose false" are already indistinguishable.
+                            // persistSettingsGroup() then writes that false as a real row,
+                            // silently disabling offline settlement for any tenant who saves
+                            // ANY field in this tab. Fix: check the RAW setting (bypassing
+                            // SettingsManager::isOfflineSettlementEnabled()'s own true-default,
+                            // which would mask the "no row" case) directly, before the cast
+                            // has a chance to collapse the distinction.
+                            ->afterStateHydrated(function (Toggle $component): void {
+                                if (app(SettingsManager::class)->get('checkout.settlement_offline_enabled') === null) {
+                                    $component->state(true);
+                                }
+                            }),
 
                         TextInput::make('checkout.offline_reservation_hold_hours')
                             ->label('Czas blokady rezerwacji przy odbiorze (godziny)')

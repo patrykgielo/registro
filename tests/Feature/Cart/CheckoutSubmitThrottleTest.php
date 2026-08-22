@@ -40,6 +40,17 @@ class CheckoutSubmitThrottleTest extends TestCase
     {
         parent::setUp();
 
+        // This suite submits 'online' throughout — give the machine
+        // real-looking P24 credentials so that stays a genuinely available
+        // settlement method (offline defaults to enabled too — see
+        // SettingsManager::isOfflineSettlementEnabled() — but that must not
+        // be the only reason 'online' passes SubmitCheckoutRequest here).
+        config([
+            'przelewy24.merchant_id' => 12345,
+            'przelewy24.reports_key' => 'reports-key',
+            'przelewy24.crc' => 'crc-value',
+        ]);
+
         $this->org = Organization::factory()->equipmentRental()->create();
         $this->user = User::factory()->create();
     }

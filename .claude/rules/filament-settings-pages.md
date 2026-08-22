@@ -58,6 +58,58 @@ class MySettings extends Page implements HasForms
 4. **Cache:** `Cache::forget("settings:{$group}")` - czyści cache grupy
 5. **Notyfikacja:** Success/error z labela grupy
 
+### CRITICAL: `->default()` na polu tej strony NIE DZIAŁA — nie polegaj na nim
+
+**Problem, zweryfikowany empirycznie (nie hipoteza — pierwsza teoria w code review 2026-08-22
+była błędna, zobacz `payment-settlement-modes.md` → "Faza 1a"):** `Schema::fill($state)`
+konsultuje `->default()` na polu WYŁĄCZNIE gdy CAŁY formularz wypełniany jest dosłownym `null`
+(świeża strona "Create", bez rekordu) — patrz `vendor/filament/schemas/src/Concerns/HasState.php`,
+`fill()`/`hydrateDefaultState()`. `SystemSettings::mount()` zawsze woła
+`fill($settingsManager->all())` z PRAWDZIWĄ (nie-null) tablicą, gdy tenant ma choć jedno
+ustawienie w JAKIEJKOLWIEK grupie — więc `->default()` na polach tej strony **nigdy nie jest
+konsultowany**. Klucz nieobecny w `all()` hydratuje się do `null`. Dla `Toggle` ten `null` jest
+następnie BEZWARUNKOWO koerentowany na `false` przez wbudowany `BooleanStateCast(isNullable:
+false)` (`Toggle::getDefaultStateCasts()`) — PRZED jakimkolwiek hookiem, w tym
+`afterStateHydrated`. Dla `TextInput` numeryczny brak wiersza zostaje `null` i po zapisie ląduje
+w bazie jako `null` (np. `checkout.offline_reservation_hold_hours` → `(int) null` = `0` → po
+`max(1, ...)` = **`1`** zamiast zamierzonych 48h). `persistSettingsGroup()` zapisuje WSZYSTKIE
+klucze grupy, nie tylko zmieniony — więc zapis JEDNEGO niezwiązanego pola cicho utrwala złą
+wartość dla całej reszty, dla KAŻDEGO tenanta bez własnego wiersza.
+
+**Prawdziwa poprawka:** `->afterStateHydrated()` na polu, sprawdzający SUROWE ustawienie wprost
+przez `app(SettingsManager::class)->get($key)` **bez defaultu** (zwraca `null` tylko gdy naprawdę
+nie ma żadnego wiersza — tenant ani global) i dopiero wtedy wymuszający właściwą wartość przez
+`$component->state(...)`. Nie sprawdzaj `$state === null` wewnątrz hooka — dla `Toggle` state już
+dotarł jako coerced `false`, nie `null` (patrz wyżej); trzeba pytać `SettingsManager` wprost, PRZED
+tym, jak cast zdąży zatrzeć różnicę między "brak wiersza" a "tenant świadomie wybrał false/0".
+Wzór: `checkout.settlement_offline_enabled` w `SystemSettings.php` (naprawione
+`feature/offline-settlement-default`, 2026-08-22). **Nienaprawione tam samo (poza mandatem tej
+gałęzi, sprawdź przy najbliższej okazji):** `settlement_online_enabled` (ten sam mechanizm,
+potwierdzone empirycznie: świeży tenant z realnie skonfigurowanym P24 dostaje
+`isOnlineSettlementEnabled() === false` po dowolnym zapisie tej zakładki) i
+`offline_reservation_hold_hours` (ląduje jako `1h` zamiast `48h`).
+
+**Test-strażnik musi przejść przez prawdziwy round-trip** (`Livewire::test(SystemSettings::class)`,
+mount+fill realne), nie tylko sprawdzić `SettingsManager` bezpośrednio — sama asercja na
+`SettingsManager` nie widzi tej klasy błędu. Jeśli grupa zawiera pole `RichEditor`, prawdziwe
+`->call('saveXxxSettings')` może być niewykonalne (zobacz `RichEditor` w
+`filament-settings-pages.md` niżej i docblock testu wzorcowego) — wtedy wywołaj
+`persistSettingsGroup()` refleksją z prawdziwym post-mount `$this->data[$group]`, nie
+reimplementuj mechanizmu ręcznie. Wzór:
+`tests/Feature/Filament/SystemSettingsCheckoutOfflineDefaultTest.php`.
+
+### RichEditor w grupie z `HasGroupedSettings` — walidacja może być niewykonalna
+
+**Nienaprawione, znalezione 2026-08-22:** `HasGroupedSettings::saveSettingsGroup()` waliduje
+`$this->data[$group]` BEZPOŚREDNIO, z pominięciem castów Filamenta (deliberatnie — patrz sekcja
+"Problem z `$this->form->getState()`" wyżej). Dla pól `RichEditor` internal `$this->data[...]`
+jest ZAWSZE surowym dokumentem JSON Tiptapa (`RichEditorStateCast::set()` zawsze zwraca
+`getDocument()`), nigdy stringiem HTML — więc reguła `['nullable', 'string', ...]` faluje
+walidację przy KAŻDYM zapisie tej grupy, dla KAŻDEGO tenanta, nawet nietkniętym polu. Sprawdzone
+na `checkout` (4 pola RichEditor) — `saveCheckoutSettings()` dziś nigdy się nie udaje. Prawdziwa
+naprawa wymaga zastosowania castu pola (np. `$component->getState()`) przed walidacją tej JEDNEJ
+grupy — szerszy refaktor `HasGroupedSettings`, poza zakresem pojedynczej poprawki na jednym polu.
+
 ### Dodawanie Nowego Taba (3 kroki)
 
 1. **Dodaj metodę `xxxTab()`** zwracającą `Tabs\Tab` z przyciskiem save:
