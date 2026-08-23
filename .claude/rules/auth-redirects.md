@@ -91,17 +91,29 @@ Zestaw testów tego nie złapie sam z siebie — `.env.testing` ma `QUEUE_CONNEC
 kolejkowane powiadomienie i tak wykona się w żądaniu. Strażnik:
 `PasswordResetRedirectTest::test_the_emailed_link_points_at_the_tenant_subdomain`.
 
-## `App\Notifications\PasswordResetNotification` jest MARTWE
+## Kolejkowane powiadomienie NIE MOŻE sięgać po kontekst otoczenia
 
-Nie jest wysyłane. `User` nie nadpisuje `sendPasswordResetNotification()`, nikt nie rzuca
-`PasswordResetRequested`, więc listener w `AppServiceProvider` nigdy nie biegnie. Wychodzi
-**standardowe powiadomienie Laravela**, kanałem `mail`, z pominięciem `EmailService`,
-`EmailTemplate` i ustawień SMTP tenanta. Skutek produktowy: szablon „Reset hasła"
-(`TemplateKey::PASSWORD_RESET`) jest edytowalny w panelu tenanta i **nigdy nie zostaje użyty**,
-a mail idzie po angielsku, bez brandingu.
+`PasswordResetNotification` było martwe do 2026-08-23 (nic nie rzucało `PasswordResetRequested`,
+`User` nie nadpisywał `sendPasswordResetNotification()`). Podpięte — ale **wszystkie** wartości
+zależne od kontekstu dostaje jako argumenty konstruktora, bo jest `ShouldQueue`:
 
-Zmierzone 2026-08-22 sondą na prawdziwym przepływie. Nie „naprawiaj" tego samym podpięciem
-listenera — patrz `app/docs/features/password-reset-flow.md`.
+| wartość | rozwiązywana | co się psuje na workerze |
+|---|---|---|
+| `resetUrl` | listener, w żądaniu | `route()` spada na `APP_URL` → domena główna, `/admin/login` = 404 |
+| `appName` | listener, w żądaniu | `currentTenant()` = `null` → nazwa platformy zamiast wypożyczalni |
+
+Listener `PasswordResetRequested` jest **synchroniczny** i to jedyny powód, dla którego działa —
+biegnie wciąż w żądaniu, które poprosiło o reset.
+
+**Brak zmiennej w payloadzie nie jest błędem, tylko treścią maila.**
+`EmailTemplate::substitutePlaceholders()` zostawia nieznane `{{tokeny}}` dosłownie; martwy kod
+przekazywał trzy zmienne, a szablon deklaruje cztery. Strażnik asertuje na wyrenderowanej treści
+z `email_sends`: `PasswordResetEmailTest::test_no_placeholder_survives_rendering`.
+
+Nadal niedziałające i **zastane**: własny szablon tenanta nie stosuje się do wysyłek z kolejki —
+`EmailTemplate::resolveActive()` też czyta tenanta z otoczenia (jego docblock nazywa to przyjętym
+ograniczeniem dla wszystkich powiadomień). Szczegóły:
+`app/docs/features/password-reset-flow.md`.
 
 ## Bind do nieistniejącego interfejsu NIE rzuca błędu
 

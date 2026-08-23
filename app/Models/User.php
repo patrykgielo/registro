@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Events\PasswordResetRequested;
 use App\Traits\Auditable;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
@@ -362,6 +363,28 @@ class User extends Authenticatable implements FilamentUser, HasName
         return $this->belongsToMany(Organization::class, 'organization_user')
             ->withPivot('role')
             ->withTimestamps();
+    }
+
+    /**
+     * Send the password-reset link through this application's e-mail pipeline.
+     *
+     * Without this override Laravel's CanResetPassword sends its own stock
+     * notification over the `mail` channel — English, unbranded, and bypassing
+     * EmailService entirely (no `email_sends` row, no suppression check, no
+     * retry semantics) and EmailTemplate (no tenant branding). The tenant could
+     * edit a "Reset hasła" template in their panel that was never once used.
+     *
+     * Dispatches the existing PasswordResetRequested event rather than notifying
+     * directly: its listener runs synchronously, still inside this request,
+     * which is the only place where the tenant and the request host are
+     * resolvable — see PasswordResetNotification's docblock for what breaks when
+     * those are read on a queue worker instead.
+     *
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        PasswordResetRequested::dispatch($this, $token);
     }
 
     /**
