@@ -33,17 +33,52 @@ CREATE TABLE email_templates (
 
 ### Template Keys
 
-| Key                        | Trigger Event                        |
-|----------------------------|--------------------------------------|
-| `user-registered`          | User::created()                      |
-| `password-reset`           | PasswordResetRequested               |
-| `appointment-created`      | Appointment::created()               |
-| `appointment-rescheduled`  | Appointment updated (date/time)      |
-| `appointment-cancelled`    | Appointment::deleted()               |
-| `appointment-reminder-24h` | SendReminderEmailsJob (24h before)   |
-| `appointment-reminder-2h`  | SendReminderEmailsJob (2h before)    |
-| `appointment-followup`     | SendFollowUpEmailsJob (24h after)    |
-| `admin-daily-digest`       | SendAdminDigestJob (daily 8:00 AM)   |
+**Authoritative list: `app/Enums/TemplateKey.php`.** This page deliberately does not
+reproduce it. A hand-maintained copy listed 9 of the 32 cases until 2026-08-23 — while
+reading as if it were complete — and the keys it omitted are exactly the ones that broke.
+
+Categories, so you know where to look:
+
+| Group | Examples |
+|---|---|
+| Account | `user-registered`, `password-reset`, `admin-user-created`, `email-change-*`, `account-deletion-*` |
+| Appointments (`time_slot`) | `appointment-created`, `-rescheduled`, `-cancelled`, `-reminder-24h`, `-reminder-2h`, `-followup` |
+| Orders (`item_rental`) | `order-paid`, `order-confirmed`, `order-cancelled`, `order-accepted-offline`, `order-handed-over`, `order-returned`, `admin-new-order` |
+| Rentals | `rental-cancelled`, `rental-extension-requested`, `-approved`, `-rejected`, `rental-return-due-soon`, `-overdue` |
+| Platform | `tenant-welcome`, `tenant-registered-operator`, `admin-daily-digest`, `service-area-available` |
+
+### A key without a template is not a degraded e-mail — it is no e-mail
+
+`EmailService::sendFromTemplate()` **throws** when the template is missing. The customer
+gets nothing, a row lands in `failed_jobs`, and nothing surfaces it to an operator.
+
+Found live 2026-08-23: `RENTAL_CANCELLED` was in the enum and fully wired (`Rental`'s
+`updated` hook → `RentalCancelled` → `SendRentalCancelledNotification`) while its template
+existed in **no seeder and no migration**. Every rental cancellation threw, on every
+environment, including a fresh install. UAT's `failed_jobs` held two
+`OrderCancelledNotification` failures of the same shape, from 2026-08-16 and 2026-08-19.
+
+Guard: `tests/Feature/Notifications/EveryNotificationHasItsTemplateTest.php` — **discovers**
+the notifications instead of listing them, and requires every `TemplateKey` they name to
+resolve in both `pl` and `en`. A notification added tomorrow is covered without anyone
+remembering this page exists.
+
+It proves the template EXISTS, not that it RENDERS. Unknown `{{tokens}}` are left verbatim
+rather than erroring, so an incomplete payload reaches the customer as literal text — see
+`RentalCancelledEmailTest` and `PasswordResetEmailTest::test_no_placeholder_survives_rendering`
+for the per-notification pattern that catches it.
+
+### Adding a template to an ALREADY-DEPLOYED environment
+
+`scripts/deploy-init.sh` runs `db:seed --class=EmailTemplateSeeder --force`, but that is the
+**first-install** script. `scripts/deploy-update.sh` and `scripts/server/apply.sh` do not seed
+templates at all — so a template added to the seeder after installation never reaches a running
+environment on its own. As of 2026-08-23 UAT had 25 of the 30 keys the code defines.
+
+Seeding it there is an operator action, not something a deploy does for you. The seeder is
+idempotent (`updateOrCreate`), but note it keys on the GLOBAL row, so re-running it overwrites
+manual edits made to global templates in the panel; per-tenant overrides are separate rows and
+are untouched.
 
 ## Template Variables
 

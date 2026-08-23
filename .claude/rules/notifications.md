@@ -165,6 +165,33 @@ Notification::assertSentTo(
 );
 ```
 
+## Klucz bez szablonu = ZERO maila, nie gorszy mail
+
+`EmailService::sendFromTemplate()` **rzuca**, gdy szablonu nie ma. Klient nie dostaje nic, wiersz
+ląduje w `failed_jobs`, nikt tego nie widzi.
+
+**Znalezione na żywo 2026-08-23:** `RENTAL_CANCELLED` był w enumie i w pełni podpięty (hook
+`updated` na `Rental` → `RentalCancelled` → `SendRentalCancelledNotification`), a szablon nie
+istniał w **żadnym seederze ani migracji**. Każde anulowanie wypożyczenia rzucało — na każdym
+środowisku, także świeżym. Na UAT leżały dwie awarie `OrderCancelledNotification` tego samego
+kształtu (16 i 19 sierpnia).
+
+**Dodając powiadomienie mailowe:** dopisz szablon do `EmailTemplateSeeder` w **obu** językach
+(`pl` i `en` — notyfikacje czytają `preferred_language ?? 'pl'`, więc użytkownik z `en` trafia na
+angielski wiersz).
+
+Strażnik: `tests/Feature/Notifications/EveryNotificationHasItsTemplateTest` — **wykrywa**
+powiadomienia zamiast je wyliczać, więc nowa klasa jest objęta bez pamiętania o tym teście.
+Sprawdza istnienie, **nie** renderowanie: nieznane `{{tokeny}}` zostają dosłownie, więc niepełny
+payload dociera do klienta jako tekst. Na to jest osobny wzorzec per powiadomienie —
+`RentalCancelledEmailTest`, `PasswordResetEmailTest::test_no_placeholder_survives_rendering`.
+
+**Szablon dodany po instalacji nie dociera na wdrożone środowisko sam z siebie.**
+`deploy-init.sh` sieje `EmailTemplateSeeder`, ale to skrypt pierwszej instalacji;
+`deploy-update.sh` i `apply.sh` nie sieją szablonów w ogóle. To akcja operatora. Seeder jest
+idempotentny, ale kluczuje po wierszu GLOBALNYM — ponowne zasianie nadpisze ręczne zmiany
+globalnych szablonów z panelu (nadpisania tenanta to osobne wiersze, nietknięte).
+
 ## Idempotencja EmailService — nieudana wysyłka NIE jest stanem końcowym
 
 `EmailService::sendFromTemplate()` deduplikuje po `message_key = md5(template:recipient:metadata)`.

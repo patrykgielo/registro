@@ -102,9 +102,25 @@ State: **"Retry cycles used: [N/3]. Final: [ALL GREEN / escalated to user]"**
 
 Answer EACH question explicitly:
 
-1. **app/docs/** — Did you add a feature or change architecture? → Update relevant doc
-2. **.claude/rules/** — Did you discover a pattern, fix an error, or change a convention? → Update relevant rule
-3. **memory/MEMORY.md** — Is this significant for future conversations? → Update memory
+1. **app/docs/features/** — Did you add a feature or change architecture? → Update relevant doc
+2. **app/docs/business/** — **Did anything a CUSTOMER or TENANT experiences change?** A message
+   they receive (or stop receiving), a page they land on, a step that appears or disappears. If yes,
+   the customer-journey page for that flow must say so — **and both language variants** (`.md` and
+   `.en.md`) or they drift.
+3. **.claude/rules/** — Did you discover a pattern, fix an error, or change a convention? → Update relevant rule
+4. **memory/MEMORY.md** — Is this significant for future conversations? → Update memory
+
+**Also check what the doc ALREADY claims, not only what you added.** A page describing a flow you
+touched may be describing it wrongly, or may be silent about a whole path — that silence reads as
+"this path does not exist". Found 2026-08-23: `customer-journey-cancellation.md` covered
+appointment and order cancellation and never mentioned rental cancellation, whose e-mail had been
+throwing on every environment since it was written. Nobody had removed it from the doc; it was
+never in it.
+
+**A hand-maintained list in a doc rots and then lies.** If you are about to add one row to a table
+enumerating something the code also enumerates (template keys, statuses, roles), consider pointing
+at the authoritative source plus its guard test instead — `templates.md` listed 9 of 32 keys while
+reading as complete.
 
 State: **"Docs updated: [list files] OR No docs needed because: [specific reason]"**
 
