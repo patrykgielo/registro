@@ -157,9 +157,31 @@ stateDiagram-v2
     refunded --> [*]
 ```
 
+## Anulowanie wypożyczenia (model `Rental`)
+
+**Trzecia, osobna ścieżka** — nieopisana na tej stronie do 2026-08-23, mimo że istnieje w kodzie.
+`Rental` to model odrębny od `Order`: zamówienie jest tym, co klient składa w koszyku, wypożyczenie
+tym, co administrator prowadzi na wydanym sprzęcie. Anulowanie jednego nie anuluje drugiego.
+
+Wyzwalacz nie jest akcją ani trasą, tylko **zmianą statusu**: hook `updated` na modelu wykrywa
+przejście na `RentalStatus::Cancelled`, ustawia `cancelled_at` i rzuca `RentalCancelled`
+(`app/Models/Rental.php`). Nasłuchujący `SendRentalCancelledNotification` wysyła klientowi
+`RentalCancelledNotification` — mail z nazwą sprzętu, terminem i powodem.
+
+Nie ma tu ścieżki samoobsługowej: klient nie anuluje wypożyczenia sam. Inicjuje wyłącznie
+administrator.
+
+> **Do 2026-08-23 ten mail nigdy nie doszedł.** Szablon `rental-cancelled` nie istniał w żadnym
+> seederze ani migracji, a `EmailService::sendFromTemplate()` rzuca przy braku szablonu — więc
+> każde anulowanie wypożyczenia kończyło się wyjątkiem i wierszem w `failed_jobs`, na każdym
+> środowisku, także świeżym. Klient dowiadywał się o anulowaniu tylko wtedy, gdy ktoś zadzwonił.
+> Naprawione wraz ze strażnikiem, który nie pozwoli powtórzyć tego przy kolejnym powiadomieniu —
+> `tests/Feature/Notifications/EveryNotificationHasItsTemplateTest`.
+
 ## Kluczowe pliki
 
 `app/Http/Controllers/AppointmentController.php`, `app/Http/Controllers/OrderController.php`,
 `app/Services/Order/OrderService.php`, `app/StateMachines/OrderStatusStateMachine.php`,
 `app/Filament/Resources/OrderResource.php`, `app/Filament/Resources/AppointmentResource.php`,
+`app/Models/Rental.php` + `app/Listeners/SendRentalCancelledNotification.php` (ścieżka wypożyczenia),
 `routes/console.php` (harmonogram `orders:cleanup-expired`).
