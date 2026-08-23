@@ -149,9 +149,31 @@ stateDiagram-v2
     refunded --> [*]
 ```
 
+## Rental cancellation (the `Rental` model)
+
+**A third, separate path** — undocumented on this page until 2026-08-23 despite existing in the
+code. `Rental` is a distinct model from `Order`: the order is what the customer places in the cart,
+the rental is what the operator runs against handed-over equipment. Cancelling one does not cancel
+the other.
+
+The trigger is neither an action nor a route but a **status change**: the model's `updated` hook
+detects the move to `RentalStatus::Cancelled`, sets `cancelled_at` and fires `RentalCancelled`
+(`app/Models/Rental.php`). `SendRentalCancelledNotification` then mails the customer a
+`RentalCancelledNotification` naming the item, the period and the reason.
+
+There is no self-service path here — customers do not cancel rentals themselves. Admin-initiated only.
+
+> **Until 2026-08-23 that e-mail never arrived.** The `rental-cancelled` template existed in no
+> seeder and no migration, and `EmailService::sendFromTemplate()` throws when a template is missing —
+> so every rental cancellation ended in an exception and a `failed_jobs` row, on every environment
+> including a fresh install. The customer only learned about the cancellation if somebody phoned.
+> Fixed together with a guard that stops the next notification repeating it:
+> `tests/Feature/Notifications/EveryNotificationHasItsTemplateTest`.
+
 ## Key files
 
 `app/Http/Controllers/AppointmentController.php`, `app/Http/Controllers/OrderController.php`,
 `app/Services/Order/OrderService.php`, `app/StateMachines/OrderStatusStateMachine.php`,
 `app/Filament/Resources/OrderResource.php`, `app/Filament/Resources/AppointmentResource.php`,
+`app/Models/Rental.php` + `app/Listeners/SendRentalCancelledNotification.php` (rental path),
 `routes/console.php` (`orders:cleanup-expired` schedule).

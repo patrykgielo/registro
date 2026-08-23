@@ -23,9 +23,21 @@ class ConfirmPasswordController extends Controller
     /**
      * Where to redirect users when the intended url fails.
      *
-     * @var string
+     * `/home` used to sit here and 404s — nothing is routed at that path; the
+     * route NAMED `home` is `/`. Same dead value as ResetPasswordController
+     * carried, and reachable, since `password/confirm` IS registered.
+     *
+     * Deliberately NOT PostAuthDestination: this is a mid-session re-auth gate,
+     * and ConfirmsPasswords resolves it through `redirect()->intended(...)` so
+     * the user returns to the page that demanded confirmation. That helper
+     * discards `url.intended` by design, which is right after a fresh login and
+     * would silently take the return trip away here. This value is only the
+     * fallback for when no intended URL exists.
      */
-    protected $redirectTo = '/home';
+    protected function redirectPath(): string
+    {
+        return route('home');
+    }
 
     /**
      * Create a new controller instance.

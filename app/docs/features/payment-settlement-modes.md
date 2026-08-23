@@ -123,7 +123,7 @@ Cel: klient może zarezerwować sprzęt i zapłacić przy odbiorze; obsługa odn
 
 | Element | Gdzie |
 |---|---|
-| Ustawienia per tenant (`checkout.settlement_online_enabled` domyślnie `true`, `checkout.settlement_offline_enabled` domyślnie `false`, `checkout.offline_reservation_hold_hours` domyślnie 48, zakres 1–168h) | `SettingsManager::isOnlineSettlementEnabled()`/`isOfflineSettlementEnabled()`/`availableSettlementMethods()`/`offlineReservationHoldHours()`, zakładka Checkout w `SystemSettings.php` |
+| Ustawienia per tenant (`checkout.settlement_online_enabled` domyślnie `true`; `checkout.settlement_offline_enabled` domyślnie `true` — patrz Faza 1a niżej; `checkout.offline_reservation_hold_hours` domyślnie 48, zakres 1–168h) | `SettingsManager::isOnlineSettlementEnabled()`/`isOfflineSettlementEnabled()`/`availableSettlementMethods()`/`offlineReservationHoldHours()`, zakładka Checkout w `SystemSettings.php` |
 | Kolumna `orders.settlement_method` (`online`\|`offline`, domyślnie `online` — każde istniejące zamówienie zachowuje znaczenie „poszło przez P24") | `2026_08_16_120000_add_settlement_method_to_orders_table.php` |
 | TTL odczepiony od `p24_token` | **Nie wymagało zmiany `Order::scopeExpired()`/`OrderItem::scopeBlockingAvailability()`** — oba scope'y i tak czytają wyłącznie `expires_at` w gałęzi „brak `p24_token`"; wystarczyło, że `CartService::convertToOrder()` zaczął PISAĆ inną wartość `expires_at` zależnie od `settlement_method` (20 min dla online — bez zmian; `offlineReservationHoldHours()` dla offline). Zero ryzyka rozjazdu obu scope'ów, bo żaden z nich w ogóle nie wie o `settlement_method`. |
 | `payments.p24_session_id` rozluźnione do `nullable` (nadal UNIQUE); nowe kolumny `method` (`p24`\|`cash`\|`bank_transfer`, domyślnie `p24`), `recorded_by` (FK users, nullOnDelete), `notes` | `2026_08_16_120001_add_offline_settlement_fields_to_payments_table.php` |
@@ -164,6 +164,112 @@ tylko opis akcji Filamentowej (label/ikona/formularz/widoczność), nie logika b
   szerszą logikę uprawnień i wymagają osobnego przeglądu, żeby nie zepsuć istniejącego zachowania).
 - UX wyboru metody rozliczenia w `checkout/show.blade.php` jest funkcjonalny, ale nie przeszedł
   przeglądu `frontend-ui-architect` (accessibility, spójność wizualna z resztą formularza).
+
+### Faza 1a — offline włączone domyślnie w kodzie ✅ (2026-08-22)
+
+**Problem, który to zamyka.** `isOfflineSettlementEnabled()` miała default `false`, a
+`isOnlineSettlementEnabled()` to `checkout.settlement_online_enabled && Przelewy24Service::isConfigured()`.
+Na maszynie bez kredek P24 obie wychodziły `false`, więc `availableSettlementMethods()` wpadała w swój
+fail-safe „nigdy pusta lista" i zwracała `['online']` — metodę, której na tej maszynie nie da się wykonać.
+Klient przechodził cały formularz checkoutu, `registerTransaction()` rzucał
+`PaymentGatewayNotConfiguredException`, `CheckoutController::submit()` kompensował (anulował zamówienie,
+przywracał koszyk) i pokazywał „Płatności online są chwilowo niedostępne… prosimy o kontakt".
+Nic się nie psuło, nic nie wyciekało — ale **zamówienia nie było**, a start bez P24 ma być normalną
+konfiguracją, nie ślepym zaułkiem.
+
+**Zmiana.** `SettingsManager::isOfflineSettlementEnabled()` — sam default przechodzi z `false` na
+`true`. Semantyka: „offline włączone, dopóki tenant go nie wyłączy", nie odwrotnie. Bez wiersza w
+`settings` wynik jest teraz `true` dla KAŻDEJ organizacji, nowej i już istniejącej — to jeden
+fallback w jednym miejscu (`SettingsManager::get()`), nie osobna ścieżka zapisu przy provisioningu.
+
+Pierwotna wersja tej fazy przechodziła przez `SeedOrganizationDefaults` (seeder wpisujący jawny
+wiersz `true` każdej nowo tworzonej organizacji) — **cofnięte**. Żaden prawdziwy tenant jeszcze nie
+istnieje (`budowlana` na UAT jest testowy), więc argument „seeder nie nadpisze świadomej decyzji
+właściciela" broni pustego pola, a rozwiązanie przez seeder trzymało tę samą prawdę w dwóch
+miejscach (default w kodzie + wiersz seedera) i nie obejmowało organizacji już istniejących.
+
+**Bezwarunkowo, nie per `booking_type`.** W przeciwieństwie do `booking_enabled => $org->supportsAppointments()`
+nie ma typu rezerwacji, dla którego rozliczenie na miejscu byłoby bez sensu: dotyczy zarówno odbioru
+sprzętu, jak i wizyty płaconej u lady — stąd default bezwarunkowy, nie gated per industry/moduł.
+
+**Co to zmienia, w tym dla `budowlana`:**
+
+- **Każda organizacja bez własnego wiersza `checkout.settlement_offline_enabled` — nowa i już
+  istniejąca — od najbliższego wdrożenia oferuje `offline` w `availableSettlementMethods()`.**
+  To obejmuje UAT-owy tenant `budowlana`: nic nie trzeba tam ręcznie włączać, dostaje płatność przy
+  odbiorze automatycznie razem z tym mergem. Tenant może ją nadal wyłączyć w panelu
+  (`SystemSettings.php` → zakładka Checkout) — **ale panel NIE dziedziczy tego defaultu
+  automatycznie.** `SystemSettings::mount()` woła `SettingsManager::all()`, które zwraca wyłącznie
+  wiersze fizycznie obecne w tabeli `settings` — bez żadnych fallbacków. Toggle `checkout.settlement_offline_enabled`
+  ma więc swój WŁASNY `->default(true)` na polu formularza, ręcznie zsynchronizowany z kodowym
+  defaultem powyżej; nic w kodzie nie wymusza tej zgodności automatycznie. Rozjazd (pole
+  `->default(false)` przy kodowym `true`, znaleziony i naprawiony w code review na tej samej gałęzi)
+  jest cichy: admin otwiera dowolną inną sekcję zakładki Checkout, klika Zapisz —
+  `HasGroupedSettings::persistSettingsGroup()` zapisuje WSZYSTKIE klucze grupy, w tym ten — i offline
+  zostaje jawnie wyłączone w bazie, mimo że nikt świadomie tego nie wybrał. Zobacz też
+  `.claude/rules/filament-settings-pages.md`.
+- **`settlement_online_enabled` bez zmian w kodowym defaulcie** (nadal `true`, nadal samo się
+  wyłącza gdy `Przelewy24Service::isConfigured()` jest `false`) — **ale ma DOKŁADNIE TEN SAM,
+  NIENAPRAWIONY tu rozjazd co offline miało przed tą poprawką**, znaleziony przy code review
+  2026-08-22 na `feature/offline-settlement-default`: `->default(true)` na tym Togglu też nic
+  nie robi (patrz niżej), a Toggle własnym wbudowanym `BooleanStateCast(isNullable: false)`
+  koerentuje brak wiersza na `false` — potwierdzone empirycznie: świeży tenant z realnie
+  skonfigurowanym P24, po zapisie zakładki Checkout, dostaje `isOnlineSettlementEnabled() ===
+  false`, mimo bramki gotowej do użycia. **Nie naprawione w tej gałęzi** (poza mandatem tego
+  zadania) — patrz `.claude/rules/filament-settings-pages.md`.
+- **`checkout.offline_reservation_hold_hours` ma ten sam rozjazd, gorszy skutek.** Pole tekstowe
+  (nie Toggle, więc bez `BooleanStateCast`) po zapisie bez własnego wiersza ląduje jako `null` w
+  bazie; `offlineReservationHoldHours()`: `max(1, min(168, (int) null))` = **`1` godzina**
+  zamiast zamierzonych 48h — rezerwacja "zapłać przy odbiorze" wygasa niemal natychmiast.
+  Również nienaprawione tu.
+- **`checkout.pesel_required` NIE ma tego rozjazdu** — `BooleanStateCast` koerentuje brak
+  wiersza na `false`, co przypadkiem zgadza się z kodowym defaultem (`false`) tej flagi. Brak
+  obserwowalnego skutku, nic do naprawy.
+- **Fail-safe w `availableSettlementMethods()` bez zmian w kodzie.**
+
+**Prawdziwy mechanizm (poprawiony po weryfikacji — pierwsza teoria code review była błędna).**
+Filament v4 `Schema::fill($state)` konsultuje `->default()` na polu WYŁĄCZNIE gdy CAŁY formularz
+wypełniany jest dosłownym `null` (świeża strona "Create", bez rekordu) — patrz
+`vendor/filament/schemas/src/Concerns/HasState.php`, `fill()`/`hydrateDefaultState()`.
+`SystemSettings::mount()` zawsze woła `fill($settingsManager->all())` z PRAWDZIWĄ (nie-null)
+tablicą, gdy tenant ma choć jedno ustawienie w JAKIEJKOLWIEK grupie — więc `->default()` na
+polach tej strony **nigdy nie jest konsultowany**, potwierdzone zrzutem `$this->data['checkout']`
+tuż po mount(): `settlement_offline_enabled` wychodziło `false` mimo `->default(true)` już
+ustawionego. Brakujący klucz hydratuje się do `null`; dla `Toggle` ten `null` jest następnie
+BEZWARUNKOWO koerentowany na `false` przez wbudowany `BooleanStateCast(isNullable: false)`
+(`Toggle::getDefaultStateCasts()`) — zanim jakikolwiek hook (w tym `afterStateHydrated`) zdąży go
+zobaczyć. **Poprawka nie jest `->default(true)`** (nie działa) — jest nią `->afterStateHydrated()`
+sprawdzający SUROWE ustawienie wprost (`app(SettingsManager::class)->get(...)` bez defaultu,
+zwraca `null` tylko gdy naprawdę nie ma żadnego wiersza), i dopiero wtedy wymuszający `true`. Tak
+odróżnia się "brak wiersza" od "tenant świadomie wybrał false", co jest nierozróżnialne w
+momencie, gdy `afterStateHydrated` normalnie by odpalił.
+
+**Strażnik:** `tests/Feature/Support/Settings/SettingsManagerOfflineSettlementDefaultTest.php` —
+organizacja bez JAKIEJKOLWIEK konfiguracji checkoutu, na maszynie bez kredek P24, dostaje `['offline']`
+z `availableSettlementMethods()` (oba przypadki: `equipment_rental` i `time_slot`). Asercja celowo idzie
+przez `availableSettlementMethods()` (skutek widoczny dla klienta), a nie przez wiersz w `settings` —
+nie ma tu żadnego wiersza do sprawdzenia, cały fallback jest w `SettingsManager::get()`. W `Feature/`,
+nie `Unit/`, bo dotyka bazy (`RefreshDatabase` + `Organization::factory()`).
+
+Drugi strażnik, `tests/Feature/Filament/SystemSettingsCheckoutOfflineDefaultTest.php`, pina
+konkretnie mechanizm opisany wyżej — od naprawy 2026-08-22 (feature/checkout-settings-unsaveable,
+patrz `.claude/rules/filament-settings-pages.md` → "RichEditor w grupie z HasGroupedSettings —
+NAPRAWIONE") idzie przez prawdziwy `Livewire::test(SystemSettings::class)->call('saveCheckoutSettings')`,
+nie refleksję. Do tej naprawy `saveCheckoutSettings()` było niewykonalne dla ŻADNEGO tenanta w
+ŻADNYM stanie z niezwiązanego powodu — 4 pola `RichEditor` w tej samej grupie zawsze failowały
+walidację `'string'`, bo `HasGroupedSettings::saveSettingsGroup()` czytało `$this->data[$group]`
+z pominięciem castów Filamenta (RichEditor trzyma tam zawsze surowy dokument JSON Tiptapa, nigdy
+string) — ten test wtedy obchodził tę (wówczas osobną, poważniejszą) usterkę refleksją na
+`persistSettingsGroup()`. Zobacz też `tests/Feature/Filament/SystemSettingsCheckoutTabSaveTest.php`
+— strażnik dla samej naprawy walidacji RichEditor.
+
+Dowód mutacyjny wykonany na obu: po cofnięciu defaultu na `false` w `isOfflineSettlementEnabled()`
+oba przypadki `SettingsManagerOfflineSettlementDefaultTest` czerwienią się na `['online']`; po
+wyłączeniu warunku wewnątrz `afterStateHydrated()` na polu w `SystemSettings.php` (`if (false && ...)`),
+`SystemSettingsCheckoutOfflineDefaultTest` czerwieni się identycznie (asercja post-mount:
+`Got: false`).
+
+---
 
 ### Faza 2 — abstrakcja bramki
 

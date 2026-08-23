@@ -33,6 +33,22 @@ if [ -f "$_CC_TS_FILE" ]; then
     fi
 fi
 
+# --- Architecture ground truth ---
+# Injected on prompts that touch tenant identity, environments or deployment.
+#
+# Fires on QUESTIONS too, deliberately: the failure this guards against was
+# answering "what happens in production when X" by tracing code and reading
+# THIS machine's .env -- producing a confident answer about the wrong
+# deployment model. The repo cannot tell you which model is running; only a
+# measurement can, and the injected block names what has NOT been measured.
+#
+# Runs before the length check: "co na produkcji?" is short and is exactly the
+# kind of prompt that needs this.
+_ARCH_FACTS="${CLAUDE_PROJECT_DIR:-.}/scripts/architecture-facts.sh"
+if [ -x "$_ARCH_FACTS" ] && echo "$PROMPT" | grep -qiE '(tenant|produkcj|prod\b|uat|staging|deploy|wdro|architekt|stack|subdomen|domen|multi-?tenan|provision|horizon|kolejk|queue|middleware|resolve|APP_URL|serwer|maszyn)'; then
+    "$_ARCH_FACTS" --hook 2>/dev/null || true
+fi
+
 # Skip short prompts (yes/no, confirmations, follow-ups)
 if [ "${#PROMPT}" -lt 25 ]; then
     exit 0

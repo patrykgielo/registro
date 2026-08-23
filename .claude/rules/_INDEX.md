@@ -13,6 +13,7 @@ samo gdzie indziej albo zawęź `paths`.
 
 Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigger.
 
+- `architecture-models.md` → `ResolveTenant.php`, `app/Notifications/**`, `app/Jobs/**`, `config/app.php`, `scripts/server/**` — stack współdzielony vs dedykowany; **oba chcą przeciwnego kodu**. Pomiar: `scripts/architecture-facts.sh`
 - `claude-code-config.md` → `.claude/**`, `CLAUDE.md` — konfiguracja CC, znane bugi
 - `ci-cd-troubleshooting.md` → `docker-compose*.yml`, `.github/workflows/**`, `scripts/**` — kroniki incydentów
 - `models.md` → `app/Models/**`

@@ -32,6 +32,17 @@ class CheckoutFlowTest extends TestCase
 
         $this->withoutMiddleware([ThrottleRequests::class]);
 
+        // This suite is P24-only by design (every payload below submits
+        // 'online') — give the machine real-looking credentials so
+        // SettingsManager::isOnlineSettlementEnabled() is true on its own
+        // merit, not by accident of availableSettlementMethods()'s ['online']
+        // fail-safe (which only applies when NEITHER method is available).
+        config([
+            'przelewy24.merchant_id' => 12345,
+            'przelewy24.reports_key' => 'reports-key',
+            'przelewy24.crc' => 'crc-value',
+        ]);
+
         $this->org = Organization::factory()->equipmentRental()->create();
         $this->user = User::factory()->create();
     }
@@ -68,9 +79,9 @@ class CheckoutFlowTest extends TestCase
         return [
             // Customer type
             'customer_type' => 'natural_person',
-            // Settlement method — 'online' is the only method enabled by default
-            // (checkout.settlement_offline_enabled defaults false), matching this
-            // suite's pre-existing P24-only assumptions.
+            // Settlement method — this suite is P24-only by design; setUp() gives
+            // the machine P24 credentials so 'online' is genuinely available (not
+            // relying on availableSettlementMethods()'s ['online'] fail-safe).
             'settlement_method' => 'online',
             // Personal data
             'customer_first_name' => 'Jan',

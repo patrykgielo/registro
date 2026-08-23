@@ -58,6 +58,106 @@ class MySettings extends Page implements HasForms
 4. **Cache:** `Cache::forget("settings:{$group}")` - czyści cache grupy
 5. **Notyfikacja:** Success/error z labela grupy
 
+### CRITICAL: `->default()` na polu tej strony NIE DZIAŁA — nie polegaj na nim
+
+**Problem, zweryfikowany empirycznie (nie hipoteza — pierwsza teoria w code review 2026-08-22
+była błędna, zobacz `payment-settlement-modes.md` → "Faza 1a"):** `Schema::fill($state)`
+konsultuje `->default()` na polu WYŁĄCZNIE gdy CAŁY formularz wypełniany jest dosłownym `null`
+(świeża strona "Create", bez rekordu) — patrz `vendor/filament/schemas/src/Concerns/HasState.php`,
+`fill()`/`hydrateDefaultState()`. `SystemSettings::mount()` zawsze woła
+`fill($settingsManager->all())` z PRAWDZIWĄ (nie-null) tablicą, gdy tenant ma choć jedno
+ustawienie w JAKIEJKOLWIEK grupie — więc `->default()` na polach tej strony **nigdy nie jest
+konsultowany**. Klucz nieobecny w `all()` hydratuje się do `null`. Dla `Toggle` ten `null` jest
+następnie BEZWARUNKOWO koerentowany na `false` przez wbudowany `BooleanStateCast(isNullable:
+false)` (`Toggle::getDefaultStateCasts()`) — PRZED jakimkolwiek hookiem, w tym
+`afterStateHydrated`. Dla `TextInput` numeryczny brak wiersza zostaje `null` i po zapisie ląduje
+w bazie jako `null` (np. `checkout.offline_reservation_hold_hours` → `(int) null` = `0` → po
+`max(1, ...)` = **`1`** zamiast zamierzonych 48h). `persistSettingsGroup()` zapisuje WSZYSTKIE
+klucze grupy, nie tylko zmieniony — więc zapis JEDNEGO niezwiązanego pola cicho utrwala złą
+wartość dla całej reszty, dla KAŻDEGO tenanta bez własnego wiersza.
+
+**Prawdziwa poprawka:** `->afterStateHydrated()` na polu, sprawdzający SUROWE ustawienie wprost
+przez `app(SettingsManager::class)->get($key)` **bez defaultu** (zwraca `null` tylko gdy naprawdę
+nie ma żadnego wiersza — tenant ani global) i dopiero wtedy wymuszający właściwą wartość przez
+`$component->state(...)`. Nie sprawdzaj `$state === null` wewnątrz hooka — dla `Toggle` state już
+dotarł jako coerced `false`, nie `null` (patrz wyżej); trzeba pytać `SettingsManager` wprost, PRZED
+tym, jak cast zdąży zatrzeć różnicę między "brak wiersza" a "tenant świadomie wybrał false/0".
+Wzór: `checkout.settlement_offline_enabled` w `SystemSettings.php` (naprawione
+`feature/offline-settlement-default`, 2026-08-22). **Nienaprawione tam samo (poza mandatem tej
+gałęzi, sprawdź przy najbliższej okazji):** `settlement_online_enabled` (ten sam mechanizm,
+potwierdzone empirycznie: świeży tenant z realnie skonfigurowanym P24 dostaje
+`isOnlineSettlementEnabled() === false` po dowolnym zapisie tej zakładki) i
+`offline_reservation_hold_hours` (ląduje jako `1h` zamiast `48h`).
+
+**Test-strażnik musi przejść przez prawdziwy round-trip** (`Livewire::test(SystemSettings::class)`,
+mount+fill realne, `->call('saveXxxSettings')`), nie tylko sprawdzić `SettingsManager`
+bezpośrednio — sama asercja na `SettingsManager` nie widzi tej klasy błędu. Od naprawy 2026-08-22
+(patrz sekcja niżej) real `->call()` jest wykonalne nawet z polami `RichEditor` w grupie — nie ma
+już powodu wywoływać `persistSettingsGroup()` refleksją. Wzór:
+`tests/Feature/Filament/SystemSettingsCheckoutTabSaveTest.php`,
+`tests/Feature/Filament/SystemSettingsCheckoutOfflineDefaultTest.php`.
+
+**Tenant w teście, który używa `Livewire::test()` na stronie:** `Filament::setTenant($org)`,
+NIE `$this->app['request']->attributes->set('tenant', $org)`. Zweryfikowane empirycznie
+2026-08-22: `Livewire::test(SomePage::class)` (pełnostronicowy komponent) dispatchuje realny
+sub-request przez kernel HTTP, co podmienia singleton `request` w kontenerze na NOWĄ instancję
+`Request` — każdy atrybut ustawiony na request PRZED tym wywołaniem znika, zanim
+`TenantFeature::currentTenant()`'s fallback (`app('request')->attributes->get('tenant')`) w ogóle
+zdąży zapytać. Ten panel (`AdminPanelProvider`) nie ma skonfigurowanego `->tenant()`, więc gałąź 1
+(`filament()->getTenant()`) też domyślnie zwraca `null` — bez `Filament::setTenant()` KAŻDY zapis
+przez realny `->call()` ląduje po cichu w wierszu globalnym (`organization_id = NULL`), nie
+wiersz tenanta, a test i tak "przechodzi" (asercje czytają ten sam globalny wiersz). Format
+request-attribute nadal działa dla testów, które NIE wołają `Livewire::test()` na pełnostronicowym
+komponencie (np. bezpośrednie wywołania statyczne na klasie Resource) — `RentalAvailabilityGuard
+Test`, `ServiceResourceTenantLabelTest`. `Filament::setTenant()` zapisuje do `FilamentManager`,
+zarejestrowanego przez `$this->app->scoped('filament', ...)` — ten scope przeżywa podmianę
+instancji requestu (czyści go dopiero `forgetScopedInstances()`/koniec requestu), więc
+`filament()->getTenant()` widzi go zarówno przed, jak i po `Livewire::test()`.
+
+### RichEditor w grupie z `HasGroupedSettings` — NAPRAWIONE 2026-08-22
+
+**Był problem:** `HasGroupedSettings::saveSettingsGroup()` walidowało `$this->data[$group]`
+BEZPOŚREDNIO, z pominięciem castów Filamenta (deliberatnie — patrz sekcja "Problem z
+`$this->form->getState()`" wyżej). Dla pól `RichEditor` internal `$this->data[...]` jest ZAWSZE
+surowym dokumentem JSON Tiptapa (`RichEditorStateCast::set()` zawsze zwraca `getDocument()`),
+nigdy stringiem HTML — więc reguła `['nullable', 'string', ...]` waliła walidację przy KAŻDYM
+zapisie tej grupy, dla KAŻDEGO tenanta, nawet nietkniętym polu. Dotyczyło `checkout` (4 pola
+RichEditor) — `saveCheckoutSettings()` nigdy się nie udawał, dla żadnego tenanta, w żadnym stanie.
+
+**Naprawa:** `HasGroupedSettings::getGroupStateFromComponents($group)` zastępuje
+`$this->data[$group] ?? []` jako źródło danych do walidacji. Idzie po
+`$this->form->getFlatComponents(withHidden: true)`, filtruje komponenty których absolutny
+`getStatePath()` zaczyna się od `data.{$group}.` i nie ma dalszej kropki w reszcie ścieżki (czyli
+pomija pola zagnieżdżone wewnątrz Repeatera/FileUploada — te są zwinięte we własny `getState()`
+rodzica), po czym woła `$component->getState()` na KAŻDYM z osobna.
+
+**Dlaczego to bezpieczne — sprawdzone w vendorze:** `Component::getState()`
+(`vendor/filament/schemas/src/Components/Concerns/HasState.php:934`, trait `Filament\Schemas\
+Components\Concerns\HasState` — UWAGA, inna klasa niż walidujący `Filament\Schemas\Concerns\
+HasState::getState()` na poziomie Schema/kontenera, patrz "Problem z `$this->form->getState()`")
+robi tylko: `getRawState()` (czyta surowy stan Livewire tego JEDNEGO pola) + iteruje
+`getStateCasts()`. Nie waliduje, nie dotyka żadnego innego pola. Dla `RichEditor`:
+`RichEditorStateCast::get()` (`vendor/filament/forms/src/Components/RichEditor/StateCasts/
+RichEditorStateCast.php`) renderuje dokument Tiptap do HTML przez `$editor->getHtml()`
+(`isJson()` zwraca `false` tu — SystemSettings nie jest Eloquent-backed, `getContentAttribute()`
+zwraca `null`). Dla `FileUpload`: `FileUploadStateCast::get()` (`vendor/filament/schemas/src/
+Components/StateCasts/FileUploadStateCast.php`) wyciąga string ścieżki z tablicy indeksowanej
+UUID (`Arr::first($state)`) — dla pól niewielokrotnych to ta sama transformacja, którą
+`normalizeFileUploadValue()` w `persistSettingsGroup()` robiła ręcznie; ten kod zostaje
+nietknięty (nadal potrzebny dla Repeatera, który nie ma własnego `StateCast`, więc trafia tam
+nadal jako surowa tablica UUID-kluczowana).
+
+**Zweryfikowany dowód mutacyjny:** cofnięcie `getGroupStateFromComponents()` z powrotem na
+`$this->data[$group] ?? []` daje dosłownie: `Component has errors: "data.checkout.terms_label",
+"data.checkout.rodo_label", "data.checkout.withdrawal_label", "data.checkout.deposit_policy_note"`
+w `SystemSettingsCheckoutTabSaveTest`.
+
+**DesignHub (druga strona na tym traicie) — bez regresji, sprawdzone testem.** Nie ma pól
+RichEditor, więc nigdy nie było zablokowane tym bugiem, ale zmiana wpływa na WSZYSTKIE grupy na
+obu stronach — `saveBrandIdentitySettings()` łączy DWIE grupy (`appearance` + `design`) z pól w
+JEDNEJ Section, więc filtr po prefiksie `data.{group}.` (nie po granicy Section) musiał zostać
+zweryfikowany osobno. Zobacz `tests/Feature/Filament/DesignHubSaveRegressionTest.php`.
+
 ### Dodawanie Nowego Taba (3 kroki)
 
 1. **Dodaj metodę `xxxTab()`** zwracającą `Tabs\Tab` z przyciskiem save:

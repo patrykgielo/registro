@@ -492,6 +492,38 @@ Best regards, The {{app_name}} Team',
                 'active' => true,
             ],
 
+            // 19. Rental Cancelled - Customer Notification (Polish)
+            //
+            // Missing entirely until 2026-08-23 — not in this seeder, not in any
+            // migration — while RentalCancelledNotification was fully wired
+            // (Rental.php dispatches RentalCancelled -> SendRentalCancelledNotification
+            // -> this template). Every rental cancellation threw "template not found"
+            // on every environment, including a fresh install. Variables below match
+            // that notification's payload exactly; a key it sends but the template
+            // omits is merely unused, but a key the TEMPLATE names and the payload
+            // omits reaches the customer as a literal "{{token}}".
+            [
+                'key' => TemplateKey::RENTAL_CANCELLED->value,
+                'language' => 'pl',
+                'subject' => 'Wypożyczenie anulowane - {{service_name}}',
+                'html_body' => '<h1>Wypożyczenie anulowane</h1><p>Cześć {{customer_name}},</p><p>Twoje wypożyczenie <strong>{{service_name}}</strong> zostało anulowane.</p><p><strong>Termin:</strong> {{start_date}} - {{end_date}}</p><p><strong>Powód:</strong> {{reason}}</p><p>Jeśli masz pytania, skontaktuj się z nami.</p><p>Pozdrawiamy,<br>Zespół {{app_name}}</p>',
+                'text_body' => 'Wypożyczenie anulowane. Cześć {{customer_name}}, Twoje wypożyczenie {{service_name}} zostało anulowane. Termin: {{start_date}} - {{end_date}}. Powód: {{reason}}. Pozdrawiamy, Zespół {{app_name}}',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'service_name', 'start_date', 'end_date', 'reason', 'app_name'],
+                'active' => true,
+            ],
+            // 19. Rental Cancelled - Customer Notification (English)
+            [
+                'key' => TemplateKey::RENTAL_CANCELLED->value,
+                'language' => 'en',
+                'subject' => 'Rental Cancelled - {{service_name}}',
+                'html_body' => '<h1>Rental Cancelled</h1><p>Hello {{customer_name}},</p><p>Your rental of <strong>{{service_name}}</strong> has been cancelled.</p><p><strong>Period:</strong> {{start_date}} - {{end_date}}</p><p><strong>Reason:</strong> {{reason}}</p><p>If you have any questions, please contact us.</p><p>Best regards,<br>The {{app_name}} Team</p>',
+                'text_body' => 'Rental Cancelled. Hello {{customer_name}}, Your rental of {{service_name}} has been cancelled. Period: {{start_date}} - {{end_date}}. Reason: {{reason}}. Best regards, The {{app_name}} Team',
+                'blade_path' => null,
+                'variables' => ['customer_name', 'service_name', 'start_date', 'end_date', 'reason', 'app_name'],
+                'active' => true,
+            ],
+
             // 20. Order Handed Over - Customer Notification (Polish)
             [
                 'key' => TemplateKey::ORDER_HANDED_OVER->value,

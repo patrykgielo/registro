@@ -58,9 +58,62 @@ wildcardem między subdomenami — to klasa VULN-003. Strażnik:
 ## `url.intended` jest współdzielony z Filamentem
 
 Ten sam klucz czyta panel (`Filament\Auth\Http\Responses\LoginResponse` → `redirect()->intended()`).
-Każda **nieklientowska** gałąź `LoginController::authenticated()` musi wołać
+Każda **nieklientowska** gałąź `PostAuthDestination::for()` musi wołać
 `IntendedDestination::discard()`, inaczej admin wyląduje w losowym miejscu. Kto pisze do tego
 klucza, czyści **oba** — razem z `url.intended_at`.
+
+## Cel po uwierzytelnieniu jest JEDEN — `PostAuthDestination`
+
+Logowanie i **reset hasła** kończą w tym samym stanie: `ResetsPasswords::resetPassword()` woła
+`guard()->login()`. Rozjechały się mimo to — `ResetPasswordController` miał
+`$redirectTo = '/home'`, a **nic nie jest routowane pod `/home`** (trasa o nazwie `home` to `/`).
+Zmierzone end-to-end: hasło ustawiane poprawnie, potem 404 na własnej subdomenie tenanta, bez
+drogi powrotnej do panelu. Zero sygnału — dla użytkownika reset po prostu „nie działa".
+
+Nowy przepływ kończący się zalogowanym użytkownikiem → `PostAuthDestination::for()`, nigdy własny
+`$redirectTo`. **Wyjątek: `ConfirmPasswordController`** — to brama w trakcie sesji, rozwiązywana
+przez `redirect()->intended()`; `PostAuthDestination` kasuje `url.intended` z założenia, więc
+zabrałoby powrót do strony, która wymusiła potwierdzenie. Tam wyłącznie żywy fallback
+(`route('home')`).
+
+`VerificationController` ma ten sam martwy `/home`, ale jego trasy **nie są zarejestrowane**
+(`MustVerifyEmail` zakomentowane w `User`) — martwy kod, celowo nietknięty.
+
+## Powiadomienie o resecie NIE MOŻE stać się `ShouldQueue`
+
+Link w mailu jest poprawny (subdomena tenanta) **tylko dlatego**, że Laravelowe
+`Illuminate\Auth\Notifications\ResetPassword` nie jest kolejkowane — renderuje się w żądaniu, gdzie
+`ResolveTenant` już wywołał `URL::forceRootUrl()`. Dopisanie `implements ShouldQueue` wygląda na
+czystą optymalizację, a przenosi renderowanie na workera bez kontekstu żądania: `url()` spada wtedy
+na `APP_URL`, czyli **domenę główną, gdzie `/admin/login` zwraca 404**.
+
+Zestaw testów tego nie złapie sam z siebie — `.env.testing` ma `QUEUE_CONNECTION=sync`, więc
+kolejkowane powiadomienie i tak wykona się w żądaniu. Strażnik:
+`PasswordResetRedirectTest::test_the_emailed_link_points_at_the_tenant_subdomain`.
+
+## Kolejkowane powiadomienie NIE MOŻE sięgać po kontekst otoczenia
+
+`PasswordResetNotification` było martwe do 2026-08-23 (nic nie rzucało `PasswordResetRequested`,
+`User` nie nadpisywał `sendPasswordResetNotification()`). Podpięte — ale **wszystkie** wartości
+zależne od kontekstu dostaje jako argumenty konstruktora, bo jest `ShouldQueue`:
+
+| wartość | rozwiązywana | co się psuje na workerze |
+|---|---|---|
+| `resetUrl` | listener, w żądaniu | `route()` spada na `APP_URL` → domena główna, `/admin/login` = 404 |
+| `appName` | listener, w żądaniu | `currentTenant()` = `null` → nazwa platformy zamiast wypożyczalni |
+
+Listener `PasswordResetRequested` jest **synchroniczny** i to jedyny powód, dla którego działa —
+biegnie wciąż w żądaniu, które poprosiło o reset.
+
+**Brak zmiennej w payloadzie nie jest błędem, tylko treścią maila.**
+`EmailTemplate::substitutePlaceholders()` zostawia nieznane `{{tokeny}}` dosłownie; martwy kod
+przekazywał trzy zmienne, a szablon deklaruje cztery. Strażnik asertuje na wyrenderowanej treści
+z `email_sends`: `PasswordResetEmailTest::test_no_placeholder_survives_rendering`.
+
+Nadal niedziałające i **zastane**: własny szablon tenanta nie stosuje się do wysyłek z kolejki —
+`EmailTemplate::resolveActive()` też czyta tenanta z otoczenia (jego docblock nazywa to przyjętym
+ograniczeniem dla wszystkich powiadomień). Szczegóły:
+`app/docs/features/password-reset-flow.md`.
 
 ## Bind do nieistniejącego interfejsu NIE rzuca błędu
 

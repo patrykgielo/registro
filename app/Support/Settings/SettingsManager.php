@@ -517,11 +517,15 @@ class SettingsManager
 
     /**
      * Whether "pay at pickup" (cash/bank transfer, settled in person) is
-     * offered. Default false — a tenant must explicitly opt in.
+     * offered. Default true, unconditionally — including for organizations
+     * with no `checkout.settlement_offline_enabled` row at all (new and
+     * already-existing tenants alike). A tenant must explicitly opt OUT via
+     * SystemSettings' checkout tab, not opt in. See
+     * app/docs/features/payment-settlement-modes.md, "Faza 1a".
      */
     public function isOfflineSettlementEnabled(): bool
     {
-        return (bool) $this->get('checkout.settlement_offline_enabled', false);
+        return (bool) $this->get('checkout.settlement_offline_enabled', true);
     }
 
     /**
