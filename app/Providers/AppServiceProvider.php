@@ -334,8 +334,30 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // Password Reset
+        //
+        // This listener is synchronous, so it still runs inside the request that
+        // asked for the reset — the ONLY place where the tenant and the request
+        // host are resolvable. Both values are computed here and handed to the
+        // notification, which is queued and must never look them up itself:
+        //
+        //   - route(..., absolute: true) is correct here because ResolveTenant
+        //     has already called URL::forceRootUrl() for this host. On a worker
+        //     the same call falls back to APP_URL — the ROOT domain on today's
+        //     shared stack, where /admin/login is a 404 (measured).
+        //   - appName() resolves through TenantFeature::currentTenant(), which is
+        //     null on a worker, so reading it there would put the platform's name
+        //     in a whitelabel tenant's e-mail.
         Event::listen(PasswordResetRequested::class, function (PasswordResetRequested $event) {
-            $event->user->notify(new PasswordResetNotification($event->user, $event->token));
+            $event->user->notify(new PasswordResetNotification(
+                user: $event->user,
+                token: $event->token,
+                resetUrl: route('password.reset', [
+                    'token' => $event->token,
+                    'email' => $event->user->email,
+                ], absolute: true),
+                appName: app(SettingsManager::class)->appName(),
+                expiresInMinutes: (int) config('auth.passwords.users.expire', 60),
+            ));
         });
 
         // Admin Created User (password setup email)

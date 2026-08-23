@@ -58,28 +58,57 @@ kolejkowane powiadomienie i tak wykona się w żądaniu. To ślepa plamka strukt
 w pokryciu. Strażnik pinuje host jawnie:
 `PasswordResetRedirectTest::test_the_emailed_link_points_at_the_tenant_subdomain`.
 
-## Znane, NIENAPRAWIONE: mail resetu omija cały system mailowy tenanta
+## Mail resetu przechodzi przez system mailowy tenanta (naprawione 2026-08-23)
 
-`App\Notifications\PasswordResetNotification` istnieje, jest napisane, używa `EmailService`
-i szablonu `TemplateKey::PASSWORD_RESET` — i **nigdy nie jest wysyłane**:
+Do 2026-08-23 `App\Notifications\PasswordResetNotification` istniało, używało `EmailService`
+i szablonu `TemplateKey::PASSWORD_RESET` — i **nigdy nie było wysyłane**: `User` nie nadpisywał
+`sendPasswordResetNotification()`, nikt nie rzucał `PasswordResetRequested`, brak
+`toMailUsing()`/`createUrlUsing()`. Wychodziło standardowe powiadomienie Laravela, temat
+**„Reset Password Notification"**, po angielsku, kanałem `mail` — z pominięciem `EmailService`
+(brak wiersza w `email_sends`, brak sprawdzenia tłumień, brak ponowień) i `EmailTemplate`
+(brak brandingu). Tenant mógł edytować w panelu szablon „Reset hasła", który nigdy nie poszedł.
 
-- `User` nie nadpisuje `sendPasswordResetNotification()`
-- nikt nie rzuca `PasswordResetRequested`, więc listener w `AppServiceProvider:337` nigdy nie biegnie
-- brak `ResetPassword::toMailUsing()` / `createUrlUsing()`
+### Jak jest podpięte
 
-Wychodzi standardowe powiadomienie Laravela: temat **„Reset Password Notification"**, po angielsku
-(`lang/pl` nie tłumaczy tego stringa), kanałem `mail` — czyli z pominięciem `EmailService`
-(brak logowania w `email_sends`, brak deduplikacji i ponowień), z pominięciem `EmailTemplate`
-(brak brandingu tenanta) i z pominięciem ustawień SMTP tenanta.
+```
+User::sendPasswordResetNotification()   → PasswordResetRequested::dispatch()
+  listener w AppServiceProvider          → SYNCHRONICZNIE, wciąż w żądaniu
+    rozwiązuje resetUrl + appName        → jedyne miejsce, gdzie tenant i host istnieją
+      PasswordResetNotification          → ShouldQueue, dostaje je jako dane
+        EmailService                     → szablon, email_sends, tłumienia, ponowienia
+```
 
-Skutek produktowy: tenant widzi w panelu edytowalny szablon „Reset hasła", zmienia go — i nic się
-nie dzieje. Przy obietnicy whitelabelu to jest wada, nie kosmetyka: klient wypożyczalni dostaje
-angielskiego maila z platformy, a nie polskiego z firmy, u której wypożycza.
+**Powiadomienie nie sięga po nic z otoczenia** i to jest cała jego konstrukcja. Jest kolejkowane,
+a worker nie ma żądania, tenanta ani sesji — dwie konkretne awarie z tego wynikają:
 
-**Naprawa nie jest jednolinijkowa** i celowo nie została zrobiona razem z 404. Podpięcie samego
-listenera przełączyłoby wysyłkę na ścieżkę, która nigdy nie biegła na produkcji — trzeba wtedy
-zweryfikować budowanie linku w tamtym powiadomieniu (jest `ShouldQueue`, patrz pułapka wyżej),
-treść szablonu w obu językach i zachowanie przy niedostępnym SMTP tenanta.
+- `route()`/`url()` na workerze spadają na `APP_URL`, bo `URL::forceRootUrl()` woła `ResolveTenant`
+  wyłącznie w żądaniu. Na dzisiejszym stacku współdzielonym `APP_URL` to domena główna, gdzie
+  `/admin/login` zwraca **404**.
+- `SettingsManager::appName()` idzie przez `TenantFeature::currentTenant()`, na workerze `null` —
+  więc mail niósłby nazwę platformy zamiast nazwy wypożyczalni.
+
+### Pułapka, którą to odsłoniło: niekompletny payload
+
+Martwy kod przekazywał `user_name`, `reset_url`, `token`, a szablon deklaruje
+`user_name`, `app_name`, `reset_url`, `expires_in`. `EmailTemplate::substitutePlaceholders()`
+zostawia nieznane `{{tokeny}}` **dosłownie**, więc samo podpięcie listenera wysłałoby klientowi
+maila z napisem `{{app_name}}`. Brak zmiennej nie jest błędem — jest treścią.
+
+Strażnik: `PasswordResetEmailTest::test_no_placeholder_survives_rendering` asertuje na
+wyrenderowanym temacie i treści z `email_sends`, nie na fakcie wysyłki. Dowiedzione:
+przywrócenie starego payloadu czerwieni dokładnie ten test i test nazwy tenanta, resztę zostawia
+zieloną.
+
+### Co nadal NIE działa — ograniczenie zastane, nie wprowadzone tutaj
+
+**Własne nadpisanie szablonu przez tenanta nadal się nie stosuje.**
+`EmailTemplate::resolveActive()` ustala tenanta z kontekstu otoczenia, więc na workerze widzi
+tylko szablony globalne — jego własny docblock nazywa to świadomie przyjętym ograniczeniem dla
+**każdego** kolejkowanego powiadomienia, nie tylko tego. Mail dostaje więc szablon globalny,
+z podstawioną nazwą i adresem tenanta.
+
+Rozwiązanie wymaga przenoszenia kontekstu tenanta do kolejki — zmiana systemowa, dotykająca
+wszystkich powiadomień, nie tej jednej ścieżki.
 
 ## Ścieżka operatorska, gdy wszystko zawiedzie
 

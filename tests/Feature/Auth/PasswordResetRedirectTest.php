@@ -6,7 +6,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\Organization;
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
+use App\Notifications\PasswordResetNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Notification;
@@ -65,8 +65,8 @@ class PasswordResetRedirectTest extends TestCase
             ->assertStatus(302);
 
         $token = null;
-        Notification::assertSentTo($user, ResetPassword::class,
-            function (ResetPassword $notification) use (&$token) {
+        Notification::assertSentTo($user, PasswordResetNotification::class,
+            function (PasswordResetNotification $notification) use (&$token) {
                 $token = $notification->token;
 
                 return true;
@@ -146,12 +146,15 @@ class PasswordResetRedirectTest extends TestCase
 
     /**
      * Pins the host of the e-mailed link, which was wrongly reported as broken
-     * before it was measured. It is correct today only because Laravel's
-     * ResetPassword notification is NOT queued, so it renders inside the request
-     * where ResolveTenant has already called URL::forceRootUrl(). Marking it
-     * ShouldQueue — a one-word change that looks like a pure optimisation —
-     * moves rendering to a worker with no request context and silently drops the
-     * link back to APP_URL, i.e. the root domain, where /admin/login is a 404.
+     * before it was measured.
+     *
+     * The mechanism keeping it correct changed, the property did not. It used to
+     * hold because Laravel's stock ResetPassword is not queued and rendered
+     * inside the request; now PasswordResetNotification IS queued, and the URL is
+     * instead computed by the PasswordResetRequested listener — still inside the
+     * request — and handed in. Either way the failure mode is the same: build
+     * this URL on a worker and it falls back to APP_URL, the root domain on
+     * today's shared stack, where /admin/login is a 404.
      */
     public function test_the_emailed_link_points_at_the_tenant_subdomain(): void
     {
@@ -164,11 +167,12 @@ class PasswordResetRedirectTest extends TestCase
 
         $this->post(self::TENANT_HOST.'/password/email', ['email' => $user->email]);
 
-        Notification::assertSentTo($user, ResetPassword::class,
-            function (ResetPassword $notification) use ($user) {
-                $url = $notification->toMail($user)->actionUrl;
-
-                $this->assertStringStartsWith(self::TENANT_HOST.'/password/reset/', (string) $url);
+        Notification::assertSentTo($user, PasswordResetNotification::class,
+            function (PasswordResetNotification $notification) {
+                $this->assertStringStartsWith(
+                    self::TENANT_HOST.'/password/reset/',
+                    $notification->resetUrl
+                );
 
                 return true;
             });
