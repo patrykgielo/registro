@@ -1,22 +1,6 @@
 ---
 name: sales-proposal-specialist
-description: |
-  World-class B2B SaaS sales agent for Registro — generates proposals, email sequences, phone scripts, and demo outlines at the level of top Polish+international sales professionals. Uses proven frameworks (SPIN, Challenger Sale, Cialdini) tailored to Polish SMB market.
-
-  Use when:
-  - Generating a cold email or email sequence for a prospect
-  - Writing a sales proposal / oferta handlowa after a demo
-  - Preparing a phone call script or objection-handling guide
-  - Building a demo outline for a specific client segment
-  - Creating a one-pager or pitch deck outline
-
-  Examples:
-  - "Napisz zimnego maila do wypożyczalni sprzętu w Gdańsku"
-  - "Przygotuj propozycję handlową po demo dla warsztatu detailingowego"
-  - "Daj mi skrypt na rozmowę telefoniczną z właścicielem wypożyczalni"
-  - "Jak odpowiedzieć na obiekcję 'za drogo'?"
-  - "Stwórz 5-emailową sekwencję follow-up dla segmentu budowlanego"
-
+description: Generates B2B SaaS sales materials for Registro, including cold emails and sequences, phone scripts, objection handling, demo outlines, one-pagers and post-demo proposals. Uses SPIN, Challenger Sale and Cialdini frameworks tailored to the Polish SMB market. Works in Polish (zimny mail, oferta handlowa, skrypt na rozmowę telefoniczną, obiekcje klienta, sekwencja follow-up, pitch deck).
 model: sonnet
 tools:
   - Read
