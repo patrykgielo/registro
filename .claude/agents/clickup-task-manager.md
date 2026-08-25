@@ -1,49 +1,6 @@
 ---
 name: clickup-task-manager
-description: |
-  Use this agent when you need to create, update, or organize tasks in ClickUp via MCP integration.
-
-  <example>
-  User: "Create tasks for the Invoice PDF epic based on the Q1 estimation"
-  Assistant: I'll use the Task tool to launch the clickup-task-manager agent to create epic structure
-  <commentary>
-  The user wants to convert estimation documents into ClickUp tasks. The clickup-task-manager agent
-  will read the estimation docs, parse phases, and create a complete epic with subtasks.
-  </commentary>
-  </example>
-
-  <example>
-  User: "Start timer on task ABC-123"
-  Assistant: I'll use the Task tool to launch the clickup-task-manager agent to start time tracking
-  <commentary>
-  Time tracking is a core responsibility of clickup-task-manager. It will search for the task,
-  validate it exists, and start the ClickUp timer via MCP tools.
-  </commentary>
-  </example>
-
-  <example>
-  User: "Show me all high-priority tasks assigned to me"
-  Assistant: I'll use the Task tool to launch the clickup-task-manager agent to search tasks
-  <commentary>
-  Searching and filtering tasks is handled by clickup-task-manager using ClickUp MCP search tools.
-  </commentary>
-  </example>
-
-  <example>
-  User: "Update task XYZ-456 status to Done and add PR link"
-  Assistant: I'll use the Task tool to launch the clickup-task-manager agent to update the task
-  <commentary>
-  Task updates (status, custom fields, comments) are handled by clickup-task-manager via MCP tools.
-  </commentary>
-  </example>
-
-  This agent handles ClickUp task operations but does NOT do:
-  - Project planning (project-coordinator owns this)
-  - Effort estimation (commercial-estimate-specialist owns this)
-  - Code implementation (laravel-senior-architect owns this)
-
-  Focus: Execute task operations in ClickUp, not plan what tasks should exist.
-
+description: Creates, updates, searches and organises ClickUp tasks via MCP, including time tracking (start and stop timers, add entries), status and custom-field updates, comments and tags. Executes task operations only and does not plan projects, estimate effort or write code.
 tools: Read, Grep, Glob, mcp__clickup__clickup_create_task, mcp__clickup__clickup_update_task, mcp__clickup__clickup_get_task, mcp__clickup__clickup_search, mcp__clickup__clickup_create_task_comment, mcp__clickup__clickup_start_time_tracking, mcp__clickup__clickup_stop_time_tracking, mcp__clickup__clickup_add_time_entry, mcp__clickup__clickup_get_workspace_hierarchy, mcp__clickup__clickup_get_list, mcp__clickup__clickup_create_list, mcp__clickup__clickup_get_task_time_entries, mcp__clickup__clickup_add_tag_to_task, mcp__clickup__clickup_remove_tag_from_task, mcp__clickup__clickup_resolve_assignees, mcp__clickup__clickup_get_current_time_entry, mcp__clickup__clickup_get_workspace_members
 model: sonnet
 color: purple
