@@ -9,6 +9,7 @@ use Filament\Forms;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Unique;
 
 class LocationForm
 {
@@ -33,7 +34,19 @@ class LocationForm
                             ->label('Slug (URL)')
                             ->required()
                             ->maxLength(255)
-                            ->unique(ignoreRecord: true)
+                            // `locations` has UNIQUE(organization_id, slug), not a global unique
+                            // on slug alone — the rule has to match. `-1` never matches a real
+                            // organization_id, so a null tenant (should not happen inside this
+                            // tenant-scoped panel, but the fallback must not throw or silently
+                            // wave through same-tenant duplicates) makes the check a no-op; the
+                            // DB constraint is still the real backstop in that case.
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: fn (Unique $rule) => $rule->where(
+                                    'organization_id',
+                                    TenantFeature::currentTenant()?->id ?? -1
+                                ),
+                            )
                             ->helperText('Automatycznie generowany z nazwy'),
 
                         Forms\Components\TextInput::make('code')
