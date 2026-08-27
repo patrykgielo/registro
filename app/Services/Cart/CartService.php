@@ -97,8 +97,20 @@ class CartService
             // locking reads.
             $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true);
 
-            if ($quantity > $available) {
-                throw RentalUnavailableException::forItem($service->name, $quantity, $available, $start, $end);
+            // getAvailableQuantity() only sees committed Rentals/OrderItems — it
+            // is blind to sibling CartItems already sitting in THIS cart for
+            // the same service (kontrakt-dostepnosci.md Zasada 7). Without
+            // aggregating them, a user can add the same equipment to their own
+            // cart repeatedly and oversell themselves (ClickUp 86cb93tfw).
+            $existingDemand = (int) CartItem::where('cart_id', $cart->id)
+                ->where('service_id', $service->id)
+                ->overlappingDates($start, $end)
+                ->sum('quantity');
+
+            $totalDemand = $existingDemand + $quantity;
+
+            if ($totalDemand > $available) {
+                throw RentalUnavailableException::forItem($service->name, $totalDemand, $available, $start, $end);
             }
 
             $rentalDays = (int) $start->diffInDays($end) + 1;
@@ -167,7 +179,10 @@ class CartService
 
             // Deterministic lock order (by service_id) across concurrent checkouts
             // avoids lock-ordering deadlocks when a cart has multiple items.
-            $items = $cart->items()->orderBy('service_id')->get();
+            // Secondary `orderBy('id')` makes the sibling-demand aggregation
+            // below (Zasada 7) deterministic for multiple items of the same
+            // service too, instead of relying on incidental DB row order.
+            $items = $cart->items()->orderBy('service_id')->orderBy('id')->get();
 
             if ($items->isEmpty()) {
                 throw CartNotActiveException::make('Koszyk jest pusty.');
@@ -180,8 +195,26 @@ class CartService
             // the whole transaction rolls back together either way.
             $unavailableItems = [];
 
+            // getAvailableQuantity() only sees committed Rentals/OrderItems — it
+            // has no idea what earlier iterations of THIS loop already claimed
+            // (kontrakt-dostepnosci.md Zasada 7). Without aggregating sibling
+            // demand, three 1-unit CartItems for the same quantity_total=1
+            // service each see the same unclaimed unit and all pass (ClickUp
+            // 86cb93tfw). Keyed by service_id, keeps only the start/end/quantity
+            // of items ALREADY ACCEPTED in this loop — a rejected item's own
+            // demand must not poison a later, non-overlapping item's count (see
+            // test_convert_to_order_does_not_over_reject_when_only_middle_item_
+            // bridges_two_non_overlapping_windows in CartServiceTest: three
+            // items A/B/C where only B overlaps both A and C — summing ALL
+            // same-service items regardless of overlap would wrongly reject A
+            // and C too).
+            $acceptedByService = [];
+
             foreach ($items as $item) {
                 $service = Service::lockForUpdate()->findOrFail($item->service_id);
+
+                $itemStart = Carbon::parse($item->start_date);
+                $itemEnd = Carbon::parse($item->end_date);
 
                 // forUpdate: true — see RentalAvailabilityService::getAvailableQuantity()
                 // docblock. Locking the Service row alone is NOT sufficient: under
@@ -191,19 +224,31 @@ class CartService
                 // of rentals/order_items is guaranteed to see latest-committed data.
                 $available = $this->availability->getAvailableQuantity(
                     $service,
-                    Carbon::parse($item->start_date),
-                    Carbon::parse($item->end_date),
+                    $itemStart,
+                    $itemEnd,
                     forUpdate: true
                 );
 
-                if ($item->quantity > $available) {
+                $siblingDemand = collect($acceptedByService[$item->service_id] ?? [])
+                    ->filter(fn (array $accepted): bool => $itemStart->lte($accepted['end']) && $itemEnd->gte($accepted['start']))
+                    ->sum('quantity');
+
+                $totalDemand = $siblingDemand + $item->quantity;
+
+                if ($totalDemand > $available) {
                     $unavailableItems[] = RentalUnavailableException::describeItem(
                         $service->name,
-                        $item->quantity,
+                        $totalDemand,
                         $available,
-                        Carbon::parse($item->start_date),
-                        Carbon::parse($item->end_date)
+                        $itemStart,
+                        $itemEnd
                     );
+                } else {
+                    $acceptedByService[$item->service_id][] = [
+                        'start' => $itemStart,
+                        'end' => $itemEnd,
+                        'quantity' => $item->quantity,
+                    ];
                 }
 
                 // Reuse the locked, fresh instance below — avoids a second N+1 query per item.
@@ -454,7 +499,7 @@ class CartService
             throw CartItemOwnershipException::make();
         }
 
-        return DB::transaction(function () use ($item, $quantity): CartItem {
+        return DB::transaction(function () use ($cart, $item, $quantity): CartItem {
             $service = Service::lockForUpdate()->findOrFail($item->service_id);
 
             $start = Carbon::parse($item->start_date);
@@ -463,8 +508,20 @@ class CartService
             // forUpdate: true — see RentalAvailabilityService::getAvailableQuantity() docblock.
             $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true);
 
-            if ($quantity > $available) {
-                throw RentalUnavailableException::forItem($service->name, $quantity, $available, $start, $end);
+            // Same aggregation as addItem() (kontrakt-dostepnosci.md Zasada 7),
+            // excluding this item's OWN (pre-update) row — otherwise its
+            // existing quantity would double-count against itself, the same
+            // reason getAvailableQuantity() has an $excludeRentalId parameter.
+            $siblingDemand = (int) CartItem::where('cart_id', $cart->id)
+                ->where('service_id', $item->service_id)
+                ->where('id', '!=', $item->id)
+                ->overlappingDates($start, $end)
+                ->sum('quantity');
+
+            $totalDemand = $siblingDemand + $quantity;
+
+            if ($totalDemand > $available) {
+                throw RentalUnavailableException::forItem($service->name, $totalDemand, $available, $start, $end);
             }
 
             $pricing = $this->availability->calculatePricing($service, $item->rental_days, $quantity);

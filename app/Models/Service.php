@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
 use App\Models\Concerns\HasRentalBehavior;
 use App\Models\Concerns\HasTimeSlotBehavior;
@@ -13,7 +12,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class Service extends Model
@@ -209,34 +207,6 @@ class Service extends Model
             ->when($params->limit > 0, fn ($q) => $q->limit($params->limit));
     }
 
-    /**
-     * Scope: Rental items available between given dates with given quantity.
-     * Automatically filters to item_rental type. Uses correlated subquery
-     * compatible with MySQL 8 strict mode (ONLY_FULL_GROUP_BY).
-     */
-    public function scopeAvailableBetween($query, Carbon $startDate, Carbon $endDate, int $quantity = 1)
-    {
-        return $query->where('service_type', ServiceType::ItemRental->value)
-            ->where('quantity_total', '>=', $quantity)
-            ->whereRaw(
-                'services.quantity_total - COALESCE((
-                    SELECT SUM(r.quantity) FROM rentals r
-                    WHERE r.service_id = services.id
-                    AND r.status IN (?, ?, ?)
-                    AND r.start_date <= ?
-                    AND r.end_date >= ?
-                ), 0) >= ?',
-                [
-                    RentalStatus::Pending->value,
-                    RentalStatus::Confirmed->value,
-                    RentalStatus::Active->value,
-                    $endDate->toDateString(),
-                    $startDate->toDateString(),
-                    $quantity,
-                ]
-            );
-    }
-
     // Boot
 
     /**
@@ -287,42 +257,6 @@ class Service extends Model
     public function isPublished(): bool
     {
         return $this->published_at && $this->published_at->isPast();
-    }
-
-    /**
-     * Calculate how many units are available in a given date range.
-     * Only valid for item_rental services. Throws for time_slot.
-     */
-    public function availableQuantity(Carbon $startDate, Carbon $endDate): int
-    {
-        if ($this->service_type !== ServiceType::ItemRental) {
-            throw new \LogicException('availableQuantity() can only be called on item_rental services.');
-        }
-
-        $reservedByRentals = Rental::where('service_id', $this->id)
-            ->whereIn('status', [RentalStatus::Pending, RentalStatus::Confirmed, RentalStatus::Active])
-            ->where('start_date', '<=', $endDate)
-            ->where('end_date', '>=', $startDate)
-            ->sum('quantity');
-
-        // Also deduct order items that block availability (paid/confirmed/in_progress
-        // orders, plus pending_payment orders with an active hold TTL).
-        // Full migration to RentalAvailabilityService happens in Sprint 2 (step 2.1).
-        $reservedByOrders = OrderItem::where('service_id', $this->id)
-            ->overlappingDates($startDate, $endDate)
-            ->blockingAvailability()
-            ->sum('order_items.quantity');
-
-        return max(0, ($this->quantity_total ?? 0) - $reservedByRentals - $reservedByOrders);
-    }
-
-    /**
-     * Check if a given quantity is available in a date range.
-     * Only valid for item_rental services. Throws for time_slot.
-     */
-    public function isAvailable(Carbon $startDate, Carbon $endDate, int $quantity = 1): bool
-    {
-        return $this->availableQuantity($startDate, $endDate) >= $quantity;
     }
 
     // Accessors

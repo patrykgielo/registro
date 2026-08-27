@@ -2,15 +2,12 @@
 
 namespace Tests\Unit\Models;
 
-use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
-use App\Models\Organization;
 use App\Models\Rental;
 use App\Models\RentalCategory;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class ServiceTest extends TestCase
@@ -98,43 +95,6 @@ class ServiceTest extends TestCase
         $this->assertEquals('100,00 zł/dzień | 15,00 zł/godz | 600,00 zł/tydz', $service->formatted_rental_price);
     }
 
-    public function test_available_quantity_with_no_rentals(): void
-    {
-        $service = Service::factory()->itemRental()->create([
-            'quantity_total' => 5,
-        ]);
-
-        $available = $service->availableQuantity(
-            Carbon::today(),
-            Carbon::today()->addDays(3)
-        );
-
-        $this->assertEquals(5, $available);
-    }
-
-    public function test_is_available_checks_quantity(): void
-    {
-        $org = Organization::factory()->itemRental()->create();
-        $customer = User::factory()->create();
-        $service = Service::factory()->itemRental()->create([
-            'organization_id' => $org->id,
-            'quantity_total' => 2,
-        ]);
-
-        Rental::factory()->create([
-            'organization_id' => $org->id,
-            'service_id' => $service->id,
-            'customer_id' => $customer->id,
-            'quantity' => 2,
-            'start_date' => Carbon::today(),
-            'end_date' => Carbon::today()->addDays(5),
-            'status' => RentalStatus::Confirmed,
-        ]);
-
-        $this->assertFalse($service->isAvailable(Carbon::today(), Carbon::today()->addDays(3)));
-        $this->assertTrue($service->isAvailable(Carbon::today()->addDays(10), Carbon::today()->addDays(15)));
-    }
-
     public function test_time_slot_service_has_duration(): void
     {
         $service = Service::factory()->create([
@@ -172,14 +132,6 @@ class ServiceTest extends TestCase
         $this->assertEquals(ServiceType::ItemRental, $service->service_type);
     }
 
-    public function test_available_quantity_throws_on_time_slot(): void
-    {
-        $service = Service::factory()->create(['service_type' => ServiceType::TimeSlot]);
-
-        $this->expectException(\LogicException::class);
-        $service->availableQuantity(Carbon::today(), Carbon::today()->addDays(3));
-    }
-
     public function test_formatted_duration_returns_null_when_duration_is_null(): void
     {
         $service = new Service;
@@ -202,17 +154,6 @@ class ServiceTest extends TestCase
         ]);
 
         $this->assertNull($service->formatted_rental_price);
-    }
-
-    public function test_scope_available_between_filters_by_item_rental(): void
-    {
-        Service::factory()->create(['service_type' => ServiceType::TimeSlot]);
-        Service::factory()->itemRental()->create(['quantity_total' => 5]);
-
-        $results = Service::availableBetween(Carbon::today(), Carbon::today()->addDays(3))->get();
-
-        $this->assertCount(1, $results);
-        $this->assertEquals(ServiceType::ItemRental, $results->first()->service_type);
     }
 
     public function test_service_type_immutability_does_not_block_other_updates(): void
