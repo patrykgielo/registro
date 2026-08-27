@@ -373,6 +373,51 @@ czasem jedzie z Gdańska do Warszawy na stałe.
 
 ---
 
+## Wycofywalność — wymóg przekrojowy
+
+Pytanie właściciela produktu (2026-08-27): czy da się wycofać zmiany **łącznie z bazą i migracjami**.
+Odpowiedź zmierzona, nie deklarowana.
+
+### Co repo ma dziś
+
+| Mechanizm | Co realnie robi |
+|---|---|
+| `.githooks/pre-commit` | odrzuca migrację z **pustym** `down()` |
+| `MigrationRollbackTest` + `migrations:check-rollback` | **statyczny regex** na treści `down()` — sprawdza, że ciało nie jest puste |
+| `scripts/backup-database.sh`, `scripts/server/tenant-backup.sh` / `tenant-restore.sh` | kopia i odtworzenie bazy — działa, odtworzone realnie w PR #173 |
+
+**Czego NIE ma:** nic w repo nigdy **nie wykonuje** `down()`. Migracja, której `down()` rzuca wyjątek,
+kasuje niewłaściwą kolumnę albo wywala się na realnych danych, przechodzi obie bramki bez słowa.
+
+### Wzorzec, który to naprawia — już w repo
+
+`tests/Feature/Database/OrderPaidPickupHtmlSeparatorMigrationTest.php` **faktycznie uruchamia**
+`migrate:rollback` i sprawdza stan po nim. Ten wzorzec istnieje, tylko nie jest obowiązkowy.
+
+### Wymóg dla Faz 1-9
+
+1. **Każda migracja tej implementacji ma wykonywany test rollbacku** wzorowany na powyższym:
+   `up` → asercja stanu → `migrate:rollback` → asercja, że stan sprzed wrócił → `up` ponownie.
+   **Na MySQL**, nie na SQLite — SQLite nie egzekwuje ENUM-ów, FK ani NOT NULL tak jak InnoDB, więc
+   zielony rollback na SQLite nic nie dowodzi (patrz `.claude/rules/tests.md`, bramka 27 porażek).
+2. **Backfille wyłącznie addytywne.** Zapisują nowe kolumny, nie nadpisują istniejących. Tam, gdzie
+   nadpisanie jest nieuniknione, backfill najpierw robi snapshot nadpisywanych wartości.
+3. **Kroki jednokierunkowe nazwane z góry.** W całym planie jest **jeden**: krok **9.2** (zmiana
+   UNIQUE na `statistics_daily_snapshots`). Formalnie ma `down()`, ale powrót wymaga wcześniejszego
+   usunięcia wierszy z `location_id != 0`, inaczej stary UNIQUE nie założy się na duplikatach.
+   Dlatego jest ostatni w planie i poprzedza go pełny `statistics:backfill`, który potrafi odtworzyć
+   każdy stan z tabel surowych.
+4. **Punkt przywracania przed wdrożeniem każdej fazy** na środowisku z danymi — `backup-database.sh`
+   przed migracją, zweryfikowany odczytem, nie samym kodem wyjścia.
+
+### Ta konkretna dostawa (Faza 0, PR #227)
+
+**Zero migracji, zero zmian schematu, zero transformacji danych** — zweryfikowane:
+`git diff develop -- database/` jest pusty. Cofa się samym `git revert`, baza nie jest w to
+w ogóle zaangażowana.
+
+---
+
 ## Poza zakresem (świadomie)
 
 - **Dystans „34 km"** — żaden model nie zna pozycji odwiedzającego. `UserAddress` ma współrzędne,
