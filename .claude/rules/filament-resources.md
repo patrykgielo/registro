@@ -330,4 +330,40 @@ druga rola z dostępem do `/platform` (np. read-only auditor), ta decyzja przest
 ma żadnego `can*()` i dziedziczy wprost po `Filament\Resources\Resource` — bez polityki w
 `app/Policies/` (nadal nie istnieje) strict rzuciłby `LogicException` na każdej akcji tego zasobu przy
 pierwszym mouncie. Warunek do rewizji: dopiero po tym, jak platform dostanie tę samą warstwę co
+
+---
+
+## `->unique(ignoreRecord: true)` bez `organization_id` — walidacja ostrzejsza niż schemat (2026-08-27)
+
+**`Rule::unique()` (to, co `->unique()` buduje pod spodem) czyta surowe zapytanie DB, NIE respektuje
+globalnego scope'a `BelongsToOrganization`.** Jeśli tabela ma `UNIQUE(organization_id, slug)`, a pole
+formularza ma gołe `->unique(ignoreRecord: true)`, walidacja Filamenta jest de facto GLOBALNA — dwóch
+tenantów nie może mieć tego samego sluga, mimo że baza by na to pozwoliła. Incydent: backfill dał
+każdemu tenantowi ten sam slug `siedziba-glowna` dla głównej lokalizacji — żaden z nich (poza
+pierwszym) nie mógł potem zapisać ŻADNEJ edycji tego rekordu, bo walidacja odrzucała slug, którego
+nawet nie zmieniali. Fix (wzorzec do powielania): `App\Filament\Resources\Locations\Schemas\
+LocationForm.php`:
+
+```php
+->unique(
+    ignoreRecord: true,
+    modifyRuleUsing: fn (Illuminate\Validation\Rules\Unique $rule) => $rule->where(
+        'organization_id',
+        TenantFeature::currentTenant()?->id ?? -1, // brak tenanta → reguła nigdy nie trafia, nie wywala wyjątku, DB constraint zostaje backstopem
+    ),
+)
+```
+
+**Ten sam wzorzec (composite `unique(organization_id, X)` w migracji + gołe `->unique(ignoreRecord:
+true)` w Resource) potwierdzony też w:** `ServiceResource`, `Categories\CategoryResource`,
+`Pages\PageResource`, `Posts\PostResource`, `PortfolioItems\PortfolioItemResource`,
+`Promotions\PromotionResource`, `RentalCategoryResource` — **znalezione, NIE naprawione** (osobna
+decyzja, poza zakresem hotfixa 2026-08-27). `CarBrandResource`/`VehicleTypeResource` (tabela globalna,
+bez `organization_id`), `CustomerResource`/`EmployeeResource`/`UserResource` (`users.email` jest
+CELOWO globalnie unikalny — jedno konto na e-mail w całej apce), `RoleResource` (Spatie
+`teams => false` w `config/permission.php` → `roles` ma globalny `unique(name, guard_name)`) — **NIE
+mają tego błędu**, sprawdzone przez migrację/config, nie przez zgadywanie.
+
+**Zasada:** przed dodaniem `->unique()` do pola formularza sprawdź migrację tabeli — jeśli unique jest
+`['organization_id', kolumna]`, reguła Filamenta MUSI dostać `modifyRuleUsing` z tym samym `where`.
 `/admin`, albo własną politykę.

@@ -225,6 +225,31 @@ command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-CHANGE_ME
 | `APP_DEBUG` | Yes | false | Debug mode (NEVER true in production) |
 | `APP_URL` | Yes | http://localhost | Base URL for asset generation |
 | `APP_TIMEZONE` | No | UTC | Application timezone (Europe/Warsaw) |
+| `APP_LOCALE` | No | en | UI locale — `pl` for this app |
+| `APP_FALLBACK_LOCALE` | **YES** | en | **Must be `en`, never `pl` — see below** |
+
+**⚠️ `APP_FALLBACK_LOCALE` MUST be `en`:**
+
+There is no `lang/pl/validation.php` anywhere in this codebase — neither app-level nor in
+`vendor/laravel/framework` (the framework only ships its own `en/validation.php` as a built-in
+fallback; Filament's own `vendor/filament/forms/resources/lang/pl/validation.php` only overrides
+two custom keys, `distinct` and `tampered_file_path`, not the standard rules like `unique`,
+`required`, `max`). With `APP_LOCALE=pl` and `APP_FALLBACK_LOCALE=pl`, any validation rule that
+falls through to Laravel's own `validation.*` message set (not one of Filament's PL-translated
+keys) has **nothing to fall back to** and Laravel's translator returns the raw key —
+`trans('validation.unique')` literally renders as the string `"validation.unique"` in the UI
+instead of readable text. Setting `APP_FALLBACK_LOCALE=en` at least resolves through the
+framework's built-in `en/validation.php`, so the same case renders as `"The slug has already been
+taken."` — not translated to Polish, but readable. `.env.example` and `.env.staging.example` have
+always had this right; `.env.testing`, `.env.production.example`, and `.env.local.example` were
+wrong since the file each was introduced (confirmed via `git log -p`, not a regression from a
+later edit) — fixed 2026-08-27 (`fix/location-slug-unique-per-tenant`). **If a real, deployed
+`.env`/`.env.production` on a VPS was provisioned from `.env.production.example` before that date,
+it likely still has `APP_FALLBACK_LOCALE=pl` and needs the same one-line fix applied by hand.**
+
+A proper `lang/pl/validation.php` (translating Laravel's ~90 default validation messages into
+Polish) would be the complete fix for a fully-Polish UI, but is a separate, larger piece of work —
+not implemented as part of this hotfix.
 
 ### Logging
 
