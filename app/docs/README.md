@@ -85,6 +85,7 @@ for the conceptual overview these deep-dive.
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
 | Order Handover/Return Protocols | `features/order-protocols.md` | Download-only PDFs, generated on demand |
 | Post-Login/Registration Return | `features/post-login-return.md` | `IntendedDestination` + `CustomerLandingUrl`, session-only (no `?redirect=`) |
+| Lokalizacje / oddziały (multi-branch) | [`features/lokalizacje/`](features/lokalizacje/README.md) | **Planowane**, plan zatwierdzony 2026-08-26 — stan magazynowy per oddział, egzemplarze z nr seryjnym, wybór oddziału przez klienta. 10 faz, Faza 0 w toku |
 
 ### Guides
 

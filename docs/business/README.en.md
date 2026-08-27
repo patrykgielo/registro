@@ -25,6 +25,8 @@ and corrected against current code (`app/StateMachines/OrderStatusStateMachine.p
 | [Customer Journey — Rental](customer-journey-rental.md) | `ServiceType::ItemRental` cart → checkout → payment → pickup → return |
 | [Customer Journey — Inquiry](customer-journey-inquiry.md) | `price_on_request` services — no self-serve price, inquiry modal instead |
 | [Cancellation](customer-journey-cancellation.md) | Customer-initiated and admin-initiated cancellation, for both appointments and orders |
+| [Customer Journey — Choosing a Branch](customer-journey-locations.en.md) | **Planned.** Multi-branch: branch selection, per-site availability, one order = one pickup |
+| [Staff Journey — Working at a Branch](staff-journey-locations.en.md) | **Planned.** Branch assignment, handover and return, moving equipment between sites |
 | [Guest vs Authenticated](guest-vs-authenticated.md) | What a visitor can do before vs after registering — there is no guest checkout |
 | [Purchase Process (funnel view)](purchase-process.md) | End-to-end sales funnel: catalogue → product page → checkout → P24 → confirmation |
 | [Onboarding & Registration](onboarding-registration.md) | Business registration wizard (new tenant), customer registration, roles, trial/subscription |

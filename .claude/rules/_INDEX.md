@@ -9,7 +9,7 @@ Budżet **12 000 znaków łącznie**, mierzy `cc-doctor`. Ponad nim reguły konk
 niżej są stosowane rzadziej, **bez żadnego sygnału**. Nowa reguła zawsze-ładowana = wytnij tyle
 samo gdzie indziej albo zawęź `paths`.
 
-## TIER 2 — ładowane automatycznie po `paths` (24 pliki, `ls .claude/rules/` dla pełnej listy)
+## TIER 2 — ładowane automatycznie po `paths` (27 plików, `ls .claude/rules/` dla pełnej listy)
 
 Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigger.
 
@@ -26,6 +26,7 @@ Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigg
 - `auth-redirects.md` → `app/Support/Auth/**`, `app/Http/Responses/**`, `app/Providers/Filament/**` — powrót po zalogowaniu, walidacja origin
 - `notifications.md` → `app/Notifications/**`
 - `onboarding.md` → `app/Actions/Onboarding/**`, `ProvisionTenantCommand.php`
+- `rental-availability.md` → `RentalAvailabilityService.php`, `RentalExtensionService.php`, `app/Services/Cart/**`, `Service.php`, `OrderItem.php` — **oversell**: jedno wejście, 9 wywołań, lock + `forUpdate`, filtr w outer WHERE
 - `services.md` → `app/Services/**`
 - `controllers.md` → `app/Http/Controllers/**`
 - `frontend-quality.md`, `animations.md`, `blade-components.md`, `dark-theme.md` → `resources/**`

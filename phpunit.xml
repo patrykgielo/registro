@@ -14,6 +14,12 @@
         Playwright plus a live in process HTTP server (see tests/Pest.php) and must
         never run implicitly in CI or a plain `php artisan test`. Run it explicitly
         by passing the testsuite flag "Browser" to `php artisan test`.
+
+        The Concurrency suite below requires a REAL MySQL connection (InnoDB row
+        locking — SQLite has none, so this suite proves nothing there) against a
+        throwaway container, never the dev database. It must never run implicitly
+        either. Run via scripts/test-concurrency.sh — see .claude/rules/tests.md ->
+        "tests/Concurrency".
     -->
     <testsuites>
         <testsuite name="Unit">
@@ -24,6 +30,9 @@
         </testsuite>
         <testsuite name="Browser">
             <directory>tests/Browser</directory>
+        </testsuite>
+        <testsuite name="Concurrency">
+            <directory>tests/Concurrency</directory>
         </testsuite>
     </testsuites>
     <source>

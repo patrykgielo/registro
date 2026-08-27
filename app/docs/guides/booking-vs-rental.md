@@ -108,21 +108,21 @@ ServiceType::ItemRental   // Inventory-based rental item
 - **Brand:** separate column for filtering
 - **Specifications:** stored in `metadata` JSON with `specs` key (e.g., `{'specs': {'power_w': 800}}`)
 - **Inherits all Service CMS fields:** `body`, `content`, `featured_image`, SEO fields, `published_at`
-- Scopes: `rentable()`, `active()`, `ordered()`, `availableBetween()`
+- Scopes: `rentable()`, `active()`, `ordered()`
 
 ### Availability Logic
 
+Availability has exactly one entry point: `RentalAvailabilityService::getAvailableQuantity()`
+(see `app/docs/features/lokalizacje/kontrakt-dostepnosci.md`). `Service::availableQuantity()`,
+`Service::isAvailable()` and `Service::scopeAvailableBetween()` were removed in Faza 0.1 of the
+multi-location rollout — they had zero production callers and had already drifted from the truth
+(`scopeAvailableBetween()` only counted `rentals`, ignoring `order_items`; `availableQuantity()`
+skipped `RentalStatus::Held`).
+
 ```php
-// How many units are free in a date range?
-// THROWS LogicException if called on time_slot service!
-$service->availableQuantity(Carbon $start, Carbon $end): int
+use App\Services\RentalAvailabilityService;
 
-// Is at least 1 unit available?
-$service->isAvailable(Carbon $start, Carbon $end, int $quantity = 1): bool
-
-// Query scope — auto-filters to item_rental, uses correlated subquery
-// Compatible with MySQL 8 strict mode (ONLY_FULL_GROUP_BY)
-Service::availableBetween($start, $end, $qty)->get();
+app(RentalAvailabilityService::class)->getAvailableQuantity($service, $start, $end);
 ```
 
 ### Data Integrity Guards (added 2026-03-20)
