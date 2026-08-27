@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Models\Location;
 use App\Models\Organization;
 use App\Models\PortfolioItem;
 use App\Models\Post;
@@ -23,6 +24,10 @@ class ContentGridResolver
         'posts' => ['label' => 'Posty', 'module' => 'website', 'model' => Post::class],
         'promotions' => ['label' => 'Promocje', 'module' => 'website', 'model' => Promotion::class],
         'portfolio' => ['label' => 'Portfolio', 'module' => 'website', 'model' => PortfolioItem::class],
+        // Location the entity has no flag of its own (every tenant has a physical
+        // address) — but *displaying* it on the site is a website feature, so it's
+        // gated on 'website' like posts/promotions/portfolio, not left ungated.
+        'locations' => ['label' => 'Lokalizacje', 'module' => 'website', 'model' => Location::class],
     ];
 
     /**
@@ -63,6 +68,14 @@ class ContentGridResolver
             'posts' => Post::whereNotNull('published_at')->pluck('title', 'id')->all(),
             'promotions' => Promotion::where('active', true)->pluck('title', 'id')->all(),
             'portfolio' => PortfolioItem::whereNotNull('published_at')->pluck('title', 'id')->all(),
+            // City appended so an admin picking between two active branches with a
+            // similar name (e.g. two "Magazyn Główny") can tell them apart in the list.
+            'locations' => Location::active()->ordered()->get()
+                ->mapWithKeys(fn (Location $location) => [
+                    $location->id => $location->city
+                        ? "{$location->name} ({$location->city})"
+                        : $location->name,
+                ])->all(),
             default => [],
         };
     }

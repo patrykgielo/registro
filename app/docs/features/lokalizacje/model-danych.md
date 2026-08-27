@@ -58,6 +58,47 @@ produkcji, gdy admin zaznaczy drugą lokalizację jako domyślną — a nic by m
 **UNIQUE `(organization_id, slug)`** — nigdy samo `slug`. Precedens: migracja
 `2026_06_29_120000` musiała naprawiać dokładnie ten błąd na `service_areas`.
 
+**Zaimplementowano** (2026-08-27, kroki 1.1/1.2/1.6, gałąź `feature/lokalizacje-encja`):
+`database/migrations/2026_08_27_120000_create_locations_table.php` (schemat) +
+`2026_08_27_120001_backfill_primary_location_for_organizations.php` (backfill z
+`SettingsManager::contactDetailsFor()`, nazwa domyślna „Siedziba główna” — uzasadnienie w
+komentarzu migracji) + `App\Models\Location` + `App\Observers\LocationObserver`.
+
+„Zmiana głównej później — ręcznie, jednym kliknięciem" (patrz [tryb-jednooddzialowy.md](tryb-jednooddzialowy.md))
+to dwa mechanizmy, nie jeden: `LocationObserver::updating()` broni każdego bezpośredniego
+`$location->save()` przed naruszeniem UNIQUE (dwa kolejne commity: najpierw `NULL` staremu,
+dopiero potem `1` nowemu — sama kolejność, nie pojedyncza transakcja), a
+`Location::promoteToPrimary()` to jedna transakcja obejmująca oba zapisy naraz — tej drugiej
+powinna użyć przyszła akcja Filamenta (krok 1.3, poza tym zakresem).
+
+Testy wykonywanego rollbacku (nie tylko statyczny regex na `down()`):
+`tests/Feature/Database/CreateLocationsTableMigrationTest.php`,
+`tests/Feature/Database/BackfillPrimaryLocationForOrganizationsMigrationTest.php`. Izolacja
+tenanta i mechanizm `primary_slot`: `tests/Unit/Models/LocationTenantIsolationTest.php`,
+`tests/Unit/Models/LocationPrimarySlotTest.php`.
+
+#### Dlaczego `latitude`/`longitude` w ogóle są (decyzja 2026-08-27)
+
+Zakwestionowane wprost przez właściciela produktu: „potrzebujemy mapy, czy to legacy?".
+Odpowiedź uczciwa: picker mapy trafił do planu przez **skopiowanie wzorca z `ServiceArea`**, gdzie
+ma realny sens (rysuje koło zasięgu dostawy, czyli pokazuje dane niewidoczne inaczej). Tu został
+skopiowany kształt, nie uzasadnienie.
+
+Zmierzone: **jedynym konsumentem** `Location::latitude`/`longitude` w całym repo jest
+`resources/views/components/ios/location-card.blade.php:22-25` — link do Google Maps, który **ma
+już fallback na adres tekstowy**. Odległość w km jest jawnie poza zakresem (brak źródła pozycji
+odwiedzającego), czyli najpoważniejszy przyszły przypadek użycia też odpada.
+
+**Zachowane mimo to, z jednego konkretnego powodu branżowego:** baza sprzętu budowlanego często
+stoi pod adresem, który geokoduje się źle — „ul. Przemysłowa 14G, hala 3", plac bez numeru, teren
+przemysłowy. Fallback tekstowy tego nie ratuje, bo szuka po tym samym złym adresie. Ręczna pinezka
+pomaga dokładnie w tym przypadku, a klient, który przyjedzie 400 m od bramy po odbiór koparki,
+zapamięta to.
+
+Kolumny są nullable i po backfillu **puste dla wszystkich 8 tenantów** — nic od nich nie zależy.
+Gdyby picker kiedykolwiek miał zniknąć, kolumny warto zostawić: dwa nullable decimale kosztują
+zero, a ich brak zamienia każde późniejsze użycie w migrację.
+
 ### `service_location_stocks` (nowa) — kotwica
 
 Ile sztuk danego sprzętu stoi w danym oddziale. **Jednocześnie punkt blokady** przy zapisie.

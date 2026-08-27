@@ -3,7 +3,13 @@
 Wielooddziałowość: sprzęt stoi w konkretnych oddziałach, klient wybiera oddział jak sklep,
 stan magazynowy zdejmuje się z tego oddziału i wraca do niego po zwrocie.
 
-**Status:** 🟡 w toku — Faza 0 ukończona 2026-08-27 (gałąź `feature/lokalizacje-oddzialy`, niezmergowana). Fazy 1-9 nierozpoczęte.
+**Status:** 🟡 w toku.
+**Faza 0 — zmergowana na `develop`** 2026-08-27 ([PR #227](https://github.com/patrykgielo/registro/pull/227)):
+naprawa realnego oversellu w koszyku, usunięcie dwóch martwych kopii matematyki dostępności,
+harness współbieżności.
+**Faza 1 — w toku** na gałęzi `feature/lokalizacje-encja` (niezmergowana): kroki 1.1/1.2/1.6
+(warstwa danych) zrobione 2026-08-27; kroki 1.3–1.5 (Filament, zdjęcia, mapa) i 1.7 (blok CMS)
+nierozpoczęte. Fazy 2-9 nierozpoczęte.
 
 ## Mapa dokumentów
 
@@ -22,7 +28,7 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | Faza | Zakres | ClickUp | Status |
 |---|---|---|---|
 | 0 | Higiena, dowód współbieżności + naprawa żywego oversellu | [`86cbahqbv`](https://app.clickup.com/t/86cbahqbv) | ✅ **ukończona** 2026-08-27 |
-| 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | ⬜ |
+| 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | 🟡 1.1/1.2/1.6 zrobione |
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ⬜ |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ⬜ |
 | 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ⬜ |

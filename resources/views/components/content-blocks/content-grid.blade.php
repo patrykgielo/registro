@@ -103,6 +103,9 @@
                 @foreach($items as $item)
                     @if($contentType === 'services')
                         <x-ios.service-card :service="$item" :variant="$serviceCardVariant" />
+                    @elseif($contentType === 'locations')
+                        {{-- Has no detail route (out of Faza 1 scope) — own card, not x-cms.card --}}
+                        <x-ios.location-card :location="$item" :dark="$isDark" />
                     @else
                         {{-- CMS Content Card for posts, promotions, portfolio --}}
                         @php
