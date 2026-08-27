@@ -25,6 +25,7 @@ use App\Listeners\LogAuthenticationEvents;
 use App\Listeners\RecordAnalyticsOnOrderPaid;
 use App\Listeners\SendRentalCancelledNotification;
 use App\Models\Appointment;
+use App\Models\Location;
 use App\Models\Organization;
 use App\Models\Page as PageModel;
 use App\Models\PortfolioItem;
@@ -45,6 +46,7 @@ use App\Notifications\PasswordResetNotification;
 use App\Notifications\TenantWelcomeNotification;
 use App\Notifications\UserRegisteredNotification;
 use App\Observers\AppointmentObserver;
+use App\Observers\LocationObserver;
 use App\Observers\OrganizationObserver;
 use App\Observers\PageObserver;
 use App\Observers\SitemapCacheObserver;
@@ -103,6 +105,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Appointment::observe(AppointmentObserver::class);
+        Location::observe(LocationObserver::class);
         Organization::observe(OrganizationObserver::class);
         PageModel::observe(PageObserver::class);
         PageModel::observe(SitemapCacheObserver::class);
