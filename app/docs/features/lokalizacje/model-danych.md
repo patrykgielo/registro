@@ -106,6 +106,63 @@ Ile sztuk danego sprzętu stoi w danym oddziale. **Jednocześnie punkt blokady**
 `organization_id`, `service_id`, `location_id`, `quantity`, `is_active`
 UNIQUE `(service_id, location_id)`, indeks `(location_id, service_id)`
 
+#### Zaimplementowane w Fazie 2 — decyzje, które kosztowały dwa blokery
+
+**Klucze obce.** `location_id` i `organization_id` → `cascadeOnDelete`, `service_id` → **`cascadeOnDelete`**.
+
+`location_id` nie może być `restrictOnDelete`: `locations.organization_id` jest już kaskadą (Faza 1),
+więc usunięcie organizacji uruchomiłoby **dwie siostrzane kaskady z tego samego wiersza rodzica**
+(`organizations→locations` i `organizations→service_location_stocks`) bez gwarantowanej kolejności
+między nimi. Gdyby silnik skasował `locations` pierwsze, `restrict` odrzuciłby całe usunięcie
+organizacji. `cascade` zamienia to w prawdziwą kaskadę wielopoziomową, odporną na kolejność.
+
+`service_id` dostało w pierwszej wersji `restrictOnDelete`, skopiowane z `rentals.service_id` — i to
+był **bloker**. `rentals` i `order_items` chronią **rekordy prawne** (retencja 5-6 lat, art. 112
+ustawy o VAT). Wiersz stanu magazynowego to żywa liczba bez wymogu retencji. Skutek pomyłki:
+`handle()` materializuje wiersz kotwicy przy **każdym** zapisie formularza usługi, więc praktycznie
+każda usługa wynajmu przestawała być usuwalna, a `DeleteAction` nie obsługuje `QueryException` —
+admin dostawał surowy błąd zamiast działającego przycisku.
+
+> **Reguła:** zanim skopiujesz politykę `onDelete` z sąsiedniej tabeli, sprawdź, **co ta tabela
+> chroni**. Klasyfikacja z `.claude/rules/migrations.md` (rekord prawny vs dane operacyjne) jest
+> tu jedynym kryterium — nie podobieństwo nazwy kolumny.
+
+**UNIQUE `(service_id, location_id)` świadomie bez `organization_id`.** Oba to klucze obce, każdy
+jednoznacznie należy do jednej organizacji, więc integralność referencyjna **jest** tu
+tenant-scopingiem — inaczej niż przy `locations.slug`, gdzie unikalny ma być dzielony string.
+Audyt bezpieczeństwa zweryfikował to, sprawdzając **wszystkie** ścieżki zapisu, a nie przyjmując
+na słowo: w każdej `location_id` pochodzi z zapytania jawnie zawężonego do organizacji tej samej
+usługi.
+
+#### Niezmiennik mirrora — i dlaczego łatwo go złamać
+
+`quantity_total` jest **mirrorem** `SUM(service_location_stocks.quantity)`. Drugi bloker Fazy 2
+wziął się z tego, że **kwalifikacja pola i suma mirrora liczyły co innego**:
+
+| Element | Co liczył |
+|---|---|
+| `tenantHasExactlyOneActiveLocation()` | tylko lokalizacje `is_active = true` |
+| `recalculateQuantityTotal()` | **wszystkie** wiersze stanu, także na dezaktywowanych |
+
+Dezaktywacja oddziału ze stanem sprawiała, że tenant „wyglądał" na jednooddziałowego, pole
+„Ilość w magazynie" wracało jako edytowalne z pełną sumą, a zapis kazał wierszowi głównemu
+**wchłonąć cudzy stan** — po czym przelicznik doliczał osierocony wiersz jeszcze raz.
+`8 → 11 → 14 → …` przy samym klikaniu „Zapisz", bez dotykania stanu.
+
+> **Niezmiennik, przypięty testem:** żadna sekwencja akcji w panelu nie może zmienić
+> `SUM(service_location_stocks.quantity)` poza jawną edycją stanu. Zapis formularza **bez zmiany
+> wartości** musi być idempotentny.
+
+Naprawa: guard w `handle()` **oraz** ta sama reguła w kwalifikacji pola, przez jedno wspólne
+źródło prawdy. Sam guard nie wystarcza — pole zostałoby włączone i **dehydrowane**, więc Eloquent
+i tak wpisałby liczbę do `quantity_total`, podczas gdy routowanie by odmówiło, i mirror
+rozjechałby się z sumą. To gorsze niż inflacja, bo dostępność czyta `quantity_total` **dosłownie
+już dziś**, nie dopiero po Fazie 4.
+
+**Pułapka Filamenta:** `disabled()` **nie wystarcza** — Filament domyślnie **dehydruje pola
+wyłączone**. Bez `dehydrated(false)` zapis formularza po cichu nadpisałby rozbity stan per oddział
+zagregowaną wartością z ukrytego pola.
+
 ### `service_units` (nowa) — egzemplarze
 
 `organization_id`, `service_id`, `location_id`, `serial_number`, `inventory_number`,

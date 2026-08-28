@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ServiceResource\Pages;
 
+use App\Actions\Inventory\RouteQuantityFieldToPrimaryLocationStock;
 use App\Filament\Resources\ServiceResource;
 use App\Filament\Traits\StaysOnPageAfterSave;
 use Filament\Actions;
@@ -18,5 +19,10 @@ class EditService extends EditRecord
         return [
             Actions\DeleteAction::make(),
         ];
+    }
+
+    protected function afterSave(): void
+    {
+        RouteQuantityFieldToPrimaryLocationStock::handle($this->record);
     }
 }

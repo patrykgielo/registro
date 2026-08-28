@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Service extends Model
@@ -139,6 +140,18 @@ class Service extends Model
         return $this->hasMany(Rental::class);
     }
 
+    /**
+     * Faza 2 (app/docs/features/lokalizacje/model-danych.md) — per-location
+     * stock anchors. See recalculateQuantityTotal() for how this relates to
+     * quantity_total.
+     *
+     * @return HasMany<ServiceLocationStock, $this>
+     */
+    public function locationStocks(): HasMany
+    {
+        return $this->hasMany(ServiceLocationStock::class);
+    }
+
     // Scopes
 
     public function scopeActive($query)
@@ -257,6 +270,45 @@ class Service extends Model
     public function isPublished(): bool
     {
         return $this->published_at && $this->published_at->isPast();
+    }
+
+    /**
+     * quantity_total is a MIRROR of SUM(service_location_stocks.quantity)
+     * (model-danych.md, kontrakt-dostepnosci.md Zasada 2) —
+     * getAvailableQuantity() still reads quantity_total literally when
+     * $locationId is null (Faza 4 hasn't wired the location dimension into
+     * RentalAvailabilityService yet), so keeping this column accurate is
+     * what makes every location-stock edit actually visible today.
+     *
+     * Caller's responsibility (kontrakt-dostepnosci.md Zasada 4): this
+     * method does not lock anything itself — call it only inside a
+     * transaction that has ALREADY acquired whatever lock ITS OWN
+     * concurrency guarantee needs. Faza 2's two callers
+     * (App\Actions\Inventory\RouteQuantityFieldToPrimaryLocationStock,
+     * LocationStocksRelationManager's inline quantity edit) are both
+     * admin-panel writes, not the checkout hot path Zasada 4's locking
+     * discipline defends — a future Faza 4 write-path caller will need to
+     * take Service::lockForUpdate() first.
+     *
+     * Uses DB::table(), not save() or even Eloquent's own query builder,
+     * deliberately: Service has no Auditable trait (quantity_total edits
+     * were never audited even through the ordinary Filament form save,
+     * before this method existed), and a genuinely raw UPDATE skips both
+     * booted()'s updating() hook (the immutable service_type guard, the
+     * cross-tenant rental_category check — neither of which quantity_total
+     * touches, so nothing is lost) AND the automatic `updated_at` bump
+     * Eloquent's query builder would otherwise still apply even without
+     * save() — this column is a derived mirror, not something the model was
+     * substantively "updated" by from a user's point of view.
+     */
+    public function recalculateQuantityTotal(): void
+    {
+        $sum = (int) ServiceLocationStock::withoutGlobalScope('organization')
+            ->where('service_id', $this->id)
+            ->sum('quantity');
+
+        DB::table($this->getTable())->where($this->getKeyName(), $this->id)->update(['quantity_total' => $sum]);
+        $this->quantity_total = $sum;
     }
 
     // Accessors

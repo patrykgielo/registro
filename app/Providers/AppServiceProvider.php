@@ -49,6 +49,7 @@ use App\Observers\AppointmentObserver;
 use App\Observers\LocationObserver;
 use App\Observers\OrganizationObserver;
 use App\Observers\PageObserver;
+use App\Observers\ServiceLocationStockObserver;
 use App\Observers\SitemapCacheObserver;
 use App\Observers\UserObserver;
 use App\Services\Email\EmailGatewayInterface;
@@ -106,6 +107,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Appointment::observe(AppointmentObserver::class);
         Location::observe(LocationObserver::class);
+        Location::observe(ServiceLocationStockObserver::class);
         Organization::observe(OrganizationObserver::class);
         PageModel::observe(PageObserver::class);
         PageModel::observe(SitemapCacheObserver::class);
