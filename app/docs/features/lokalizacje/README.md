@@ -10,7 +10,10 @@ harness współbieżności.
 **Faza 1 — zmergowana na `develop`** 2026-08-27 ([PR #228](https://github.com/patrykgielo/registro/pull/228)):
 oddział jako encja — tabela, model, zasób w panelu, picker mapy, typ treści dla stron CMS.
 Zweryfikowana w przeglądarce, nie tylko testami.
-**Fazy 2-9 nierozpoczęte.** Następna: Faza 2 — stan magazynowy per oddział (kotwica).
+**Faza 2 — gotowa, niezmergowana** (gałąź `feature/lokalizacje-stan-magazynowy`): kotwica
+`service_location_stocks`, backfill z `quantity_total`, `quantity_total` jako mirror, panel bez
+regresji dla tenanta jednooddziałowego. Dostępność **nietknięta** — wchodzi w Fazie 4.
+**Fazy 3-9 nierozpoczęte.**
 
 ## Mapa dokumentów
 
@@ -30,7 +33,7 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 |---|---|---|---|
 | 0 | Higiena, dowód współbieżności + naprawa żywego oversellu | [`86cbahqbv`](https://app.clickup.com/t/86cbahqbv) | ✅ **ukończona** 2026-08-27 |
 | 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | 🟡 1.1/1.2/1.6 zrobione |
-| 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ⬜ |
+| 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | 🟡 gotowa, niezmergowana |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ⬜ |
 | 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ⬜ |
 | 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⬜ |

@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources;
 
+use App\Actions\Inventory\RouteQuantityFieldToPrimaryLocationStock;
 use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource\Pages;
+use App\Filament\Resources\ServiceResource\RelationManagers\LocationStocksRelationManager;
 use App\Filament\Support\BuilderBlocks;
 use App\Models\Service;
 use App\Support\TenantFeature;
@@ -269,10 +271,36 @@ class ServiceResource extends BaseResource
                     ->schema([
                         Forms\Components\TextInput::make('quantity_total')
                             ->label('Ilość w magazynie')
-                            ->required()
+                            ->required(fn (?Model $record): bool => self::tenantEligibleForDirectQuantityField($record))
                             ->numeric()
                             ->minValue(1)
-                            ->default(1),
+                            ->default(1)
+                            // plan-wdrozenia.md Krok 2.5: stays editable — and the
+                            // ONLY writer of stock — for a tenant with exactly one
+                            // active location (afterCreate()/afterSave() on the
+                            // Create/Edit pages route the value into that location's
+                            // service_location_stocks row via
+                            // RouteQuantityFieldToPrimaryLocationStock). For any
+                            // other tenant shape — including THIS record having a
+                            // stock row orphaned outside the primary location
+                            // (code-reviewer BLOKER 1: happens when a tenant that
+                            // used to have two active locations deactivates one,
+                            // "looking" single-location again while the old split
+                            // still exists in the DB) — it is disabled AND
+                            // un-dehydrated (Filament dehydrates disabled fields by
+                            // DEFAULT unless told not to — the second call is not
+                            // redundant), so a save can never silently overwrite a
+                            // deliberately per-location split with the stale
+                            // aggregate this field would otherwise submit, NOR let
+                            // quantity_total drift away from
+                            // SUM(service_location_stocks.quantity) when handle()
+                            // refuses to route it. Those tenants edit exclusively
+                            // through LocationStocksRelationManager below.
+                            ->disabled(fn (?Model $record): bool => ! self::tenantEligibleForDirectQuantityField($record))
+                            ->dehydrated(fn (?Model $record): bool => self::tenantEligibleForDirectQuantityField($record))
+                            ->helperText(fn (?Model $record): ?string => self::tenantEligibleForDirectQuantityField($record)
+                                ? null
+                                : 'Więcej niż jeden aktywny oddział (lub żaden), albo istnieje stan magazynowy na innym oddziale — ustaw ilości w zakładce "Stany magazynowe" poniżej.'),
 
                         Forms\Components\Select::make('rental_category_id')
                             ->label('Kategoria')
@@ -631,7 +659,7 @@ class ServiceResource extends BaseResource
     public static function getRelations(): array
     {
         return [
-            //
+            LocationStocksRelationManager::class,
         ];
     }
 
@@ -647,6 +675,22 @@ class ServiceResource extends BaseResource
     /**
      * Check if service_type is ItemRental (handles both enum and string from $get()).
      */
+    /**
+     * Thin delegate to
+     * App\Actions\Inventory\RouteQuantityFieldToPrimaryLocationStock::eligibleForDirectRouting()
+     * — THAT method is the single source of truth shared with handle(),
+     * both MUST agree on the same tenant/service shape, or the field could
+     * stay enabled while the action silently refuses to route its value (or
+     * vice versa).
+     */
+    private static function tenantEligibleForDirectQuantityField(?Model $record): bool
+    {
+        return RouteQuantityFieldToPrimaryLocationStock::eligibleForDirectRouting(
+            TenantFeature::currentTenant()?->id,
+            $record instanceof Service ? $record : null,
+        );
+    }
+
     private static function isRentalType(mixed $value): bool
     {
         if ($value instanceof ServiceType) {
