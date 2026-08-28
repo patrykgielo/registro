@@ -11,6 +11,7 @@ use App\Filament\Resources\Pages\Pages\CreatePage;
 use App\Filament\Resources\Pages\Pages\EditPage;
 use App\Filament\Resources\Pages\Pages\ListPages;
 use App\Filament\Support\BuilderBlocks;
+use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Page;
 use BackedEnum;
 use Filament\Actions;
@@ -60,7 +61,10 @@ class PageResource extends BaseResource
                             ->label('Slug (URL)')
                             ->required()
                             ->maxLength(255)
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+                            )
                             ->helperText('Automatycznie generowany z tytułu')
                             ->rules([
                                 fn (): \Closure => function (string $attribute, $value, \Closure $fail) {

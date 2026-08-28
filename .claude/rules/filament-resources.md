@@ -355,14 +355,38 @@ LocationForm.php`:
 ```
 
 **Ten sam wzorzec (composite `unique(organization_id, X)` w migracji + gołe `->unique(ignoreRecord:
-true)` w Resource) potwierdzony też w:** `ServiceResource`, `Categories\CategoryResource`,
+true)` w Resource) potwierdzony i NAPRAWIONY 2026-08-28** (branch `fix/tenant-scoped-slug-validation`,
+zadanie ClickUp `86cbb2ft5`) w: `ServiceResource`, `Categories\CategoryResource`,
 `Pages\PageResource`, `Posts\PostResource`, `PortfolioItems\PortfolioItemResource`,
-`Promotions\PromotionResource`, `RentalCategoryResource` — **znalezione, NIE naprawione** (osobna
-decyzja, poza zakresem hotfixa 2026-08-27). `CarBrandResource`/`VehicleTypeResource` (tabela globalna,
-bez `organization_id`), `CustomerResource`/`EmployeeResource`/`UserResource` (`users.email` jest
-CELOWO globalnie unikalny — jedno konto na e-mail w całej apce), `RoleResource` (Spatie
-`teams => false` w `config/permission.php` → `roles` ma globalny `unique(name, guard_name)`) — **NIE
-mają tego błędu**, sprawdzone przez migrację/config, nie przez zgadywanie.
+`Promotions\PromotionResource`, `RentalCategoryResource` — 13 kolizji slugów w `services` i 7 w
+`rental_categories` na dev-bazie w dniu naprawy, obie systematyczne (seeder daje każdej wypożyczalni
+ten sam katalog), nie przypadkowe. Wspólny helper zamiast siedmiu kopii closure:
+`App\Filament\Support\TenantScopedUniqueRule::forCurrentTenant()` — identyczny `where('organization_id',
+TenantFeature::currentTenant()?->id ?? -1)` co `LocationForm.php` (`LocationForm.php` samo NIE zostało
+zrefaktoryzowane na ten helper — poza zakresem zadania, wielooddziałowość celowo nietknięta):
+
+```php
+->unique(
+    ignoreRecord: true,
+    modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+)
+```
+
+Każdy dostał test `tests/Feature/Filament/{Resource}SlugUniqueScopeTest.php` (czerwony przed poprawką,
+zweryfikowany przez `git stash` na siedmiu plikach Resource — potwierdzone 2 z 3 scenariuszy na test
+padają bez fixa: edycja bez zmiany sluga i tworzenie sluga zajętego tylko przez innego tenanta;
+scenariusz "duplikat w obrębie tego samego tenanta nadal odrzucony" zostaje zielony w obu wariantach,
+bo to nie jest to, co fix zmienia). `CategoryResource` nie ma dedykowanych stron Create/Edit (jedna
+`ManageCategories`, akcje w modalu) — test steruje przez `callTableAction`/`callAction`, nie
+`Livewire::test(EditRecord::class)`.
+
+`CarBrandResource`/`VehicleTypeResource` (tabela globalna, bez `organization_id`),
+`CustomerResource`/`EmployeeResource`/`UserResource` (`users.email` jest CELOWO globalnie unikalny —
+jedno konto na e-mail w całej apce), `RoleResource` (Spatie `teams => false` w `config/permission.php`
+→ `roles` ma globalny `unique(name, guard_name)`), `EmailSuppressionResource` (`email_suppressions`
+nie ma w ogóle kolumny `organization_id` — globalna lista wykluczeń), `OrganizationResource`
+(`organizations.slug` to tożsamość organizacji, nie ma `organization_id` samo w sobie) — **NIE mają
+tego błędu**, sprawdzone przez migrację/config, nie przez zgadywanie.
 
 **Zasada:** przed dodaniem `->unique()` do pola formularza sprawdź migrację tabeli — jeśli unique jest
 `['organization_id', kolumna]`, reguła Filamenta MUSI dostać `modifyRuleUsing` z tym samym `where`.

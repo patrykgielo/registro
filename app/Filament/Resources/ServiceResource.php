@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Support\BuilderBlocks;
+use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Service;
 use App\Support\TenantFeature;
 use BackedEnum;
@@ -112,7 +113,10 @@ class ServiceResource extends BaseResource
                             ->label('Slug (URL)')
                             ->required()
                             ->maxLength(255)
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+                            )
                             ->helperText('Automatycznie generowany z nazwy'),
 
                         Forms\Components\Select::make('icon')
