@@ -232,6 +232,14 @@ It resolves the one Active organization by slug from the container's own environ
 deriving it from the Host header — there is nothing to derive on a dedicated stack; the database holds
 exactly one organization (`organizations.singleton`, above).
 
+`handlePinnedTenant()` finishes by calling `forceTenantOriginUrls()`, exactly like the
+host-derived branch. On a dedicated stack `APP_URL` usually already equals the tenant's own
+domain, so this looks like a no-op and is easy to delete as dead code — it is not. When
+`TENANT_HOSTS` carries **more than one** name (the subdomain plus a client's custom domain),
+`route()` and `Storage::url()` must follow the host the visitor actually used, not whichever
+one happens to sit in `APP_URL`. Removing the call silently breaks every link and every image
+for the host that is not `APP_URL`.
+
 Pinning the slug alone is not enough: with nothing else checking the Host, this container would answer
 `200` to literally any Host that reaches it (a stray DNS record, a scanner hitting the bare IP, a
 Host that doesn't match the client's actual domain at all) — there is no other tenant on this stack to

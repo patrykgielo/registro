@@ -79,6 +79,13 @@ Detail views only need `@push('head')` for OG tags + structured data — **never
 
 OG image source per model: `Post`/`Page` use `featured_image`; `PortfolioItem` has no `featured_image` field, uses `before_image` as the fallback.
 
+`Storage::url()` resolves against the **tenant's own subdomain**, not `APP_URL`, because
+`ResolveTenant` overwrote `filesystems.disks.public.url` with the request origin — the same
+dependency the sitemap section documents for `route()`. Outside the request cycle (a queued
+job or a console command rendering the same view) it falls back to `APP_URL`, i.e. the root
+domain, which for an `og:image` means every social-media preview points at the wrong host.
+Before this was forced, that was the live behaviour for every tenant.
+
 **When adding a new content-detail controller/view:** call `MetaTagBuilder::forModel()` in the controller, pass `metaTitle`/`metaDescription` to the view, and only push OG/JSON-LD from the view — do not hand-roll a `<title>` override again (that's exactly the bug this phase fixed).
 
 ## Files

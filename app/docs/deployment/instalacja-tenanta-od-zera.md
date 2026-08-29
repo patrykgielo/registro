@@ -316,6 +316,24 @@ curl -s -o /dev/null -w "HTTP %{http_code} tls=%{ssl_verify_result}\n" https://n
 
 Spodziewaj się **błędu certyfikatu**. To jest oczekiwane i wymaga Twojego działania — patrz 2.5.
 
+### 2.4b — Sprawdź, pod jakim hostem serwują się pliki
+
+Certyfikat i kod HTTP mówią, że strona **odpowiada**. Nie mówią, czy obrazki i pliki
+wskazują na właściwą domenę — a to osobna awaria, cicha i widoczna tylko dla klienta.
+
+```bash
+curl -sk https://nazwaklienta.registrolabs.com/ | grep -o 'src="https://[^/"]*' | sort -u
+```
+
+**Każdy** wynik musi wskazywać `nazwaklienta.registrolabs.com`. Jeśli którykolwiek pokazuje
+domenę główną (`registrolabs.com` bez subdomeny), `ResolveTenant::forceTenantOriginUrls()`
+nie zadziałał dla tego żądania — patrz `app/docs/guides/multi-tenancy-architecture.md`.
+
+Objaw po stronie użytkownika jest mylący: obrazki na stronie publicznej **działają mimo
+złego adresu**, bo `<img>` nie podlega CORS. Pierwszą rzeczą, która się psuje, jest podgląd
+pliku w panelu — wiszący w nieskończoność na „Pobieranie rozmiaru". Dlatego to sprawdzenie
+robi się tutaj, a nie po pierwszej skardze klienta.
+
 ### 2.5 — Poczekaj na crona uzgadniającego nazwy
 
 **Ten krok jest teraz automatyczny — dawniej wymagał ręcznej interwencji, patrz niżej.**

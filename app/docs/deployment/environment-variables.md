@@ -223,7 +223,7 @@ command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-CHANGE_ME
 | `APP_ENV` | Yes | production | Environment: local, staging, production |
 | `APP_KEY` | **YES** | - | **Encryption key (CRITICAL)** |
 | `APP_DEBUG` | Yes | false | Debug mode (NEVER true in production) |
-| `APP_URL` | Yes | http://localhost | Base URL for asset generation |
+| `APP_URL` | Yes | http://localhost | Base URL **outside the request cycle only** — see the disk-address note below |
 | `APP_TIMEZONE` | No | UTC | Application timezone (Europe/Warsaw) |
 | `APP_LOCALE` | No | en | UI locale — `pl` for this app |
 | `APP_FALLBACK_LOCALE` | **YES** | en | **Must be `en`, never `pl` — see below** |
@@ -276,6 +276,23 @@ not implemented as part of this hotfix.
 **⚠️ CRITICAL CONFIGURATION:**
 
 `FILESYSTEM_DISK` determines where uploaded files (images, documents) are stored. **This setting MUST be `public` for both local AND production environments.**
+
+> **The `public` disk has no configurable address of its own.** `config/filesystems.php:44`
+> builds it as `env('APP_URL').'/storage'`, and there is no dedicated variable for it —
+> `ASSET_URL` does not appear anywhere in this repo. On a shared stack
+> `ResolveTenant::forceTenantOriginUrls()` then **overwrites that value on every request**
+> with the request's own origin.
+>
+> Consequences for an operator:
+>
+> - A CDN or bucket address placed in `APP_URL` works in CLI and on the queue, and is silently
+>   ignored in the browser.
+> - Debugging "images point at the wrong domain" by editing `APP_URL`, running `config:cache`
+>   and restarting the container changes **nothing** — the value is replaced in memory after the
+>   cached config is loaded. Look at the middleware, not at the env file.
+> - `scripts/validate-env.sh:172` tolerates the `s3` driver. That configuration is not covered
+>   by the per-request override and has never been exercised — treat it as unsupported until
+>   someone actually tests it.
 
 **Valid Options:**
 - **`public`** (REQUIRED):

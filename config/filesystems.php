@@ -41,6 +41,13 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
+
+            // Overwritten on every HTTP request by
+            // ResolveTenant::forceTenantOriginUrls(), which substitutes the
+            // request's own origin so a tenant subdomain serves its own files.
+            // Do NOT put a CDN or bucket address here: it would apply on the
+            // queue and in CLI, and be silently ignored in the browser.
+            // This disk has no env var of its own — ASSET_URL is unused here.
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
             'throw' => false,
