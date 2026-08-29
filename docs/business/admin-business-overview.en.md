@@ -154,6 +154,51 @@ fire and no customer notifications are sent for any rental admin action.**
 Deposit handling for these rows happens through the linked `Order` (see
 above), not the `Rental` record itself.
 
+## Branches (Locations)
+
+**Settings → Locations.** Describes the company's physical sites — address, hours, contact
+details and photos — and shows them to customers on the website.
+
+**Note:** this is **not** per-branch stock yet. Equipment is not assigned to a site, customers
+do not choose a branch, and availability is still computed company-wide. That is phases 4-6,
+on hold. Today Locations is a presentation-and-address layer.
+
+### What you fill in, and what the customer sees
+
+| Field in the panel | Where it shows up |
+|---|---|
+| Name | card heading on the website |
+| Code (e.g. `MMZ`) | badge next to the name |
+| Street, building, postcode, city | address line on the card |
+| Description | paragraph on the card, truncated to 120 characters |
+| Opening hours | list on the card |
+| Phone, e-mail | clickable links on the card |
+| Premises photo | card header image |
+| Gallery | strip of up to 4 thumbnails with a "+N" counter |
+| Map location | "See on map" link |
+
+A branch has **no page of its own** — it exists only as a card in a grid on a CMS page.
+
+### Three things that surprise people
+
+**1. Adding a branch does not put it on the website.** You must open the CMS page, find the
+"Content grid" block set to "Locations" and **add the new branch to its list**. The block shows
+a manually picked set and has no "all of them" option. Nothing reminds you — the page simply
+looks unchanged. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+
+**2. Unticking "Active" does not hide the branch.** It disappears from the picker in the panel,
+but if it was already in a block it keeps rendering. To hide it, remove it from the block.
+
+**3. The first branch automatically becomes the primary one**, and the last one cannot be
+deleted — the system makes sure a company always has at least one site.
+
+### The company address currently lives in two places
+
+The address shown at checkout, on protocols and in e-mails comes from **Settings** (company
+contact details), not from the branch entity — even though a branch has its own address.
+Changing the address under Locations will **not** change the address on documents.
+Tracked as [`123k99ct3j0`](https://app.clickup.com/t/123k99ct3j0).
+
 ## Customer management (the `customers` module)
 
 `CustomerResource`: a user appears in this list only if they have at least

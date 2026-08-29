@@ -85,7 +85,7 @@ ma realny sens (rysuje koło zasięgu dostawy, czyli pokazuje dane niewidoczne i
 skopiowany kształt, nie uzasadnienie.
 
 Zmierzone: **jedynym konsumentem** `Location::latitude`/`longitude` w całym repo jest
-`resources/views/components/ios/location-card.blade.php:22-25` — link do Google Maps, który **ma
+`resources/views/components/ios/location-card.blade.php:27-34` — link do Google Maps, który **ma
 już fallback na adres tekstowy**. Odległość w km jest jawnie poza zakresem (brak źródła pozycji
 odwiedzającego), czyli najpoważniejszy przyszły przypadek użycia też odpada.
 
@@ -98,6 +98,52 @@ zapamięta to.
 Kolumny są nullable i po backfillu **puste dla wszystkich 8 tenantów** — nic od nich nie zależy.
 Gdyby picker kiedykolwiek miał zniknąć, kolumny warto zostawić: dwa nullable decimale kosztują
 zero, a ich brak zamienia każde późniejsze użycie w migrację.
+
+#### Które kolumny docierają do klienta (stan 2026-08-29)
+
+Karta `resources/views/components/ios/location-card.blade.php` ma **jedno** użycie —
+`resources/views/components/content-blocks/content-grid.blade.php:108`, z wariantem `:dark`.
+To jedyna droga, którą dane oddziału trafiają na stronę publiczną.
+
+| Kolumna | Na karcie | Forma |
+|---|---|---|
+| `name` | tak | nagłówek |
+| `code` | tak | badge przy nazwie |
+| `street`/`building`/`postal_code`/`city` | tak | jedna linia adresu |
+| `description` | tak | `Str::limit(..., 120)` pod adresem |
+| `opening_hours` | tak | lista `label — hours` |
+| `photo` | tak | zdjęcie nagłówkowe karty |
+| `gallery` | tak | pasek 4 miniatur, licznik `+N` na ostatniej |
+| `phone` | tak | `tel:` |
+| `email` | tak | `mailto:` |
+| `latitude`/`longitude` | pośrednio | link do Google Maps, z fallbackiem na adres |
+| `slug` | **nie** | brak dedykowanej trasy pojedynczego oddziału |
+| `is_active`, `sort_order`, `primary_slot` | **nie** | sterują doborem i kolejnością, nie treścią |
+
+**`is_active` NIE filtruje renderu — to pułapka.** `ContentGridResolver::resolveItems()`
+robi `whereIn('id', $ids)` na ręcznie wybranej liście z bloku, bez warunku aktywności;
+`is_active` zawęża wyłącznie listę wyboru w panelu (`optionsForType()`). Wyłączenie
+oddziału **nie zdejmuje go ze strony**, dopóki ktoś nie usunie go z bloku „Siatka treści".
+Razem z brakiem trybu „wszystkie" daje to parę symetrycznych zaskoczeń: dodanie oddziału
+go nie pokazuje, a wyłączenie nie ukrywa.
+
+`code`, `email`, `description` i `gallery` **były zbierane w panelu od kroku 1.1 i nie docierały
+nigdzie** aż do 2026-08-29 — właściciel je wypełniał, a klient ich nie widział. Przy dokładaniu
+kolumny do `LocationResource` sprawdź tę tabelę: kolumna bez wiersza tutaj to kolumna, która
+prawdopodobnie przepada.
+
+Kontrast nowych elementów policzony liczbowo (WCAG 2.2 AA, próg 4.5:1 dla małego tekstu):
+badge 6.87:1 w wariancie jasnym i 9.40:1 w ciemnym, licznik `+N` 5.74:1 w najgorszym przypadku
+(biała fotografia pod `bg-black/60`). Uwaga przy przeliczaniu: tło ciemnej karty to
+`--color-dark-bg-raised: oklch(20% 0.01 250)` = rgb(19,22,26)
+(`resources/css/design-tokens.css:68`), **nie** czerń — przyjęcie `#000000` zawyża wynik.
+
+**Znane ograniczenie, osobne zadanie (ClickUp `123k99ct3xt`):** dodanie oddziału **nie** sprawia,
+że pojawia się on na stronie. Blok „Siatka treści" trzyma ręcznie wybraną listę identyfikatorów
+(`content_items`, `->multiple()->required()` w `app/Filament/Support/BuilderBlocks.php:532-537`)
+i **nie ma trybu „wszystkie"**. Odtworzone na tenancie `qatest`: aktywna lokalizacja z kompletem
+danych nie renderuje się na `/nasze-oddzialy`, bo nie została dopisana do bloku. Nic o tym
+nie informuje.
 
 ### `service_location_stocks` (nowa) — kotwica
 

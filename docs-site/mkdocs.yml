@@ -36,6 +36,8 @@ plugins:
             Customer Journey — Rental (item_rental): Ścieżka klienta — Wypożyczenie (item_rental)
             Customer Journey — Inquiry: Ścieżka klienta — Zapytanie
             Cancellation (customer + admin): Anulowanie (klient + administrator)
+            Customer Journey — Choosing a Branch: Ścieżka klienta — Wybór oddziału
+            Staff Journey — Working at a Branch: Ścieżka pracownika — Praca w oddziale
             Guest vs Authenticated: Gość a zalogowany
             Purchase Process (funnel view): Proces zakupowy (widok lejka)
             Onboarding & Registration: Onboarding i rejestracja
@@ -107,6 +109,8 @@ nav:
       - Customer Journey — Rental (item_rental): business/customer-journey-rental.md
       - Customer Journey — Inquiry: business/customer-journey-inquiry.md
       - Cancellation (customer + admin): business/customer-journey-cancellation.md
+      - Customer Journey — Choosing a Branch: business/customer-journey-locations.md
+      - Staff Journey — Working at a Branch: business/staff-journey-locations.md
       - Guest vs Authenticated: business/guest-vs-authenticated.md
       - Purchase Process (funnel view): business/purchase-process.md
       - Onboarding & Registration: business/onboarding-registration.md
