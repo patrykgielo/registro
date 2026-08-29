@@ -52,11 +52,23 @@ $user->name = "x"  // FORBIDDEN (column doesn't exist!)
 ```
 
 ### Documentation Location
-```
-ALL docs are in: app/docs/
-NOT in: /docs/ (root)
-Archived legacy docs: docs/archive/
-```
+
+**Dwa żywe drzewa. Wybierz po RODZAJU treści, nie po pierwszym pasującym katalogu.**
+
+| Rodzaj | Katalog |
+|---|---|
+| Techniczna, wdrożeniowa, architektura, ADR | `app/docs/` — żywy indeks w `app/docs/README.md` |
+| **Biznesowa** — ścieżki klienta / pracownika / właściciela | `docs/business/` |
+| Opisy funkcji utrzymywane obok biznesowych | `docs/features/` |
+| Archiwum, nie dopisywać | `docs/archive/` |
+
+`app/docs/business/` **nie istnieje** — nie twórz go. Dokument biznesowy to zawsze
+para `.md` + `.en.md`, wpis w `docs/business/README.md` (i `README.en.md`) oraz wpis
+w `nav` w `docs-site/mkdocs.yml`. Bez tego ostatniego plik nie jest publikowany przez
+portal i dla czytelnika po prostu nie istnieje — build nie ostrzega.
+
+> Poprzednie brzmienie („ALL docs are in: app/docs/, NOT in: /docs/") było wykonywane
+> dosłownie i 2026-08-27 wysłało całą dokumentację wielooddziałowości w złe drzewo.
 
 ---
 
