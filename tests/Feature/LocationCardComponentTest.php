@@ -25,8 +25,15 @@ class LocationCardComponentTest extends TestCase
 
     public function test_renders_with_every_optional_field_present(): void
     {
+        $longDescription = 'Nasz oddział w centrum miasta obsługuje wynajem sprzętu budowlanego '
+            .'oraz ogrodniczego dla klientów indywidualnych i firm z całego regionu na miejscu.';
+        $this->assertGreaterThan(120, strlen($longDescription), 'fixture must exceed the Str::limit(120) truncation point');
+
         $location = Location::factory()->create([
             'name' => 'Warszawa Centrala',
+            'code' => 'WAW',
+            'email' => 'warszawa@example.test',
+            'description' => $longDescription,
             'street' => 'Marszałkowska',
             'building' => '1',
             'postal_code' => '00-001',
@@ -35,6 +42,13 @@ class LocationCardComponentTest extends TestCase
             'latitude' => 52.2297,
             'longitude' => 21.0122,
             'photo' => 'locations/1/photo.jpg',
+            'gallery' => [
+                'locations/1/gallery/1.jpg',
+                'locations/1/gallery/2.jpg',
+                'locations/1/gallery/3.jpg',
+                'locations/1/gallery/4.jpg',
+                'locations/1/gallery/5.jpg',
+            ],
             'opening_hours' => [
                 ['label' => 'Pon–Pt', 'hours' => '7:00–17:00'],
                 ['label' => 'Sob', 'hours' => 'Zamknięte'],
@@ -57,12 +71,31 @@ class LocationCardComponentTest extends TestCase
         // The dead Tailwind class found in x-cms.card (project_dead_primary_scale
         // memory) must not be repeated here.
         $this->assertStringNotContainsString('text-primary-', $html);
+
+        // code → badge next to the name.
+        $this->assertStringContainsString('WAW', $html);
+
+        // email → mailto: action alongside phone/map.
+        $this->assertStringContainsString('mailto:warszawa@example.test', $html);
+
+        // description → truncated to Str::limit(..., 120), not the full sentence.
+        $this->assertStringContainsString(\Illuminate\Support\Str::limit($longDescription, 120), $html);
+        $this->assertStringNotContainsString($longDescription, $html);
+
+        // gallery → 4-thumbnail preview strip (not all 5) plus a "+1" remainder badge.
+        $this->assertSame(4, substr_count($html, 'gallery/'), 'only the first 4 gallery images should render as thumbnails');
+        $this->assertStringContainsString('+1', $html);
+        $this->assertStringNotContainsString('gallery/5.jpg', $html);
     }
 
     public function test_renders_without_throwing_when_every_optional_field_is_empty(): void
     {
         $location = Location::factory()->create([
             'name' => 'Nowy Oddział',
+            'code' => null,
+            'email' => null,
+            'description' => '',
+            'gallery' => [],
             'street' => null,
             'building' => null,
             'postal_code' => null,
@@ -82,6 +115,12 @@ class LocationCardComponentTest extends TestCase
         // No dangling tel:/maps link when there is nothing to call or map.
         $this->assertStringNotContainsString('tel:', $html);
         $this->assertStringNotContainsString('google.com/maps', $html);
+        // No dangling mailto: link, no empty code badge, no empty description
+        // paragraph, no empty gallery grid — only-name-and-address must not
+        // leave any of the four new sections as a hollow shell.
+        $this->assertStringNotContainsString('mailto:', $html);
+        $this->assertStringNotContainsString('rounded-full px-2 py-0.5', $html);
+        $this->assertStringNotContainsString('role="group"', $html);
     }
 
     public function test_falls_back_to_address_based_map_link_when_coordinates_are_missing(): void

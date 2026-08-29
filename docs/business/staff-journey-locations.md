@@ -1,7 +1,10 @@
 # Podróż pracownika — Praca w oddziale
 
-> **Status: PLANOWANE.** Zachowanie zaprojektowane, jeszcze niewdrożone (plan zatwierdzony
-> 2026-08-26). Plan: [`docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
+> **Status: PLANOWANE.** Zachowanie zaprojektowane, jeszcze niewdrożone.
+> **Oddział jako encja już istnieje** (fazy 0-2) i pracownik z rolą admina może nim zarządzać
+> w panelu — ale **przypisanie pracownika do oddziału i zawężenie widoku to Faza 8**,
+> wstrzymana decyzją właściciela produktu. Nic z opisanego niżej podziału pracy jeszcze
+> nie działa. Plan: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
 
 **Dla właścicieli:** pracownikowi przypisujesz oddział, w którym pracuje. Od tego momentu widzi
 w panelu tylko zamówienia swojego punktu, a gdy klika zwrot — system wie, do którego oddziału

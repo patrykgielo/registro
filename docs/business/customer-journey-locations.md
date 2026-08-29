@@ -1,8 +1,12 @@
 # Podróż klienta — Wybór oddziału
 
-> **Status: PLANOWANE.** Ten dokument opisuje zachowanie **zaprojektowane, jeszcze niewdrożone**
-> (plan zatwierdzony 2026-08-26). Dziś system nie zna pojęcia oddziału.
-> Plan: [`docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
+> **Status: CZĘŚCIOWO WDROŻONE** (stan 2026-08-29).
+> **Oddział już istnieje** — jako encja z adresem, godzinami, zdjęciem i galerią, zarządzalny
+> w panelu i **widoczny na stronie** (fazy 0-2, PR #227-#231).
+> **Jeszcze nie istnieje** wybór oddziału przez klienta ani dostępność per punkt — to fazy 5-6,
+> **wstrzymane** decyzją właściciela produktu.
+> Sekcja „Co klient widzi dziś" opisuje stan faktyczny; reszta dokumentu opisuje stan docelowy.
+> Szczegóły techniczne: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
 
 **Dla klientów:** jeśli Twoja firma ma kilka oddziałów, klient wybiera oddział raz — jak sklep
 w Castoramie — a katalog, dostępność i odbiór dotyczą już tylko tego punktu. Jeśli masz jedną
@@ -14,8 +18,8 @@ Dotyczy tenantów z włączoną flagą `multi_location_stock`. Rozszerza
 ## Zasada nadrzędna
 
 **Jedno zamówienie = jeden oddział odbioru.** Klient potrzebujący sprzętu z dwóch punktów składa
-dwa zamówienia. Ta reguła jest wymuszona schematem (`carts.location_id`), a nie dyscypliną kodu —
-nie da się jej obejść przypadkiem.
+dwa zamówienia. Ta reguła **będzie** wymuszona schematem (`carts.location_id`, Faza 6), a nie
+dyscypliną kodu — nie da się jej wtedy obejść przypadkiem. Kolumna jeszcze nie istnieje.
 
 ## Pełna ścieżka
 
@@ -51,7 +55,44 @@ flowchart TD
     REVALIDATE -- Tak --> ORDER["Zamówienie złożone\nProtokół wydania z adresem oddziału"]
 ```
 
-## Co klient widzi na każdym etapie
+## Co klient widzi DZIŚ
+
+Oddziały pojawiają się na stronie jako **karty w bloku „Siatka treści"** na dowolnej stronie CMS.
+Karta pokazuje:
+
+| Element | Skąd |
+|---|---|
+| Nazwa oddziału | pole „Nazwa" |
+| Symbol jako plakietka przy nazwie | pole „Symbol" (np. `MMZ`) |
+| Adres | ulica, budynek, kod, miasto |
+| Krótki opis | pole „Opis", skracany do 120 znaków |
+| Godziny otwarcia | tabela „Godziny otwarcia" |
+| Zdjęcie siedziby | pole „Zdjęcie siedziby" |
+| Pasek do 4 miniatur galerii, z licznikiem „+N" | pole „Galeria" |
+| Telefon (klikalny) i e-mail (klikalny) | pola „Telefon", „E-mail" |
+| „Zobacz na mapie" | współrzędne z pickera, z zapasowym wyszukaniem po adresie |
+
+**Czego nie ma:** oddział nie ma własnej podstrony ani adresu URL — istnieje wyłącznie jako
+karta w siatce. Klient nie wybiera oddziału, katalog i dostępność nie są jeszcze podzielone
+na punkty.
+
+### Dwie pułapki, o których trzeba wiedzieć
+
+**1. Dodanie oddziału NIE umieszcza go na stronie.** Blok „Siatka treści" trzyma ręcznie
+wybraną listę elementów i nie ma opcji „wszystkie". Po dodaniu nowego oddziału trzeba wejść
+w stronę CMS i dopisać go do bloku. Nic o tym nie przypomina — strona po prostu wygląda tak
+jak wcześniej. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+
+**2. Wyłączenie oddziału NIE zdejmuje go ze strony.** Odznaczenie „Aktywna" usuwa oddział
+z listy do wyboru w panelu, ale jeśli był już dodany do bloku — nadal się renderuje.
+Żeby zniknął, trzeba usunąć go z bloku.
+
+Obie sytuacje wyglądają dla właściciela tak samo: „ustawiłem, a strona pokazuje co innego".
+Przy każdej takiej skardze sprawdź najpierw blok „Siatka treści", a dopiero potem oddział.
+
+---
+
+## Co klient zobaczy docelowo (fazy 5-6, wstrzymane)
 
 | Etap | Co się zmienia względem dziś |
 |---|---|
