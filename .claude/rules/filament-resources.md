@@ -367,3 +367,20 @@ mają tego błędu**, sprawdzone przez migrację/config, nie przez zgadywanie.
 **Zasada:** przed dodaniem `->unique()` do pola formularza sprawdź migrację tabeli — jeśli unique jest
 `['organization_id', kolumna]`, reguła Filamenta MUSI dostać `modifyRuleUsing` z tym samym `where`.
 `/admin`, albo własną politykę.
+
+---
+
+## Podgląd pliku wiszący na „Pobieranie rozmiaru" (2026-08-29)
+
+`FileUpload`/FilePond, który w nieskończoność pokazuje „Wczytywanie / Pobieranie rozmiaru"
+na subdomenie tenanta, to **nie** bug Filamenta, nie limit uploadu i nie za duży plik.
+
+FilePond robi `fetch()` po URL zwrócony przez `Storage::url()`. Jeśli ten URL ma inny host
+niż panel — a na stacku współdzielonym ma, bo adres dysku `public` jest budowany z `APP_URL`
+— przeglądarka blokuje żądanie przez CORS i komponent czeka w nieskończoność.
+
+Mylące: zwykły `<img src>` na storefroncie z tym samym złym adresem **działa**, bo obrazki
+nie podlegają CORS. Objaw jest więc panel-only i wygląda na problem Filamenta.
+
+Mechanizm i trzy niezależne pułapki (w tym `Storage::forgetDisk()`): `architecture-models.md`,
+sekcja „Adres dysku `public` to TRZECI, osobny adres".
