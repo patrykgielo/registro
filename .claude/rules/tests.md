@@ -301,7 +301,80 @@ test, matching what the real migration would have built.
 one directly above it (DB engine). Before adding a NEW raw `DB::statement()`/fixture-with-a-status/
 custom `tearDown()` to any Feature test: check this list first.
 
+## Walkthrough tests — the layer that catches what hypothesis tests miss
+
+Every other test in this repo verifies a **hypothesis about new code**. Nothing walked the existing
+system asking "does the ordinary thing still work". In one session four blockers shipped past
+**1589 green tests** and were found by clicking: two unscoped `unique` slug rules that made records
+unsavable, a save that inflated stock on every click, and an FK that made services undeletable.
+
+All four would have been caught by two generic assertions, neither of which needs a browser:
+
+- open an **existing** record and save it with **zero changes** → no validation errors, and the
+  record is **byte-identical** afterwards
+- create a fresh record and **delete** it → succeeds
+
+`PanelWalkthroughTest` (~9 s) and `StorefrontWalkthroughTest` (~2 s) live in the default suite.
+
+### Non-negotiables — remove any of these and the layer stops working
+
+**Enumerate, never list.** `Filament::getPanel('admin')->getResources()` returns 35 resources; the
+panel walkthrough iterates them. A resource added in a future phase is covered without anyone
+writing a test. The moment someone converts this to a hand-written list, it starts rotting.
+
+**Two tenants seeded IDENTICALLY, through the real onboarding path** —
+`ProvisionTenantOrganization` + `SeedEquipmentRental`, not factories with random data. The seeder
+gives every tenant the same catalogue, so slugs **collide across tenants by construction** (measured:
+13 services, 7 rental categories). That collision is what made the slug bugs blocking. A test tenant
+built from `Organization::factory()` with faker data reproduces none of it and proves nothing.
+
+**Compare attributes before and after, not just "no exception".** The `metadata.specs` data-loss bug
+(seeder writes a dict, the form's Repeater expects a list of rows, a no-op save destroys 24 services'
+technical specs) is invisible to any test that only asserts the save succeeded.
+
+**Assert content, not status.** A CMS page returning 200 while rendering nothing is a false green.
+
+**Every walkthrough must be falsifiable, and the proof belongs in the report.** Break the thing on
+purpose, watch it go red, revert, confirm a clean `git diff`. `StorefrontWalkthroughTest` was proven
+by dropping the tenant scope in `ServiceController::index()` (violations 2 → 4, listing count
+13 → 26). A walkthrough that has never been seen to fail is decoration.
+
+**Exemptions are explicit and justified, one reason per entry.** A resource that legitimately cannot
+be deleted (legal record, `restrictOnDelete`, a Phase-1 guard like "never delete the last location")
+is skipped with the reason written down. Better: a runtime self-check that raises a violation if the
+exemption's precondition stops holding — e.g. `canViewAny()` starting to return true for a tenant
+admin — so a stale exemption fails loudly instead of silently skipping a resource forever.
+
+### Storefront layer: use the real middleware, not a bind override
+
+`TenantBrandNameRegressionTest`'s pattern (binding a fake `ResolveTenant`) **cannot be used here**.
+Swapping the class out means the request never travels the real middleware ordering — and that
+ordering is exactly where the cross-tenant leak lives: `SubstituteBindings` is in Laravel's default
+`web` group, which always runs **before** route middleware, so `{service:slug}` binds a record
+**before** `ResolveTenant` has set either `request->attributes('tenant')` or the
+`tenant_resolution_attempted` marker that `BelongsToOrganization`'s fail-closed branch depends on
+(`app/Traits/BelongsToOrganization.php:56`, `ResolveTenant.php:34`). Drive real `Host` headers
+through the real stack, or the leak stays invisible.
+
+### Scope boundary that keeps this honest
+
+The delete step creates its record through Eloquent, not by filling ~21 structurally different
+Filament create forms. Hand-mapping valid data for nested repeaters and conditionally-required
+fields multiplies the file and introduces the worst noise class there is — "the harness's own
+guessed data was invalid" masquerading as a bug. The create step's only job is handing delete
+something to work with; the blocker class this layer targets is entirely an edit-time concern.
+
 ## tests/Browser (Pest v4 real-browser E2E)
+
+> **Status 2026-08-29: the suite runs but FAILS.** `SmokeTest` reaches the login form in ~8 s and
+> then stays on `/admin/login`; the in-process server throws a message-less `HttpException` — the
+> signature of `RequireTenant`'s `abort_unless(..., 404)`, i.e. the tenant does not resolve for the
+> login request. Ruled out by measurement: missing Playwright binaries (Chromium **is** in the image
+> at `/opt/playwright-browsers`, see below) and a non-`active` `lifecycle_state` on the fixture
+> (the column defaults to `active`). Prime suspect is the pest#1734 host workaround, since it is
+> exactly about Host resolution. Tracked separately — until it is fixed, these seven files protect
+> nothing while looking like they do, which is worse than not having them.
+
 
 - In-process server (`LaravelHttpServer`) — Playwright/Chromium hit the app in the SAME PHP process, no `artisan serve`.
 - `SESSION_SECURE_COOKIE=false` in `.env.testing` — plugin forces `http://`; `true` silently drops cookies.
@@ -433,3 +506,34 @@ refactors. Full catalog of what's pinned today:
 
 **CI runs `./vendor/bin/pint --test` before PHPUnit tests.**
 If Pint fails, tests won't even run!
+
+---
+
+## Naprawa przez unieważnienie cache'u — test musi ten cache NAPEŁNIĆ
+
+Gdy poprawka polega na wyczyszczeniu jakiegoś cache'u (`Storage::forgetDisk()`,
+`Cache::forget()`, `app()->forgetInstance()`), przypadek testowy, który tego cache'u
+nie napełni, **przechodzi także po wycięciu poprawki** — czyli nie pilnuje niczego.
+
+Konkret: `tests/Feature/TenantScopedStorageUrlTest.php`. Trzy z czterech testów przechodzą
+również z usuniętym `Storage::forgetDisk('public')`. Dopiero czwarty
+(`test_storage_url_uses_the_tenants_own_host_even_when_the_disk_was_resolved_before_the_request`)
+resolwuje dysk **przed** wysłaniem żądania i dzięki temu czerwienieje.
+
+Zasada ogólna: ustaw stan, który poprawka ma unieważnić, **zanim** wykonasz operację
+pod testem. Potem zweryfikuj falsyfikowalność — wytnij poprawkę, test musi paść.
+
+## Znany flake: `LocationFactory` i `->tel()`
+
+`database/factories/LocationFactory.php:33` generuje `fake()->phoneNumber()` w locale
+`en_US`, który **czasem** zwraca numer z rozszerzeniem („555-1234 x567"). Pole `phone`
+w `LocationForm.php:92` jest walidowane jako `->tel()` i taki numer odrzuca.
+
+Objaw: losowa czerwień z komunikatem `Component has errors: "data.phone"` w testach
+Filamenta dotyczących lokalizacji — **bez związku z edytowanym kodem**.
+
+2026-08-29 ta czerwień została błędnie przypisana zmianie w `ResolveTenant.php`
+(„zniknęła po `git stash` tego pliku"). Pojedynczy przebieg nie rozstrzyga przyczyny przy
+teście flaky. Zanim obwinisz jakikolwiek plik: przeczytaj treść asercji — `data.phone`
+nie ma żadnego prawdopodobnego związku ze `Storage::forgetDisk()` — i powtórz test
+na niezmienionym drzewie.
