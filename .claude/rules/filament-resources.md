@@ -173,6 +173,30 @@ Forms\Components\DatePicker::make('appointment_date')
 
 `$record === null` → create mode, `$record !== null` → edit mode.
 
+### Wariant: pole wirtualne + `->default()` (ClickUp 123k99ct40d, 2026-08-30)
+
+Ten sam bug, inny mechanizm — `->default()` też działa TYLKO na create, ale tu ofiarą jest pole
+**bez kolumny w tabeli** (checkbox `send_setup_email` na `UserResource`, sterujący czy wysłać link
+zamiast zapisać hasło ręcznie). Na edycji formularz hydratuje się z rekordu, kolumny nie ma →
+stan pola to `null`, więc `->required(fn ($get) => ! $get('send_setup_email'))` na sąsiednich
+polach hasła zawsze wychodzi `true` — **każdy** zapis istniejącego użytkownika bez żadnej zmiany
+wymagał wypełnienia dwóch pól, które i tak były `->disabled()`.
+
+Naprawa nie polegała na warunkowaniu `required()` po `$record` (jak wyżej) — cała sekcja nie ma
+sensu na edycji, więc `->visibleOn('create')` na `Section::make('Hasło')`. Filament pomija
+walidację niewidocznych komponentów całkowicie (ten sam mechanizm, na którym opiera się wzorzec
+wyżej), więc `required()`/`disabled()` na dzieciach przestają być w ogóle ewaluowane na edycji —
+nie trzeba było ich dotykać. Realna droga pomocy adminowi ("zresetuj hasło temu, kto je ma, ale
+zapomniał") przeniesiona do istniejącej akcji wierszowej `resend_password_setup`, rozszerzonej
+z `->visible(fn ($record) => $record->password === null)` na wszystkich — patrz
+`User::initiatePasswordSetup()` w `models.md`: generuje tylko token, nigdy nie zeruje/nadpisuje
+`password`, więc bieżące hasło działa aż do faktycznego dokończenia setupu przez link.
+
+**Zasada:** pole bez kolumny w tabeli, którego `->default()` steruje walidacją sąsiednich pól,
+jest tą samą pułapką co `DatePicker::minDate(now())` — ale checklistę „$record ? null : ..." nie
+da się tu zastosować sensownie (nie ma co warunkować per rekord — pole nie istnieje na edycji
+koncepcyjnie). Warunkuj widoczność całej sekcji, nie required() jej pól.
+
 ---
 
 ## ZASADA: Admin → Frontend Impact Check (CRITICAL)
