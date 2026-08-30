@@ -8,7 +8,6 @@ use App\Support\Settings\SettingsManager;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Component as SchemaComponent;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -110,11 +109,11 @@ trait HasGroupedSettings
             throw ValidationException::withMessages($prefixedErrors);
         }
 
-        // Persist validated data
+        // Persist validated data. persistSettingsGroup() calls SettingsManager::set() per
+        // key, which already clears that key's real cache entry
+        // (settings:tenant:{id}:{group}:{key} / settings:tenant:{id}:{group}) — a bare
+        // "settings:{group}" forget here never matched that format and never cleared anything.
         $this->persistSettingsGroup($group, $groupData);
-
-        // Clear cache for this group
-        Cache::forget("settings:{$group}");
 
         // Success notification
         Notification::make()

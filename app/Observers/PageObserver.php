@@ -6,7 +6,6 @@ namespace App\Observers;
 
 use App\Models\Page;
 use App\Support\Settings\SettingsManager;
-use Illuminate\Support\Facades\Cache;
 
 class PageObserver
 {
@@ -30,18 +29,10 @@ class PageObserver
         return true;
     }
 
-    /**
-     * Handle the Page "updated" event.
-     *
-     * Clear homepage cache when homepage page is updated.
-     */
-    public function updated(Page $page): void
-    {
-        $settingsManager = app(SettingsManager::class);
-        $homepageId = $settingsManager->get('cms.homepage_page_id');
-
-        if ($homepageId && $homepageId == $page->id) {
-            Cache::forget('home.page');
-        }
-    }
+    // NOTE: an `updated()` hook that called Cache::forget('home.page') used to live here.
+    // Nothing in the codebase ever writes a cache entry under that key — homepage rendering
+    // is not cached anywhere (grepped 2026-08-30) — so it was a permanent no-op that looked
+    // like working cache invalidation. Removed rather than kept as a misleading stub; Page's
+    // own navigation-cache invalidation (see Page::booted()) covers the only real cache this
+    // model's saves need to clear.
 }
