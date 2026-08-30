@@ -26,9 +26,51 @@ return Application::configure(basePath: dirname(__DIR__))
             'webhooks/przelewy24',
         ]);
 
-        // Add maintenance mode check to web middleware group
-        // Runs AFTER session/auth middleware, allowing Auth::user() to work
+        // Tenant resolution MUST precede route-model binding (ClickUp 123k99ct3j6,
+        // cross-tenant leak: a slug that resolves in tenant B's rows served 200 to
+        // tenant A's host). SubstituteBindings sits inside Laravel's own default
+        // 'web' group (Illuminate\Foundation\Configuration\Middleware::getMiddlewareGroups()),
+        // while ResolveTenant was only ever attached per-ROUTE — route middleware
+        // runs after the whole group, so every `{model:slug}` binding resolved
+        // BEFORE ResolveTenant had set the `tenant` request attribute or corrected
+        // `session('tenant_id')`. BelongsToOrganization's scope then used
+        // whatever tenant a PREVIOUS request left in the session (or none at all).
+        //
+        // Fix: pull SubstituteBindings out of its default position and re-append
+        // it immediately after ResolveTenant, so binding always runs against the
+        // CURRENT request's Host. Laravel's own $middlewarePriority (Kernel.php)
+        // only ever reorders middleware that are THEMSELVES in that list relative
+        // to each other — ResolveTenant/CheckMaintenanceMode are not in it, so
+        // this explicit order survives priority-sorting per request (verified
+        // against Illuminate\Routing\SortedMiddleware — it swaps priority-listed
+        // middleware pairwise but never moves a non-priority middleware across a
+        // priority one it wasn't compared against).
+        //
+        // Confirmed NOT to touch Filament's /admin or /platform panels: both
+        // PanelProviders pass their OWN explicit ->middleware([...]) array
+        // (Filament\Panel\Concerns\HasMiddleware::getMiddleware() returns
+        // ["panel:{id}", ...$this->middleware] — no reference to the app's 'web'
+        // group), and Filament's own routes file is loaded via
+        // ServiceProvider::loadRoutesFrom() (ProcessRoutes.php) with no group
+        // wrapping. AdminPanelProvider already carries its own ResolveTenant/
+        // RequireTenant pair, unchanged by this.
+        //
+        // Root domain (`/`) and auth routes keep their own explicit
+        // ResolveTenant::class in routes/web.php — now redundant (ResolveTenant
+        // is idempotent: re-resolves the same tenant, re-writes the same session
+        // key) rather than harmful. Left in place to keep this diff scoped to the
+        // ordering bug; a follow-up can prune the now-dead per-route entries.
+        $middleware->web(remove: [
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        ]);
+
+        // Runs AFTER session/auth middleware, allowing Auth::user() to work.
+        // CheckMaintenanceMode stays AFTER SubstituteBindings — same relative
+        // order as before this change, only ResolveTenant is newly inserted
+        // ahead of binding.
         $middleware->web(append: [
+            \App\Http\Middleware\ResolveTenant::class,
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\CheckMaintenanceMode::class,
         ]);
 

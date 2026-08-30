@@ -505,3 +505,26 @@ ORDER BY date DESC;
 - [README.md](README.md) - Quick start guide
 - [architecture.md](architecture.md) - System architecture
 - [troubleshooting.md](troubleshooting.md) - Common issues
+
+---
+
+## Zależność, na której opiera się bezpieczeństwo tych tras (2026-08-30)
+
+Od Layer 7 (`VULN-003`) trasy `api/webhooks/smsapi/*` przechodzą przez `ResolveTenant`,
+czego wcześniej nie robiły — bo `ResolveTenant` jest teraz w bazowej grupie `web`.
+
+**Dziś jest to nieszkodliwe i opiera się na dwóch założeniach:**
+
+1. **URL webhooka jest zarejestrowany na domenie głównej** (`registrolabs.com`), a nie na
+   subdomenie tenanta. `ResolveTenant` na domenie głównej przepuszcza żądanie natychmiast,
+   bez rozwiązywania tenanta i bez żadnej z gałęzi redirect / 503 (zawieszony) /
+   410 (zamknięty).
+2. **`SMSAPI_TOKEN` jest jedną globalną zmienną** (`config/services.php:43`), a nie
+   poświadczeniem per organizacja — więc webhook nie potrzebuje kontekstu tenanta.
+
+**Jeśli którekolwiek przestanie być prawdą, callbacki o statusie doręczenia SMS zaczną
+po cichu padać.** Zmiana URL-a na subdomenę tenanta wprowadzi te żądania w gałęzie
+zawieszenia/zamknięcia konta dokładnie tak, jak dzieje się to dziś dla Przelewy24.
+
+Żadne z tych założeń nie jest weryfikowalne z repozytorium — URL webhooka mieszka w panelu
+SMSAPI. **Sprawdź go tam przed wdrożeniem** i przy każdej zmianie modelu wdrożenia.
