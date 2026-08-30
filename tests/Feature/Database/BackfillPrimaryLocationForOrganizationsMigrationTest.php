@@ -36,6 +36,21 @@ class BackfillPrimaryLocationForOrganizationsMigrationTest extends TestCase
 
     private const SCHEMA_MIGRATION_PATH = 'database/migrations/2026_08_27_120000_create_locations_table.php';
 
+    /**
+     * `service_location_stocks` (Faza 2, 2026_08_28) FKs to `locations`.
+     * MySQL's InnoDB enforces that FK; SQLite does not. A REAL
+     * `migrate:rollback` always undoes these two before it ever reaches
+     * `locations`' own down() — Laravel rolls back newest-migration-first,
+     * and both were created a day after `locations`. Omitting them here (as
+     * this test did before this fix) reproduces an order no genuine
+     * rollback command can produce, and fails on MySQL with SQLSTATE[HY000]
+     * 3730. See CreateLocationsTableMigrationTest's matching constant and
+     * ci-cd-troubleshooting.md's RC26 MySQL gate entry.
+     */
+    private const STOCK_BACKFILL_MIGRATION_PATH = 'database/migrations/2026_08_28_090001_backfill_service_location_stocks_for_item_rental_services.php';
+
+    private const STOCK_SCHEMA_MIGRATION_PATH = 'database/migrations/2026_08_28_090000_create_service_location_stocks_table.php';
+
     private function setContactSettings(Organization $org, array $values): void
     {
         app('request')->attributes->set('tenant', $org);
@@ -214,6 +229,10 @@ class BackfillPrimaryLocationForOrganizationsMigrationTest extends TestCase
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
         $this->assertTrue(Schema::hasTable('locations'));
 
+        // Full chain, newest-first — the order a real `migrate:rollback`
+        // always applies (see STOCK_BACKFILL_MIGRATION_PATH's docblock).
+        $this->artisan('migrate:rollback', ['--path' => self::STOCK_BACKFILL_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::STOCK_SCHEMA_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::SCHEMA_MIGRATION_PATH])->run();
 
@@ -222,8 +241,10 @@ class BackfillPrimaryLocationForOrganizationsMigrationTest extends TestCase
             'rolling back both migrations together must drop the locations table entirely'
         );
 
-        // Re-migrate so RefreshDatabase's teardown finds the expected state.
+        // Re-migrate (oldest-first) so RefreshDatabase's teardown finds the expected state.
         $this->artisan('migrate', ['--path' => self::SCHEMA_MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::STOCK_SCHEMA_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::STOCK_BACKFILL_MIGRATION_PATH])->run();
     }
 }

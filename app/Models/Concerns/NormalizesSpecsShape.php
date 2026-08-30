@@ -28,8 +28,25 @@ namespace App\Models\Concerns;
  * where the key is recognized. An unmapped key falls back to the same
  * humanization the legacy blade renderer already used
  * (resources/views/services/show.blade.php: `ucfirst(str_replace('_', ' ',
- * $key))`), with an empty unit — so a key nobody has mapped yet degrades to
+ * $key))`), with a `null` unit — so a key nobody has mapped yet degrades to
  * today's existing legacy-render behavior instead of losing the row.
+ *
+ * CANONICAL EMPTY UNIT IS `null`, NEVER `''` (2026-08-30, RC26 MySQL gate
+ * fix). Not a stylistic choice: `ServiceResource`'s `TextInput::make('unit')`
+ * sits inside a Repeater, and Filament core's own `HasState::getRawState()`
+ * (`vendor/filament/schemas/.../Concerns/HasState.php`) unconditionally
+ * coerces any blank, non-array field state to `null` every time the form's
+ * state is read for save — this is unconditional Filament framework
+ * behavior, not something this codebase can opt out of per-field. A row
+ * seeded/migrated with `unit: ''` therefore gets silently rewritten to
+ * `unit: null` on the very next save, even with zero user-visible change —
+ * `PanelWalkthroughTest`'s "existing record saved with no changes must be
+ * byte-identical" check exists exactly to catch this class of drift. Seed
+ * (`SeedEquipmentRental`) and backfill (`2026_08_30_140000_normalize_service_
+ * specs_metadata_shape.php`) now emit `null` to match, so a no-op save is a
+ * true no-op. `resources/views/services/show.blade.php:114` already reads
+ * `$spec['unit'] ?? ''`, so `null` and `''` render identically — do not
+ * "fix" a new empty-unit producer back to `''`.
  */
 trait NormalizesSpecsShape
 {
@@ -53,7 +70,7 @@ trait NormalizesSpecsShape
 
     /**
      * @param  array<string, mixed>  $dict
-     * @return array<int, array{label: string, value: mixed, unit: string}>
+     * @return array<int, array{label: string, value: mixed, unit: ?string}>
      */
     public static function specsDictToList(array $dict): array
     {
@@ -62,9 +79,9 @@ trait NormalizesSpecsShape
         $list = [];
 
         foreach ($dict as $key => $value) {
-            [$label, $unit] = $labels[$key] ?? [ucfirst(str_replace('_', ' ', (string) $key)), ''];
+            [$label, $unit] = $labels[$key] ?? [ucfirst(str_replace('_', ' ', (string) $key)), null];
 
-            if ($unit !== '' && is_string($value) && str_ends_with($value, $unit)) {
+            if (filled($unit) && is_string($value) && str_ends_with($value, $unit)) {
                 $value = trim(substr($value, 0, -strlen($unit)));
             }
 
@@ -81,7 +98,7 @@ trait NormalizesSpecsShape
      * migrations.md's "a migration should not depend on application state
      * that can change shape independently of the schema it's pinned to."
      *
-     * @return array<string, array{0: string, 1: string}>
+     * @return array<string, array{0: string, 1: ?string}>
      */
     private static function specsKeyLabels(): array
     {
@@ -91,7 +108,7 @@ trait NormalizesSpecsShape
             'power_hp' => ['Moc', 'KM'],
             'weight_kg' => ['Waga', 'kg'],
             'disc_mm' => ['Średnica tarczy', 'mm'],
-            'fuel_type' => ['Rodzaj paliwa', ''],
+            'fuel_type' => ['Rodzaj paliwa', null],
             'capacity_l' => ['Pojemność', 'l'],
             'capacity_l_day' => ['Wydajność', 'l/dobę'],
             'voltage' => ['Napięcie', 'V'],

@@ -104,7 +104,7 @@ class SeedEquipmentRental implements VerticalSeeder
                         'specifications' => [
                             'specs' => [
                                 ['label' => 'Waga', 'value' => 90, 'unit' => 'kg'],
-                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => ''],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => null],
                             ],
                         ],
                     ],
@@ -140,7 +140,7 @@ class SeedEquipmentRental implements VerticalSeeder
                         'specifications' => [
                             'specs' => [
                                 ['label' => 'Moc', 'value' => 3000, 'unit' => 'W'],
-                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => ''],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => null],
                             ],
                         ],
                     ],
@@ -155,7 +155,7 @@ class SeedEquipmentRental implements VerticalSeeder
                         'specifications' => [
                             'specs' => [
                                 ['label' => 'Moc', 'value' => 5200, 'unit' => 'W'],
-                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => ''],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => null],
                             ],
                         ],
                     ],
@@ -270,7 +270,7 @@ class SeedEquipmentRental implements VerticalSeeder
                         'specifications' => [
                             'specs' => [
                                 ['label' => 'Moc', 'value' => 20, 'unit' => 'kW'],
-                                ['label' => 'Rodzaj paliwa', 'value' => 'olej', 'unit' => ''],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'olej', 'unit' => null],
                             ],
                         ],
                     ],

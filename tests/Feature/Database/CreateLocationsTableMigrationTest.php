@@ -27,6 +27,22 @@ class CreateLocationsTableMigrationTest extends TestCase
 
     private const MIGRATION_PATH = 'database/migrations/2026_08_27_120000_create_locations_table.php';
 
+    /**
+     * `service_location_stocks.location_id` FKs to `locations` (Faza 2,
+     * 2026_08_28_090000). MySQL's InnoDB enforces that FK; SQLite does not
+     * (this test's own docblock already flags that gap). A REAL
+     * `migrate:rollback`/`--step=N` can never hit this: Laravel rolls back a
+     * batch newest-migration-first, and this table was created a day after
+     * `locations`, so it is always undone before `locations`' own down()
+     * runs. Rolling back `locations` in isolation via `--path` — as this
+     * test did before this fix — skips that ordering entirely and
+     * reproduces an order no genuine rollback command can produce
+     * (SQLSTATE[HY000] 3730 on MySQL). Mirroring the real order here, not
+     * loosening the assertion, is the fix — see ci-cd-troubleshooting.md's
+     * RC26 MySQL gate entry.
+     */
+    private const DEPENDENT_STOCK_MIGRATION_PATH = 'database/migrations/2026_08_28_090000_create_service_location_stocks_table.php';
+
     public function test_up_creates_the_table_with_the_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('locations'));
@@ -100,11 +116,15 @@ class CreateLocationsTableMigrationTest extends TestCase
         DB::table('locations')->insert($this->rowFor($org->id, 'a', primarySlot: 1));
         $this->assertTrue(Schema::hasTable('locations'));
 
+        // Dependent FK first — the order a real `migrate:rollback` always
+        // applies (see DEPENDENT_STOCK_MIGRATION_PATH's docblock).
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_STOCK_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
 
         $this->assertFalse(Schema::hasTable('locations'));
 
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_STOCK_MIGRATION_PATH])->run();
 
         $this->assertTrue(Schema::hasTable('locations'));
         $this->assertSame(0, DB::table('locations')->count());
