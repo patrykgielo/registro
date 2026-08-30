@@ -143,6 +143,7 @@ class UserResource extends BaseResource
                 ])->columns(4)->collapsible(),
 
             Section::make('Hasło')
+                ->visibleOn('create')
                 ->schema([
                     Forms\Components\Checkbox::make('send_setup_email')
                         ->label('Wyślij email z linkiem do ustawienia hasła')
@@ -265,15 +266,24 @@ class UserResource extends BaseResource
             ])
             ->recordActions([
                 Actions\Action::make('resend_password_setup')
-                    ->label('Wyślij email z hasłem')
+                    ->label(fn (User $record): string => $record->password === null
+                        ? 'Wyślij email z hasłem'
+                        : 'Wyślij link do zmiany hasła')
                     ->icon('heroicon-o-envelope')
                     ->color('info')
-                    ->visible(fn (User $record): bool => $record->password === null)
                     ->requiresConfirmation()
-                    ->modalHeading('Wysłać email z linkiem do ustawienia hasła?')
-                    ->modalDescription(fn (User $record): string => "Użytkownik {$record->email} otrzyma nowy link ważny ".User::PASSWORD_SETUP_TTL_HOURS.' godziny. '.
-                        'Poprzedni link (jeśli istniał) zostanie unieważniony.'
-                    )
+                    ->modalHeading(fn (User $record): string => $record->password === null
+                        ? 'Wysłać email z linkiem do ustawienia hasła?'
+                        : 'Wysłać email z linkiem do zmiany hasła?')
+                    ->modalDescription(function (User $record): string {
+                        $ttl = User::PASSWORD_SETUP_TTL_HOURS;
+
+                        return $record->password === null
+                            ? "Użytkownik {$record->email} otrzyma nowy link ważny {$ttl} godziny do ustawienia hasła. ".
+                                'Poprzedni link (jeśli istniał) zostanie unieważniony.'
+                            : "Użytkownik {$record->email} otrzyma link ważny {$ttl} godziny do ustawienia nowego hasła. ".
+                                'Obecne hasło pozostaje aktywne, dopóki użytkownik nie ustawi nowego — nie zostanie unieważnione samą wysyłką linku.';
+                    })
                     ->modalSubmitActionLabel('Wyślij email')
                     ->action(function (User $record) {
                         try {
