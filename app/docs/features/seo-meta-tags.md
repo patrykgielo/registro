@@ -224,3 +224,54 @@ One shared observer instead of three near-identical `booted()` hooks (the patter
 - `app/Providers/AppServiceProvider.php` (registers the observer on `Page`/`Post`/`PortfolioItem`)
 - `routes/web.php` (`GET /sitemap.xml` → `sitemap`, `ResolveTenant` + `RequireTenant`)
 - `tests/Feature/Seo/SitemapTest.php` (new — valid XML + tenant content, root-domain 404, cross-tenant isolation)
+
+---
+
+## JSON-LD z komponentu Blade — `LocalBusiness` dla oddziałów (2026-08-30)
+
+Dotąd dane strukturalne budował **kontroler** (`ServiceController::buildSchema()`) i wstrzykiwał
+je do widoku. Karta oddziału (`components/ios/location-card.blade.php`) emituje własny
+`LocalBusiness` **bezpośrednio z komponentu** — świadome odstępstwo, bo karta nie ma własnego
+kontrolera: jest osadzana przez blok CMS „Siatka treści"
+(`content-blocks/content-grid.blade.php:108`) i na jednej stronie może ich być wiele. Komponent
+to jedyne miejsce, które w chwili renderowania zna dokładnie jeden `$location`.
+
+Wiele bloków `<script type="application/ld+json">` na stronie jest zgodne ze schema.org i Google.
+
+### Escapowanie — inny mechanizm niż w kontrolerze
+
+`ServiceController` używa `JSON_HEX_TAG|JSON_HEX_AMP`. Karta używa
+`JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES` (czytelne polskie znaki i URL-e), co **nie**
+ucieka `</` automatycznie — dlatego robi to jawnie przez `str_replace('</', '<\/', $json)`.
+Oba warianty są bezpieczne, ale to **dwa różne mechanizmy** i nie wolno ich pomylić:
+skopiowanie flag bez `str_replace` otwiera wstrzyknięcie `</script>` przez nazwę oddziału.
+Pinowane testem wstrzykującym `</script><script>alert(1)</script>` w nazwę.
+
+### Godziny otwarcia — parser celowo odmawia zgadywania
+
+`app/Support/Seo/OpeningHoursParser.php` zamienia wolny tekst z panelu na
+`openingHoursSpecification`. Pole `opening_hours` to dwa `TextInput`
+(`LocationForm.php:108-118`), więc tenant może wpisać cokolwiek.
+
+**Rozpoznaje:** polskie nazwy dni z odmianami i skrótami (`poniedziałek`/`pon`, `środa`/`sr`,
+`niedziela`/`ndz`…), zakresy w kolejności tygodnia (`Pon-Pt`, `Pon – Sob`, `Pon do Pt`),
+godziny `H[:MM]-H[:MM]` z separatorem `-`, `–` lub `—`.
+
+**Odrzuca:** `Dni robocze`, `Cały tydzień`, `Weekend`, `na telefon`, `Zamknięte`,
+`Poniedziałek do piątku` (odmiana, nie token — bez stemmingu), zakresy zawijające (`Pt-Pon`),
+godziny spoza zakresu (`25:00`).
+
+Odrzucony wiersz jest **pomijany** w danych strukturalnych, a reszta pewnych pól (adres,
+telefon, e-mail, współrzędne) emitowana normalnie. Jedna niejednoznaczna pozycja nie blokuje
+jednoznacznych sąsiadów.
+
+**Dlaczego tak:** błędne godziny w Google są **gorsze niż ich brak** — klient przyjeżdża po
+sprzęt pod zamknięty oddział. Jeśli kiedyś potrzebne będą pełne, niezawodne dane, właściwą
+drogą nie jest sprytniejszy parser, tylko **zmiana modelu danych** na wybór dni z listy
+i godziny jako pola czasu.
+
+### Dostępność
+
+Nagłówek `h4` „Godziny otwarcia:" ma `id` oparty na `$location->id`, a lista godzin wskazuje
+go przez `aria-labelledby`. Poziom `h4` jest wymuszony hierarchią strony: `h1` tytuł,
+`h2` nagłówek bloku, `h3` nazwa oddziału.

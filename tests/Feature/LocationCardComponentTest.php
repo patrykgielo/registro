@@ -203,6 +203,193 @@ class LocationCardComponentTest extends TestCase
         $this->assertStringContainsString('cms-content-card', $html);
     }
 
+    /**
+     * Requirement: visible h4 "Godziny otwarcia" heading, programmatically
+     * tied to the hours list via aria-labelledby, unique id per location.
+     */
+    public function test_renders_hours_heading_wired_to_the_list_via_aria_labelledby(): void
+    {
+        $location = Location::factory()->create([
+            'opening_hours' => [
+                ['label' => 'Pon–Pt', 'hours' => '7:00–17:00'],
+            ],
+        ]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $expectedId = 'location-hours-heading-'.$location->id;
+
+        $this->assertStringContainsString('Godziny otwarcia', $html);
+        $this->assertStringContainsString('<h4 id="'.$expectedId.'"', $html);
+        $this->assertStringContainsString('aria-labelledby="'.$expectedId.'"', $html);
+    }
+
+    /**
+     * Two cards on the same CMS page (content-grid loop) must not collide on
+     * the same id — heading ids are keyed by the real location id.
+     */
+    public function test_hours_heading_ids_are_unique_across_multiple_cards_on_one_page(): void
+    {
+        $first = Location::factory()->create(['opening_hours' => [['label' => 'Pon', 'hours' => '7:00-17:00']]]);
+        $second = Location::factory()->create(['opening_hours' => [['label' => 'Wt', 'hours' => '7:00-17:00']]]);
+
+        $html = Blade::render(
+            '<x-ios.location-card :location="$first" /><x-ios.location-card :location="$second" />',
+            ['first' => $first, 'second' => $second]
+        );
+
+        $this->assertStringContainsString('location-hours-heading-'.$first->id, $html);
+        $this->assertStringContainsString('location-hours-heading-'.$second->id, $html);
+        $this->assertNotSame($first->id, $second->id);
+    }
+
+    public function test_no_hours_heading_or_empty_section_when_location_has_no_hours(): void
+    {
+        $location = Location::factory()->create(['opening_hours' => null]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $this->assertStringNotContainsString('Godziny otwarcia', $html);
+        $this->assertStringNotContainsString('<h4', $html);
+        $this->assertStringNotContainsString('aria-labelledby', $html);
+    }
+
+    /**
+     * <time> is only used for an hours value that parses as an unambiguous
+     * range (OpeningHoursParserTest pins the grammar) — "Zamknięte" stays
+     * plain text, never wrapped or reformatted.
+     */
+    public function test_time_element_wraps_only_unambiguous_hour_ranges(): void
+    {
+        $location = Location::factory()->create([
+            'opening_hours' => [
+                ['label' => 'Pon–Pt', 'hours' => '7:00–17:00'],
+                ['label' => 'Sob', 'hours' => 'Zamknięte'],
+            ],
+        ]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $this->assertStringContainsString('<time>7:00–17:00</time>', $html);
+        $this->assertStringNotContainsString('<time>Zamknięte</time>', $html);
+        $this->assertStringContainsString('Zamknięte', $html);
+    }
+
+    /**
+     * Structured data: unambiguous label+hours pair becomes an
+     * openingHoursSpecification entry, address/phone/email/geo/image are
+     * always emitted when present regardless of the hours outcome.
+     */
+    public function test_structured_data_emits_opening_hours_specification_for_unambiguous_entry(): void
+    {
+        $location = Location::factory()->create([
+            'name' => 'Gdańsk Filia',
+            'street' => 'Długa',
+            'building' => '10',
+            'postal_code' => '80-001',
+            'city' => 'Gdańsk',
+            'phone' => '+48 58 123 45 67',
+            'email' => 'gdansk@example.test',
+            'latitude' => 54.3520,
+            'longitude' => 18.6466,
+            'photo' => 'locations/2/photo.jpg',
+            'opening_hours' => [
+                ['label' => 'Pon–Pt', 'hours' => '7:00–17:00'],
+            ],
+        ]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $this->assertStringContainsString('"@type":"LocalBusiness"', $html);
+        $this->assertStringContainsString('"name":"Gdańsk Filia"', $html);
+        $this->assertStringContainsString('"streetAddress":"Długa 10"', $html);
+        $this->assertStringContainsString('"telephone":"+48 58 123 45 67"', $html);
+        $this->assertStringContainsString('"email":"gdansk@example.test"', $html);
+        $this->assertStringContainsString('"latitude":54.352', $html);
+        $this->assertStringContainsString('"openingHoursSpecification"', $html);
+        // JSON_UNESCAPED_SLASHES is deliberate here (see location-card.blade.php) — slashes
+        // stay literal, not "\/", unlike ServiceController's schema which doesn't set that flag.
+        $this->assertStringContainsString('"dayOfWeek":"https://schema.org/Monday"', $html);
+        $this->assertStringContainsString('"opens":"07:00"', $html);
+        $this->assertStringContainsString('"closes":"17:00"', $html);
+    }
+
+    /**
+     * Ambiguous label ("Dni robocze") or hours ("na telefon") must NOT
+     * fabricate an openingHoursSpecification, but the rest of the
+     * LocalBusiness data (name, address, phone) still comes through.
+     */
+    public function test_structured_data_omits_opening_hours_specification_for_ambiguous_entries(): void
+    {
+        $location = Location::factory()->create([
+            'name' => 'Łódź Magazyn',
+            'street' => 'Piotrkowska',
+            'building' => '50',
+            'postal_code' => '90-001',
+            'city' => 'Łódź',
+            'phone' => '+48 42 999 88 77',
+            'opening_hours' => [
+                ['label' => 'Dni robocze', 'hours' => '7:00-17:00'],
+                ['label' => 'Pon', 'hours' => 'na telefon'],
+            ],
+        ]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $this->assertStringNotContainsString('openingHoursSpecification', $html);
+        $this->assertStringContainsString('"name":"Łódź Magazyn"', $html);
+        $this->assertStringContainsString('"streetAddress":"Piotrkowska 50"', $html);
+        $this->assertStringContainsString('"telephone":"+48 42 999 88 77"', $html);
+    }
+
+    /**
+     * A location without any of the optional structured-data fields still
+     * emits a minimal, valid LocalBusiness block (name only) — never an
+     * empty/malformed script tag.
+     */
+    public function test_structured_data_still_emits_minimal_schema_when_every_optional_field_is_absent(): void
+    {
+        $location = Location::factory()->create([
+            'name' => 'Bez Danych',
+            'street' => null,
+            'building' => null,
+            'postal_code' => null,
+            'city' => null,
+            'phone' => null,
+            'email' => null,
+            'latitude' => null,
+            'longitude' => null,
+            'photo' => null,
+            'opening_hours' => null,
+        ]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $this->assertStringContainsString('<script type="application/ld+json">', $html);
+        $this->assertStringContainsString('"name":"Bez Danych"', $html);
+        $this->assertStringNotContainsString('"address"', $html);
+        $this->assertStringNotContainsString('"telephone"', $html);
+        $this->assertStringNotContainsString('"openingHoursSpecification"', $html);
+    }
+
+    /**
+     * A tenant-controlled field containing a literal "</script>" sequence
+     * must not be able to terminate the JSON-LD script block early — the
+     * safe-raw-echo escaping (str_replace('</', '<\/', ...)) is the only
+     * thing standing between free tenant text and script injection here.
+     */
+    public function test_structured_data_neutralises_a_closing_script_tag_in_tenant_text(): void
+    {
+        $location = Location::factory()->create([
+            'name' => 'Wrocław</script><script>alert(1)</script>',
+        ]);
+
+        $html = Blade::render('<x-ios.location-card :location="$location" />', ['location' => $location]);
+
+        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $html);
+        $this->assertStringContainsString('<\/script><script>alert(1)<\/script>', $html);
+    }
+
     public function test_resolver_and_card_agree_on_what_a_tenant_without_website_module_cannot_pick(): void
     {
         // Sanity check that the registry entry this component depends on
