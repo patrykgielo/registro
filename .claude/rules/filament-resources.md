@@ -384,3 +384,31 @@ nie podlegają CORS. Objaw jest więc panel-only i wygląda na problem Filamenta
 
 Mechanizm i trzy niezależne pułapki (w tym `Storage::forgetDisk()`): `architecture-models.md`,
 sekcja „Adres dysku `public` to TRZECI, osobny adres".
+
+---
+
+## Kształt komponentu MUSI odpowiadać kształtowi w bazie (2026-08-30)
+
+`Repeater` czyta i pisze **listę wierszy**. Wskazany na kolumnę JSON trzymającą **słownik**
+nie zgłasza błędu — po cichu przepisuje ją na listę pustych wierszy i **dane przepadają**.
+
+Zdarzone: `ServiceResource.php:321` to `Repeater::make('metadata.specs')` o schemacie
+`label`/`value`/`unit`, a seeder onboardingu zapisywał `['power_w' => 800]`. Otwarcie usługi
+i zapis **bez żadnej zmiany** dawał `[{"label":null,"value":null,"unit":null}, ...]`.
+Dotknięte 24 z 26 usług; każdy nowy tenant dostawał wadliwy kształt, bo produkował go seeder.
+
+**Dlaczego nikt tego nie zauważył przez miesiące:** błąd był maskowany przez walidację sluga.
+`save()` przerywał się na walidacji, zanim dotarł do zapisu `metadata`. Naprawa slugów
+(PR #232) zamieniłaby „nie da się zapisać" na „zapis po cichu niszczy dane" — to jest wzorzec
+wart zapamiętania: **poprawka jednej walidacji potrafi odsłonić utratę danych, którą tamta
+walidacja przypadkiem blokowała.** Przed naprawą walidacji sprawdź, co się stanie, gdy zapis
+faktycznie dojdzie do końca.
+
+**Czego nie wykryje test sprawdzający tylko brak błędów walidacji.** Wykrywa to wyłącznie
+porównanie atrybutów **przed i po zapisie bez zmian** (`fresh()` diff) — patrz
+`PanelWalkthroughTest`.
+
+**Zasada:** dokładając komponent formularza nad polem JSON, sprawdź kształt, który realnie
+leży w bazie (`JSON_TYPE(JSON_EXTRACT(kolumna,'$.klucz'))`), a nie ten, który zakładasz.
+Jeśli mogą występować oba, znormalizuj na modelu (`NormalizesSpecsShape` na `Service`),
+nie w komponencie — model chroni też API, konsolę i seedery.
