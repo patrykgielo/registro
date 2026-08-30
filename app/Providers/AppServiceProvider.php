@@ -203,6 +203,18 @@ class AppServiceProvider extends ServiceProvider
      *
      * See the doc above for the full design/rationale, rejected alternatives,
      * and residual limitations.
+     *
+     * UPDATE (fix/tenant-scoped-route-binding, ClickUp 123k99ct3j6): the base
+     * 'web' middleware group now ALSO carries ResolveTenant (bootstrap/app.php —
+     * fixing route-model-binding running before tenant resolution). That means
+     * the OUTER /livewire/update request itself now re-resolves the tenant from
+     * ITS OWN real Host header before Livewire even dispatches to a component —
+     * this replay mechanism is no longer the only thing standing between a
+     * stale session and a cross-tenant read on that endpoint. Kept as-is
+     * anyway: RequireTenant is still NOT in the base group (root-domain routes
+     * need the "no tenant" branch to reach them), and this replay is what
+     * enforces RequireTenant's 404 for a component whose *mount* URL demands a
+     * tenant. Removing this would still be a regression.
      */
     private function registerLivewireTenantIsolation(): void
     {
