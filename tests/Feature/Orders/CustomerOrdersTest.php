@@ -85,7 +85,7 @@ class CustomerOrdersTest extends TestCase
         $response->assertOk();
     }
 
-    public function test_user_cannot_view_order_belonging_to_different_organization(): void
+    public function test_user_gets_404_for_order_belonging_to_different_organization(): void
     {
         $user = User::factory()->create();
         $otherOrg = Organization::factory()->equipmentRental()->create();
@@ -101,7 +101,14 @@ class CustomerOrdersTest extends TestCase
             ->actingAsTenant($this->org)
             ->get(route('orders.show', $orderOtherOrg));
 
-        $response->assertForbidden();
+        // Cross-TENANT boundary: BelongsToOrganization rejects the row during
+        // route-model binding (ResolveTenant now runs before SubstituteBindings),
+        // so the controller's abort_unless(403) is never reached. 404 is the
+        // deliberate answer here -- it does not confirm that another tenant's
+        // order exists. Same convention as RequireTenant and as
+        // OrderProtocolController:78, which has used 404 for this boundary all
+        // along. The per-USER boundary inside one tenant still answers 403.
+        $response->assertNotFound();
     }
 
     // -------------------------------------------------------------------------

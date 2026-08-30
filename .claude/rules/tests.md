@@ -301,7 +301,80 @@ test, matching what the real migration would have built.
 one directly above it (DB engine). Before adding a NEW raw `DB::statement()`/fixture-with-a-status/
 custom `tearDown()` to any Feature test: check this list first.
 
+## Walkthrough tests — the layer that catches what hypothesis tests miss
+
+Every other test in this repo verifies a **hypothesis about new code**. Nothing walked the existing
+system asking "does the ordinary thing still work". In one session four blockers shipped past
+**1589 green tests** and were found by clicking: two unscoped `unique` slug rules that made records
+unsavable, a save that inflated stock on every click, and an FK that made services undeletable.
+
+All four would have been caught by two generic assertions, neither of which needs a browser:
+
+- open an **existing** record and save it with **zero changes** → no validation errors, and the
+  record is **byte-identical** afterwards
+- create a fresh record and **delete** it → succeeds
+
+`PanelWalkthroughTest` (~9 s) and `StorefrontWalkthroughTest` (~2 s) live in the default suite.
+
+### Non-negotiables — remove any of these and the layer stops working
+
+**Enumerate, never list.** `Filament::getPanel('admin')->getResources()` returns 35 resources; the
+panel walkthrough iterates them. A resource added in a future phase is covered without anyone
+writing a test. The moment someone converts this to a hand-written list, it starts rotting.
+
+**Two tenants seeded IDENTICALLY, through the real onboarding path** —
+`ProvisionTenantOrganization` + `SeedEquipmentRental`, not factories with random data. The seeder
+gives every tenant the same catalogue, so slugs **collide across tenants by construction** (measured:
+13 services, 7 rental categories). That collision is what made the slug bugs blocking. A test tenant
+built from `Organization::factory()` with faker data reproduces none of it and proves nothing.
+
+**Compare attributes before and after, not just "no exception".** The `metadata.specs` data-loss bug
+(seeder writes a dict, the form's Repeater expects a list of rows, a no-op save destroys 24 services'
+technical specs) is invisible to any test that only asserts the save succeeded.
+
+**Assert content, not status.** A CMS page returning 200 while rendering nothing is a false green.
+
+**Every walkthrough must be falsifiable, and the proof belongs in the report.** Break the thing on
+purpose, watch it go red, revert, confirm a clean `git diff`. `StorefrontWalkthroughTest` was proven
+by dropping the tenant scope in `ServiceController::index()` (violations 2 → 4, listing count
+13 → 26). A walkthrough that has never been seen to fail is decoration.
+
+**Exemptions are explicit and justified, one reason per entry.** A resource that legitimately cannot
+be deleted (legal record, `restrictOnDelete`, a Phase-1 guard like "never delete the last location")
+is skipped with the reason written down. Better: a runtime self-check that raises a violation if the
+exemption's precondition stops holding — e.g. `canViewAny()` starting to return true for a tenant
+admin — so a stale exemption fails loudly instead of silently skipping a resource forever.
+
+### Storefront layer: use the real middleware, not a bind override
+
+`TenantBrandNameRegressionTest`'s pattern (binding a fake `ResolveTenant`) **cannot be used here**.
+Swapping the class out means the request never travels the real middleware ordering — and that
+ordering is exactly where the cross-tenant leak lives: `SubstituteBindings` is in Laravel's default
+`web` group, which always runs **before** route middleware, so `{service:slug}` binds a record
+**before** `ResolveTenant` has set either `request->attributes('tenant')` or the
+`tenant_resolution_attempted` marker that `BelongsToOrganization`'s fail-closed branch depends on
+(`app/Traits/BelongsToOrganization.php:56`, `ResolveTenant.php:34`). Drive real `Host` headers
+through the real stack, or the leak stays invisible.
+
+### Scope boundary that keeps this honest
+
+The delete step creates its record through Eloquent, not by filling ~21 structurally different
+Filament create forms. Hand-mapping valid data for nested repeaters and conditionally-required
+fields multiplies the file and introduces the worst noise class there is — "the harness's own
+guessed data was invalid" masquerading as a bug. The create step's only job is handing delete
+something to work with; the blocker class this layer targets is entirely an edit-time concern.
+
 ## tests/Browser (Pest v4 real-browser E2E)
+
+> **Status 2026-08-29: the suite runs but FAILS.** `SmokeTest` reaches the login form in ~8 s and
+> then stays on `/admin/login`; the in-process server throws a message-less `HttpException` — the
+> signature of `RequireTenant`'s `abort_unless(..., 404)`, i.e. the tenant does not resolve for the
+> login request. Ruled out by measurement: missing Playwright binaries (Chromium **is** in the image
+> at `/opt/playwright-browsers`, see below) and a non-`active` `lifecycle_state` on the fixture
+> (the column defaults to `active`). Prime suspect is the pest#1734 host workaround, since it is
+> exactly about Host resolution. Tracked separately — until it is fixed, these seven files protect
+> nothing while looking like they do, which is worse than not having them.
+
 
 - In-process server (`LaravelHttpServer`) — Playwright/Chromium hit the app in the SAME PHP process, no `artisan serve`.
 - `SESSION_SECURE_COOKIE=false` in `.env.testing` — plugin forces `http://`; `true` silently drops cookies.
@@ -312,6 +385,69 @@ custom `tearDown()` to any Feature test: check this list first.
 - **One browser context per test.** Opening a second while the first is alive deadlocks the process — no exception, no timeout, no output, just a hang, because the AmpHttp server and the Playwright client share one PHP process and cooperate on fibers. To switch users, drive the real logout form and log in again (see `EmployeeCreationTest`). Note this is NOT needed for multi-tenant assertions: the tenants live in the database, one session sees them all.
 - Chromium is baked into the image at `/opt/playwright-browsers` (`PLAYWRIGHT_BROWSERS_PATH`), NOT `~/.cache` — `.:/var/www` would shadow anything under the project dir, and a container-local install dies on the next `build`. The version is derived from `package.json` at build time, so **bumping `playwright` there requires `docker compose build app`** — skip it and you get a misleading "Executable doesn't exist", not a version warning.
 - **pest#1734 workaround (open upstream, no vendor patch):** `LaravelHttpServer` builds every request from a hardcoded `127.0.0.1` URL — the SERVER bag never gets the real tenant Host, only the HEADERS bag does. Livewire's `PersistentMiddleware::makeFakeRequest()` rebuilds headers FROM the server bag on every `/livewire/update`, so `ResolveTenant` sees `127.0.0.1` and redirects to root. Fixed by `App\Http\Middleware\Testing\PestBrowserHostBugWorkaround`, prepended to the GLOBAL stack ONLY under `APP_ENV=testing` (`bootstrap/app.php`) — dead everywhere else. Mechanism in the class docblock. Delete both once pest/pest#1734 ships upstream.
+
+## tests/Concurrency (two-connection oversell race, MySQL only)
+
+`kontrakt-dostepnosci.md` Zasada 6 ("dowód, nie deklaracja"): every other oversell test in this repo
+(`tests/Unit`, `tests/Feature`) is sequential and runs on SQLite — it would still pass with the lock
+discipline in `CartService::convertToOrder()` completely removed, because SQLite has no InnoDB-style
+row locking to defeat. `tests/Concurrency/CartCheckoutRaceTest.php` is the one test in the repo that
+actually proves the locks do something, using two real OS processes (two real InnoDB sessions) against
+a throwaway `mysql:8.0` container — never `registro-mysql`, the dev database.
+
+**Run it:**
+
+```bash
+bash scripts/test-concurrency.sh
+```
+
+Provisions a uniquely-named `mysql:8.0` container on `app_registro`, points `php artisan test
+--testsuite=Concurrency` at it via explicit `-e DB_*` overrides, and destroys the container
+afterward (`trap cleanup EXIT`, survives a failing run). Excluded from `phpunit.xml`'s
+`defaultTestSuite` (same precedent as `tests/Browser`) — a plain `php artisan test` or a manual
+`--testsuite=Concurrency` without the script skips both tests immediately, with a message pointing
+back here, rather than silently passing on SQLite or (worse) resolving to the dev connection.
+
+**Mechanism:** `tests/Concurrency/Support/probe.php` is a standalone bootstrap script (same two
+lines as `artisan`), spawned via `proc_open()` — a single synchronous PHP process cannot hold one
+transaction's lock while a second transaction blocks on it, so true concurrency needs two real OS
+processes, not two named connections in one process. Coordination is by FILE SIGNAL + injected
+delay, never a guessed sleep: a `DB::listen()` hook in the probe fires the instant its own
+transaction issues the `Service::lockForUpdate()` query CartService always issues first, touches a
+`--ready-file`, then holds the transaction open for `--delay-ms` before letting the query return.
+The orchestrating test waits for that file before starting the second probe — deterministic, not a
+timing race (`feedback_verify_the_right_axis` / `feedback_no_machine_thrashing`: no `for` loop
+running this N times and hoping).
+
+**Measured result (2026-08-27, throwaway `mysql:8.0`, same scenario — two checkouts racing the last
+unit of an overlapping-dates rental — each broken variant applied for one run then reverted, `git
+diff` on `app/` clean afterward):**
+
+| Variant (`CartService.php` ~213-229) | Result |
+|---|---|
+| unmodified (both `Service::lockForUpdate()` **and** `forUpdate: true`) | no oversell — exactly one order created, confirmed twice |
+| `forUpdate: true` → `forUpdate: false`, lock kept | **oversell** — both checkouts succeeded, two orders for one unit |
+| `Service::lockForUpdate()` → plain `findOrFail()`, `forUpdate: true` kept | no oversell — one order created, confirmed twice (deterministic, not luck) |
+
+**Verdict — narrower than the docblock's "both required" framing:** for this exact scenario,
+`forUpdate: true` (the locking read on `rentals`/`order_items`) is the layer that actually closes
+the race; removing it reproduces the oversell every time. `Service::lockForUpdate()` measured as
+**not** the closing mechanism here — most likely because MySQL's own next-key/gap locking on the
+`FOR UPDATE` range scan over `order_items`/`rentals` already serialises concurrent inserts into the
+same overlapping date range, independent of any lock on the `services` row. This does not mean
+`Service::lockForUpdate()` is provably useless in general — it wasn't re-tested against the
+multi-item/deadlock-ordering scenarios kontrakt-dostepnosci.md Zasada 4 also cites as its
+justification — only that THIS harness's two scenarios don't depend on it. Zasada 4's own text
+already frames it as a deliberate over-serialisation trade paid for "zero ryzyka regresji", so this
+finding doesn't call for removing it — it calls for not citing it as THE thing this specific harness
+proves.
+
+**Fixtures need `customer_first_name`/`customer_last_name`** — `orders.customer_first_name` is
+`NOT NULL` on MySQL; the existing SQLite suite never caught this because SQLite doesn't enforce it,
+same class of gap as the "MySQL 8.0 gate" section above.
+
+**Scope note:** no per-location scenario — locations don't exist yet (Faza 4 of the multi-location
+plan), so `getAvailableQuantity()` has no `$locationId` to race on today. Add one alongside that work.
 
 ## Shell tests (`scripts/server/**`)
 
@@ -370,3 +506,50 @@ refactors. Full catalog of what's pinned today:
 
 **CI runs `./vendor/bin/pint --test` before PHPUnit tests.**
 If Pint fails, tests won't even run!
+
+---
+
+## Naprawa przez unieważnienie cache'u — test musi ten cache NAPEŁNIĆ
+
+Gdy poprawka polega na wyczyszczeniu jakiegoś cache'u (`Storage::forgetDisk()`,
+`Cache::forget()`, `app()->forgetInstance()`), przypadek testowy, który tego cache'u
+nie napełni, **przechodzi także po wycięciu poprawki** — czyli nie pilnuje niczego.
+
+Konkret: `tests/Feature/TenantScopedStorageUrlTest.php`. Trzy z czterech testów przechodzą
+również z usuniętym `Storage::forgetDisk('public')`. Dopiero czwarty
+(`test_storage_url_uses_the_tenants_own_host_even_when_the_disk_was_resolved_before_the_request`)
+resolwuje dysk **przed** wysłaniem żądania i dzięki temu czerwienieje.
+
+Zasada ogólna: ustaw stan, który poprawka ma unieważnić, **zanim** wykonasz operację
+pod testem. Potem zweryfikuj falsyfikowalność — wytnij poprawkę, test musi paść.
+
+## Fabryka musi produkować dane zgodne ze SCHEMATEM, nie tylko z typem PHP
+
+SQLite (`.env.testing`) **nie waliduje typów kolumn** — zapisuje dosłownie to, co dostanie,
+także do kolumny zadeklarowanej jako `date` czy `time`. MySQL by to obciął albo odrzucił.
+Fabryka niezgodna ze schematem produkuje więc w testach dane, **których produkcja nigdy
+by nie zobaczyła** — i generuje fałszywe alarmy w każdym teście porównującym stan przed/po.
+
+Zmierzone przypadki (2026-08-29, wszystkie naprawione):
+
+| Fabryka | Generowało | Kolumna | Skutek |
+|---|---|---|---|
+| `RentalFactory` | `fake()->dateTimeBetween()` | `date` | test „pusty zapis zmienił rekord" — czas obcinany do `00:00:00` |
+| `AppointmentFactory` | `fake()->time('H:i:s')` | `time`, cast `datetime:H:i` | normalizacja sekund przy każdym zapisie → fałszywe „przełożenie wizyty" |
+| `LocationFactory` | `fake()->phoneNumber()` (`en_US`) | pole walidowane `->tel()` | losowe `data.phone`, bo locale dokleja rozszerzenie `x1234` |
+
+**Zasada:** zanim uznasz, że test wykrył błąd produkcyjny, sprawdź `SHOW COLUMNS` na MySQL.
+Wynik testu na SQLite jest przesłanką, nie werdyktem — **pierwszy** wiersz tej tabeli był przez
+chwilę raportowany jako „cicha utrata danych na produkcji na module żyjącym na UAT",
+a okazał się wadą fabryki. Rozstrzygnął to dopiero odczyt `SHOW COLUMNS`.
+
+**Zasada druga:** fabryka generująca losowość w polu, które ma walidację, musi generować
+w granicach tej walidacji. Losowy flake w teście niezwiązanym z edytowanym kodem to prawie
+zawsze ten wzorzec — i prawie zawsze zostaje przypisany niewłaściwemu plikowi.
+
+Konkret, wart zapamiętania: 2026-08-29 losowe `data.phone` (`LocationFactory`) zostało
+**błędnie przypisane** zmianie w `ResolveTenant.php` — „zniknęło po `git stash` tego pliku".
+Pojedynczy przebieg nie rozstrzyga przyczyny przy teście flaky. Zanim obwinisz jakikolwiek
+plik: przeczytaj **treść asercji** (`data.phone` nie miało żadnego prawdopodobnego związku
+ze `Storage::forgetDisk()`) i powtórz test na niezmienionym drzewie.
+

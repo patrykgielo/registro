@@ -15,18 +15,8 @@
 
 ## Rules System
 
-**BEFORE starting ANY work:** Read `.claude/rules/_INDEX.md`
-
-Rules are organized in TIERs:
-- **TIER 1** (CRITICAL): self-improvement, git-workflow, deployment, security, agent-usage
-- **TIER 2** (Implementation): models, services, filament, tests
-- **TIER 3** (Enhancement): frontend, animations, api
-
-**Hooks (deterministic enforcement):**
-- **PreToolUse** — blocks dangerous git operations
-- **UserPromptSubmit** — injects agent-first reminder on implementation tasks
-- **Stop** — blocks completion without documentation updates
-- **Notification** — re-injects TIER 1 rules after context compaction
+**BEFORE starting ANY work:** Read `.claude/rules/_INDEX.md` (TIER map + `paths` triggers).
+Hooks that enforce this: `.claude/settings.local.json` (gitignored — recovery JSON in `claude-code-config.md`).
 
 **Self-Learning Rules:**
 - DOCUMENT every resolved error immediately (rules/docs)
@@ -36,15 +26,10 @@ Rules are organized in TIERs:
 
 ## Project Stack
 
-- **Laravel 12**, PHP 8.3+, MySQL 8.0
-- **Filament v4** (namespace breaking changes - see filament.md)
-- **Tailwind CSS 4.0**, Vite 7+
-- **Docker Compose** (8 services — `docker compose config --services`)
+Stack is in `composer.json` / `package.json`; services in `docker compose config --services`.
+**Filament v4 has namespace breaking changes** — see `filament.md`.
 
-**URLs:**
-- Local: https://registro.local:8444
-
-**Repo:** `patrykgielo/registro`
+**Local:** https://registro.local:8444
 
 **Note:** CI/CD workflows are disabled (workflow_dispatch only). **UAT is live** — `srv1342834.hstgr.cloud`, app domain `registrolabs.com`. PreProd (`registroapps.com`) is a machine not yet bought. See `app/docs/deployment/instalacja-tenanta-od-zera.md`.
 
@@ -67,29 +52,27 @@ $user->name = "x"  // FORBIDDEN (column doesn't exist!)
 ```
 
 ### Documentation Location
-```
-ALL docs are in: app/docs/
-NOT in: /docs/ (root)
-Archived legacy docs: docs/archive/
-```
+
+**Dwa żywe drzewa. Wybierz po RODZAJU treści, nie po pierwszym pasującym katalogu.**
+
+| Rodzaj | Katalog |
+|---|---|
+| Techniczna, wdrożeniowa, architektura, ADR | `app/docs/` — żywy indeks w `app/docs/README.md` |
+| **Biznesowa** — ścieżki klienta / pracownika / właściciela | `docs/business/` |
+| Opisy funkcji utrzymywane obok biznesowych | `docs/features/` |
+| Archiwum, nie dopisywać | `docs/archive/` |
+
+`app/docs/business/` **nie istnieje** — nie twórz go. Dokument biznesowy to zawsze
+para `.md` + `.en.md`, wpis w `docs/business/README.md` (i `README.en.md`) oraz wpis
+w `nav` w `docs-site/mkdocs.yml`. Bez tego ostatniego plik nie jest publikowany przez
+portal i dla czytelnika po prostu nie istnieje — build nie ostrzega.
+
+> Poprzednie brzmienie („ALL docs are in: app/docs/, NOT in: /docs/") było wykonywane
+> dosłownie i 2026-08-27 wysłało całą dokumentację wielooddziałowości w złe drzewo.
 
 ---
 
-## Skills (slash commands)
-
-| Skill | Effort | Purpose |
-|-------|--------|---------|
-| `/implement <task>` | high | Gated workflow: agent → branch → code → test → docs |
-| `/ship <task>` | medium | Lightweight loop for small fixes: builder → bounded retry (max 3) → code-reviewer |
-| `/review [scope]` | high | Code review (architecture, security, docs) |
-| `/deep-research <topic>` | high | Web research with Firecrawl |
-| `/commit [msg]` | low | Stage, Pint, test, conventional commit |
-| `/pr [title]` | low | Push + create PR to develop |
-| `/test [--filter]` | low | Run Pint + PHPUnit in Docker |
-| `/catchup` | low | Session start briefing (recent changes, PRs) |
-| `/browser-use` | — | Browser automation (visible Chrome, user profile) |
-
-### Kiedy Workflow / Agent Team / `/ship` / `/implement`
+## Kiedy Workflow / Agent Team / `/ship` / `/implement`
 
 - **Mały fix, jeden-kilka plików** (typo, drobna poprawka, jeden bug) → `/ship` — builder → bounded retry (max 3 cykle) → code-reviewer, bez pełnego 7-gate procesu.
 - **Nowy feature / zmiana architektury / 5+ plików** → `/implement` — pełny gated proces, dokumentacja obowiązkowa (Stop hook i tak to wymusi).
@@ -100,9 +83,6 @@ Archived legacy docs: docs/archive/
 ## Quick Commands
 
 ```bash
-# Development
-composer run dev
-
 # OBOWIĄZKOWE po każdej zmianie Blade/CSS/JS — bez wyjątków!
 docker compose exec -T app npm run build
 # Jeśli po build nadal są stare style → plik public/hot blokuje → usuń go:
@@ -111,30 +91,6 @@ docker compose exec -T app rm -f public/hot
 # Tests (in Docker — .env.testing forces SQLite)
 docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T app php artisan test
 ```
-
----
-
-## Git Workflow
-
-```
-feature/* → develop (PR) → staging (PR) → main (PR)
-```
-
-| Gałąź | Rola | Środowisko |
-|-------|------|------------|
-| `develop` | integracyjna, **gałąź domyślna repo**, nigdzie nie wdrażana | własny VPS — kiedyś |
-| `staging` | **stąd tnie się tagi `rc*`** | UAT (`registrolabs.com`) |
-| `main` | wydania produkcyjne | PreProd — po zakupie maszyny |
-
-**Gałąź domyślna to `develop`, nie `main`** — GitHub rejestruje workflowy z gałęzi domyślnej, więc
-nowy plik workflowa poza nią daje `HTTP 404` przy `gh workflow run`.
-
-**CI/CD:** wszystkie workflowy na `workflow_dispatch`. **Nic nie odpala się samo** — ani po merge,
-ani po wypchnięciu taga. Nieodwracalny jest dopiero `gh workflow run deploy-production.yml`.
-
-**Egzekwuje PreToolUse hook** (`.claude/hooks/pre-tool-use.sh`):
-- brak bezpośrednich commitów na `develop`, `staging`, `main`
-- `gh pr create` musi celować w `develop` lub `staging`; ze `staging` w `main`
 
 ---
 
@@ -147,15 +103,6 @@ ani po wypchnięciu taga. Nieodwracalny jest dopiero `gh workflow run deploy-pro
 | Features | `app/docs/features/` |
 | Filament v4 | `app/docs/guides/filament-v4-*.md` |
 | Archived (legacy) | `docs/archive/` |
-
----
-
-## Definition of Done
-
-- [ ] Agent used BEFORE implementation
-- [ ] Tests pass: `./vendor/bin/pint --test && php artisan test`
-- [ ] Created feature branch (NOT direct to develop)
-- [ ] Documentation/rules updated (Stop hook enforces this)
 
 ---
 

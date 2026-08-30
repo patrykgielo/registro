@@ -223,8 +223,33 @@ command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-CHANGE_ME
 | `APP_ENV` | Yes | production | Environment: local, staging, production |
 | `APP_KEY` | **YES** | - | **Encryption key (CRITICAL)** |
 | `APP_DEBUG` | Yes | false | Debug mode (NEVER true in production) |
-| `APP_URL` | Yes | http://localhost | Base URL for asset generation |
+| `APP_URL` | Yes | http://localhost | Base URL **outside the request cycle only** — see the disk-address note below |
 | `APP_TIMEZONE` | No | UTC | Application timezone (Europe/Warsaw) |
+| `APP_LOCALE` | No | en | UI locale — `pl` for this app |
+| `APP_FALLBACK_LOCALE` | **YES** | en | **Must be `en`, never `pl` — see below** |
+
+**⚠️ `APP_FALLBACK_LOCALE` MUST be `en`:**
+
+There is no `lang/pl/validation.php` anywhere in this codebase — neither app-level nor in
+`vendor/laravel/framework` (the framework only ships its own `en/validation.php` as a built-in
+fallback; Filament's own `vendor/filament/forms/resources/lang/pl/validation.php` only overrides
+two custom keys, `distinct` and `tampered_file_path`, not the standard rules like `unique`,
+`required`, `max`). With `APP_LOCALE=pl` and `APP_FALLBACK_LOCALE=pl`, any validation rule that
+falls through to Laravel's own `validation.*` message set (not one of Filament's PL-translated
+keys) has **nothing to fall back to** and Laravel's translator returns the raw key —
+`trans('validation.unique')` literally renders as the string `"validation.unique"` in the UI
+instead of readable text. Setting `APP_FALLBACK_LOCALE=en` at least resolves through the
+framework's built-in `en/validation.php`, so the same case renders as `"The slug has already been
+taken."` — not translated to Polish, but readable. `.env.example` and `.env.staging.example` have
+always had this right; `.env.testing`, `.env.production.example`, and `.env.local.example` were
+wrong since the file each was introduced (confirmed via `git log -p`, not a regression from a
+later edit) — fixed 2026-08-27 (`fix/location-slug-unique-per-tenant`). **If a real, deployed
+`.env`/`.env.production` on a VPS was provisioned from `.env.production.example` before that date,
+it likely still has `APP_FALLBACK_LOCALE=pl` and needs the same one-line fix applied by hand.**
+
+A proper `lang/pl/validation.php` (translating Laravel's ~90 default validation messages into
+Polish) would be the complete fix for a fully-Polish UI, but is a separate, larger piece of work —
+not implemented as part of this hotfix.
 
 ### Logging
 
@@ -251,6 +276,23 @@ command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-CHANGE_ME
 **⚠️ CRITICAL CONFIGURATION:**
 
 `FILESYSTEM_DISK` determines where uploaded files (images, documents) are stored. **This setting MUST be `public` for both local AND production environments.**
+
+> **The `public` disk has no configurable address of its own.** `config/filesystems.php:44`
+> builds it as `env('APP_URL').'/storage'`, and there is no dedicated variable for it —
+> `ASSET_URL` does not appear anywhere in this repo. On a shared stack
+> `ResolveTenant::forceTenantOriginUrls()` then **overwrites that value on every request**
+> with the request's own origin.
+>
+> Consequences for an operator:
+>
+> - A CDN or bucket address placed in `APP_URL` works in CLI and on the queue, and is silently
+>   ignored in the browser.
+> - Debugging "images point at the wrong domain" by editing `APP_URL`, running `config:cache`
+>   and restarting the container changes **nothing** — the value is replaced in memory after the
+>   cached config is loaded. Look at the middleware, not at the env file.
+> - `scripts/validate-env.sh:172` tolerates the `s3` driver. That configuration is not covered
+>   by the per-request override and has never been exercised — treat it as unsupported until
+>   someone actually tests it.
 
 **Valid Options:**
 - **`public`** (REQUIRED):

@@ -9,6 +9,7 @@ use App\Filament\Resources\PortfolioItems\Pages\CreatePortfolioItem;
 use App\Filament\Resources\PortfolioItems\Pages\EditPortfolioItem;
 use App\Filament\Resources\PortfolioItems\Pages\ListPortfolioItems;
 use App\Filament\Support\BuilderBlocks;
+use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Category;
 use App\Models\PortfolioItem;
 use BackedEnum;
@@ -59,7 +60,10 @@ class PortfolioItemResource extends BaseResource
                             ->label('Slug (URL)')
                             ->required()
                             ->maxLength(255)
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+                            )
                             ->helperText('Automatycznie generowany z tytułu'),
 
                         Forms\Components\Select::make('category_id')

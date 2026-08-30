@@ -98,7 +98,7 @@ class RentalExtensionCrossTenantSecurityTest extends TestCase
         return [$order, $item];
     }
 
-    public function test_check_availability_returns_403_when_order_belongs_to_a_different_tenant(): void
+    public function test_check_availability_returns_404_when_order_belongs_to_a_different_tenant(): void
     {
         $orgA = Organization::factory()->equipmentRental()->create();
         $orgB = Organization::factory()->equipmentRental()->create();
@@ -121,10 +121,10 @@ class RentalExtensionCrossTenantSecurityTest extends TestCase
             ->actingAsTenant($orgA)
             ->getJson($checkUrl.'?new_end_date='.Carbon::today()->addDays(7)->toDateString());
 
-        $response->assertForbidden();
+        $response->assertNotFound();
     }
 
-    public function test_store_returns_403_when_order_belongs_to_a_different_tenant(): void
+    public function test_store_returns_404_when_order_belongs_to_a_different_tenant(): void
     {
         $orgA = Organization::factory()->equipmentRental()->create();
         $orgB = Organization::factory()->equipmentRental()->create();
@@ -146,7 +146,7 @@ class RentalExtensionCrossTenantSecurityTest extends TestCase
                 'new_end_date' => Carbon::today()->addDays(7)->toDateString(),
             ]);
 
-        $response->assertForbidden();
+        $response->assertNotFound();
 
         $this->assertDatabaseMissing('order_item_extension_requests', [
             'order_item_id' => $itemB->id,
@@ -158,7 +158,7 @@ class RentalExtensionCrossTenantSecurityTest extends TestCase
      * tenant context — organization_id === $org->id is checked against the
      * CURRENT tenant, not just "does this user own the order".
      */
-    public function test_check_availability_returns_403_for_org_b_customer_browsing_org_a_context(): void
+    public function test_check_availability_returns_404_for_org_b_customer_browsing_org_a_context(): void
     {
         $orgA = Organization::factory()->equipmentRental()->create();
         $orgB = Organization::factory()->equipmentRental()->create();
@@ -175,12 +175,12 @@ class RentalExtensionCrossTenantSecurityTest extends TestCase
             ->actingAsTenant($orgA)
             ->getJson($checkUrl.'?new_end_date='.Carbon::today()->addDays(7)->toDateString());
 
-        $response->assertForbidden();
+        $response->assertNotFound();
     }
 
     /**
      * Positive control — same request succeeds when the tenant context
-     * actually matches the order's own organization, proving the 403s above
+     * actually matches the order's own organization, proving the 404s above
      * are due to the cross-tenant mismatch and not some unrelated breakage.
      */
     public function test_check_availability_works_normally_within_the_same_tenant(): void

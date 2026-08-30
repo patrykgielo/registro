@@ -230,6 +230,159 @@ class CartServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // addItem — sibling cart-item demand aggregation (kontrakt-dostepnosci.md
+    // Zasada 7, ClickUp 86cb93tfw — self-oversell via repeated add-to-cart)
+    // -------------------------------------------------------------------------
+
+    public function test_add_item_throws_when_sibling_cart_item_already_claims_the_only_unit(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        // Simulates the user already having added this equipment once.
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 1,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+        ]);
+
+        $service = $this->makeService();
+
+        // Same service, overlapping window — combined demand (1 existing +
+        // 1 requested = 2) exceeds the 1 unit actually available.
+        $this->expectException(RentalUnavailableException::class);
+        $this->expectExceptionMessage('dostępnych 1 szt.');
+
+        $service->addItem(
+            $cart,
+            $rentalService,
+            Carbon::parse('2026-04-11'),
+            Carbon::parse('2026-04-13'),
+            1
+        );
+    }
+
+    public function test_add_item_allows_sibling_cart_item_for_same_service_when_dates_do_not_overlap(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 1,
+            'start_date' => '2026-04-01',
+            'end_date' => '2026-04-05',
+        ]);
+
+        $service = $this->makeService();
+
+        $item = $service->addItem(
+            $cart,
+            $rentalService,
+            Carbon::parse('2026-04-10'),
+            Carbon::parse('2026-04-12'),
+            1
+        );
+
+        $this->assertInstanceOf(CartItem::class, $item);
+        $this->assertDatabaseCount('cart_items', 2);
+    }
+
+    // -------------------------------------------------------------------------
+    // updateQuantity — sibling cart-item demand aggregation (Zasada 7)
+    // -------------------------------------------------------------------------
+
+    public function test_update_quantity_throws_when_sibling_demand_exceeds_available(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 2,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        // Sibling item already claiming 1 unit in an overlapping window.
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 1,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+        ]);
+
+        $item = CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 1,
+            'start_date' => '2026-04-11',
+            'end_date' => '2026-04-13',
+            'rental_days' => 3,
+        ]);
+
+        $service = $this->makeService();
+
+        // Sibling(1) + requested(2) = 3 > quantity_total(2).
+        $this->expectException(RentalUnavailableException::class);
+        $this->expectExceptionMessage('dostępnych 2 szt.');
+
+        $service->updateQuantity($cart, $item, 2);
+    }
+
+    public function test_update_quantity_does_not_count_the_edited_item_against_itself(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 2,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $item = CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 1,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+            'rental_days' => 3,
+            'unit_price' => 100.00,
+            'total_price' => 300.00,
+        ]);
+
+        $service = $this->makeService();
+
+        // No other siblings exist — raising this item's own quantity to the
+        // full quantity_total (2) must NOT be rejected by counting its own
+        // pre-update quantity against itself.
+        $updated = $service->updateQuantity($cart, $item, 2);
+
+        $this->assertEquals(2, $updated->quantity);
+    }
+
+    // -------------------------------------------------------------------------
     // removeItem
     // -------------------------------------------------------------------------
 
@@ -640,6 +793,202 @@ class CartServiceTest extends TestCase
 
             $cartB->refresh();
             $this->assertEquals('active', $cartB->status);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // convertToOrder — sibling cart-item demand aggregation (main acceptance
+    // scenario, kontrakt-dostepnosci.md Zasada 7, ClickUp 86cb93tfw)
+    // -------------------------------------------------------------------------
+
+    public function test_convert_to_order_rejects_repeated_add_of_same_item_with_overlapping_dates(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        // Same equipment added to the SAME cart 3 times with overlapping
+        // dates — exactly the reported bug: quantity_total=1 but three
+        // 1-unit lines, each passing the old per-item-only check.
+        foreach ([
+            ['2026-04-10', '2026-04-12'],
+            ['2026-04-11', '2026-04-13'],
+            ['2026-04-09', '2026-04-11'],
+        ] as [$start, $end]) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $rentalService->id,
+                'quantity' => 1,
+                'start_date' => $start,
+                'end_date' => $end,
+                'rental_days' => 3,
+                'unit_price' => 100.00,
+                'total_price' => 300.00,
+            ]);
+        }
+
+        $service = $this->makeService();
+
+        $this->expectException(RentalUnavailableException::class);
+
+        try {
+            $service->convertToOrder($cart, [
+                'customer_email' => 'x@example.com',
+                'customer_first_name' => 'Jan',
+                'customer_last_name' => 'Testowy',
+            ]);
+        } catch (RentalUnavailableException $e) {
+            $this->assertDatabaseCount('orders', 0);
+            $this->assertDatabaseCount('order_items', 0);
+            throw $e;
+        }
+    }
+
+    public function test_convert_to_order_allows_non_overlapping_sibling_items_of_same_service(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        foreach ([
+            ['2026-04-01', '2026-04-03'],
+            ['2026-04-10', '2026-04-12'],
+        ] as [$start, $end]) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $rentalService->id,
+                'quantity' => 1,
+                'start_date' => $start,
+                'end_date' => $end,
+                'rental_days' => 3,
+                'unit_price' => 100.00,
+                'total_price' => 300.00,
+            ]);
+        }
+
+        $service = $this->makeService();
+
+        $order = $service->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        $this->assertInstanceOf(Order::class, $order);
+        $this->assertDatabaseCount('order_items', 2);
+    }
+
+    public function test_convert_to_order_does_not_aggregate_demand_across_different_services(): void
+    {
+        $serviceA = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+            'price_per_day' => 100,
+        ]);
+        $serviceB = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        foreach ([$serviceA, $serviceB] as $rentalService) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $rentalService->id,
+                'quantity' => 1,
+                'start_date' => '2026-04-10',
+                'end_date' => '2026-04-12',
+                'rental_days' => 3,
+                'unit_price' => 100.00,
+                'total_price' => 300.00,
+            ]);
+        }
+
+        $cartService = $this->makeService();
+
+        $order = $cartService->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        $this->assertInstanceOf(Order::class, $order);
+        $this->assertDatabaseCount('order_items', 2);
+    }
+
+    /**
+     * Guards against the naive "sum ALL cart items of the same service"
+     * over-rejection described in the task brief: A=[Apr1,Apr5],
+     * B=[Apr3,Apr8], C=[Apr6,Apr10], quantity_total=1. A and C never
+     * overlap each other — only B bridges both — so summing every
+     * same-service line regardless of overlap would wrongly reject A and C
+     * too. Only B (whichever line is processed after the first) may be
+     * rejected.
+     */
+    public function test_convert_to_order_does_not_over_reject_when_only_middle_item_bridges_two_non_overlapping_windows(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 1,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        foreach ([
+            ['2026-04-01', '2026-04-05'],
+            ['2026-04-03', '2026-04-08'],
+            ['2026-04-06', '2026-04-10'],
+        ] as [$start, $end]) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $rentalService->id,
+                'quantity' => 1,
+                'start_date' => $start,
+                'end_date' => $end,
+                'rental_days' => 3,
+                'unit_price' => 100.00,
+                'total_price' => 300.00,
+            ]);
+        }
+
+        $service = $this->makeService();
+
+        try {
+            $service->convertToOrder($cart, [
+                'customer_email' => 'x@example.com',
+                'customer_first_name' => 'Jan',
+                'customer_last_name' => 'Testowy',
+            ]);
+            $this->fail('Expected RentalUnavailableException was not thrown.');
+        } catch (RentalUnavailableException $e) {
+            // Exactly ONE of the three lines (the one bridging both windows)
+            // is reported — a naive "sum everything" implementation would
+            // reject the two non-overlapping ones too, which is the
+            // over-rejection this test guards against.
+            $this->assertCount(1, $e->items());
         }
     }
 

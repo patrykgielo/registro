@@ -6,13 +6,14 @@ namespace App\Models;
 
 use App\Enums\PageLayout;
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class Post extends Model
 {
-    use BelongsToOrganization;
+    use BelongsToOrganization, NormalizesEmptyJsonToNull;
 
     protected $fillable = [
         'organization_id',
@@ -34,6 +35,22 @@ class Post extends Model
         'published_at' => 'datetime',
         'layout' => PageLayout::class,
     ];
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['content'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyHtmlToNullFields(): array
+    {
+        return ['body'];
+    }
 
     /**
      * The "booted" method of the model.

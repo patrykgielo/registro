@@ -32,3 +32,8 @@
 - x-ui.button is static Blade — NO Alpine bindings on it
 - Multi-card shared state: lift x-data to common ancestor, use raw HTML styled with button utility classes
 - See: feedback_alpine_scope.md
+
+## Recurring Bugs / Follow-ups
+- [project_dead_primary_scale.md](project_dead_primary_scale.md) — `primary-*` Tailwind classes compile to nothing (only `brand` is registered); ~45 files still affected, list + exclusions inside
+- [feedback_verify_wcag_contrast_numerically.md](feedback_verify_wcag_contrast_numerically.md) — compute OKLCH→WCAG contrast, don't eyeball text-on-brand-bg opacity
+- [feedback_shared_working_directory.md](feedback_shared_working_directory.md) — check `git status` before staging, this repo may have concurrent uncommitted WIP from other sessions

@@ -29,6 +29,8 @@ co zmieniło się podczas migracji.
 | [Ścieżka klienta — Wynajem](customer-journey-rental.md) | `ServiceType::ItemRental` koszyk → checkout → płatność → odbiór → zwrot |
 | [Ścieżka klienta — Zapytanie](customer-journey-inquiry.md) | Usługi `price_on_request` — brak samoobsługowej ceny, zamiast tego modal zapytania |
 | [Anulowanie](customer-journey-cancellation.md) | Anulowanie inicjowane przez klienta i przez administratora, zarówno dla rezerwacji, jak i zamówień |
+| [Ścieżka klienta — Wybór oddziału](customer-journey-locations.md) | **Częściowo wdrożone (fazy 0-2).** Oddział z adresem, godzinami i galerią jest widoczny na stronie. Wybór oddziału i dostępność per punkt — wstrzymane |
+| [Ścieżka pracownika — Praca w oddziale](staff-journey-locations.md) | **Planowane (Faza 8, wstrzymana).** Przypisanie do oddziału, wydanie i zwrot, przeniesienia sprzętu między punktami |
 | [Gość vs Zalogowany](guest-vs-authenticated.md) | Co może zrobić odwiedzający przed a po rejestracji — nie ma checkoutu jako gość |
 | [Proces zakupowy (widok lejka)](purchase-process.md) | Pełny lejek sprzedażowy: katalog → strona produktu → checkout → P24 → potwierdzenie |
 | [Onboarding i rejestracja](onboarding-registration.md) | Kreator rejestracji firmy (nowy tenant), rejestracja klienta, role, trial/subskrypcja |

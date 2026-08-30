@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\RentalAvailabilityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -101,6 +102,79 @@ class RentalAvailabilityServiceTest extends TestCase
         $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
 
         $this->assertEquals(10, $available);
+    }
+
+    // -------------------------------------------------------------------------
+    // Faza 0.1 — scenarios moved from the now-deleted Service::availableQuantity()
+    // / Service::isAvailable() (RentalItemAvailabilityTest, removed) that were
+    // NOT already covered above. That method skipped RentalStatus::Held — this
+    // pins the exact gap it got wrong.
+    // -------------------------------------------------------------------------
+
+    public function test_deducts_held_rental_from_available_quantity(): void
+    {
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Held,
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(8, $available);
+    }
+
+    public function test_does_not_deduct_returned_rental(): void
+    {
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 3,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Returned,
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(10, $available);
+    }
+
+    public function test_multiple_overlapping_rentals_cumulatively_reduce_availability(): void
+    {
+        $item = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+        ]);
+
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Confirmed,
+        ]);
+
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 1,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Active,
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($item, $this->start(), $this->end());
+
+        $this->assertEquals(2, $available);
     }
 
     // -------------------------------------------------------------------------
@@ -423,5 +497,146 @@ class RentalAvailabilityServiceTest extends TestCase
 
         $this->assertSame(10, $result['2026-05-11']['available_quantity']);
         $this->assertSame('available', $result['2026-05-11']['status']);
+    }
+
+    // -------------------------------------------------------------------------
+    // Faza 0.2 — gaps measured against the docblock's promises before the
+    // location dimension lands in Faza 4. These pin today's exact numbers so
+    // the $locationId === null branch can be proven bit-for-bit identical
+    // afterwards.
+    // -------------------------------------------------------------------------
+
+    public function test_deducts_pending_rental_from_available_quantity(): void
+    {
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 4,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Pending,
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(6, $available);
+    }
+
+    public function test_does_not_deduct_expired_rental(): void
+    {
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 4,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Expired,
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(10, $available);
+    }
+
+    public function test_exclude_rental_id_omits_its_own_reservation_from_the_sum(): void
+    {
+        $rental = Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 4,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Confirmed,
+        ]);
+
+        $withoutExclude = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+        $withExclude = $this->svc->getAvailableQuantity(
+            $this->item,
+            $this->start(),
+            $this->end(),
+            excludeRentalId: $rental->id
+        );
+
+        $this->assertEquals(6, $withoutExclude, 'The rental blocks itself when not excluded.');
+        $this->assertEquals(10, $withExclude, 'excludeRentalId must omit the row\'s own reservation from the sum.');
+    }
+
+    public function test_for_update_parity_returns_same_quantity_as_plain_read(): void
+    {
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 3,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+            'status' => RentalStatus::Confirmed,
+        ]);
+
+        $order = Order::factory()->paid()->create([
+            'organization_id' => $this->org->id,
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+        ]);
+
+        $plain = DB::transaction(fn () => $this->svc->getAvailableQuantity(
+            $this->item, $this->start(), $this->end(), forUpdate: false
+        ));
+        $locking = DB::transaction(fn () => $this->svc->getAvailableQuantity(
+            $this->item, $this->start(), $this->end(), forUpdate: true
+        ));
+
+        $this->assertEquals(5, $plain);
+        $this->assertEquals($plain, $locking, 'forUpdate must not change the arithmetic, only lock semantics.');
+    }
+
+    public function test_touching_boundary_day_counts_as_overlap_for_rental(): void
+    {
+        // Blocking rental ends exactly on the day the query window starts.
+        Rental::factory()->create([
+            'organization_id' => $this->org->id,
+            'service_id' => $this->item->id,
+            'customer_id' => User::factory()->create()->id,
+            'quantity' => 4,
+            'start_date' => Carbon::parse('2026-04-27'),
+            'end_date' => $this->start(), // 2026-05-01, same as query's start
+            'status' => RentalStatus::Confirmed,
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(6, $available, 'A rental ending on the query window\'s start day must count as a collision (inclusive both sides).');
+    }
+
+    public function test_touching_boundary_day_counts_as_overlap_for_order_item(): void
+    {
+        // Blocking order item ends exactly on the day the query window starts —
+        // must mirror the Rental path above (scopeOverlappingDates uses whereDate
+        // instead of plain where, but both columns are DATE-typed, so semantics
+        // must be identical).
+        $order = Order::factory()->paid()->create([
+            'organization_id' => $this->org->id,
+        ]);
+
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $this->item->id,
+            'quantity' => 4,
+            'start_date' => Carbon::parse('2026-04-27'),
+            'end_date' => $this->start(), // 2026-05-01, same as query's start
+        ]);
+
+        $available = $this->svc->getAvailableQuantity($this->item, $this->start(), $this->end());
+
+        $this->assertEquals(6, $available, 'An order item ending on the query window\'s start day must count as a collision, same as the Rental path.');
     }
 }

@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class PortfolioItem extends Model
 {
-    use BelongsToOrganization;
+    use BelongsToOrganization, NormalizesEmptyJsonToNull;
 
     protected $fillable = [
         'organization_id',
@@ -33,6 +34,22 @@ class PortfolioItem extends Model
         'gallery' => 'array',
         'published_at' => 'datetime',
     ];
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['content', 'gallery'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyHtmlToNullFields(): array
+    {
+        return ['body'];
+    }
 
     /**
      * The "booted" method of the model.

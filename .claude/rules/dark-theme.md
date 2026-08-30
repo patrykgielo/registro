@@ -13,25 +13,49 @@ paths:
 
 | Termin | Znaczenie |
 |--------|-----------|
-| **Dark theme/mode** | Sekcje z ciemnym tłem (#00323B, #000000) |
+| **Dark theme/mode** | Sekcje z ciemnym tłem (tokeny `--color-dark-bg`, `--color-dark-bg-raised`) |
 | **NIE** `prefers-color-scheme: dark` | Projekt nie ma przełącznika dark/light |
 | **NIE** systemowy dark mode | Nie reagujemy na ustawienia systemu |
 
 ---
 
-## Kolory klienta (BEZWZGLĘDNE)
+## Kolory ciemnych sekcji — STAN FAKTYCZNY
 
-Przekazane przez klienta 2025-12:
+Wszystko poniżej odczytane z `resources/css/design-tokens.css:67-71`. **Nie wpisuj tu
+wartości, której nie da się znaleźć `grep`em w `resources/`.**
 
-| Element | Kolor | Zmienna CSS |
-|---------|-------|-------------|
-| Tło sekcji | `#00323B` | `--color-dark-section` |
-| Kafelki | `#000000` | `--color-dark-tile` |
-| Przycisk CTA | `#0AB1EA` | `--color-dark-cta` |
-| Tekst | `#FFFFFF` | `--color-dark-text` |
-| Tekst przyciszony | `rgba(255,255,255,0.7)` | `--color-dark-text-muted` |
+| Element | Token | Wartość | sRGB |
+|---------|-------|---------|------|
+| Tło sekcji | `--color-dark-bg` | `oklch(15% 0.01 250)` | ~rgb(10, 13, 16) |
+| Tło kafelka/karty | `--color-dark-bg-raised` | `oklch(20% 0.01 250)` | **rgb(19, 22, 26)** |
+| Tekst | `--color-dark-text` | `oklch(100% 0 0)` | `#FFFFFF` |
+| Tekst przyciszony | `--color-dark-text-muted` | `oklch(70% 0.01 250)` | ~rgb(163, 167, 172) |
+| Akcent / CTA / linki | `--color-dark-accent` | `oklch(65% 0.2 250)` | ~`#0AB1EA` |
 
-**NIGDY nie używaj innych kolorów dla ciemnych sekcji!**
+### PUŁAPKA: tło ciemnej karty NIE jest czernią
+
+Licząc kontrast warstw półprzezroczystych (`text-white/80`, `bg-white/10`, `bg-black/60`)
+**spłaszcz je nad realnym tłem z tabeli wyżej**, nie nad `#000000`. Przyjęcie czerni daje
+wynik zawyżony i fałszywie zielony.
+
+Zmierzone 2026-08-29 na badge'u `code` w `x-ios.location-card`: licząc na `#000000` wychodzi
+11,39:1, licząc na `rgb(19,22,26)` — **9,40:1**. Obie przechodzą AA, ale różnica rośnie
+przy ciemniejszym tekście i potrafi przenieść wynik przez próg.
+
+Metoda, która daje poprawny wynik: oklch → linear sRGB → spłaszczenie alfy → WCAG.
+Nie wyprowadzaj sRGB tokena oklch z pamięci — policz.
+
+### Zmienne i kolory, których NIE MA
+
+`--color-dark-section`, `--color-dark-tile`, `.text-dark-primary`, `.text-dark-muted`
+oraz literały `#00323B` / `#000000` jako wartości tła **nie występują w `resources/`**.
+`#00323B` żyje wyłącznie w komentarzach (`prose-typography.css:12,77`,
+`text-block.blade.php:24`) jako historyczna notatka o życzeniu klienta z 2025-12.
+
+`text-dark-primary` i `text-dark-muted` są mimo to **użyte 8× w
+`components/ios/footer.blade.php`** — to martwe klasy, kolor tekstu jest tam dziedziczony,
+a nie ustawiany. Nie powielaj ich; przy okazji dotykania stopki zgłoś to (ClickUp
+`123k99ct3zb`).
 
 ---
 
@@ -83,26 +107,22 @@ $proseClasses = $isDark ? 'prose-invert' : '';
 
 ## Istniejące klasy CSS
 
-Zdefiniowane w `resources/css/app.css`:
+Zdefiniowane w `resources/css/app.css` — **wszystkie przez tokeny, żadna przez literał**:
 
 ```css
-/* Tło sekcji */
-.bg-section-dark { background-color: #00323B; }
-
-/* Kafelek usługi */
-.service-card-dark { background-color: #000000; }
-
-/* Przycisk CTA */
-.btn-cta-dark { background-color: #0AB1EA; color: white; }
-
-/* Tekst */
-.text-dark-primary { color: #FFFFFF; }
-.text-dark-muted { color: rgba(255,255,255,0.7); }
-
-/* Cienie z poświatą */
-.shadow-dark-glow { box-shadow: 0 0 20px rgba(10,177,234,0.15), ...; }
-.shadow-dark-glow-hover { box-shadow: 0 0 35px rgba(10,177,234,0.25), ...; }
+.bg-section-dark  { background-color: var(--color-dark-bg); color: var(--color-dark-text); }
+.bg-section-dark .text-muted { color: var(--color-dark-text-muted); }
+.service-card-dark { background-color: var(--color-dark-bg-raised); border: none; }
+.btn-cta-dark      { background-color: var(--color-dark-accent); color: white; }
+.shadow-dark-glow  { box-shadow: 0 0 20px oklch(65% 0.2 250 / 15%), 0 4px 20px oklch(0% 0 0 / 40%); }
+.badge-duration-dark { background-color: oklch(100% 0 0 / 10%); }
 ```
+
+`.service-card-dark` jest oznaczona w `app.css:148-150` jako **legacy**, do usunięcia po
+przepisaniu komponentów w Fazie 3 — nie buduj na niej nowych rzeczy.
+
+Warstwa tokenów jest po to, żeby tenant mógł nadpisać kolory. Wpisanie literału
+zamiast `var(--color-dark-*)` cicho wyłącza tę możliwość.
 
 ---
 
@@ -127,12 +147,28 @@ Zdefiniowane w `resources/css/prose-typography.css`.
 
 1. **NIGDY nie używaj `@media (prefers-color-scheme: dark)`** dla głównych stylów
 2. **NIGDY nie zmieniaj kolorów klienta** bez jego zgody
-3. **NIGDY nie używaj odcieni szarości** (#D1D5DB, #F3F4F6) zamiast #FFFFFF na ciemnym tle
-4. **NIGDY nie używaj innego koloru linków** niż #0AB1EA na ciemnym tle
+3. **NIGDY nie używaj odcieni szarości** (#D1D5DB, #F3F4F6) zamiast `--color-dark-text` na ciemnym tle
+4. **NIGDY nie używaj innego koloru linków** niż `--color-dark-accent` na ciemnym tle
+5. **NIGDY nie wpisuj literału koloru** tam, gdzie istnieje token — literał wyłącza
+   nadpisanie per tenant
+6. **NIGDY nie deklaruj kontrastu bez policzenia go** — patrz pułapka wyżej
 
 ---
 
 ## Historia incydentów
+
+### 2026-08-29: Reguła podawała kolory, których nie ma w kodzie
+
+**Problem:** ten plik wymieniał `--color-dark-section`, `--color-dark-tile` oraz tła
+`#00323B`/`#000000` jako obowiązujące. Żadna z tych wartości nie istniała w `resources/`
+— realne tokeny to `oklch(...)`. Ponieważ reguła jest oznaczona jako BEZWZGLĘDNA i ładuje
+się przy każdej edycji `resources/**`, była stosowana w dobrej wierze.
+
+**Koszt:** kontrast badge'a policzony na czerni z tej tabeli → 11,39:1 zamiast 9,40:1.
+Błąd prostowany dwa razy, zanim ktokolwiek policzył konwersję oklch w kodzie.
+
+**Zapobieganie:** każda wartość w tym pliku musi dać się znaleźć `grep`em w `resources/`.
+ClickUp `123k99ct3zb`.
 
 ### 2026-01-24: Bug detekcji ciemnego tła
 

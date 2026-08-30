@@ -7,6 +7,7 @@
 
 ## Audits
 - [project_registro_role_escalation_guard.md](project_registro_role_escalation_guard.md) — feature/user-role-escalation-guard audit (2026-08-07): guard is sound, one hygiene gap (case-sensitivity) confirmed non-exploitable
+- [project_post_login_return_audit.md](project_post_login_return_audit.md) — feature/post-login-return audit (2026-08-17): IntendedDestination/CustomerLandingUrl safe; security rests entirely on consume()'s independent host+path recheck, capture()'s auth-chain refresh branch skips it (fragile, not exploitable today)
 
 ## Security Controls
 - PreToolUse hook blocks: migrate:fresh/reset/refresh, db:wipe, FILESYSTEM_DISK=local

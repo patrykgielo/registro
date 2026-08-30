@@ -160,6 +160,51 @@ wysyłane przy żadnej administracyjnej akcji na wypożyczeniu.** Obsługa
 kaucji dla tych wierszy odbywa się przez powiązane `Order` (patrz wyżej), a
 nie przez sam rekord `Rental`.
 
+## Oddziały (Lokalizacje)
+
+Zakładka **Ustawienia → Lokalizacje**. Służy do opisania fizycznych punktów firmy —
+adresu, godzin, kontaktu i zdjęć — i pokazania ich klientowi na stronie.
+
+**Uwaga:** to jeszcze **nie jest** magazyn per oddział. Sprzęt nie jest przypisany do punktu,
+klient nie wybiera oddziału, a dostępność liczy się wspólnie dla całej firmy. To fazy 4-6,
+wstrzymane. Dziś Lokalizacje są warstwą prezentacyjną i adresową.
+
+### Co wypełniasz i co z tego widzi klient
+
+| Pole w panelu | Gdzie trafia |
+|---|---|
+| Nazwa | nagłówek karty na stronie |
+| Symbol (np. `MMZ`) | plakietka przy nazwie |
+| Ulica, budynek, kod, miasto | linia adresu na karcie |
+| Opis | akapit na karcie, skracany do 120 znaków |
+| Godziny otwarcia | lista na karcie |
+| Telefon, e-mail | klikalne odnośniki na karcie |
+| Zdjęcie siedziby | zdjęcie nagłówkowe karty |
+| Galeria | pasek do 4 miniatur z licznikiem „+N" |
+| Lokalizacja na mapie | odnośnik „Zobacz na mapie" |
+
+Oddział **nie ma własnej podstrony** — istnieje wyłącznie jako karta w siatce na stronie CMS.
+
+### Trzy rzeczy, które zaskakują
+
+**1. Dodanie oddziału nie umieszcza go na stronie.** Musisz wejść w stronę CMS, znaleźć blok
+„Siatka treści" z typem „Lokalizacje" i **dopisać nowy oddział do listy**. Blok pokazuje
+ręcznie wybrane elementy i nie ma opcji „wszystkie". Nic o tym nie przypomina — strona po
+prostu wygląda jak wcześniej. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+
+**2. Odznaczenie „Aktywna" nie ukrywa oddziału.** Usuwa go z listy do wyboru w panelu, ale
+jeśli był już w bloku — nadal się renderuje. Żeby zniknął ze strony, usuń go z bloku.
+
+**3. Pierwszy oddział zostaje główny automatycznie** i nie da się usunąć ostatniego — system
+pilnuje, żeby firma zawsze miała co najmniej jedną siedzibę.
+
+### Adres firmy jest dziś w dwóch miejscach
+
+Adres pokazywany w checkoucie, na protokołach i w e-mailach pochodzi z **Ustawień**
+(dane kontaktowe firmy), a nie z encji oddziału — mimo że oddział ma własny adres.
+Zmiana adresu w Lokalizacjach **nie zmieni** adresu na dokumentach.
+Zgłoszone: [`123k99ct3j0`](https://app.clickup.com/t/123k99ct3j0).
+
 ## Zarządzanie klientami (moduł `customers`)
 
 `CustomerResource`: użytkownik pojawia się na tej liście tylko wtedy, gdy ma

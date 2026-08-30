@@ -10,6 +10,7 @@ use App\Filament\Resources\Promotions\Pages\CreatePromotion;
 use App\Filament\Resources\Promotions\Pages\EditPromotion;
 use App\Filament\Resources\Promotions\Pages\ListPromotions;
 use App\Filament\Support\BuilderBlocks;
+use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Promotion;
 use BackedEnum;
 use Filament\Actions;
@@ -59,7 +60,10 @@ class PromotionResource extends BaseResource
                             ->label('Slug (URL)')
                             ->required()
                             ->maxLength(255)
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+                            )
                             ->helperText('Automatycznie generowany z tytułu'),
 
                         Forms\Components\Toggle::make('active')

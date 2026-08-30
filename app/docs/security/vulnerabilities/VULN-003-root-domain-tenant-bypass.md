@@ -775,3 +775,80 @@ gap), 2026-07-03 (Layer 4 — cart/checkout/orders session-fallback gap), 2026-0
 Livewire admin/platform tenant isolation, see dedicated pattern doc), 2026-07-05
 (documentation-only correction: root-domain → `/login` nav path premise, Follow-ups section)
 **Related**: [Lifecycle Security Decisions](../lifecycle-security-decisions.md), [Orders Security Hardening](../../features/orders-security-hardening.md)
+
+---
+
+## Layer 7 (2026-08-30) — route-model binding ran before tenant resolution
+
+### The hole
+
+`SubstituteBindings` lives in Laravel's default `web` group. `ResolveTenant` was applied as
+**route** middleware, and route middleware always runs **after** the group. Model binding by
+slug therefore resolved **before the tenant was known** — at which point the
+`BelongsToOrganization` global scope either no-oped or used `session('tenant_id')` left over
+from a previous request.
+
+A customer on tenant A's subdomain, opening tenant B's equipment URL, received **B's row with
+HTTP 200** instead of a 404. Reproduced in both directions by `StorefrontWalkthroughTest`.
+
+### Scope was wider than first reported
+
+The test probed `service.show`. Every route with implicit model binding was affected:
+
+| Route | |
+|---|---|
+| `/aktualnosci/kategoria/{category:slug}` | |
+| `/portfolio/kategoria/{category:slug}` | |
+| `/wypozyczalnia/{category:slug}` | |
+| `/uslugi/{service:slug}` | |
+| `POST /uslugi/{service:slug}/zapytaj` | |
+| `/api/rental/{service:slug}/dostepnosc` | **availability API** |
+| `/api/rental/{service:slug}/kalendarz` | **availability API** |
+
+Binding by **ID** carried the same flaw — `orders.show`, `orders.extension.*` — where the only
+protection was a hand-written `abort_unless(..., 403)` in the controller, i.e. defence that had
+to be remembered at every call site.
+
+Note the inconsistency this exposes: `post.show`, `promotion.show` and `portfolio.show` use a
+plain `{slug}` and resolve in the controller, so they were never affected. Someone had solved
+this before, at three call sites, and left no record of why.
+
+### The fix
+
+`bootstrap/app.php` — `SubstituteBindings` removed from the `web` group and re-appended after
+`ResolveTenant`, keeping `CheckMaintenanceMode` last so it still runs after session and auth.
+
+The ordering is durable: `SortedMiddleware::sortMiddleware()` only reorders middleware that are
+themselves on the `$middlewarePriority` list, relative to each other. `ResolveTenant` is not on
+it, so nothing can jump ahead of it. **Do not add it to the priority list** — that would remove
+the property the fix depends on.
+
+### Deliberate consequence: the tenant boundary now answers 404, not 403
+
+The foreign-tenant row no longer binds at all, so the controllers' `abort_unless(..., 403)` is
+unreachable and a `ModelNotFoundException` produces 404.
+
+This is an improvement in consistency, not a regression: `RequireTenant` has always used 404 for
+this boundary, and `OrderProtocolController:78` already used 404 for the identical check. A 404
+also declines to confirm that another tenant's resource exists.
+
+**The per-USER boundary within one tenant still answers 403** and is untouched —
+`RentalExtensionControllerTest::check_returns_403_for_another_users_order` passes unchanged.
+
+Four assertions were updated deliberately, with the reasoning recorded in the test bodies. This
+is the change `middleware.md` previously warned about as a *silent* 403→404 shift; it is made
+here explicitly, with tests as the tripwire.
+
+### Assumption this rests on — verify before deploying
+
+The SMSAPI webhook routes (`api/webhooks/smsapi/*`) previously carried no `ResolveTenant` and
+now do. They are safe **because the webhook URL is registered on the root domain**, where
+`ResolveTenant` passes the request straight through without resolving a tenant, and because
+`SMSAPI_TOKEN` is a single global credential rather than per-organisation.
+
+If that URL is ever changed to a tenant subdomain, those requests start going through the
+suspended/closed/redirect branches and **SMS delivery callbacks will fail silently**. Confirm
+the registered URL in the SMSAPI panel before deploying this to a live environment.
+
+`webhooks/przelewy24` is not affected — it already carried `ResolveTenant` explicitly
+(`routes/web.php:192`); this change only moves it earlier in the same chain.

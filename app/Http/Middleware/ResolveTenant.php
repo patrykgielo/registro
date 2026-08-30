@@ -10,6 +10,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -121,7 +122,7 @@ class ResolveTenant
         // Without this, form actions and redirects point to root domain → 404.
         // Note: In dev mode (npm run dev), Vite HMR won't work on subdomains
         // due to SSL cert mismatch. Use `npm run build` for subdomain testing.
-        URL::forceRootUrl($request->getSchemeAndHttpHost());
+        $this->forceTenantOriginUrls($request);
 
         return $next($request);
     }
@@ -175,7 +176,7 @@ class ResolveTenant
 
         // Force route() to generate URLs with the request's own host instead of
         // APP_URL — same reasoning as the host-derived branch below.
-        URL::forceRootUrl($request->getSchemeAndHttpHost());
+        $this->forceTenantOriginUrls($request);
 
         return $next($request);
     }
@@ -234,6 +235,57 @@ class ResolveTenant
         $user = Auth::user();
 
         return ! $user->hasAnyRole(['admin', 'staff']) || $user->canAccessTenant($tenant);
+    }
+
+    /**
+     * Force route()/url() AND the "public" disk's URL to the current request's
+     * own origin instead of APP_URL. Shared by both branches — a pinned stack's
+     * TENANT_HOSTS can list more than one host (e.g. a custom domain alongside
+     * the default subdomain), so even there APP_URL isn't guaranteed to match
+     * the host the visitor actually used.
+     *
+     * Without the disk half of this, Storage::url() (and anything built on it —
+     * FilePond's preview fetch() in the admin panel, attribute casts that expose
+     * a public URL) keeps resolving to APP_URL's host. On a shared stack that's
+     * a different origin than the tenant subdomain, and fetch() is subject to
+     * CORS unlike a plain <img src>, so the panel-only symptom was a preview
+     * that never loads while the public storefront (plain <img>) looks fine.
+     *
+     * Only mutates the in-memory Config repository for THIS request — php-fpm
+     * (confirmed: no Octane in composer.json, container CMD is php-fpm) rebuilds
+     * the container fresh per request, so nothing leaks to the next one. Queue
+     * workers (Horizon) never run this middleware at all, so a rendered
+     * notification/PDF off the request cycle falls back to APP_URL. On a shared
+     * stack that is the ROOT domain, not the tenant's — i.e. a wrong host in the
+     * customer's e-mail, not a correct fallback. (Compounding it: the horizon and
+     * scheduler services do not mount the storage-app-public volume at all —
+     * docker-compose.prod.yml, only app:135 and nginx:372 do — so off-request
+     * rendering may not even find the file. ClickUp 123k99ct3za.)
+     * See architecture-models.md, "Kolejka nie ma kontekstu żądania".
+     *
+     * The config write alone is not enough: `FilesystemManager::disk()` caches
+     * the built adapter in `$disks['public']` on first resolution, and
+     * `FilesystemAdapter::url()` reads the 'url' value it was constructed with —
+     * not config() live. If ANYTHING resolved the "public" disk (or the default
+     * disk, which this project always pins to "public" — FILESYSTEM_DISK=public)
+     * before this middleware ran, the config mutation above is a silent no-op
+     * and Storage::url() keeps returning APP_URL's host. Nothing in this
+     * codebase does that today (checked: AppServiceProvider::boot(),
+     * AdminPanelProvider — no eager Storage::disk() calls), but the failure mode
+     * is silent, so `forgetDisk()` is added defensively rather than relying on
+     * that staying true. It only drops the cached adapter instance from the
+     * manager's registry — any reference a caller already holds keeps working
+     * unchanged; only the NEXT `Storage::disk('public')` (or the default-disk
+     * facade call, since the resolved cache key is the same "public" name)
+     * rebuilds from the config just written above.
+     */
+    private function forceTenantOriginUrls(Request $request): void
+    {
+        $origin = $request->getSchemeAndHttpHost();
+
+        URL::forceRootUrl($origin);
+        config(['filesystems.disks.public.url' => $origin.'/storage']);
+        Storage::forgetDisk('public');
     }
 
     /**
