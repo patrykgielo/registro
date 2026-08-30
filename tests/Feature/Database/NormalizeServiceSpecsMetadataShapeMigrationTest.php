@@ -140,7 +140,7 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
         $this->assertSame(0, $this->countDictShapedSpecs());
         $this->assertTrue(array_is_list($this->rawMetadata($dictA->id)['specs']));
         $this->assertTrue(array_is_list($this->rawMetadata($dictB->id)['specs']));
-        $this->assertSame(
+        $this->assertSpecsMatch(
             [['label' => 'X', 'value' => 1, 'unit' => '']],
             $this->rawMetadata($list->id)['specs']
         );
