@@ -5,11 +5,19 @@ paths:
 
 # Release Documentation Rules
 
-## Zakres (od 2026-08-16, model trzywarstwowy: `feature/* → develop → staging → main`)
+## Zakres (zaktualizowane 2026-08-30)
 
-Do tego dnia `docs/releases/` nie istniało w ogóle — zero dokumentów przy 19 dotychczasowych tagach,
-mimo że ta reguła istniała. Nieprzestrzegana, nie do naśladowania. **Od dzisiaj obowiązuje, ale nie
-wstecz** — nie twórz dokumentów dla historycznych tagów, tylko dla każdego NOWEGO tagu od
+**Historia dwóch nieudanych podejść — przeczytaj, zanim dołożysz trzecie wymaganie.**
+Notatki `v4.13.0`–`v4.15.0` powstawały, po czym zresetowano wersjonowanie do `v0.x` i ustały.
+Potem ta reguła zadeklarowała 2026-08-16 konwencję „od dzisiaj obowiązuje" — i nie powstał
+**ani jeden** dokument przy 25 tagach, bo `paths` celowało w katalog, którego nie było, więc
+reguła nie ładowała się nigdy. Obie konwencje umarły, bo **nie miały czytelnika**.
+
+`docs/releases/` **istnieje od 2026-08-30**, z pierwszym wpisem (Lokalizacje 0-2) i własnym
+`README.md` opisującym konwencję. Ten plik jest regułą dla agenta; `docs/releases/README.md`
+jest instrukcją dla człowieka — trzymaj je zgodne.
+
+**Obowiązuje, ale nie wstecz** — nie twórz dokumentów dla historycznych tagów, tylko dla każdego NOWEGO tagu od
 2026-08-16, i to zróżnicowane wg tego, skąd tag jest cięty:
 
 - **Tag `rc*`, cięty z `staging`** (`vX.Y.Z-rc.N`) — **adnotowany tag gita wystarczy.**
@@ -19,9 +27,20 @@ wstecz** — nie twórz dokumentów dla historycznych tagów, tylko dla każdego
   zniechęciłby do pisania czegokolwiek.
 - **Tag produkcyjny (`vX.Y.Z`, bez `-rc`), cięty z `main` po promocji `staging → main`** — WYMAGA
   `docs/releases/vX.Y.Z.md` wg szablonu poniżej, PRZED wypchnięciem tagu.
+- **Domknięty zakres funkcjonalny na `develop`, zmieniający to, co widzi klient lub operator**
+  — WYMAGA `docs/releases/RRRR-MM-DD-zakres.md`. **Odstępstwo od pierwotnej reguły, świadome:**
+  między `develop` a produkcją stoi maszyna, której nie kupiono, więc czekanie na tag
+  produkcyjny oznaczałoby czekanie w nieskończoność, a zakres domyka się już teraz.
 
-**Pułapka trigera:** ta reguła ma `paths: docs/releases/**`, więc ładuje się dopiero gdy Claude już
-dotyka pliku w tym katalogu — samo cięcie taga zwykle nie dotyka żadnego pliku tam. Punkt wejścia
+**BEZWZGLĘDNIE: notatka mówi, GDZIE ten kod jest.** Nie „wydane", tylko tabela środowisk:
+`develop` / `staging` / UAT / produkcja. Wpis sugerujący, że coś działa u klienta, kiedy leży
+tylko na gałęzi integracyjnej, jest **gorszy niż brak wpisu**. Status aktualizuje się w tym
+samym pliku, gdy kod idzie dalej — nie zakłada się nowego.
+
+**Pułapka trigera (częściowo rozbrojona 2026-08-30):** ta reguła ma `paths: docs/releases/**`.
+Do 2026-08-30 katalog nie istniał, więc `paths` nie mogło trafić **nigdy** — reguła była
+martwym wpisem TIER 2 przez 13 dni od wprowadzenia. Katalog już jest, więc reguła ładuje się
+przy edycji notatki. Nadal jednak samo cięcie taga zwykle nie dotyka żadnego pliku tam. Punkt wejścia
 dla operatora/agenta jest w `.github/workflows/RELEASE_PROCESS.md` (krok "Tag a Release"), nie tutaj
 — stamtąd trafiasz do tego pliku PRZED wypchnięciem tagu produkcyjnego, nie po.
 
