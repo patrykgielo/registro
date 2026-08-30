@@ -553,3 +553,41 @@ Pojedynczy przebieg nie rozstrzyga przyczyny przy teście flaky. Zanim obwinisz 
 plik: przeczytaj **treść asercji** (`data.phone` nie miało żadnego prawdopodobnego związku
 ze `Storage::forgetDisk()`) i powtórz test na niezmienionym drzewie.
 
+---
+
+## Asercje, które psuje MySQL, a SQLite przepuszcza
+
+Dwie klasy, obie kosztowały po jednym nieudanym wdrożeniu (rc26, rc27):
+
+**1. Kolejność kluczy w kolumnie `json`.** MySQL **normalizuje i przestawia** klucze obiektu
+JSON przy zapisie; SQLite trzyma tekst dosłownie. `assertSame()` na zdekodowanej tablicy
+asocjacyjnej jest wrażliwe na kolejność, więc test przechodzi lokalnie i pada na bramce
+z diffem, w którym **wszystkie wartości są identyczne**, a różni się wyłącznie układ:
+
+```
++  'unit' => 'W',        <- oczekiwane
+   'label' => 'Moc',
+-  'unit' => 'W',        <- otrzymane
+```
+
+Kolejność kluczy w obiekcie JSON **nie niesie znaczenia** i aplikacja czyta po kluczu.
+Porównuj po rekurencyjnym `ksort()` obu stron (`assertSpecsMatch()` w
+`NormalizeServiceSpecsMetadataShapeMigrationTest`), nie przez `assertSame()` na surowym
+kształcie. To dotyczy także asercji „bajt w bajt" na surowym stringu `metadata` — na MySQL
+taka asercja nie sprawdza tego, co deklaruje.
+
+**2. `migrate:rollback --path` widzi wyłącznie OSTATNI batch.** Jeśli wcześniej w teście
+cofnąłeś i ponownie zmigrowałeś jakąkolwiek migrację, wylądowała ona w nowym batchu — i każde
+kolejne `--path` na innej migracji **po cichu nie robi nic**. Tabela zostaje razem ze swoim
+kluczem obcym, a późniejszy `DROP` rodzica pada na MySQL z błędem 3730. SQLite tego nie
+zauważy, bo nie egzekwuje FK przy `DROP TABLE`.
+
+Jeśli test sprawdza `down()` konkretnej migracji, a nie kolejność rollbacku całego łańcucha,
+otocz łańcuch `Schema::disableForeignKeyConstraints()` / `enableForeignKeyConstraints()`
+i asertuj to, o co naprawdę chodzi.
+
+**Realna kolejność rollbacku jest bezpieczna z innego powodu:** Laravel cofa
+`batch desc, migration desc` (`DatabaseMigrationRepository.php:65-67`), więc migracja dziecka
+z FK, mając późniejszą nazwę pliku, zawsze spada przed rodzicem. Tego **nie** trzeba
+zabezpieczać w migracjach — ale `migrate:rollback --path` wycelowany w pojedynczą migrację
+rodzica na MySQL padnie. Używaj `--step`.

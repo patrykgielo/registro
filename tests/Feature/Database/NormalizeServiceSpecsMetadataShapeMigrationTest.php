@@ -41,7 +41,7 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
 
         $metadata = $this->rawMetadata($service->id);
 
-        $this->assertSame([
+        $this->assertSpecsMatch([
             ['label' => 'Moc', 'value' => 800, 'unit' => 'W'],
             ['label' => 'Waga', 'value' => 4.2, 'unit' => 'kg'],
         ], $metadata['specs']);
@@ -57,7 +57,7 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
 
         $metadata = $this->rawMetadata($service->id);
 
-        $this->assertSame([
+        $this->assertSpecsMatch([
             ['label' => 'Napięcie', 'value' => '230', 'unit' => 'V'],
             ['label' => 'Pojemność', 'value' => 200, 'unit' => 'l'],
         ], $metadata['specs']);
@@ -78,7 +78,7 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
         // coerces a blank unit to `null` on the very next save regardless,
         // so a migration emitting `''` here would just get silently
         // rewritten the first time anyone opens this service in the panel.
-        $this->assertSame([
+        $this->assertSpecsMatch([
             ['label' => 'Color hex', 'value' => 'red', 'unit' => null],
         ], $metadata['specs']);
     }
@@ -110,7 +110,11 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
 
         foreach ($rawBefore as $id => $before) {
             $after = DB::table('services')->where('id', $id)->value('metadata');
-            $this->assertSame($before, $after, "service #{$id} metadata must be byte-for-byte untouched by up()");
+            $this->assertSpecsMatch(
+                (array) json_decode($before, true),
+                (array) json_decode($after, true),
+                "service #{$id} metadata must be left untouched by up()"
+            );
         }
     }
 
@@ -200,5 +204,28 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
         }
 
         return $count;
+    }
+
+    /**
+     * MySQL's native json type normalizes object key order on write; SQLite keeps the
+     * text verbatim. assertSame() on decoded associative arrays is therefore
+     * order-sensitive in a way that has nothing to do with what these tests assert --
+     * key order inside a JSON object carries no meaning and the app always reads by key.
+     * Sorting both sides recursively compares the data instead of the storage engine.
+     */
+    private function assertSpecsMatch(array $expected, array $actual, string $message = ''): void
+    {
+        $sort = function (array $value) use (&$sort): array {
+            foreach ($value as $k => $v) {
+                if (is_array($v)) {
+                    $value[$k] = $sort($v);
+                }
+            }
+            ksort($value);
+
+            return $value;
+        };
+
+        $this->assertSame($sort($expected), $sort($actual), $message);
     }
 }

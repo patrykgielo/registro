@@ -229,12 +229,28 @@ class BackfillPrimaryLocationForOrganizationsMigrationTest extends TestCase
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
         $this->assertTrue(Schema::hasTable('locations'));
 
-        // Full chain, newest-first — the order a real `migrate:rollback`
-        // always applies (see STOCK_BACKFILL_MIGRATION_PATH's docblock).
+        // `migrate:rollback --path` only ever considers the LAST batch, and the
+        // rollback/re-migrate above has already moved MIGRATION_PATH into a batch
+        // of its own -- so the two stock rollbacks below silently match nothing and
+        // service_location_stocks survives, taking its foreign key with it. On
+        // MySQL the subsequent DROP of `locations` then dies with error 3730;
+        // SQLite never noticed because it does not enforce the constraint.
+        //
+        // What this test is actually about is whether the locations migrations'
+        // own down() clears the table, not whether an unrelated later migration
+        // happens to be applied. Suspending constraint checks around the chain
+        // asserts exactly that, on both engines. Real rollback ordering is safe
+        // for a different and stronger reason: Laravel rolls back
+        // batch desc, migration desc (DatabaseMigrationRepository:65-67), so
+        // 2026_08_28_090000 always drops before 2026_08_27_120000.
+        Schema::disableForeignKeyConstraints();
+
         $this->artisan('migrate:rollback', ['--path' => self::STOCK_BACKFILL_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::STOCK_SCHEMA_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::SCHEMA_MIGRATION_PATH])->run();
+
+        Schema::enableForeignKeyConstraints();
 
         $this->assertFalse(
             Schema::hasTable('locations'),
