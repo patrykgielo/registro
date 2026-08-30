@@ -102,6 +102,35 @@ protected $dispatchesEvents = [
 ];
 ```
 
+## Puste kolumny JSON: `NormalizesEmptyJsonToNull`
+
+Filamentowe `Repeater`, `FileUpload` i `KeyValue` dehydratują **pusty** stan do `[]`, nie do
+`null`. Na kolumnie `json NULL` oznacza to, że zapis rekordu **bez żadnej zmiany** nadpisuje
+`NULL` pustą tablicą.
+
+Samo `[]` vs `NULL` jest przy odczycie nieszkodliwe (wszystko robi `?? []`). Szkoda jest gdzie
+indziej: modele z traitem `Auditable` zapisują wtedy do dziennika audytu zmianę, której nie
+było, i podbijają `updated_at`. **Dziennik raportujący nieistniejące zmiany traci swoją jedyną
+funkcję** — przy dochodzeniu „kto to zmienił" szum jest gorszy niż brak wpisu.
+
+```php
+use App\Traits\NormalizesEmptyJsonToNull;
+
+class Location extends Model
+{
+    use NormalizesEmptyJsonToNull;
+
+    protected array $normalizeEmptyJsonToNullFields = ['opening_hours', 'gallery'];
+}
+```
+
+Trait wisi na `saving`, więc chroni **wszystkie** ścieżki zapisu — API, konsolę, kolejkę —
+a nie tylko konkretne pola formularza. Świadomie wybrane zamiast `dehydrateStateUsing()`
+per komponent: tamto trzeba kopiować przy każdym nowym polu i nie działa poza Filamentem.
+
+Dodając kolumnę `json NULL`, dopisz ją do tej listy albo świadomie zapisz, dlaczego `[]`
+i `NULL` mają w niej znaczyć co innego.
+
 ## Casts
 
 ```php

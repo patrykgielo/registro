@@ -175,4 +175,22 @@ class RentalTest extends TestCase
 
         $this->assertNotNull($rental->confirmed_at);
     }
+
+    /**
+     * Pins RentalFactory producing values compatible with the DATE-typed
+     * start_date/end_date columns. fake()->dateTimeBetween() returns a
+     * DateTime WITH a random time component -- SQLite (this suite) stores it
+     * verbatim, MySQL (production) truncates it silently. Either way, a
+     * freshly-created record's raw start_date/end_date must already be
+     * midnight, or a no-op save (which round-trips through the model's
+     * 'date' cast) mutates the row (PanelWalkthroughTest, 2026-08-30).
+     */
+    public function test_factory_produces_date_only_start_and_end_dates(): void
+    {
+        $rental = Rental::factory()->create();
+        $fresh = $rental->fresh();
+
+        $this->assertSame('00:00:00', $fresh->start_date->format('H:i:s'));
+        $this->assertSame('00:00:00', $fresh->end_date->format('H:i:s'));
+    }
 }

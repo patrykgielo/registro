@@ -25,8 +25,16 @@ class RentalFactory extends Factory
             'service_id' => Service::factory()->itemRental(),
             'customer_id' => User::factory(),
             'quantity' => 1,
-            'start_date' => $startDate,
-            'end_date' => $endDate,
+            // 'date' cast on the model (rentals.start_date/end_date are DATE columns, never
+            // datetime) -- fake()->dateTimeBetween() returns a DateTime WITH a random time
+            // component, which SQLite (used by the test suite) happily stores verbatim,
+            // producing a spurious no-op-save diff every time the model's own 'date' cast
+            // round-trips it back to midnight (PanelWalkthroughTest, 2026-08-30). MySQL would
+            // have truncated it silently at INSERT time instead -- this was never a production
+            // bug, only a fixture/schema mismatch invisible on SQLite (see tests.md's "MySQL
+            // 8.0 gate" for the general class of this gap).
+            'start_date' => $startDate->format('Y-m-d'),
+            'end_date' => $endDate->format('Y-m-d'),
             'pricing_unit' => 'daily',
             'unit_price_at_booking' => $unitPrice,
             'total_price' => $unitPrice * $days,

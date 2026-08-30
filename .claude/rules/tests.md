@@ -433,3 +433,28 @@ refactors. Full catalog of what's pinned today:
 
 **CI runs `./vendor/bin/pint --test` before PHPUnit tests.**
 If Pint fails, tests won't even run!
+
+---
+
+## Fabryka musi produkować dane zgodne ze SCHEMATEM, nie tylko z typem PHP
+
+SQLite (`.env.testing`) **nie waliduje typów kolumn** — zapisuje dosłownie to, co dostanie,
+także do kolumny zadeklarowanej jako `date` czy `time`. MySQL by to obciął albo odrzucił.
+Fabryka niezgodna ze schematem produkuje więc w testach dane, **których produkcja nigdy
+by nie zobaczyła** — i generuje fałszywe alarmy w każdym teście porównującym stan przed/po.
+
+Zmierzone przypadki (2026-08-29, wszystkie naprawione):
+
+| Fabryka | Generowało | Kolumna | Skutek |
+|---|---|---|---|
+| `RentalFactory` | `fake()->dateTimeBetween()` | `date` | test „pusty zapis zmienił rekord" — czas obcinany do `00:00:00` |
+| `AppointmentFactory` | `fake()->time('H:i:s')` | `time`, cast `datetime:H:i` | normalizacja sekund przy każdym zapisie → fałszywe „przełożenie wizyty" |
+| `LocationFactory` | `fake()->phoneNumber()` (`en_US`) | pole walidowane `->tel()` | losowe `data.phone`, bo locale dokleja rozszerzenie `x1234` |
+
+**Zasada:** zanim uznasz, że test wykrył błąd produkcyjny, sprawdź `SHOW COLUMNS` na MySQL.
+Wynik testu na SQLite jest przesłanką, nie werdyktem — trzeci wiersz tej tabeli był przez
+chwilę raportowany jako „cicha utrata danych na produkcji", a okazał się wadą fabryki.
+
+**Zasada druga:** fabryka generująca losowość w polu, które ma walidację, musi generować
+w granicach tej walidacji. Losowy flake w teście niezwiązanym z edytowanym kodem to prawie
+zawsze ten wzorzec — i prawie zawsze zostaje przypisany niewłaściwemu plikowi.

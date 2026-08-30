@@ -88,6 +88,8 @@ enum TemplateKey: string
             self::APPOINTMENT_FOLLOWUP => 'Follow-up po wizycie',
             self::USER_REGISTERED => 'Rejestracja konta',
             self::PASSWORD_RESET => 'Reset hasla',
+            self::TENANT_WELCOME => 'Powitanie nowego tenanta',
+            self::TENANT_REGISTERED_OPERATOR => 'Nowy tenant (operator platformy)',
             self::EMAIL_CHANGE_REQUESTED => 'Zmiana email (stary adres)',
             self::EMAIL_CHANGE_VERIFICATION => 'Zmiana email (weryfikacja)',
             self::EMAIL_CHANGE_COMPLETED => 'Zmiana email (potwierdzenie)',

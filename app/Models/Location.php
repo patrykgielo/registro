@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Traits\Auditable;
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +15,7 @@ use Illuminate\Support\Str;
 
 class Location extends Model
 {
-    use Auditable, BelongsToOrganization, HasFactory;
+    use Auditable, BelongsToOrganization, HasFactory, NormalizesEmptyJsonToNull;
 
     protected $fillable = [
         'organization_id',
@@ -54,6 +55,11 @@ class Location extends Model
                 $location->slug = Str::slug($location->name);
             }
         });
+    }
+
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['opening_hours', 'gallery'];
     }
 
     public function getRouteKeyName(): string
