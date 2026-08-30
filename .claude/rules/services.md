@@ -123,6 +123,55 @@ public function createAppointment(...): Appointment
 public function checkStaffAvailability(...): bool
 ```
 
+## Cache Keys — MUSZĄ nieść identyfikator tenanta (shared stack)
+
+Scope'owanie ZAPYTANIA (`BelongsToOrganization`) chroni WYNIK, nie to, komu ten wynik zostanie
+podany — o tym decyduje klucz cache. `NavigationService` cache'ował menu pod
+`"navigation.pages.{location}"` bez tenanta; `CACHE_PREFIX` nie jest ustawiony w `.env`, więc
+`config/cache.php` wyprowadza go z `APP_NAME` — identyczny dla wszystkich tenantów. Pierwszy
+tenant, który rozgrzał cache, narzucał swoje menu wszystkim pozostałym na cały TTL.
+
+```php
+// ❌ ŹLE — brak identyfikatora tenanta w kluczu
+Cache::remember("navigation.pages.{$location}", $ttl, fn () => ...);
+
+// ✅ DOBRZE — wzorzec z ServiceAreaValidator::cacheKey()
+private function cacheKey(string $location): string
+{
+    $tenantId = $this->requestTenantId(); // patrz niżej — NIE TenantFeature::currentTenant()
+    return "navigation.pages.{$location}.".($tenantId ?? 'none');
+}
+```
+
+**Fallback dla braku tenanta:** jeśli komponent renderuje się TYLKO za `RequireTenant`
+(np. `ServiceAreaValidator`), `TenantFeature::currentTenant()` jest bezpieczny. Jeśli renderuje
+się też na **domenie głównej** (np. `NavigationService` w layoucie — stopka/nagłówek na każdej
+publicznej stronie) — NIE używaj `TenantFeature::currentTenant()`. Jego 3. gałąź czyta
+`session('tenant_id')`, które `ResolveTenant` zapisuje przy KAŻDEJ wizycie na subdomenie. Gość,
+który wcześniej odwiedził subdomenę tenanta A, a potem trafia na domenę główną, dostanie
+wciąż-aktywną sesję A → menu A wyrenderuje się na "neutralnej" stronie głównej (ta sama klasa
+błędu co VULN-003 Layers 1/2/5, `models.md` → `tenant_resolution_attempted`). Zamiast tego czytaj
+`$request->attributes->get('tenant')` bezpośrednio (wzorzec z `routes/web.php`'s home route,
+`RequireTenant`, `CheckRegistrationEnabled`) — `null` na domenie głównej to poprawna, nie
+fallbackowa, odpowiedź.
+
+**Czyszczenie cache musi nadążyć za zmianą klucza.** Trzy miejsca muszą się zgadzać: metoda
+czytająca (`remember`), metoda czyszcząca wywoływana z panelu/testów (`clearCache()`), i observer
+modelu (`Model::booted()`'s `saved`/`deleted`). Zmiana formatu klucza w jednym, a nie w pozostałych
+dwóch, to CICHY błąd — `Cache::forget()` na starym formacie nie trafia w nic, zapis rekordu
+przestaje odświeżać cache, a nikt nie dostaje wyjątku. Observer modelu wywołuj z **jawnym** id
+tenanta z samego rekordu (`$model->organization_id`), nie z ambient kontekstu — observer może
+odpalić się z konsoli/kolejki/seedera, gdzie "bieżący" tenant nie istnieje, a rekord i tak ma
+swój własny, poprawny `organization_id`.
+
+**Martwy `Cache::forget()` jest gorszy niż jego brak** — wygląda jak działająca inwalidacja, więc
+nikt go nie podejrzewa przy debugowaniu stale cache. Dwa znalezione przykłady: `forget('home.page')`
+w `PageObserver` (nic nigdy nie zapisywało pod tym kluczem — usunięty) i
+`forget("settings:{$group}")` w `HasGroupedSettings` (format niezgodny z prawdziwym kluczem
+`SettingsManager` — `settings:tenant:{id}:{group}`; `SettingsManager::set()` i tak czyści
+poprawnie per klucz, więc usunięty jako redundantny). Znajdując taki `forget()`: sprawdź, czy
+ktokolwiek KIEDYKOLWIEK zapisuje pod dokładnie tym stringiem, zanim uznasz go za działający.
+
 ## Single Responsibility
 
 - Jeden service = jedna domena/odpowiedzialność
