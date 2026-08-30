@@ -104,7 +104,16 @@ Zgłoszone: [`123k99ct3j0`](https://app.clickup.com/t/123k99ct3j0).
 ## Migracje
 
 Cztery, wszystkie z działającym `down()` zweryfikowanym **wykonanym** rollbackiem, nie
-statycznym sprawdzeniem:
+statycznym sprawdzeniem.
+
+> **Zastrzeżenie dopisane 2026-08-30, po tym jak bramka MySQL to ujawniła:** ta weryfikacja
+> biegła na SQLite, który **nie egzekwuje kluczy obcych** przy `DROP TABLE`. Na MySQL
+> `locations` jest referencjonowana przez `service_location_stocks`, więc kolejność ma
+> znaczenie. Realny `migrate:rollback` jest bezpieczny — Laravel cofa migracje w kolejności
+> `batch desc, migration desc` (`DatabaseMigrationRepository.php:65-67`), a
+> `2026_08_28_090000` (dziecko) sortuje się przed `2026_08_27_120000` (rodzic), więc FK znika
+> pierwszy. **Ale rollback celowany w pojedynczą migrację** (`migrate:rollback --path=...`
+> na samych `locations`) **na MySQL padnie** z błędem 3730. Nie rób tego; używaj `--step`.
 
 | Migracja | Odwracalność |
 |---|---|

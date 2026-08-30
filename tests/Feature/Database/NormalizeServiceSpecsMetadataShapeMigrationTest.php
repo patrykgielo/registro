@@ -73,8 +73,13 @@ class NormalizeServiceSpecsMetadataShapeMigrationTest extends TestCase
 
         $metadata = $this->rawMetadata($service->id);
 
+        // Canonical empty unit is `null`, not `''` — see
+        // NormalizesSpecsShape.php's docblock: Filament's own TextInput
+        // coerces a blank unit to `null` on the very next save regardless,
+        // so a migration emitting `''` here would just get silently
+        // rewritten the first time anyone opens this service in the panel.
         $this->assertSame([
-            ['label' => 'Color hex', 'value' => 'red', 'unit' => ''],
+            ['label' => 'Color hex', 'value' => 'red', 'unit' => null],
         ], $metadata['specs']);
     }
 

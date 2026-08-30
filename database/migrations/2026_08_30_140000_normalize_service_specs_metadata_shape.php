@@ -68,13 +68,22 @@ use Illuminate\Support\Str;
  */
 return new class extends Migration
 {
+    /**
+     * Canonical empty unit is `null`, not `''` — see
+     * app/Models/Concerns/NormalizesSpecsShape.php's docblock for why
+     * (Filament's own `HasState::getRawState()` coerces any blank scalar
+     * field state to `null` on every save, unconditionally). This migration
+     * has not shipped to any environment yet (blocked by the same MySQL gate
+     * failure this fix addresses), so its own `up()` output can still be
+     * corrected here rather than needing a follow-up data migration.
+     */
     private const KEY_LABELS = [
         'power_w' => ['Moc', 'W'],
         'power_kw' => ['Moc', 'kW'],
         'power_hp' => ['Moc', 'KM'],
         'weight_kg' => ['Waga', 'kg'],
         'disc_mm' => ['Średnica tarczy', 'mm'],
-        'fuel_type' => ['Rodzaj paliwa', ''],
+        'fuel_type' => ['Rodzaj paliwa', null],
         'capacity_l' => ['Pojemność', 'l'],
         'capacity_l_day' => ['Wydajność', 'l/dobę'],
         'voltage' => ['Napięcie', 'V'],
@@ -167,16 +176,16 @@ return new class extends Migration
 
     /**
      * @param  array<string, mixed>  $dict
-     * @return array<int, array{label: string, value: mixed, unit: string}>
+     * @return array<int, array{label: string, value: mixed, unit: ?string}>
      */
     private static function dictToList(array $dict): array
     {
         $list = [];
 
         foreach ($dict as $key => $value) {
-            [$label, $unit] = self::KEY_LABELS[$key] ?? [ucfirst(str_replace('_', ' ', (string) $key)), ''];
+            [$label, $unit] = self::KEY_LABELS[$key] ?? [ucfirst(str_replace('_', ' ', (string) $key)), null];
 
-            if ($unit !== '' && is_string($value) && str_ends_with($value, $unit)) {
+            if (filled($unit) && is_string($value) && str_ends_with($value, $unit)) {
                 $value = trim(substr($value, 0, -strlen($unit)));
             }
 
