@@ -22,8 +22,14 @@ Request → nginx (*.registro.local) → ResolveTenant middleware
   → Extract subdomain from Host header
   → Find Organization by slug (cached)
   → Set on request attributes + app binding
+  → Force request origin: URL::forceRootUrl() + filesystems.disks.public.url
+                          + Storage::forgetDisk('public')
   → BelongsToOrganization global scope filters all queries
 ```
+
+The origin-forcing step decides the host of every generated URL **and every file address**
+on a shared stack. It does not run on the queue, in the scheduler or in CLI — see
+[`guides/multi-tenancy-architecture.md`](guides/multi-tenancy-architecture.md).
 
 ### booking_type vs Industry
 
@@ -85,7 +91,7 @@ for the conceptual overview these deep-dive.
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
 | Order Handover/Return Protocols | `features/order-protocols.md` | Download-only PDFs, generated on demand |
 | Post-Login/Registration Return | `features/post-login-return.md` | `IntendedDestination` + `CustomerLandingUrl`, session-only (no `?redirect=`) |
-| Lokalizacje / oddziały (multi-branch) | [`features/lokalizacje/`](features/lokalizacje/README.md) | **Planowane**, plan zatwierdzony 2026-08-26 — stan magazynowy per oddział, egzemplarze z nr seryjnym, wybór oddziału przez klienta. 10 faz, Faza 0 w toku |
+| Lokalizacje / oddziały (multi-branch) | [`features/lokalizacje/`](features/lokalizacje/README.md) | **Fazy 0-2 zmergowane** (PR #227-#231): oddział jako encja + karta na stronie + stan magazynowy per oddział. **Fazy 3-9 wstrzymane** decyzją właściciela produktu do czasu weryfikacji testów pół-automatycznych |
 
 ### Guides
 

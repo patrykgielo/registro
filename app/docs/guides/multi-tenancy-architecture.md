@@ -85,8 +85,50 @@ Request (Host: demo.registro.local)
   → Validate slug format (regex: ^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$)
   → Cache::remember("tenant:slug:demo", 300, ...) → Organization query
   → Organization found + is_active → set on request
+  → forceTenantOriginUrls(): URL::forceRootUrl($origin)
+                           + config(['filesystems.disks.public.url' => $origin.'/storage'])
+                           + Storage::forgetDisk('public')
   → Not found / inactive → redirect to root domain
 ```
+
+#### Why the last step exists, and why it has three parts
+
+On a **shared stack** every tenant lives behind its own subdomain but shares one
+`APP_URL` — the root domain. Without forcing the request origin, everything Laravel
+generates points at the root domain instead of the tenant.
+
+`URL::forceRootUrl()` fixes `url()` and `route()`. It does **not** fix `Storage::url()`:
+the `public` disk keeps its own address, built once in `config/filesystems.php:44` as
+`env('APP_URL').'/storage'`. That disk has no env var of its own — `ASSET_URL` does not
+exist in this repo — so the config value has to be overwritten per request.
+
+Overwriting the config alone is still not enough. `FilesystemManager` caches the built
+adapter in `$disks['public']`, and `FilesystemAdapter::url()` reads the `url` captured
+**at construction time**. If anything resolves the `public` disk (or the default one —
+`FILESYSTEM_DISK=public`) before this middleware runs, the config write is a silent no-op.
+`Storage::forgetDisk('public')` is therefore load-bearing, not defensive.
+
+**How the bug shows up:** a file preview in a Filament `FileUpload` hangs forever on
+"Pobieranie rozmiaru". FilePond fetches the URL, the host differs from the panel's host,
+CORS blocks it. A plain `<img src>` on the storefront works with the very same wrong URL,
+because images are not subject to CORS — which is why the symptom looks panel-specific
+and misleading.
+
+**Where this does NOT apply:**
+
+| Context | Behaviour |
+|---|---|
+| Queue / Horizon, scheduler, CLI | Middleware never runs — addresses fall back to `APP_URL`, i.e. the root domain. Worse, `horizon` and `scheduler` do not mount the `storage-app-public` volume at all (ClickUp `123k99ct3za`). |
+| `/platform` panel | Does not include `ResolveTenant` — it is cross-tenant by design. |
+| `POST /livewire/upload-file` | Temporary uploads, not the `public` disk. |
+| Dedicated stack (`TENANT_SLUG` set) | `APP_URL` is already the tenant's host, so forcing changes nothing. The flaw is model-dependent. |
+
+Pinned/dedicated deployments go through `handlePinnedTenant()`, which calls the same
+method — relevant when `TENANT_HOSTS` carries a custom domain alongside the subdomain.
+
+Regression guard: `tests/Feature/TenantScopedStorageUrlTest.php`. One of its four cases
+deliberately resolves the disk *before* the request; without it the other three pass even
+with `forgetDisk()` removed.
 
 Same flow as a diagram — useful for spotting the two "fail-closed" exit points at a glance:
 

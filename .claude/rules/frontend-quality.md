@@ -77,7 +77,19 @@ style="background: linear-gradient({$css}, ...)"
 - Touch targets ≥ 44×44px
 - Focus: `:focus-visible` z visible outline
 - `aria-busy="true"` + `aria-live="polite"` na loading states
-- Color contrast ≥ 4.5:1
+- Color contrast ≥ 4.5:1 — **policzony, nie oceniony wzrokiem**
+
+  Warstwy półprzezroczyste (`text-white/80`, `bg-white/10`, `bg-black/60`) trzeba najpierw
+  **spłaszczyć nad realnym tłem** odczytanym z `resources/css/design-tokens.css`, nie nad
+  zgadniętym `#000000`/`#ffffff`. Kolor z klasą alfa wygląda w kodzie jak biel i po
+  spłaszczeniu nad ciemnym tłem nią nie jest.
+
+  Tła ciemnych sekcji są w `oklch()` — przelicz oklch → linear sRGB → spłaszczenie alfy →
+  WCAG. Nie wyprowadzaj sRGB z pamięci: 2026-08-29 ten sam badge dostał trzy różne wyniki
+  (11,39 / 8,92 / **9,40**), zanim ktoś policzył to kodem. Wartości tokenów i pułapka:
+  `dark-theme.md`.
+
+  Wynik zapisz w komentarzu obok klas — liczba bez metody starzeje się po cichu.
 - `prefers-reduced-motion` (patrz animations.md)
 
 ```html

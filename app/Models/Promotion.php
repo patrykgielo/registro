@@ -6,12 +6,13 @@ namespace App\Models;
 
 use App\Enums\PageLayout;
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Promotion extends Model
 {
-    use BelongsToOrganization;
+    use BelongsToOrganization, NormalizesEmptyJsonToNull;
 
     protected $fillable = [
         'organization_id',
@@ -35,6 +36,22 @@ class Promotion extends Model
         'active' => 'boolean',
         'layout' => PageLayout::class,
     ];
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['content'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyHtmlToNullFields(): array
+    {
+        return ['body'];
+    }
 
     /**
      * The "booted" method of the model.

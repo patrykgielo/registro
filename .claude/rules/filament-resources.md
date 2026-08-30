@@ -173,6 +173,30 @@ Forms\Components\DatePicker::make('appointment_date')
 
 `$record === null` → create mode, `$record !== null` → edit mode.
 
+### Wariant: pole wirtualne + `->default()` (ClickUp 123k99ct40d, 2026-08-30)
+
+Ten sam bug, inny mechanizm — `->default()` też działa TYLKO na create, ale tu ofiarą jest pole
+**bez kolumny w tabeli** (checkbox `send_setup_email` na `UserResource`, sterujący czy wysłać link
+zamiast zapisać hasło ręcznie). Na edycji formularz hydratuje się z rekordu, kolumny nie ma →
+stan pola to `null`, więc `->required(fn ($get) => ! $get('send_setup_email'))` na sąsiednich
+polach hasła zawsze wychodzi `true` — **każdy** zapis istniejącego użytkownika bez żadnej zmiany
+wymagał wypełnienia dwóch pól, które i tak były `->disabled()`.
+
+Naprawa nie polegała na warunkowaniu `required()` po `$record` (jak wyżej) — cała sekcja nie ma
+sensu na edycji, więc `->visibleOn('create')` na `Section::make('Hasło')`. Filament pomija
+walidację niewidocznych komponentów całkowicie (ten sam mechanizm, na którym opiera się wzorzec
+wyżej), więc `required()`/`disabled()` na dzieciach przestają być w ogóle ewaluowane na edycji —
+nie trzeba było ich dotykać. Realna droga pomocy adminowi ("zresetuj hasło temu, kto je ma, ale
+zapomniał") przeniesiona do istniejącej akcji wierszowej `resend_password_setup`, rozszerzonej
+z `->visible(fn ($record) => $record->password === null)` na wszystkich — patrz
+`User::initiatePasswordSetup()` w `models.md`: generuje tylko token, nigdy nie zeruje/nadpisuje
+`password`, więc bieżące hasło działa aż do faktycznego dokończenia setupu przez link.
+
+**Zasada:** pole bez kolumny w tabeli, którego `->default()` steruje walidacją sąsiednich pól,
+jest tą samą pułapką co `DatePicker::minDate(now())` — ale checklistę „$record ? null : ..." nie
+da się tu zastosować sensownie (nie ma co warunkować per rekord — pole nie istnieje na edycji
+koncepcyjnie). Warunkuj widoczność całej sekcji, nie required() jej pól.
+
 ---
 
 ## ZASADA: Admin → Frontend Impact Check (CRITICAL)
@@ -355,15 +379,84 @@ LocationForm.php`:
 ```
 
 **Ten sam wzorzec (composite `unique(organization_id, X)` w migracji + gołe `->unique(ignoreRecord:
-true)` w Resource) potwierdzony też w:** `ServiceResource`, `Categories\CategoryResource`,
+true)` w Resource) potwierdzony i NAPRAWIONY 2026-08-28** (branch `fix/tenant-scoped-slug-validation`,
+zadanie ClickUp `86cbb2ft5`) w: `ServiceResource`, `Categories\CategoryResource`,
 `Pages\PageResource`, `Posts\PostResource`, `PortfolioItems\PortfolioItemResource`,
-`Promotions\PromotionResource`, `RentalCategoryResource` — **znalezione, NIE naprawione** (osobna
-decyzja, poza zakresem hotfixa 2026-08-27). `CarBrandResource`/`VehicleTypeResource` (tabela globalna,
-bez `organization_id`), `CustomerResource`/`EmployeeResource`/`UserResource` (`users.email` jest
-CELOWO globalnie unikalny — jedno konto na e-mail w całej apce), `RoleResource` (Spatie
-`teams => false` w `config/permission.php` → `roles` ma globalny `unique(name, guard_name)`) — **NIE
-mają tego błędu**, sprawdzone przez migrację/config, nie przez zgadywanie.
+`Promotions\PromotionResource`, `RentalCategoryResource` — 13 kolizji slugów w `services` i 7 w
+`rental_categories` na dev-bazie w dniu naprawy, obie systematyczne (seeder daje każdej wypożyczalni
+ten sam katalog), nie przypadkowe. Wspólny helper zamiast siedmiu kopii closure:
+`App\Filament\Support\TenantScopedUniqueRule::forCurrentTenant()` — identyczny `where('organization_id',
+TenantFeature::currentTenant()?->id ?? -1)` co `LocationForm.php` (`LocationForm.php` samo NIE zostało
+zrefaktoryzowane na ten helper — poza zakresem zadania, wielooddziałowość celowo nietknięta):
+
+```php
+->unique(
+    ignoreRecord: true,
+    modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+)
+```
+
+Każdy dostał test `tests/Feature/Filament/{Resource}SlugUniqueScopeTest.php` (czerwony przed poprawką,
+zweryfikowany przez `git stash` na siedmiu plikach Resource — potwierdzone 2 z 3 scenariuszy na test
+padają bez fixa: edycja bez zmiany sluga i tworzenie sluga zajętego tylko przez innego tenanta;
+scenariusz "duplikat w obrębie tego samego tenanta nadal odrzucony" zostaje zielony w obu wariantach,
+bo to nie jest to, co fix zmienia). `CategoryResource` nie ma dedykowanych stron Create/Edit (jedna
+`ManageCategories`, akcje w modalu) — test steruje przez `callTableAction`/`callAction`, nie
+`Livewire::test(EditRecord::class)`.
+
+`CarBrandResource`/`VehicleTypeResource` (tabela globalna, bez `organization_id`),
+`CustomerResource`/`EmployeeResource`/`UserResource` (`users.email` jest CELOWO globalnie unikalny —
+jedno konto na e-mail w całej apce), `RoleResource` (Spatie `teams => false` w `config/permission.php`
+→ `roles` ma globalny `unique(name, guard_name)`), `EmailSuppressionResource` (`email_suppressions`
+nie ma w ogóle kolumny `organization_id` — globalna lista wykluczeń), `OrganizationResource`
+(`organizations.slug` to tożsamość organizacji, nie ma `organization_id` samo w sobie) — **NIE mają
+tego błędu**, sprawdzone przez migrację/config, nie przez zgadywanie.
 
 **Zasada:** przed dodaniem `->unique()` do pola formularza sprawdź migrację tabeli — jeśli unique jest
 `['organization_id', kolumna]`, reguła Filamenta MUSI dostać `modifyRuleUsing` z tym samym `where`.
 `/admin`, albo własną politykę.
+
+---
+
+## Podgląd pliku wiszący na „Pobieranie rozmiaru" (2026-08-29)
+
+`FileUpload`/FilePond, który w nieskończoność pokazuje „Wczytywanie / Pobieranie rozmiaru"
+na subdomenie tenanta, to **nie** bug Filamenta, nie limit uploadu i nie za duży plik.
+
+FilePond robi `fetch()` po URL zwrócony przez `Storage::url()`. Jeśli ten URL ma inny host
+niż panel — a na stacku współdzielonym ma, bo adres dysku `public` jest budowany z `APP_URL`
+— przeglądarka blokuje żądanie przez CORS i komponent czeka w nieskończoność.
+
+Mylące: zwykły `<img src>` na storefroncie z tym samym złym adresem **działa**, bo obrazki
+nie podlegają CORS. Objaw jest więc panel-only i wygląda na problem Filamenta.
+
+Mechanizm i trzy niezależne pułapki (w tym `Storage::forgetDisk()`): `architecture-models.md`,
+sekcja „Adres dysku `public` to TRZECI, osobny adres".
+
+---
+
+## Kształt komponentu MUSI odpowiadać kształtowi w bazie (2026-08-30)
+
+`Repeater` czyta i pisze **listę wierszy**. Wskazany na kolumnę JSON trzymającą **słownik**
+nie zgłasza błędu — po cichu przepisuje ją na listę pustych wierszy i **dane przepadają**.
+
+Zdarzone: `ServiceResource.php:321` to `Repeater::make('metadata.specs')` o schemacie
+`label`/`value`/`unit`, a seeder onboardingu zapisywał `['power_w' => 800]`. Otwarcie usługi
+i zapis **bez żadnej zmiany** dawał `[{"label":null,"value":null,"unit":null}, ...]`.
+Dotknięte 24 z 26 usług; każdy nowy tenant dostawał wadliwy kształt, bo produkował go seeder.
+
+**Dlaczego nikt tego nie zauważył przez miesiące:** błąd był maskowany przez walidację sluga.
+`save()` przerywał się na walidacji, zanim dotarł do zapisu `metadata`. Naprawa slugów
+(PR #232) zamieniłaby „nie da się zapisać" na „zapis po cichu niszczy dane" — to jest wzorzec
+wart zapamiętania: **poprawka jednej walidacji potrafi odsłonić utratę danych, którą tamta
+walidacja przypadkiem blokowała.** Przed naprawą walidacji sprawdź, co się stanie, gdy zapis
+faktycznie dojdzie do końca.
+
+**Czego nie wykryje test sprawdzający tylko brak błędów walidacji.** Wykrywa to wyłącznie
+porównanie atrybutów **przed i po zapisie bez zmian** (`fresh()` diff) — patrz
+`PanelWalkthroughTest`.
+
+**Zasada:** dokładając komponent formularza nad polem JSON, sprawdź kształt, który realnie
+leży w bazie (`JSON_TYPE(JSON_EXTRACT(kolumna,'$.klucz'))`), a nie ten, który zakładasz.
+Jeśli mogą występować oba, znormalizuj na modelu (`NormalizesSpecsShape` na `Service`),
+nie w komponencie — model chroni też API, konsolę i seedery.

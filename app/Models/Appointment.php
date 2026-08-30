@@ -9,6 +9,7 @@ use App\Events\AppointmentCreated;
 use App\Events\AppointmentRescheduled;
 use App\Traits\Auditable;
 use App\Traits\BelongsToOrganization;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -87,10 +88,29 @@ class Appointment extends Model
 
         // Detect appointment reschedule (date/time change)
         static::updating(function (Appointment $appointment) {
-            if ($appointment->isDirty(['appointment_date', 'start_time', 'end_time'])) {
-                // Only dispatch if appointment is not cancelled
-                if ($appointment->status !== AppointmentStatus::Cancelled) {
-                    event(new AppointmentRescheduled($appointment));
+            if ($appointment->isDirty(['appointment_date', 'start_time', 'end_time'])
+                && $appointment->status !== AppointmentStatus::Cancelled) {
+                $oldDate = Carbon::parse(
+                    $appointment->getOriginal('appointment_date')->format('Y-m-d').' '.$appointment->getOriginal('start_time')->format('H:i')
+                );
+                $newDate = Carbon::parse(
+                    $appointment->appointment_date->format('Y-m-d').' '.$appointment->start_time->format('H:i')
+                );
+
+                // start_time/end_time only carry minute precision -- the TimePicker UI and the
+                // 'datetime:H:i' cast both drop seconds, and the normalization above
+                // (static::saving(), first hook in this method) re-derives a canonical ':00'
+                // second on every single save. A raw isDirty() on these columns is therefore
+                // spuriously true whenever the ORIGINAL row happened to carry non-zero seconds
+                // (e.g. AppointmentFactory's fake()->time('H:i:s')) even though nothing about the
+                // appointment's actual schedule changed -- caught by PanelWalkthroughTest's no-op
+                // save check. Compare at the precision the appointment can actually express (and
+                // end_time the same way) before treating this as a real reschedule; a no-op save
+                // must never fire this event or the customer-facing notification behind it.
+                $endTimeMoved = $appointment->getOriginal('end_time')->format('H:i') !== $appointment->end_time->format('H:i');
+
+                if (! $oldDate->equalTo($newDate) || $endTimeMoved) {
+                    event(new AppointmentRescheduled($appointment, $oldDate, $newDate));
                 }
             }
 

@@ -81,6 +81,10 @@
                 </div>
 
                 {{-- Body Content (prose) --}}
+                {{-- Kept even though NormalizesEmptyJsonToNull now stops NEW empty saves at the
+                     source (app/Traits/NormalizesEmptyJsonToNull.php): rows already holding
+                     `<p></p>` from before that trait existed are only cleaned up by the
+                     one-time migration (2026_08_30_150000), not retroactively by this view. --}}
                 @if($service->body && trim(strip_tags($service->body)))
                     <div class="prose prose-lg prose-registro max-w-none">
                         {!! clean($service->body) !!}
@@ -764,7 +768,7 @@
         </div>
     </x-layout.section>
 
-    {{-- Body Content --}}
+    {{-- Body Content (kept — see the same guard's comment near the top of this file) --}}
     @if($service->body && trim(strip_tags($service->body)))
         <x-layout.section spacing="sm">
             <div class="max-w-3xl mx-auto prose prose-lg prose-registro">

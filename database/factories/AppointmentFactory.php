@@ -19,7 +19,16 @@ class AppointmentFactory extends Factory
     public function definition(): array
     {
         $appointmentDate = fake()->dateTimeBetween('now', '+30 days');
-        $startTime = fake()->time('H:i:s');
+        // Minute precision only: start_time/end_time are never scheduled to a
+        // specific second in the real booking flow (TimePicker UI + the
+        // 'datetime:H:i' model cast are both H:i-only), and the model's own
+        // static::saving() hook re-derives a canonical ':00' second on EVERY
+        // save regardless of what was there before. fake()->time('H:i:s')
+        // generating a random second meant any subsequent no-op save (edit +
+        // resave with zero changes) always mutated the row -- the exact same
+        // class of factory/schema-precision mismatch as RentalFactory's
+        // start_date/end_date (see RentalFactory.php). Regression: PanelWalkthroughTest, 2026-08-30.
+        $startTime = fake()->time('H:i').':00';
 
         return [
             'service_id' => Service::factory(),

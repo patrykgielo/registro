@@ -122,6 +122,19 @@ Confirmed by reading the files directly (not assumed):
   `storage/app/public`, `storage/app/private`, `storage/framework`, `storage/logs` — there is no
   `.:/var/www` bind mount like local dev has. Deploying code changes requires a new image, not a
   file sync.
+- **Uploaded files are served by `nginx`, from a read-only mount, through a catch-all vhost.**
+  `docker-compose.prod.yml:372` gives `nginx` `storage-app-public:/var/www/storage/app/public:ro`
+  (`app` has it read-write at `:135`), and the app vhosts use `server_name _`
+  (`docker/nginx/edge/edge-tls.conf:48,66`). That catch-all is the reason file URLs may carry
+  **any** tenant host and still resolve: `ResolveTenant` rewrites the address of the `public`
+  disk to the request's own origin, and nginx serves whatever Host arrives. The comment at
+  `edge-tls.conf:82` justifies the catch-all from the *routing* side only — the file-serving
+  consequence is documented here.
+  **Hardening trap:** replacing `server_name _` with explicit per-host `server_name`s (the
+  natural move once a second tenant exists) turns off images for every tenant whose host is not
+  listed. Nothing in the nginx config warns about it.
+  Note the asymmetry: `horizon` and `scheduler` mount this volume **not at all**, so anything
+  rendered off the request cycle cannot read uploaded files (ClickUp `123k99ct3za`).
 - **Staging and prod each have their own bridge network** (`registro-staging` / `registro-prod`),
   isolated from each other and from local's `registro` network — there is no shared infrastructure
   between environments.

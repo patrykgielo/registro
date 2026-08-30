@@ -241,7 +241,15 @@ podane tam, gdzie nie jest oczywiste.
 | 1.4 | Zdjęcie siedziby + galeria (`FileUpload` wg `PostResource:102` / `PortfolioItemResource`), `directory('locations/{tenantId}/...')` |
 | 1.5 | Geolokalizacja: **nowy** `location-map-picker.blade.php` (kopia bez `radius_km`/`color_hex`) |
 | 1.6 | Migracja: dla każdego tenanta utwórz oddział główny z `SettingsManager::contactDetailsFor()`, `primary_slot = 1`. Obserwator: **pierwsza lokalizacja tenanta zawsze staje się główna** |
-| 1.7 | Wyświetlanie lokalizacji na stronach: wpis `'locations'` w `ContentGridResolver::CONTENT_TYPES` + gałąź `optionsForType()` + gałąź w `content-grid.blade.php:104` + **karta `x-ios.location-card`** (adres, zdjęcie, godziny, telefon) |
+| 1.7 | Wyświetlanie lokalizacji na stronach: wpis `'locations'` w `ContentGridResolver::CONTENT_TYPES` + gałąź `optionsForType()` + gałąź w `content-grid.blade.php:108` + **karta `x-ios.location-card`** |
+
+**Pełny kontrakt karty (stan po 2026-08-29):** symbol oddziału jako badge, nazwa, adres,
+opis (`Str::limit` 120), godziny otwarcia, zdjęcie nagłówkowe, pasek do 4 miniatur galerii
+z licznikiem `+N`, telefon (`tel:`), e-mail (`mailto:`), link do Google Maps ze współrzędnych
+z fallbackiem na adres. Wąski zakres zapisany tu pierwotnie („adres, zdjęcie, godziny,
+telefon") jest dokładnie powodem, dla którego `code`, `email`, `description` i `gallery`
+były zbierane od kroku 1.1 i **nigdy nie docierały do klienta**. Przy dokładaniu kolumny
+do `LocationResource` dopisz ją także tutaj albo świadomie zapisz, że nie ma jej pokazywać. |
 
 Krok 1.7 nie tworzy nowego bloku — istniejący blok „Siatka treści" czyta rejestr typów treści,
 więc lokalizacje po prostu dochodzą do listy obok usług, postów i promocji. Jedyna nieoczywistość:

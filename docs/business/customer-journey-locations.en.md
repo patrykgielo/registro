@@ -1,8 +1,13 @@
 # Customer Journey — Choosing a Branch
 
-> **Status: PLANNED.** This document describes **designed, not-yet-implemented** behaviour
-> (plan approved 2026-08-26). The system has no concept of a branch today.
-> Plan: [`docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
+> **Status: PARTIALLY IMPLEMENTED** (as of 2026-08-29).
+> **Branches already exist** — as an entity with an address, opening hours, a photo and a
+> gallery, manageable in the admin panel and **visible on the website** (phases 0-2, PR #227-#231).
+> **Not yet built:** branch selection by the customer and per-branch availability — phases 5-6,
+> **on hold** by the product owner's decision.
+> The "What the customer sees today" section describes the actual state; the rest of this
+> document describes the target state.
+> Technical detail: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
 
 **For customers:** if your business has several branches, the customer picks one once — the way
 you pick a store — and from then on the catalogue, availability and pickup all refer to that
@@ -52,7 +57,44 @@ flowchart TD
     REVALIDATE -- Yes --> ORDER["Order placed\nHandover protocol carries the branch address"]
 ```
 
-## What changes at each step
+## What the customer sees TODAY
+
+Branches appear on the website as **cards in a "Content grid" block** on any CMS page.
+Each card shows:
+
+| Element | Source |
+|---|---|
+| Branch name | "Name" field |
+| Short code as a badge next to the name | "Code" field (e.g. `MMZ`) |
+| Address | street, building, postcode, city |
+| Short description | "Description" field, truncated to 120 characters |
+| Opening hours | "Opening hours" table |
+| Premises photo | "Premises photo" field |
+| A strip of up to 4 gallery thumbnails with a "+N" counter | "Gallery" field |
+| Phone and e-mail, both clickable | "Phone", "E-mail" fields |
+| "See on map" | picker coordinates, falling back to an address search |
+
+**What is missing:** a branch has no page or URL of its own — it exists only as a card in a
+grid. The customer does not choose a branch, and neither the catalogue nor availability is
+split per location yet.
+
+### Two traps worth knowing
+
+**1. Adding a branch does NOT put it on the website.** The "Content grid" block holds a
+manually picked list of items and has no "all of them" option. After adding a branch you must
+open the CMS page and add it to the block. Nothing reminds you — the page simply looks
+unchanged. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+
+**2. Deactivating a branch does NOT remove it from the website.** Unticking "Active" removes
+the branch from the picker in the admin panel, but if it was already added to a block it keeps
+rendering. To hide it, remove it from the block.
+
+Both look identical from the owner's side: "I set it up and the page shows something else."
+For any such complaint, check the "Content grid" block first and the branch itself second.
+
+---
+
+## What the customer will see eventually (phases 5-6, on hold)
 
 | Step | Change versus today |
 |---|---|

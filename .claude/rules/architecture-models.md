@@ -69,6 +69,44 @@ powiadomienie renderuje się w żądaniu, gdzie `forceRootUrl` już zadziałał.
 Produkcja i dev mają `redis`. To ślepa plamka strukturalna, nie luka w pokryciu —
 test pisany na tę klasę błędów musi generować URL **poza** żądaniem.
 
+## Adres dysku `public` to TRZECI, osobny adres
+
+`URL::forceRootUrl()` naprawia `url()` i `route()`. **Nie naprawia `Storage::url()`.**
+To trzy niezależne pułapki i każda potrafi zjeść pół dnia:
+
+**(a) Skąd bierze się adres pliku.** `Storage::url()` czyta
+`config('filesystems.disks.public.url')`, budowane w `config/filesystems.php:44` jako
+`env('APP_URL').'/storage'` — czyli **przy ładowaniu configu**, raz. Na stacku
+współdzielonym `APP_URL` to domena GŁÓWNA, więc bez wymuszenia każdy plik każdego tenanta
+dostaje adres domeny głównej. Dysk `public` nie ma własnej zmiennej env (`ASSET_URL`
+nie występuje w tym repo).
+
+**(b) `forceRootUrl()` tego nie dotyka.** Działa na generatorze URL-i Laravela, a dysk
+trzyma własną kopię adresu. Naprawienie stron bez naprawienia plików wygląda jak sukces
+do pierwszego uploadu.
+
+**(c) Sama mutacja `config()` bywa cichym no-opem.** `FilesystemManager` cache'uje
+zbudowany adapter w `$disks['public']`, a `FilesystemAdapter::url()` czyta `url`
+z tablicy przechwyconej **przy konstrukcji**. Jeśli cokolwiek zresolwuje dysk `public`
+(albo domyślny — `FILESYSTEM_DISK=public`) zanim wykona się middleware, ustawienie configu
+nie zmienia już nic. Stąd `Storage::forgetDisk('public')` w
+`ResolveTenant::forceTenantOriginUrls()` jest **load-bearing**, nie ostrożnościowe.
+
+**Objaw, po którym to rozpoznasz:** podgląd pliku w Filamencie (FileUpload/FilePond) wiszący
+w nieskończoność na „Pobieranie rozmiaru". To nie limit uploadu ani bug Filamenta — to
+`fetch()` cross-origin zablokowany przez CORS, bo `Storage::url()` zwrócił inny host niż
+host panelu. Zwykły `<img src>` na storefroncie działa mimo tego samego złego adresu,
+bo obrazki nie podlegają CORS — dlatego objaw jest panel-only i mylący.
+
+**Na stacku dedykowanym wady nie ma** — `APP_URL` jest już hostem tenanta, więc wymuszanie
+niczego nie zmienia. To jest różnica MODELOZALEŻNA i dlatego mieszka w tym pliku,
+a nie w `middleware.md`.
+
+**Poza żądaniem (kolejka, CLI, scheduler) wymuszenie nie działa** i adres spada na `APP_URL`,
+czyli domenę główną — patrz sekcja wyżej. Do tego `horizon` i `scheduler` nie montują
+wolumenu `storage-app-public` (ClickUp `123k99ct3za`), więc na kolejce plik bywa nie tylko
+pod złym adresem, ale i nieosiągalny.
+
 ## Odczyt env w kontenerze
 
 `getenv('TENANT_SLUG')` zwraca **`false`**, mimo że `.env` je ustawia

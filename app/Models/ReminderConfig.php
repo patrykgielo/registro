@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TemplateKey;
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ReminderConfig extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization, HasFactory, NormalizesEmptyJsonToNull;
 
     protected $fillable = [
         'organization_id',
@@ -46,6 +47,11 @@ class ReminderConfig extends Model
     public function logs(): HasMany
     {
         return $this->hasMany(ReminderLog::class);
+    }
+
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['settings'];
     }
 
     /**

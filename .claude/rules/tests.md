@@ -523,17 +523,33 @@ resolwuje dysk **przed** wysłaniem żądania i dzięki temu czerwienieje.
 Zasada ogólna: ustaw stan, który poprawka ma unieważnić, **zanim** wykonasz operację
 pod testem. Potem zweryfikuj falsyfikowalność — wytnij poprawkę, test musi paść.
 
-## Znany flake: `LocationFactory` i `->tel()`
+## Fabryka musi produkować dane zgodne ze SCHEMATEM, nie tylko z typem PHP
 
-`database/factories/LocationFactory.php:33` generuje `fake()->phoneNumber()` w locale
-`en_US`, który **czasem** zwraca numer z rozszerzeniem („555-1234 x567"). Pole `phone`
-w `LocationForm.php:92` jest walidowane jako `->tel()` i taki numer odrzuca.
+SQLite (`.env.testing`) **nie waliduje typów kolumn** — zapisuje dosłownie to, co dostanie,
+także do kolumny zadeklarowanej jako `date` czy `time`. MySQL by to obciął albo odrzucił.
+Fabryka niezgodna ze schematem produkuje więc w testach dane, **których produkcja nigdy
+by nie zobaczyła** — i generuje fałszywe alarmy w każdym teście porównującym stan przed/po.
 
-Objaw: losowa czerwień z komunikatem `Component has errors: "data.phone"` w testach
-Filamenta dotyczących lokalizacji — **bez związku z edytowanym kodem**.
+Zmierzone przypadki (2026-08-29, wszystkie naprawione):
 
-2026-08-29 ta czerwień została błędnie przypisana zmianie w `ResolveTenant.php`
-(„zniknęła po `git stash` tego pliku"). Pojedynczy przebieg nie rozstrzyga przyczyny przy
-teście flaky. Zanim obwinisz jakikolwiek plik: przeczytaj treść asercji — `data.phone`
-nie ma żadnego prawdopodobnego związku ze `Storage::forgetDisk()` — i powtórz test
-na niezmienionym drzewie.
+| Fabryka | Generowało | Kolumna | Skutek |
+|---|---|---|---|
+| `RentalFactory` | `fake()->dateTimeBetween()` | `date` | test „pusty zapis zmienił rekord" — czas obcinany do `00:00:00` |
+| `AppointmentFactory` | `fake()->time('H:i:s')` | `time`, cast `datetime:H:i` | normalizacja sekund przy każdym zapisie → fałszywe „przełożenie wizyty" |
+| `LocationFactory` | `fake()->phoneNumber()` (`en_US`) | pole walidowane `->tel()` | losowe `data.phone`, bo locale dokleja rozszerzenie `x1234` |
+
+**Zasada:** zanim uznasz, że test wykrył błąd produkcyjny, sprawdź `SHOW COLUMNS` na MySQL.
+Wynik testu na SQLite jest przesłanką, nie werdyktem — **pierwszy** wiersz tej tabeli był przez
+chwilę raportowany jako „cicha utrata danych na produkcji na module żyjącym na UAT",
+a okazał się wadą fabryki. Rozstrzygnął to dopiero odczyt `SHOW COLUMNS`.
+
+**Zasada druga:** fabryka generująca losowość w polu, które ma walidację, musi generować
+w granicach tej walidacji. Losowy flake w teście niezwiązanym z edytowanym kodem to prawie
+zawsze ten wzorzec — i prawie zawsze zostaje przypisany niewłaściwemu plikowi.
+
+Konkret, wart zapamiętania: 2026-08-29 losowe `data.phone` (`LocationFactory`) zostało
+**błędnie przypisane** zmianie w `ResolveTenant.php` — „zniknęło po `git stash` tego pliku".
+Pojedynczy przebieg nie rozstrzyga przyczyny przy teście flaky. Zanim obwinisz jakikolwiek
+plik: przeczytaj **treść asercji** (`data.phone` nie miało żadnego prawdopodobnego związku
+ze `Storage::forgetDisk()`) i powtórz test na niezmienionym drzewie.
+

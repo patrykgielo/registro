@@ -360,6 +360,30 @@ phpredis is 5x faster than predis for queue operations. Using wrong implementati
 
 ---
 
+### 5b. File preview in the admin panel hangs on "Pobieranie rozmiaru" 🟠
+
+**Symptom:** a `FileUpload` field in Filament shows the file name but spins forever on
+"Wczytywanie / Pobieranie rozmiaru". Only on a tenant subdomain, only in the panel.
+
+**Root cause:** FilePond issues a `fetch()` for the URL returned by `Storage::url()`. On a
+shared stack that URL is built from `APP_URL` — the **root** domain — so the request is
+cross-origin relative to the panel's host and the browser blocks it via CORS. Nothing is
+logged server-side.
+
+**Why it is easy to misdiagnose:** a plain `<img src>` on the storefront renders fine with the
+exact same wrong URL, because images are not subject to CORS. The bug therefore looks like a
+Filament defect or an upload-size limit.
+
+**Solution:** `ResolveTenant::forceTenantOriginUrls()` forces the request origin onto both the
+URL generator and the `public` disk, then calls `Storage::forgetDisk('public')` so the cached
+adapter is rebuilt from the new config. See `guides/multi-tenancy-architecture.md`.
+
+**Note:** the "clear the config cache" advice elsewhere in this file does **not** apply here.
+The value is mutated in memory after the cached config is loaded, so `config:clear` and
+`config:cache` have no effect on this symptom in either direction.
+
+---
+
 ## Medium Severity Issues (Degraded Performance)
 
 ### 6. OPcache Requires Container Restart

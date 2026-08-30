@@ -168,4 +168,54 @@ class ServiceTest extends TestCase
         $this->assertEquals('Updated Name', $service->name);
         $this->assertEquals(ServiceType::ItemRental, $service->service_type);
     }
+
+    /**
+     * ClickUp 123k99ct3j1 — sedno zgłoszenia: a save with NO changes must
+     * not mutate metadata.specs when it is already in the canonical list
+     * shape. Pins the exact invariant PanelWalkthroughTest checks end-to-end
+     * for every resource — this test is the narrow, Service-specific proof.
+     */
+    public function test_no_op_save_does_not_mutate_a_list_shaped_specs_field(): void
+    {
+        $specs = [['label' => 'Moc', 'value' => 800, 'unit' => 'W']];
+        $service = Service::factory()->itemRental()->create(['metadata' => ['specs' => $specs]]);
+
+        $service->refresh();
+        $service->save();
+        $service->refresh();
+
+        $this->assertSame($specs, $service->metadata['specs']);
+        $this->assertFalse($service->wasChanged());
+    }
+
+    /**
+     * App\Models\Concerns\NormalizesSpecsShape — the standing defense
+     * against a dict-shaped specs field reaching the database from ANY
+     * write path (not only Filament's Repeater, which is what the
+     * migration + fixed seeder handle for existing/seeded data).
+     */
+    public function test_saving_normalizes_a_dict_shaped_specs_field_into_list_shape(): void
+    {
+        $service = Service::factory()->itemRental()->create();
+
+        $service->metadata = ['specs' => ['power_w' => 800, 'weight_kg' => 4.2]];
+        $service->save();
+        $service->refresh();
+
+        $this->assertSame([
+            ['label' => 'Moc', 'value' => 800, 'unit' => 'W'],
+            ['label' => 'Waga', 'value' => 4.2, 'unit' => 'kg'],
+        ], $service->metadata['specs']);
+    }
+
+    public function test_saving_leaves_an_empty_specs_field_untouched(): void
+    {
+        $service = Service::factory()->itemRental()->create(['metadata' => ['specs' => []]]);
+
+        $service->refresh();
+        $service->save();
+        $service->refresh();
+
+        $this->assertSame([], $service->metadata['specs']);
+    }
 }

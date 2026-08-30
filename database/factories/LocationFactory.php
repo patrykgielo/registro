@@ -30,7 +30,13 @@ class LocationFactory extends Factory
             'city' => $name,
             'latitude' => fake()->latitude(49, 54), // Poland latitude range, same as ServiceAreaFactory
             'longitude' => fake()->longitude(14, 24),
-            'phone' => fake()->phoneNumber(),
+            // fake()->phoneNumber() in the en_US locale (APP_FAKER_LOCALE default) occasionally
+            // appends an extension like " x1234" -- the letter fails LocationForm's ->tel()
+            // regex (digits/+/()/-/space/./ only), making LocationSlugUniqueScopeTest flaky
+            // (known as ClickUp 123k99ct3hv before this fix). numerify() to a fixed PL-shaped
+            // pattern is always regex-safe (same approach RentalFactory already uses for its
+            // own phone field).
+            'phone' => fake()->numerify('+48 ### ### ###'),
             'email' => fake()->companyEmail(),
             'opening_hours' => null,
             'photo' => null,

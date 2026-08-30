@@ -66,7 +66,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 500,
                         'specifications' => [
-                            'specs' => ['power_w' => 800, 'weight_kg' => 4.2],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 800, 'unit' => 'W'],
+                                ['label' => 'Waga', 'value' => 4.2, 'unit' => 'kg'],
+                            ],
                         ],
                     ],
                     [
@@ -78,7 +81,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 400,
                         'specifications' => [
-                            'specs' => ['power_w' => 2200, 'disc_mm' => 230],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 2200, 'unit' => 'W'],
+                                ['label' => 'Średnica tarczy', 'value' => 230, 'unit' => 'mm'],
+                            ],
                         ],
                     ],
                 ],
@@ -96,7 +102,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 5,
                         'deposit' => 1000,
                         'specifications' => [
-                            'specs' => ['weight_kg' => 90, 'fuel_type' => 'benzyna'],
+                            'specs' => [
+                                ['label' => 'Waga', 'value' => 90, 'unit' => 'kg'],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => ''],
+                            ],
                         ],
                     ],
                     [
@@ -108,7 +117,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 5,
                         'deposit' => 300,
                         'specifications' => [
-                            'specs' => ['capacity_l' => 200, 'voltage' => '230V'],
+                            'specs' => [
+                                ['label' => 'Pojemność', 'value' => 200, 'unit' => 'l'],
+                                ['label' => 'Napięcie', 'value' => 230, 'unit' => 'V'],
+                            ],
                         ],
                     ],
                 ],
@@ -126,7 +138,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 1000,
                         'specifications' => [
-                            'specs' => ['power_w' => 3000, 'fuel_type' => 'benzyna'],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 3000, 'unit' => 'W'],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => ''],
+                            ],
                         ],
                     ],
                     [
@@ -138,7 +153,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 1500,
                         'specifications' => [
-                            'specs' => ['power_w' => 5200, 'fuel_type' => 'benzyna'],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 5200, 'unit' => 'W'],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'benzyna', 'unit' => ''],
+                            ],
                         ],
                     ],
                 ],
@@ -157,7 +175,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'deposit' => 300,
                         'quantity' => 10,
                         'specifications' => [
-                            'specs' => ['height_m' => 2, 'width_m' => 0.7],
+                            'specs' => [
+                                ['label' => 'Wysokość', 'value' => 2, 'unit' => 'm'],
+                                ['label' => 'Szerokość', 'value' => 0.7, 'unit' => 'm'],
+                            ],
                         ],
                     ],
                 ],
@@ -175,7 +196,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 800,
                         'specifications' => [
-                            'specs' => ['power_hp' => 6.5, 'working_width_cm' => 50],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 6.5, 'unit' => 'KM'],
+                                ['label' => 'Szerokość robocza', 'value' => 50, 'unit' => 'cm'],
+                            ],
                         ],
                     ],
                     [
@@ -187,7 +211,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 2000,
                         'specifications' => [
-                            'specs' => ['power_hp' => 50, 'max_branch_cm' => 13],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 50, 'unit' => 'KM'],
+                                ['label' => 'Maks. średnica gałęzi', 'value' => 13, 'unit' => 'cm'],
+                            ],
                         ],
                     ],
                 ],
@@ -205,7 +232,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 600,
                         'specifications' => [
-                            'specs' => ['power_w' => 2500, 'pressure_bar' => 180],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 2500, 'unit' => 'W'],
+                                ['label' => 'Ciśnienie', 'value' => 180, 'unit' => 'bar'],
+                            ],
                         ],
                     ],
                     [
@@ -217,7 +247,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 3,
                         'deposit' => 400,
                         'specifications' => [
-                            'specs' => ['power_w' => 1600, 'capacity_l' => 30],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 1600, 'unit' => 'W'],
+                                ['label' => 'Pojemność', 'value' => 30, 'unit' => 'l'],
+                            ],
                         ],
                     ],
                 ],
@@ -235,7 +268,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 5,
                         'deposit' => 500,
                         'specifications' => [
-                            'specs' => ['power_kw' => 20, 'fuel_type' => 'olej'],
+                            'specs' => [
+                                ['label' => 'Moc', 'value' => 20, 'unit' => 'kW'],
+                                ['label' => 'Rodzaj paliwa', 'value' => 'olej', 'unit' => ''],
+                            ],
                         ],
                     ],
                     [
@@ -247,7 +283,10 @@ class SeedEquipmentRental implements VerticalSeeder
                         'price_threshold_days' => 5,
                         'deposit' => 600,
                         'specifications' => [
-                            'specs' => ['capacity_l_day' => 50, 'power_w' => 900],
+                            'specs' => [
+                                ['label' => 'Wydajność', 'value' => 50, 'unit' => 'l/dobę'],
+                                ['label' => 'Moc', 'value' => 900, 'unit' => 'W'],
+                            ],
                         ],
                     ],
                 ],
