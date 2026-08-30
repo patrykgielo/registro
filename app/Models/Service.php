@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ServiceType;
 use App\Models\Concerns\HasRentalBehavior;
 use App\Models\Concerns\HasTimeSlotBehavior;
+use App\Models\Concerns\NormalizesSpecsShape;
 use App\Support\Services\ServiceQueryParams;
 use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,7 +18,7 @@ use Illuminate\Support\Str;
 
 class Service extends Model
 {
-    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior;
+    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior, NormalizesSpecsShape;
 
     protected $fillable = [
         'organization_id',
