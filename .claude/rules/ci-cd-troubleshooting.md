@@ -1653,3 +1653,41 @@ dopiero przy realnym zamówieniu realnego klienta.
    jest „dostępna" tylko dlatego, że tenant zaznaczył przełącznik — obie rzeczy muszą być prawdziwe,
    a wyłapanie tego w warstwie oferującej metody kosztuje jedno wywołanie i oszczędza cykl
    utwórz-zamówienie → anuluj → pokaż błąd.
+
+## Incydent 2026-08-30: `v0.13.0-rc26` padł na bramce MySQL — dwa niezależne bugi, jeden był w testach, nie w produkcyjnym kodzie
+
+`deploy-production.yml`'s "PHPUnit Tests" job (real ephemeral `mysql:8.0`, 0 failures on SQLite,
+same commit) — dwa niezwiązane znaleziska w Fazie 2 wielooddziałowości (`feature/lokalizacje-*`).
+
+**1. `service_location_stocks_location_id_foreign` (SQLSTATE 3730) na `DROP TABLE locations`.**
+Dwa testy migracji (`CreateLocationsTableMigrationTest`, `BackfillPrimaryLocationForOrganizationsMigrationTest`)
+rolly'ą back tylko `create_locations_table`/`backfill_primary_location` przez targetowany `--path`,
+pomijając `service_location_stocks` (2026_08_28, FK → `locations`) — kolejność, jakiej ŻADEN
+prawdziwy `migrate:rollback`/`--step=N` nie może wyprodukować. Dowód z `Migrator`/
+`DatabaseMigrationRepository` (`orderBy('batch','desc')->orderBy('migration','desc')`): rollback
+zawsze cofa migracje NAJPIERW-NAJNOWSZE, a `service_location_stocks` (nazwa pliku 08-28) nie może
+nigdy trafić do WCZEŚNIEJSZEGO batcha niż `locations` (08-27) — batch rośnie monotonicznie z każdym
+kolejnym `artisan migrate`. **Migracje same w sobie były poprawne** — naprawa poszła do testów:
+oba dopisały rollback/re-migrate `service_location_stocks` (+ jego backfill 090001) w prawdziwej
+kolejności zależności, PRZED `locations`. SQLite nie egzekwuje tego FK w ogóle (`CreateLocations
+TableMigrationTest`'s własny docblock to już flagował), więc lokalny zielony wynik nie dowodzi
+niczego o MySQL poza samą logiką kolejności — ta jest zweryfikowana czytaniem `Migrator.php`, nie
+przebiegiem testu.
+
+**2. `ServiceResource`'s `metadata.specs` Repeater zamieniał `unit: ""` na `unit: null` przy
+zapisie bez zmian.** Nie bug tego repo — `Filament\Schemas\...\Concerns\HasState::getRawState()`
+bezwarunkowo rzutuje KAŻDY pusty, nie-tablicowy stan pola na `null` przy każdym odczycie stanu
+formularza (potwierdzone czytaniem vendor + testem `->get('data.metadata.specs')` zaraz po mount:
+`unit` był tam już `""`, mutacja nastąpiła dopiero przy `getState()`/save). `''` nigdy nie było
+wartością, którą Filament round-tripuje bez zmian — kanoniczny pusty `unit` to `null`, zawsze był,
+niezależnie od tego repo. Fix: `SeedEquipmentRental` + `NormalizesSpecsShape` + świeża (jeszcze
+niewdrożona) migracja `2026_08_30_140000_normalize_service_specs_metadata_shape` teraz emitują
+`null`, nie `''` — `show.blade.php:114` już czytał `$spec['unit'] ?? ''`, więc oba renderują
+identycznie. Ta klasa błędu (kształt komponentu Filament vs kształt w bazie) jest już opisana w
+`filament-resources.md`, ten wpis dodaje: **pusty string w polu tekstowym zagnieżdżonym w
+Repeaterze nigdy nie jest bezpiecznym „kanonicznym pustym" — Filament i tak zrobi z niego `null`
+przy pierwszym zapisie.**
+
+**Dlaczego niewidoczne lokalnie (oba):** #1 wymaga prawdziwego FK (SQLite go nie ma). #2 wymaga
+`PanelWalkthroughTest` trafić akurat na usługę z parametrem bez jednostki — lokalnie SQLite i MySQL
+zwracają inny pierwszy wiersz bez `ORDER BY`, więc lokalny przebieg akurat omijał tę usługę.
