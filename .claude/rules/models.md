@@ -102,16 +102,21 @@ protected $dispatchesEvents = [
 ];
 ```
 
-## Puste kolumny JSON: `NormalizesEmptyJsonToNull`
+## Puste kolumny JSON/HTML: `NormalizesEmptyJsonToNull`
 
 Filamentowe `Repeater`, `FileUpload` i `KeyValue` dehydratują **pusty** stan do `[]`, nie do
 `null`. Na kolumnie `json NULL` oznacza to, że zapis rekordu **bez żadnej zmiany** nadpisuje
-`NULL` pustą tablicą.
+`NULL` pustą tablicą. `RichEditor` ma ten sam problem w innym kształcie: pusty edytor
+dehydratuje do `<p></p>` (niepusty, prawdziwy string), nigdy do `null`/`''`.
 
-Samo `[]` vs `NULL` jest przy odczycie nieszkodliwe (wszystko robi `?? []`). Szkoda jest gdzie
-indziej: modele z traitem `Auditable` zapisują wtedy do dziennika audytu zmianę, której nie
-było, i podbijają `updated_at`. **Dziennik raportujący nieistniejące zmiany traci swoją jedyną
-funkcję** — przy dochodzeniu „kto to zmienił" szum jest gorszy niż brak wpisu.
+Samo `[]`/`<p></p>` vs `NULL` jest przy odczycie w tym projekcie w większości nieszkodliwe
+(`?? []`). Szkoda jest gdzie indziej: modele z traitem `Auditable` zapisują wtedy do dziennika
+audytu zmianę, której nie było, i podbijają `updated_at` (**dziennik raportujący nieistniejące
+zmiany traci swoją jedyną funkcję**) — a dla `body` konkretnie: 5 partiali CMS (`components/cms/
+layouts/{home,default,full-width,minimal}.blade.php`, `portfolio/show.blade.php`) strzeże
+renderu zwykłym `@if($model->body)`, więc `<p></p>` (truthy) renderuje pusty, wypełniony
+paddingiem kontener tam, gdzie wcześniej nie było nic (5 zasobów naprawionych 2026-08-30:
+Page/Post/PortfolioItem/Promotion/Service — `content`/`gallery`/`features`/`body`).
 
 ```php
 use App\Traits\NormalizesEmptyJsonToNull;
@@ -120,7 +125,25 @@ class Location extends Model
 {
     use NormalizesEmptyJsonToNull;
 
-    protected array $normalizeEmptyJsonToNullFields = ['opening_hours', 'gallery'];
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['opening_hours', 'gallery'];
+    }
+}
+
+class Page extends Model
+{
+    use NormalizesEmptyJsonToNull;
+
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['content'];
+    }
+
+    protected function normalizeEmptyHtmlToNullFields(): array
+    {
+        return ['body'];
+    }
 }
 ```
 
@@ -128,8 +151,19 @@ Trait wisi na `saving`, więc chroni **wszystkie** ścieżki zapisu — API, kon
 a nie tylko konkretne pola formularza. Świadomie wybrane zamiast `dehydrateStateUsing()`
 per komponent: tamto trzeba kopiować przy każdym nowym polu i nie działa poza Filamentem.
 
-Dodając kolumnę `json NULL`, dopisz ją do tej listy albo świadomie zapisz, dlaczego `[]`
-i `NULL` mają w niej znaczyć co innego.
+Kryterium pustego HTML-a (`isEmptyHtmlValue()`) NIE jest gołym `trim(strip_tags(...)) === ''`
+— to uznałoby `<p><img src="..."></p>` (obraz bez tekstu) za puste i wycięłoby realną treść.
+`img`/`iframe`/`video`/`audio`/`source`/`embed` są na białej liście `strip_tags()` i przeżywają.
+
+Dodając kolumnę `json NULL`, dopisz ją do `normalizeEmptyJsonToNullFields()` albo świadomie
+zapisz, dlaczego `[]` i `NULL` mają w niej znaczyć co innego. Dodając `RichEditor` na kolumnie
+`text NULL`, to samo dla `normalizeEmptyHtmlToNullFields()`.
+
+**Migrując istniejące dane** (rekordy zapisane przed dopisaniem pola do traitu) pamiętaj, że
+trait chroni tylko PRZYSZŁE zapisy — istniejące `[]`/`<p></p>` w bazie zostają, dopóki ktoś nie
+zapisze rekordu ponownie albo nie napiszesz jednorazowej migracji czyszczącej (wzorzec:
+`2026_08_30_150000_normalize_empty_body_html_to_null.php` — `down()` rzuca `RuntimeException`,
+bo nie da się odróżnić wiersza wyzerowanego przez `up()` od wiersza, który już był `NULL`).
 
 ## Casts
 

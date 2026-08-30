@@ -8,6 +8,7 @@ use App\Models\Concerns\HasTimeSlotBehavior;
 use App\Models\Concerns\NormalizesSpecsShape;
 use App\Support\Services\ServiceQueryParams;
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,7 +19,7 @@ use Illuminate\Support\Str;
 
 class Service extends Model
 {
-    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior, NormalizesSpecsShape;
+    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior, NormalizesEmptyJsonToNull, NormalizesSpecsShape;
 
     protected $fillable = [
         'organization_id',
@@ -91,6 +92,22 @@ class Service extends Model
         'deposit_amount' => 'decimal:2',
         'price_on_request' => 'boolean',
     ];
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['content', 'features'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyHtmlToNullFields(): array
+    {
+        return ['body'];
+    }
 
     // Relationships
 
