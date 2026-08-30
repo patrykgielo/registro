@@ -8,6 +8,7 @@ use App\Enums\MenuLocation;
 use App\Enums\PageLayout;
 use App\Support\Settings\SettingsManager;
 use App\Traits\BelongsToOrganization;
+use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
@@ -15,7 +16,7 @@ use Illuminate\Support\Str;
 
 class Page extends Model
 {
-    use BelongsToOrganization;
+    use BelongsToOrganization, NormalizesEmptyJsonToNull;
 
     protected $fillable = [
         'organization_id',
@@ -69,6 +70,22 @@ class Page extends Model
         'livewire',
         'filament',
     ];
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyJsonToNullFields(): array
+    {
+        return ['content'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizeEmptyHtmlToNullFields(): array
+    {
+        return ['body'];
+    }
 
     /**
      * The "booted" method of the model.
