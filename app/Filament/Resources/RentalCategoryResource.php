@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\RentalCategoryResource\Pages;
+use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\RentalCategory;
 use BackedEnum;
 use Filament\Actions;
@@ -45,7 +46,10 @@ class RentalCategoryResource extends BaseResource
                 ->label('Slug')
                 ->required()
                 ->maxLength(255)
-                ->unique(ignoreRecord: true)
+                ->unique(
+                    ignoreRecord: true,
+                    modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
+                )
                 ->helperText('Automatycznie generowany z nazwy'),
 
             Forms\Components\Textarea::make('description')
