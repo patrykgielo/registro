@@ -161,3 +161,15 @@ Dwuznaczne `: ` w środku jednoliniowego skalara (`Context: User…`) Claude Cod
 **Zasada ogólna:** żadna konfiguracja nie jest sprawna, dopóki nie została uruchomiona. To ta sama klasa błędu co osierocony kontener `registro-queue` — plik mówił jedno, rzeczywistość drugie.
 
 Firecrawl: Free = 500 kredytów jednorazowo, Hobby = 3 000/mies. Scrape = 1 kredyt/strona. Wyczerpane kredyty też nie dają błędu — agenci po prostu nie działają.
+
+## `gh pr edit --milestone` nie działa w tym repo
+
+Wywala się na deprecjacji GraphQL (Projects classic, `repository.pullRequest.projectCards`) —
+błąd nie ma nic wspólnego z milestone'ami, więc łatwo go wziąć za problem uprawnień.
+
+Co działa:
+- przy tworzeniu PR-a: `gh pr create --base develop ... --milestone "v0.13.0-rc31"`
+- do istniejącego PR-a: `gh api -X PATCH repos/OWNER/REPO/issues/NR -F milestone=ID`
+  (PR-y są issues w REST API; `ID` to **numer** milestone'a, nie jego nazwa)
+
+Lista milestone'ów: `gh api repos/OWNER/REPO/milestones?state=all`.
