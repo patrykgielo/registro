@@ -114,7 +114,7 @@ stateDiagram-v2
     confirmed --> cancelled : Jak wyżej
     confirmed --> completed : Tylko admin
 
-    pending --> pending : Admin/personel zmienia datę/godzinę\nWyzwala AppointmentRescheduled (zobacz uwagę o błędzie poniżej)
+    pending --> pending : Admin/personel zmienia datę/godzinę\nWyzwala AppointmentRescheduled
     confirmed --> confirmed : Ta sama ścieżka zmiany terminu
 
     cancelled --> [*]
@@ -132,19 +132,6 @@ stateDiagram-v2
 Zobacz [Anulowanie](customer-journey-cancellation.md) po pełne porównanie anulowania
 przez klienta i administratora.
 
-## Znany błąd — TypeError przy zmianie terminu (przeniesiony bez zmian, nienaprawiony)
-
-`Appointment::booted()` wyzwala `event(new AppointmentRescheduled($appointment))`
-gdy wykryje zmianę w polu daty/godziny. Konstruktor `AppointmentRescheduled`
-wymaga `(Appointment $appointment, Carbon $oldDate, Carbon $newDate)`
-— w miejscu wywołania brakuje dwóch argumentów `Carbon`
-(`app/Models/Appointment.php`, `booted()`). **Potwierdzono, że nadal występuje w
-aktualnym kodzie** (zweryfikowano 2026-07). Powoduje to `TypeError` w czasie
-działania za każdym razem, gdy administrator zmienia datę lub godzinę wizyty
-przez Filament. Naprawa tego wykracza poza zakres tej strony dokumentacji —
-zostało to tu udokumentowane, aby nie zostało zapomniane, a nie żeby zostało po
-cichu załatane.
-
 ## Powiadomienia
 
 | Wyzwalacz | Powiadomienie | Kanał |
@@ -152,7 +139,7 @@ cichu załatane.
 | Utworzenie wizyty | `AppointmentCreatedNotification` | E-mail, tylko klient — brak kopii dla administratora |
 | Potwierdzone przez administratora | — | Tylko SMS (`APPOINTMENT_CONFIRMED`), brak zarejestrowanego e-maila |
 | Anulowane (klient lub administrator) | `AppointmentCancelledNotification` | E-mail + SMS |
-| Zmiana terminu przez administratora | `AppointmentRescheduledNotification` | E-mail + SMS (**z zastrzeżeniem błędu opisanego powyżej**) |
+| Zmiana terminu przez administratora | `AppointmentRescheduledNotification` | E-mail + SMS |
 | Przypomnienia (`ProcessRemindersJob`, co godzinę) | skonfigurowane przez administratora `reminder_configs` | E-mail i/lub SMS, przed i po wizycie |
 
 ## Kluczowe pliki

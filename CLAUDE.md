@@ -67,6 +67,22 @@ para `.md` + `.en.md`, wpis w `docs/business/README.md` (i `README.en.md`) oraz 
 w `nav` w `docs-site/mkdocs.yml`. Bez tego ostatniego plik nie jest publikowany przez
 portal i dla czytelnika po prostu nie istnieje — build nie ostrzega.
 
+**`docs/business/` NIE jest rejestrem usterek.** Te dokumenty opisują, jak produkt działa dla
+klienta, właściciela i pracownika — i bywają materiałem, z którego prowadzi się prezentację.
+Wpis „znany błąd, nienaprawiony" zabija taką rozmowę, zanim się zacznie.
+
+| Rodzaj informacji | Gdzie |
+|---|---|
+| Jak z tego korzystać, co użytkownik zobaczy, jaki krok wykonać | `docs/business/` |
+| Co jest zepsute, czego brakuje, co trzeba naprawić | **ClickUp** — backlog może tam być nieskończony |
+| Dlaczego kod wygląda tak, a nie inaczej; pułapki dla programisty | `app/docs/`, `.claude/rules/` |
+
+Ograniczenie produktu opisuj **jako krok do wykonania**, nie jako defekt: nie „dodanie oddziału
+NIE umieszcza go na stronie", tylko „po dodaniu oddziału dopisz go do strony". Ta sama wiedza,
+bez sugerowania, że produkt jest wadliwy.
+
+Nie wstawiaj tam **identyfikatorów ani linków do ClickUpa** — to tracker wewnętrzny.
+
 > Poprzednie brzmienie („ALL docs are in: app/docs/, NOT in: /docs/") było wykonywane
 > dosłownie i 2026-08-27 wysłało całą dokumentację wielooddziałowości w złe drzewo.
 

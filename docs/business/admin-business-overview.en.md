@@ -122,21 +122,13 @@ Inline customer creation is supported directly from the appointment form.
 | Confirm appointment | `pending → confirmed` | SMS only (`APPOINTMENT_CONFIRMED`) — **no email exists for this transition** |
 | Cancel appointment | any active status → `cancelled`, no policy restriction for admin | Email + SMS (`AppointmentCancelledNotification`) |
 | Mark completed | any active status → `completed`, sets `completed_at` | No |
-| Reschedule (change date/time field) | fires `AppointmentRescheduled` | Email + SMS — **subject to a confirmed runtime bug, see below** |
+| Reschedule (change date/time field) | fires `AppointmentRescheduled` | Email + SMS |
 
 `mutateFormDataBeforeSave` validates on every save: if the staff member
 lacks the `staff` role, or if the new date/time/staff conflicts with an
 existing booking, the save is blocked with a persistent danger notification
 (`$this->halt()`) — the form stays open with the invalid data visible so the
 admin can correct it.
-
-**Known bug (confirmed present, not fixed here):** `Appointment::booted()`
-fires `event(new AppointmentRescheduled($appointment))` on reschedule, but
-the event constructor requires `(Appointment, Carbon $oldDate, Carbon $newDate)`
-— the two `Carbon` arguments are missing. This throws a `TypeError` at
-runtime every time an admin reschedules an appointment via Filament. See
-[Customer Journey — Booking](customer-journey-booking.md) (see "Known bug —
-reschedule TypeError" section) for the full note.
 
 ## Rental processing (the `rentals` module, physical item lifecycle)
 
@@ -160,8 +152,7 @@ above), not the `Rental` record itself.
 details and photos — and shows them to customers on the website.
 
 **Note:** this is **not** per-branch stock yet. Equipment is not assigned to a site, customers
-do not choose a branch, and availability is still computed company-wide. That is phases 4-6,
-on hold. Today Locations is a presentation-and-address layer.
+do not choose a branch, and availability is still computed company-wide. That is phases 4-6, planned for later stages. Today Locations is a presentation-and-address layer.
 
 ### What you fill in, and what the customer sees
 
@@ -179,14 +170,14 @@ on hold. Today Locations is a presentation-and-address layer.
 
 A branch has **no page of its own** — it exists only as a card in a grid on a CMS page.
 
-### Three things that surprise people
+### Three things to remember
 
-**1. Adding a branch does not put it on the website.** You must open the CMS page, find the
+**1. After adding a branch, add it to the page.** You must open the CMS page, find the
 "Content grid" block set to "Locations" and **add the new branch to its list**. The block shows
 a manually picked set and has no "all of them" option. Nothing reminds you — the page simply
-looks unchanged. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+looks unchanged.
 
-**2. Unticking "Active" does not hide the branch.** It disappears from the picker in the panel,
+**2. To take a branch off the website, remove it from the block.** It disappears from the picker in the panel,
 but if it was already in a block it keeps rendering. To hide it, remove it from the block.
 
 **3. The first branch automatically becomes the primary one**, and the last one cannot be
@@ -197,7 +188,6 @@ deleted — the system makes sure a company always has at least one site.
 The address shown at checkout, on protocols and in e-mails comes from **Settings** (company
 contact details), not from the branch entity — even though a branch has its own address.
 Changing the address under Locations will **not** change the address on documents.
-Tracked as [`123k99ct3j0`](https://app.clickup.com/t/123k99ct3j0).
 
 ## Customer management (the `customers` module)
 
@@ -216,7 +206,7 @@ to staff/admin from this screen.
 | Order → in_progress / completed / any deposit action | Nobody | — |
 | Appointment → confirmed | Customer | SMS only |
 | Appointment → cancelled | Customer | Email + SMS |
-| Appointment reschedule | Customer | Email + SMS (bug above) |
+| Appointment reschedule | Customer | Email + SMS |
 | Any rental status change | Nobody | — |
 
 ## Statistics & analytics (read-only, admin-facing)

@@ -4,7 +4,7 @@
 > **Branches already exist** — as an entity with an address, opening hours, a photo and a
 > gallery, manageable in the admin panel and **visible on the website** (phases 0-2, PR #227-#231).
 > **Not yet built:** branch selection by the customer and per-branch availability — phases 5-6,
-> **on hold** by the product owner's decision.
+> planned for the next stages.
 > The "What the customer sees today" section describes the actual state; the rest of this
 > document describes the target state.
 > Technical detail: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
@@ -78,14 +78,24 @@ Each card shows:
 grid. The customer does not choose a branch, and neither the catalogue nor availability is
 split per location yet.
 
-### Two traps worth knowing
+### Opening hours reach Google
 
-**1. Adding a branch does NOT put it on the website.** The "Content grid" block holds a
+Hours entered for a branch are published not only as text on the card but in a format search
+engines read (schema.org `LocalBusiness`), together with the address, phone and coordinates.
+This is what Google builds a business panel from in search results and on maps.
+
+One condition: the hours must be written in a recognisable form, e.g. "Pon-Pt" and
+"07:00 - 19:00". Free-form entries such as "by phone" still appear on the card as text but do
+not reach the search engine.
+
+### Two steps to remember
+
+**1. After adding a branch, add it to the page.** The "Content grid" block holds a
 manually picked list of items and has no "all of them" option. After adding a branch you must
 open the CMS page and add it to the block. Nothing reminds you — the page simply looks
-unchanged. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+unchanged.
 
-**2. Deactivating a branch does NOT remove it from the website.** Unticking "Active" removes
+**2. To take a branch off the website, remove it from the block.** Unticking "Active" removes
 the branch from the picker in the admin panel, but if it was already added to a block it keeps
 rendering. To hide it, remove it from the block.
 
@@ -94,7 +104,7 @@ For any such complaint, check the "Content grid" block first and the branch itse
 
 ---
 
-## What the customer will see eventually (phases 5-6, on hold)
+## What the customer will see eventually (phases 5-6)
 
 | Step | Change versus today |
 |---|---|

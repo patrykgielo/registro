@@ -46,6 +46,82 @@
     $badgeClasses = $dark
         ? 'bg-white/10 text-white/80 border border-white/20'
         : 'bg-gray-100 text-gray-600 border border-gray-200';
+    // h4 "Godziny otwarcia" reuses $bodyClasses -- contrast already computed
+    // above for that token (gray-600/white-70) and both card surfaces:
+    // light 7.56:1  -- text-gray-600 #4B5563 on the card's own bg-white (not
+    //                  the gray-100 badge chip used for the earlier figure).
+    // dark  9.25:1  -- text-white/70 flattened over --color-dark-bg-raised
+    //                  rgb(19,22,26), same method as the badge figure above.
+    $hoursHeadingId = 'location-hours-heading-'.$location->id;
+
+    // Structured data: LocalBusiness, built here (not in a controller) because
+    // this card has no per-instance controller boundary -- it's a reusable
+    // component dropped into content-grid, which can render several
+    // locations on one CMS page. Keeps the SAME mechanism ServiceController
+    // uses (JSON-LD via <script type="application/ld+json">, see
+    // ServiceController::buildServiceSchema()), just emitted at the
+    // component's own level since that's the only place that owns exactly
+    // one Location per render. Multiple JSON-LD script blocks on one page is
+    // valid schema.org/Google practice.
+    $streetLine = trim(($location->street ?? '').' '.($location->building ?? ''));
+    $hasStructuredAddress = $streetLine !== '' || ($location->postal_code ?? '') !== '' || ($location->city ?? '') !== '';
+
+    $locationSchema = [
+        '@context' => 'https://schema.org',
+        '@type' => 'LocalBusiness',
+        'name' => $location->name,
+    ];
+
+    if ($hasStructuredAddress) {
+        $locationSchema['address'] = array_filter([
+            '@type' => 'PostalAddress',
+            'streetAddress' => $streetLine !== '' ? $streetLine : null,
+            'postalCode' => $location->postal_code ?: null,
+            'addressLocality' => $location->city ?: null,
+            'addressCountry' => 'PL',
+        ], fn ($value) => $value !== null);
+    }
+
+    if ($location->phone) {
+        $locationSchema['telephone'] = $location->phone;
+    }
+
+    if ($location->email) {
+        $locationSchema['email'] = $location->email;
+    }
+
+    if ($location->latitude !== null && $location->longitude !== null) {
+        $locationSchema['geo'] = [
+            '@type' => 'GeoCoordinates',
+            'latitude' => (float) $location->latitude,
+            'longitude' => (float) $location->longitude,
+        ];
+    }
+
+    if ($location->photo) {
+        $locationSchema['image'] = Storage::url($location->photo);
+    }
+
+    // Opening hours: only unambiguous label+range pairs become
+    // openingHoursSpecification entries -- see OpeningHoursParser's
+    // docblock for the exact grammar. Anything else (free text like "Dni
+    // robocze", "na telefon", "Zamknięte") is silently omitted rather than
+    // guessed at; wrong hours in Google send a customer to a closed branch.
+    $locationHoursSpecification = \App\Support\Seo\OpeningHoursParser::parseSpecifications($location->opening_hours ?? []);
+
+    if ($locationHoursSpecification !== []) {
+        $locationSchema['openingHoursSpecification'] = $locationHoursSpecification;
+    }
+
+    // JSON_UNESCAPED_SLASHES keeps URLs (photo path, mailto) readable; since
+    // that means "</" is no longer auto-escaped by json_encode, it's escaped
+    // by hand below -- tenant-controlled text (name, street, city) reaching
+    // this string unescaped could otherwise close the <script> tag early.
+    $locationSchemaJson = str_replace(
+        '</',
+        '<\/',
+        json_encode($locationSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+    );
 @endphp
 
 <article class="cms-content-card {{ $dark
@@ -88,19 +164,36 @@
         @endif
 
         @if($hours->isNotEmpty())
-            <div class="flex items-start gap-2 text-sm {{ $bodyClasses }}">
-                <x-heroicon-o-clock class="w-4 h-4 {{ $iconClasses }} flex-shrink-0 mt-0.5" />
-                <ul class="space-y-0.5">
-                    @foreach($hours as $entry)
-                        <li>
-                            <span class="font-medium">{{ $entry['label'] ?? '' }}</span>
-                            @if(($entry['label'] ?? '') !== '' && ($entry['hours'] ?? '') !== '')
-                                <span aria-hidden="true">&mdash;</span>
-                            @endif
-                            {{ $entry['hours'] ?? '' }}
-                        </li>
-                    @endforeach
-                </ul>
+            <div>
+                <h4 id="{{ $hoursHeadingId }}" class="text-sm font-semibold {{ $bodyClasses }} mb-2">
+                    {{ __('Godziny otwarcia') }}:
+                </h4>
+                <div class="flex items-start gap-2 text-sm {{ $bodyClasses }}">
+                    <x-heroicon-o-clock class="w-4 h-4 {{ $iconClasses }} flex-shrink-0 mt-0.5" aria-hidden="true" />
+                    <ul class="space-y-0.5" aria-labelledby="{{ $hoursHeadingId }}">
+                        @foreach($hours as $entry)
+                            <li>
+                                <span class="font-medium">{{ $entry['label'] ?? '' }}</span>
+                                @if(($entry['label'] ?? '') !== '' && ($entry['hours'] ?? '') !== '')
+                                    <span aria-hidden="true">&mdash;</span>
+                                @endif
+                                {{-- <time> only for hours text that parses as an unambiguous
+                                     range (same grammar as the JSON-LD below) -- wrapping the
+                                     WHOLE original substring, never split, so the visible text
+                                     a tenant typed is never reformatted. No datetime attribute:
+                                     a range like "7:00-17:00" has no single valid HTML time
+                                     microsyntax value, and fabricating one from just the
+                                     opening time would misrepresent the closing time as absent
+                                     -- exactly the "naciągane" case this component avoids. --}}
+                                @if(\App\Support\Seo\OpeningHoursParser::isUnambiguousTimeRange($entry['hours'] ?? ''))
+                                    <time>{{ $entry['hours'] }}</time>
+                                @else
+                                    {{ $entry['hours'] ?? '' }}
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
             </div>
         @endif
 
@@ -153,4 +246,8 @@
             @endif
         </div>
     </div>
+
+    {{-- Pre-encoded above with tenant text safely escaped ("</" neutralised) --
+         same safe-raw-echo pattern as services/show.blade.php's $schemaService. --}}
+    <script type="application/ld+json">{!! $locationSchemaJson !!}</script>
 </article>

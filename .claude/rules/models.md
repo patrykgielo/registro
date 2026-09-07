@@ -304,18 +304,21 @@ jakimkolwiek `$this->get()`) pozostają nienaruszone — `app('request')` to wte
 nietknięty przez `ResolveTenant` obiekt bootstrapowy, `tenant_resolution_attempted` nigdy nie jest
 `true`, scope zachowuje dotychczasowe permissive no-op.
 
-**Powiązany gotcha:** stale `session('tenant_id')` powoduje podobny błędny-tenant problem także
-poza Layer 2 — patrz GOTCHA LC-9 niżej (tam: cichy zapis do złego tenanta w panelu `/platform`;
-tutaj: `currentTenant()`'s session-fallback branch omija fail-closed check całkowicie, bo zwraca
-non-null PRZED dotarciem do gałęzi `tenant_resolution_attempted` — patrz "Booking/Appointment"
-follow-up w `app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`).
+**Historyczne (VULN-003 Layer 8, 2026-08-31):** do tej daty stale `session('tenant_id')`
+powodował podobny błędny-tenant problem także poza Layer 2 — `currentTenant()`'s 3. (session)
+gałąź omijała fail-closed check całkowicie, bo zwracała non-null PRZED dotarciem do gałęzi
+`tenant_resolution_attempted`. Ta gałąź zniknęła z KAŻDEGO realnego żądania — zostaje wyłącznie
+jako wąska furtka test-only (`runningUnitTests()` + brak `tenant_resolution_attempted`, dla
+`Livewire::test()`, które nigdy nie przechodzi przez `ResolveTenant`), więc ten check nigdy jej
+nie widzi na realnym requeście. Szczegóły: Layer 8 w
+`app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
 
 ### GOTCHA: zapis wiersza GLOBALNEGO (`organization_id = null`) — Incident 2026-06-30 (LC-9)
 
-`withoutGlobalScope` wyłącza tylko scope **odczytu**. Hook `creating` nadal auto-wypełnia `organization_id` z `TenantFeature::currentTenant()` gdy pole jest puste (null jest falsy!). W panelu `/platform` **stale `session('tenant_id')`** (po wcześniejszej wizycie na subdomenie tenanta) sprawia, że "globalny" `updateOrCreate(['organization_id' => null, ...])` ląduje jako **tenant-scoped** — cicha korupcja danych.
+`withoutGlobalScope` wyłącza tylko scope **odczytu**. Hook `creating` nadal auto-wypełnia `organization_id` z `TenantFeature::currentTenant()` gdy pole jest puste (null jest falsy!). Do VULN-003 Layer 8, w panelu `/platform` stale `session('tenant_id')` (po wcześniejszej wizycie na subdomenie tenanta) sprawiał, że "globalny" `updateOrCreate(['organization_id' => null, ...])` lądował jako **tenant-scoped** — cicha korupcja danych. Ta konkretna gałąź zniknęła z KAŻDEGO realnego żądania (zostaje wyłącznie jako wąska furtka test-only, patrz Layer 8 wyżej), ale wzorzec poniżej zostaje jako obrona przed KAŻDYM ambient-tenant kontekstem (Filament panel, request attribute), nie tylko sesją.
 
 ```php
-// ❌ ŹLE — creating hook nadpisze null tenant-id ze stale session
+// ❌ ŹLE — creating hook nadpisze null tenant-id ambientnym kontekstem
 Setting::withoutGlobalScope('organization')->updateOrCreate(
     ['organization_id' => null, 'group' => $g, 'key' => $k], ['value' => $v]
 );
@@ -325,12 +328,7 @@ Setting::withoutEvents(fn () => Setting::withoutGlobalScope('organization')
     ->updateOrCreate(['organization_id' => null, 'group' => $g, 'key' => $k], ['value' => $v]));
 ```
 
-Dla settingsów: `SettingsManager::getGlobal()`/`setGlobal()` robią to poprawnie — w panelu platformy NIGDY nie używaj `get()`/`set()` (są tenant-aware przez session fallback).
-
-**Powiązane:** ten sam `session('tenant_id')` fallback jest źródłem osobnego, potwierdzonego
-cross-tenant read+write ryzyka w `BookingController`/`AppointmentController` — patrz sekcja
-"`tenant_resolution_attempted`" wyżej i "Booking/Appointment" follow-up w
-`app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md`.
+Dla settingsów: `SettingsManager::getGlobal()`/`setGlobal()` robią to poprawnie — w panelu platformy NIGDY nie używaj `get()`/`set()` (rozwiązują tenanta ambientnie, przez `currentTenant()`).
 
 ## Organization Model — kluczowe pola i metody
 

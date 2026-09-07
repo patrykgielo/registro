@@ -215,6 +215,27 @@ class AppServiceProvider extends ServiceProvider
      * need the "no tenant" branch to reach them), and this replay is what
      * enforces RequireTenant's 404 for a component whose *mount* URL demands a
      * tenant. Removing this would still be a regression.
+     *
+     * UPDATE (VULN-003 Layer 8, 2026-08-31): TenantFeature::currentTenant() no
+     * longer reads session('tenant_id') on any REAL request — that fallback
+     * branch (the thing this whole fix was originally protecting against) is
+     * gone from production and from any genuine HTTP request in tests alike.
+     * A narrow escape hatch remains, but ONLY for Livewire::test()-driven
+     * component tests that never dispatch through the HTTP kernel at all
+     * (APP_ENV=testing AND ResolveTenant never ran for the request — see
+     * TenantFeature::currentTenant()'s own guard) — a real /livewire/update
+     * request, in production or in an HTTP-driven test, never qualifies. The
+     * "OVERWRITES session('tenant_id')" line above is therefore incidental,
+     * not load-bearing, for any real request: it's the OUTER request's
+     * `tenant` ATTRIBUTE — set directly from the real Host header by the
+     * base-group ResolveTenant call the previous UPDATE describes — that
+     * BelongsToOrganization's scope and `creating` hook actually read. This
+     * replay's own middleware execution is still load-bearing for a different
+     * reason: RequireTenant's 404 abort (fatal, propagates out of the whole
+     * update) is still the only thing that stops an update whose *mount* URL
+     * demands a tenant from continuing when none can be resolved — see
+     * app/docs/security/patterns/livewire-tenant-isolation.md, updated
+     * "Guarantees" section.
      */
     private function registerLivewireTenantIsolation(): void
     {

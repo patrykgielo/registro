@@ -114,7 +114,7 @@ stateDiagram-v2
     confirmed --> cancelled : Same as above
     confirmed --> completed : Admin only
 
-    pending --> pending : Admin/staff changes date/time\nFires AppointmentRescheduled (see bug note below)
+    pending --> pending : Admin/staff changes date/time\nFires AppointmentRescheduled
     confirmed --> confirmed : Same reschedule path
 
     cancelled --> [*]
@@ -132,18 +132,6 @@ stateDiagram-v2
 See [Cancellation](customer-journey-cancellation.md) for the full customer vs
 admin cancellation comparison.
 
-## Known bug — reschedule TypeError (ported as-is, not fixed)
-
-`Appointment::booted()` fires `event(new AppointmentRescheduled($appointment))`
-when it detects a change to the date/time field. The `AppointmentRescheduled`
-constructor requires `(Appointment $appointment, Carbon $oldDate, Carbon $newDate)`
-— the two `Carbon` arguments are missing at the call site
-(`app/Models/Appointment.php`, `booted()`). **Confirmed still present in
-current code** (verified 2026-07). This throws a `TypeError` at runtime every
-time an admin reschedules an appointment's date or time via Filament. Fixing
-this is out of scope for this docs page — it is documented here so it isn't
-lost, not silently patched.
-
 ## Notifications
 
 | Trigger | Notification | Channel |
@@ -151,7 +139,7 @@ lost, not silently patched.
 | Appointment created | `AppointmentCreatedNotification` | Email, customer only — no admin copy |
 | Confirmed by admin | — | SMS (`APPOINTMENT_CONFIRMED`) only, no email registered |
 | Cancelled (customer or admin) | `AppointmentCancelledNotification` | Email + SMS |
-| Rescheduled by admin | `AppointmentRescheduledNotification` | Email + SMS (**subject to the bug above**) |
+| Rescheduled by admin | `AppointmentRescheduledNotification` | Email + SMS |
 | Reminders (`ProcessRemindersJob`, hourly) | admin-configured `reminder_configs` | Email and/or SMS, before and after appointment |
 
 ## Key files

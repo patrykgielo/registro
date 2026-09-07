@@ -852,3 +852,157 @@ the registered URL in the SMSAPI panel before deploying this to a live environme
 
 `webhooks/przelewy24` is not affected — it already carried `ResolveTenant` explicitly
 (`routes/web.php:192`); this change only moves it earlier in the same chain.
+
+## Layer 8 (2026-08-31, `fix/global-scope-session-fallback`) — the session fallback itself, at its source
+
+### The hole
+
+`TenantFeature::currentTenant()` (`app/Support/TenantFeature.php`) had a 3rd resolution branch,
+after Filament-panel tenancy (branch 1, dead in this app — neither PanelProvider calls
+`->tenant()`) and the `tenant` request attribute (branch 2, set by `ResolveTenant` per request):
+
+```php
+// 3. Session fallback — for Livewire update requests that bypass ResolveTenant.
+$tenantId = session('tenant_id');
+if ($tenantId) {
+    return Organization::find($tenantId);
+}
+```
+
+`ResolveTenant` writes `session()->put('tenant_id', $tenant->id)` on **every** successful
+subdomain resolution, including an anonymous, unauthenticated visit, before any authorization
+check. That value survives navigation back to the **root domain** in the same browser. Every
+prior layer in this document (2, 3, 4, 5, 6) is a variant of the same root cause: some piece of
+code, reachable from the root domain, called `TenantFeature::currentTenant()` (directly or via
+`BelongsToOrganization`'s global scope) instead of reading the request attribute, and inherited
+whichever tenant subdomain that browser last happened to visit.
+
+Layers 2–6 each closed one reachable call site. This layer removes the source: the branch itself.
+
+### Why now, and why the original justification had expired
+
+The branch's own comment justified it as existing "for Livewire update requests that bypass
+ResolveTenant." That was true when it was written, but Layer 7 (2026-08-30) put `ResolveTenant`
+in the base `web` middleware group — `POST /livewire/update` now runs it directly, on the OUTER
+request, before Livewire dispatches to any component. Verified via `route:list -vvv`: Livewire's
+update route carries `ResolveTenant` today. The branch had become a live vulnerability with an
+expired excuse.
+
+### Newly reachable, concretely: the root-domain footer
+
+`resources/views/home-fallback.blade.php` (rendered on the bare root domain) extends
+`layouts.app`, which renders `<x-nav.footer>` → `NavigationService::getMenuItems('footer')` →
+`Page::query()` — a `BelongsToOrganization` model. `NavigationService`'s own cache key is already
+tenant-scoped (a prior, unrelated fix — see `services.md`), but the **query behind a cache miss**
+was not: it went through `BelongsToOrganization`'s global scope, which called
+`TenantFeature::currentTenant()`, which returned whichever tenant's subdomain this visitor
+happened to browse earlier. Worse than a per-request leak: the poisoned result would then be
+**cached** under the (correctly root-scoped) "no tenant" bucket for up to 30 minutes, serving
+tenant A's footer to every OTHER anonymous root-domain visitor until the cache expired.
+
+### Falsified empirically
+
+`tests/Feature/NavigationCacheTenantIsolationTest::test_root_domain_navigation_renders_without_a_tenant_and_does_not_mix_tenant_menus`
+used to `flushSession()` before its root-domain assertion specifically to dodge this exact bug
+(its own docblock said so, calling it "out of this task's scope" at the time). Removed as part of
+this fix. With `session('tenant_id')` fallback reinstated (temporary `git stash` of
+`TenantFeature.php` only, reverted after) the test fails:
+
+```
+Not to contain: Strona Root A
+```
+
+i.e. tenant A's footer page rendered on the bare root domain, from a poisoned session left by an
+earlier visit to tenant A's subdomain in the same test's browser/session. With the fix restored,
+the same test passes without the session flush.
+
+### The fix
+
+`TenantFeature::currentTenant()`'s 3rd branch is removed for every real request. `ResolveTenant`
+still **writes** `session('tenant_id')` (harmless now that nothing production-reachable reads
+it) — kept because `LivewireAdminTenantIsolationTest` asserts on the write as a correctness
+signal for the Layer 6 persistent-middleware replay, and removing a write a still-live test
+depends on was out of scope here.
+
+### Residual: a narrow, test-only escape hatch — not a production fallback
+
+Roughly 20 existing Filament resource tests (`ServiceResourceSlugUniqueScopeTest`,
+`TenantMemberCreationPivotTest`, `PanelWalkthroughTest`, and others — see
+`grep -rl "session(\['tenant_id'"  tests/`) establish "run this Livewire component as tenant X"
+via `session(['tenant_id' => $tenant->id])` before `Livewire::test(SomePage::class)`.
+`Livewire::test()` never dispatches through the HTTP kernel — no request is ever routed through
+`ResolveTenant` — so with the branch fully removed, none of branches 1 or 2 have anything to
+resolve from, and every one of these tests failed (measured: 25 failures across
+`ServiceResourceSlugUniqueScopeTest`, `TenantMemberCreationPivotTest`,
+`ServiceResourceQuantityFieldRoutingTest`, `RentalCategoryResourceSlugUniqueScopeTest`, and
+others — all "no tenant resolved," e.g. `organization_id` never auto-assigned, or a
+`ModelNotFoundException` on a record that was never scoped to the acting tenant in the first
+place).
+
+Rewriting ~20 test files' established tenant-simulation pattern was judged riskier and larger
+than the actual fix, and orthogonal to it — those tests were never proving anything about
+`session('tenant_id')`'s production behavior. Instead, the branch was restored **narrowly gated**,
+both conditions required:
+
+```php
+if (
+    app()->runningUnitTests()  // false in any real deployment — APP_ENV is never 'testing' there
+    && ! (app()->bound('request') && app('request')->attributes->get('tenant_resolution_attempted') === true)
+) {
+    // read session('tenant_id') — Livewire::test()-only path
+}
+```
+
+- `runningUnitTests()` (`APP_ENV=testing`) is structurally `false` outside the PHPUnit process —
+  this branch cannot activate in production or staging under any input.
+- The absence of `tenant_resolution_attempted` (Layer 2's own "did `ResolveTenant` genuinely run
+  for this request" marker) is what stops this from quietly re-opening the vulnerability inside
+  the test suite itself. A REAL HTTP test request — including every regression test in this
+  document, which drive real `Host` headers through the real middleware chain (see
+  `NavigationCacheTenantIsolationTest`'s docblock) — sets that marker even when it resolves no
+  tenant (root domain). Without this second guard, running the whole suite under
+  `APP_ENV=testing` would silently make the vulnerability reproduce ONLY in tests, and every
+  regression test added for Layers 2–8 would pass for the wrong reason. Falsified the same way:
+  dropping this second guard (leaving only `runningUnitTests()`) reproduces the
+  `NavigationCacheTenantIsolationTest` failure above, even with the fix otherwise in place —
+  because that test's request genuinely goes through `ResolveTenant`, and `APP_ENV=testing` in
+  the harness would then let a poisoned session rescue it.
+
+This satisfies the task's own instruction where a fallback turns out still-needed somewhere:
+restrict it so it can never run on any route reachable from the root domain. A route reachable
+from the root domain is, by construction, a real HTTP request — and a real HTTP request either
+never reaches this branch (`runningUnitTests()` false in production) or already carries
+`tenant_resolution_attempted` (any HTTP-driven test), so it is excluded either way.
+
+### The `/platform` data-export route — verified NOT at risk
+
+`platform.organization.data-export` (`routes/web.php`, `OrganizationDataExportController`) is
+the one `/platform` route defined outside a Filament panel — it carries `ResolveTenant` via the
+base `web` group, resolves no tenant on the root domain, and sets `tenant_resolution_attempted`.
+Checked whether Layer 2's fail-closed branch (`BelongsToOrganization::whereRaw('1 = 0')`) would
+therefore blank out the export:
+
+- `Organization` and `OrganizationLifecycleLog` — the only two Eloquent models the controller
+  touches (route-bound `{organization}`, and the audit-log write) — **do not use
+  `BelongsToOrganization`** (grepped: no `use App\Traits\BelongsToOrganization;` in either
+  model). Layer 2 cannot fail-close a scope that was never applied.
+- `OrganizationDataExportService::generate()` (which builds the ZIP; a separate call path, from
+  the `organizations:export-data` console command, not this controller) deliberately uses
+  `DB::table(...)->where('organization_id', $orgId)` for every dataset — bypassing Eloquent's
+  global scopes entirely, by its own docblock's design.
+
+Confirmed empirically, not just by reading: `OrganizationDataExportTest::test_super_admin_can_download_without_signed_url`
+and `test_valid_signed_url_returns_zip_download` both dispatch through `$this->get()`/real routes
+(root domain, `ResolveTenant` genuinely runs, no tenant resolved) and assert `assertOk()` with a
+real streamed ZIP — unaffected by this fix, before or after. No `/platform` Filament resource
+(`OrganizationResource`, `RoleResource`, `OrganizationLifecycleLogResource`) uses
+`BelongsToOrganization` either, and `PlatformPanelProvider`'s own `->middleware([...])` array
+never includes `ResolveTenant`/`RequireTenant` at all — `/platform` was already, and remains,
+fully tenant-less at the data layer.
+
+### Tests
+
+Full regression run (`docker compose exec app php artisan test`): 1688 passed, 5 skipped, 0
+failed — including all of `tests/Feature/Security/*`, `tests/Feature/Filament/*`,
+`NavigationCacheTenantIsolationTest`, `PanelWalkthroughTest`, and `StorefrontWalkthroughTest`.
+`./vendor/bin/pint --test`: clean.

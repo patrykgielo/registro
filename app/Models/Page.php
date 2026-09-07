@@ -6,12 +6,12 @@ namespace App\Models;
 
 use App\Enums\MenuLocation;
 use App\Enums\PageLayout;
+use App\Services\NavigationService;
 use App\Support\Settings\SettingsManager;
 use App\Traits\BelongsToOrganization;
 use App\Traits\NormalizesEmptyJsonToNull;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class Page extends Model
@@ -104,15 +104,17 @@ class Page extends Model
             }
         });
 
-        // Cache invalidation for navigation menu
-        static::saved(function () {
-            Cache::forget('navigation.pages.header');
-            Cache::forget('navigation.pages.footer');
+        // Cache invalidation for navigation menu.
+        // Passes organization_id explicitly rather than relying on ambient
+        // TenantFeature::currentTenant() — this hook can fire from console/queue context
+        // (seeders, tinker) with no "current" tenant resolved, which would otherwise clear
+        // the wrong ('none') bucket and leave this page's real tenant bucket stale.
+        static::saved(function (Page $page) {
+            app(NavigationService::class)->clearCache($page->organization_id);
         });
 
-        static::deleted(function () {
-            Cache::forget('navigation.pages.header');
-            Cache::forget('navigation.pages.footer');
+        static::deleted(function (Page $page) {
+            app(NavigationService::class)->clearCache($page->organization_id);
         });
     }
 

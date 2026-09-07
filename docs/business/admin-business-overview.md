@@ -126,22 +126,13 @@ klienta w locie (inline).
 | Potwierdź wizytę | `pending → confirmed` | Tylko SMS (`APPOINTMENT_CONFIRMED`) — **dla tego przejścia nie istnieje żaden e-mail** |
 | Anuluj wizytę | dowolny status aktywny → `cancelled`, brak ograniczeń polityki dla admina | E-mail + SMS (`AppointmentCancelledNotification`) |
 | Oznacz jako zakończoną | dowolny status aktywny → `completed`, ustawia `completed_at` | Nie |
-| Zmiana terminu (zmiana pola daty/godziny) | emituje `AppointmentRescheduled` | E-mail + SMS — **podlega potwierdzonemu błędowi w środowisku uruchomieniowym, patrz niżej** |
+| Zmiana terminu (zmiana pola daty/godziny) | emituje `AppointmentRescheduled` | E-mail + SMS |
 
 `mutateFormDataBeforeSave` waliduje przy każdym zapisie: jeśli członek
 personelu nie posiada roli `staff`, lub jeśli nowa data/godzina/personel
 koliduje z istniejącą rezerwacją, zapis zostaje zablokowany trwałym
 powiadomieniem typu danger (`$this->halt()`) — formularz pozostaje otwarty z
 widocznymi nieprawidłowymi danymi, tak aby administrator mógł je poprawić.
-
-**Znany błąd (potwierdzony, nie naprawiony w tym miejscu):**
-`Appointment::booted()` emituje `event(new AppointmentRescheduled($appointment))`
-przy zmianie terminu, ale konstruktor eventu wymaga
-`(Appointment, Carbon $oldDate, Carbon $newDate)` — brakuje dwóch argumentów
-typu `Carbon`. Powoduje to `TypeError` w czasie działania za każdym razem,
-gdy administrator zmienia termin wizyty przez Filament. Zobacz
-[Customer Journey — Booking](customer-journey-booking.md) (sekcja "Known bug
-— reschedule TypeError") po pełny opis.
 
 ## Przetwarzanie wypożyczeń (moduł `rentals`, cykl życia przedmiotu fizycznego)
 
@@ -166,8 +157,7 @@ Zakładka **Ustawienia → Lokalizacje**. Służy do opisania fizycznych punktó
 adresu, godzin, kontaktu i zdjęć — i pokazania ich klientowi na stronie.
 
 **Uwaga:** to jeszcze **nie jest** magazyn per oddział. Sprzęt nie jest przypisany do punktu,
-klient nie wybiera oddziału, a dostępność liczy się wspólnie dla całej firmy. To fazy 4-6,
-wstrzymane. Dziś Lokalizacje są warstwą prezentacyjną i adresową.
+klient nie wybiera oddziału, a dostępność liczy się wspólnie dla całej firmy. To fazy 4-6, zaplanowane na kolejne etapy. Dziś Lokalizacje są warstwą prezentacyjną i adresową.
 
 ### Co wypełniasz i co z tego widzi klient
 
@@ -185,14 +175,14 @@ wstrzymane. Dziś Lokalizacje są warstwą prezentacyjną i adresową.
 
 Oddział **nie ma własnej podstrony** — istnieje wyłącznie jako karta w siatce na stronie CMS.
 
-### Trzy rzeczy, które zaskakują
+### Trzy rzeczy, o których trzeba pamiętać
 
-**1. Dodanie oddziału nie umieszcza go na stronie.** Musisz wejść w stronę CMS, znaleźć blok
+**1. Po dodaniu oddziału dopisz go do strony.** Musisz wejść w stronę CMS, znaleźć blok
 „Siatka treści" z typem „Lokalizacje" i **dopisać nowy oddział do listy**. Blok pokazuje
 ręcznie wybrane elementy i nie ma opcji „wszystkie". Nic o tym nie przypomina — strona po
-prostu wygląda jak wcześniej. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+prostu wygląda jak wcześniej.
 
-**2. Odznaczenie „Aktywna" nie ukrywa oddziału.** Usuwa go z listy do wyboru w panelu, ale
+**2. Żeby oddział zniknął ze strony, usuń go z bloku.** Usuwa go z listy do wyboru w panelu, ale
 jeśli był już w bloku — nadal się renderuje. Żeby zniknął ze strony, usuń go z bloku.
 
 **3. Pierwszy oddział zostaje główny automatycznie** i nie da się usunąć ostatniego — system
@@ -203,7 +193,6 @@ pilnuje, żeby firma zawsze miała co najmniej jedną siedzibę.
 Adres pokazywany w checkoucie, na protokołach i w e-mailach pochodzi z **Ustawień**
 (dane kontaktowe firmy), a nie z encji oddziału — mimo że oddział ma własny adres.
 Zmiana adresu w Lokalizacjach **nie zmieni** adresu na dokumentach.
-Zgłoszone: [`123k99ct3j0`](https://app.clickup.com/t/123k99ct3j0).
 
 ## Zarządzanie klientami (moduł `customers`)
 
@@ -223,7 +212,7 @@ personelu/administratora.
 | Zamówienie → in_progress / completed / dowolna akcja na kaucji | Nikt | — |
 | Wizyta → confirmed | Klient | Tylko SMS |
 | Wizyta → cancelled | Klient | E-mail + SMS |
-| Zmiana terminu wizyty | Klient | E-mail + SMS (błąd opisany wyżej) |
+| Zmiana terminu wizyty | Klient | E-mail + SMS |
 | Dowolna zmiana statusu wypożyczenia | Nikt | — |
 
 ## Statystyki i analityka (tylko do odczytu, widok administratora)

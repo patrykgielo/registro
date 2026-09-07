@@ -34,12 +34,13 @@ class FooterEmptyColumnsRegressionTest extends TestCase
     {
         parent::setUp();
 
-        // NavigationService caches menu items under a location-only key with
-        // no tenant id (a separate, already-documented cross-tenant leak —
-        // see the "Found, documented, not fixed here" note on PR #196's
-        // onboarding:seed-website). RefreshDatabase rolls back Page rows
-        // between tests but does not touch the cache, so a prior test's
-        // cached footer menu could otherwise leak into this one.
+        // RefreshDatabase rolls back Page rows between tests but does not touch the cache,
+        // so a prior test's cached footer menu could otherwise leak into this one. Since
+        // fix/tenant-scoped-cache-keys, NavigationService's cache key carries the tenant id
+        // (previously a location-only key was a separate, documented cross-tenant leak — see
+        // the "Found, documented, not fixed here" note on PR #196's onboarding:seed-website),
+        // so in practice each test's distinct organization id already gets its own bucket —
+        // this clear only reaches the no-tenant 'none' bucket, kept as cheap insurance.
         app(\App\Services\NavigationService::class)->clearCache();
     }
 

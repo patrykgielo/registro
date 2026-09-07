@@ -16,16 +16,17 @@ use Symfony\Component\HttpFoundation\Response;
  * MUST run after ResolveTenant::class in the middleware chain.
  *
  * IMPORTANT (VULN-003 gap fix): this checks the `tenant` REQUEST ATTRIBUTE
- * directly — NOT `TenantFeature::currentTenant()`. The latter has a 3rd
- * fallback branch that reads `session('tenant_id')`, which `ResolveTenant`
- * writes on EVERY successful subdomain resolution (including anonymous
- * visitors) and BEFORE the `canAccessTenant()` staff-authorization check
- * (which only runs on the subdomain branch, never on the root-domain
- * branch). Gating on the session fallback would let a staff user who
- * merely *browsed* an unauthorized tenant's subdomain (no login required)
- * carry that tenant into a root-domain admin session via stale session
- * state — the request attribute is the only signal that reflects tenant
- * resolution for THIS request, on THIS host.
+ * directly — NOT `TenantFeature::currentTenant()`. Until Layer 8 (2026-08-31),
+ * the latter had a 3rd fallback branch reading `session('tenant_id')`, which
+ * `ResolveTenant` writes on EVERY successful subdomain resolution (including
+ * anonymous visitors) and BEFORE the `canAccessTenant()` staff-authorization
+ * check (which only runs on the subdomain branch, never on the root-domain
+ * branch) — that branch is now gone from every real HTTP request (it only
+ * remains as a narrow Livewire::test()-only escape hatch, structurally
+ * unreachable outside APP_ENV=testing — see TenantFeature::currentTenant()).
+ * Kept on the request attribute anyway: it is still the only signal that
+ * reflects tenant resolution for THIS request, on THIS host, and doesn't
+ * depend on TenantFeature's resolution order staying what it is today.
  */
 class RequireTenant
 {

@@ -4,7 +4,7 @@
 > **Oddział już istnieje** — jako encja z adresem, godzinami, zdjęciem i galerią, zarządzalny
 > w panelu i **widoczny na stronie** (fazy 0-2, PR #227-#231).
 > **Jeszcze nie istnieje** wybór oddziału przez klienta ani dostępność per punkt — to fazy 5-6,
-> **wstrzymane** decyzją właściciela produktu.
+> zaplanowane na kolejne etapy.
 > Sekcja „Co klient widzi dziś" opisuje stan faktyczny; reszta dokumentu opisuje stan docelowy.
 > Szczegóły techniczne: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
 
@@ -76,14 +76,24 @@ Karta pokazuje:
 karta w siatce. Klient nie wybiera oddziału, katalog i dostępność nie są jeszcze podzielone
 na punkty.
 
-### Dwie pułapki, o których trzeba wiedzieć
+### Godziny otwarcia trafiają do Google
 
-**1. Dodanie oddziału NIE umieszcza go na stronie.** Blok „Siatka treści" trzyma ręcznie
+Godziny wpisane przy oddziale są publikowane nie tylko jako tekst na karcie, ale też
+w formacie, który rozumie wyszukiwarka (`LocalBusiness` wg schema.org) — razem z adresem,
+telefonem i współrzędnymi. To materiał, z którego Google buduje panel firmy przy wynikach
+wyszukiwania i w mapach.
+
+Warunek: godziny muszą być zapisane w rozpoznawalnej formie, np. „Pon-Pt" i „07:00 - 19:00".
+Zapisy opisowe w rodzaju „na telefon" trafią na kartę jako tekst, ale nie do wyszukiwarki.
+
+### Dwa kroki, o których trzeba pamiętać
+
+**1. Po dodaniu oddziału dopisz go do strony.** Blok „Siatka treści" trzyma ręcznie
 wybraną listę elementów i nie ma opcji „wszystkie". Po dodaniu nowego oddziału trzeba wejść
 w stronę CMS i dopisać go do bloku. Nic o tym nie przypomina — strona po prostu wygląda tak
-jak wcześniej. ([`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt))
+jak wcześniej.
 
-**2. Wyłączenie oddziału NIE zdejmuje go ze strony.** Odznaczenie „Aktywna" usuwa oddział
+**2. Żeby oddział zniknął ze strony, usuń go z bloku.** Odznaczenie „Aktywna" usuwa oddział
 z listy do wyboru w panelu, ale jeśli był już dodany do bloku — nadal się renderuje.
 Żeby zniknął, trzeba usunąć go z bloku.
 
@@ -92,7 +102,7 @@ Przy każdej takiej skardze sprawdź najpierw blok „Siatka treści", a dopiero
 
 ---
 
-## Co klient zobaczy docelowo (fazy 5-6, wstrzymane)
+## Co klient zobaczy docelowo (fazy 5-6)
 
 | Etap | Co się zmienia względem dziś |
 |---|---|
