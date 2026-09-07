@@ -13,9 +13,9 @@ Zweryfikowana w przeglądarce, nie tylko testami.
 **Faza 2 — zmergowana na `develop`** 2026-08-28 ([PR #231](https://github.com/patrykgielo/registro/pull/231)): kotwica
 `service_location_stocks`, backfill z `quantity_total`, `quantity_total` jako mirror, panel bez
 regresji dla tenanta jednooddziałowego. Dostępność **nietknięta** — wchodzi w Fazie 4.
-**Fazy 3-9 — WSTRZYMANE** decyzją właściciela produktu (2026-08-28): żadna nie ruszy, dopóki
-nie zostaną zweryfikowane testy pół-automatyczne panelu tenanta i frontu. To nie jest
-„nierozpoczęte" — to świadoma bramka, której nie wolno samodzielnie otworzyć.
+**Fazy 3-9 — nierozpoczęte, ale odblokowane.** Bramka postawiona 2026-08-28 (weryfikacja
+testów pół-automatycznych panelu tenanta i frontu) została **zdjęta 2026-08-30**: oba testy
+walkthrough przechodzą i są stałą częścią suite'u.
 
 ## Mapa dokumentów
 
@@ -36,13 +36,13 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 0 | Higiena, dowód współbieżności + naprawa żywego oversellu | [`86cbahqbv`](https://app.clickup.com/t/86cbahqbv) | ✅ **ukończona** 2026-08-27 |
 | 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | ✅ **ukończona** (PR #228/#229/#230) |
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
-| 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ⛔ wstrzymana |
-| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ⛔ wstrzymana |
-| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⛔ wstrzymana |
-| 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⛔ wstrzymana |
-| 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⛔ wstrzymana |
-| 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⛔ wstrzymana |
-| 9 | Statystyki per oddział | [`86cbahqk0`](https://app.clickup.com/t/86cbahqk0) | ⛔ wstrzymana |
+| 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ⬜ nierozpoczęta |
+| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ⬜ nierozpoczęta |
+| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⬜ nierozpoczęta |
+| 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
+| 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |
+| 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⬜ nierozpoczęta |
+| 9 | Statystyki per oddział | [`86cbahqk0`](https://app.clickup.com/t/86cbahqk0) | ⬜ nierozpoczęta |
 
 Każde zadanie główne ma subtaski odpowiadające krokom z
 [planu wdrożenia](plan-wdrozenia.md), z kryterium akceptacji i sposobem weryfikacji.
