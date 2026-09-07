@@ -2,8 +2,7 @@
 
 > **Status: PLANNED.** Designed, not yet implemented.
 > **The branch entity already exists** (phases 0-2) and an admin can manage branches in the
-> panel — but **assigning staff to a branch and narrowing their view is phase 8**, on hold by
-> the product owner's decision. None of the division of work described below is live yet.
+> panel — but **assigning staff to a branch and narrowing their view is phase 8**, planned for a later stage. The division of work described below is the target state.
 > Plan: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
 
 **For owners:** you assign each employee the branch they work at. From then on they only see
