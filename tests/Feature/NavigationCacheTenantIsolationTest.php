@@ -160,18 +160,17 @@ class NavigationCacheTenantIsolationTest extends TestCase
         // Warm tenant A's own bucket first.
         $this->get("http://{$orgA->slug}.registro.local/")->assertOk();
 
-        // Flush the session before the root-domain visit — ResolveTenant writes
-        // session('tenant_id') on EVERY subdomain visit (for Livewire requests that skip
-        // the middleware), and TenantFeature::currentTenant()'s 3rd fallback branch reads
-        // it back. Without this flush, the assertion below fails for a DIFFERENT, already
-        // documented reason than this test targets: BelongsToOrganization's global scope
-        // itself (not this fix's cache key) resolves the stale session tenant and serves
-        // tenant A's page on the root domain — the same failure class as VULN-003
-        // Layers 1/2/5 and models.md's GOTCHA LC-9, orthogonal to NavigationService's cache
-        // key and out of this task's scope (confirmed empirically while writing this test;
-        // NavigationService's own cacheKey() already avoids this fallback deliberately —
-        // see its docblock — but the underlying Page query's tenant scope does not).
-        $this->flushSession();
+        // No session flush needed as of VULN-003 Layer 8 (2026-08-31): this test used to
+        // flush the session here specifically to dodge a DIFFERENT, then out-of-scope bug —
+        // TenantFeature::currentTenant()'s 3rd (session) fallback branch let the Page query
+        // behind this very request inherit tenant A's session-poisoned tenant on the root
+        // domain, independent of NavigationService's own (already tenant-scoped) cache key.
+        // This is a REAL HTTP request (not Livewire::test()), so ResolveTenant genuinely ran
+        // and that branch's remaining test-only guard (see TenantFeature::currentTenant())
+        // never fires here. Falsified empirically: reintroducing the branch unconditionally
+        // (git stash of TenantFeature.php only, reverted after) makes this exact assertion
+        // fail with "Not to contain: Strona Root A" — i.e. this test now also pins Layer 8,
+        // not just the cache-key fix it was originally written for.
 
         // Root domain — ResolveTenant sets no `tenant` attribute (see routes/web.php's own
         // "public home route" docblock). Must not blow up, and must not show tenant A's menu.
