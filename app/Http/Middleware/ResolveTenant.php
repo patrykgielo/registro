@@ -108,8 +108,23 @@ class ResolveTenant
 
         $request->attributes->set('tenant', $tenant);
 
-        // Store tenant ID in session so Livewire update requests (which skip this
-        // middleware) can still resolve the tenant via TenantFeature::currentTenant().
+        // Kept mainly for diagnostics/tests (VULN-003 Layer 8, 2026-08-31) — no
+        // PRODUCTION code path reads session('tenant_id') anymore. It used to be
+        // TenantFeature::currentTenant()'s 3rd fallback branch, added for Livewire
+        // update requests that once bypassed this middleware entirely; that branch was
+        // removed from production reachability because the same session key gets
+        // poisoned by an unrelated, anonymous visit to ANY tenant subdomain and then
+        // leaks into the next request on the ROOT domain, which has no tenant of its
+        // own. Livewire no longer needs this write to resolve correctly: since Layer 7,
+        // ResolveTenant runs directly on /livewire/update (base 'web' group) and
+        // re-derives the tenant from that request's own real Host header. What remains
+        // of the read side is a narrowly test-only escape hatch (APP_ENV=testing AND
+        // this middleware never ran for the request) for Livewire::test()-driven
+        // Filament tests — see TenantFeature::currentTenant() for the exact guard. Left
+        // in place because LivewireAdminTenantIsolationTest asserts on it as a
+        // correctness signal for the persistent-middleware replay (see that test + the
+        // Livewire isolation doc) and removing a write the test-only branch still reads
+        // is out of scope for this fix. Do NOT widen the read side beyond that guard.
         if ($request->hasSession()) {
             $request->session()->put('tenant_id', $tenant->id);
         }

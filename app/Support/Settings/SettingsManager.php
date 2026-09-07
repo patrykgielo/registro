@@ -63,10 +63,12 @@ class SettingsManager
      * console command run with no ambient tenant context: it writes the row EVERY tenant
      * without their own override inherits from, while an operator who typed `set(...)`
      * expecting to fix one tenant's setting may not realize that. setGlobal()'s own
-     * docblock already warns about the opposite direction (a stale `session('tenant_id')`
-     * silently tenant-scoping an intended-global write, see models.md's GOTCHA LC-9) — this
-     * is the missing warning for this method. Not currently reachable through any path this
-     * codebase's Filament panels use (found in review, 2026-08-14).
+     * docblock already warns about the opposite direction — until VULN-003 Layer 8
+     * (2026-08-31), a stale `session('tenant_id')` could silently tenant-scope an
+     * intended-global write (models.md's GOTCHA LC-9; that specific fallback branch is
+     * now gone from every real HTTP request) — this is the missing warning for this
+     * method. Not currently reachable through any path this codebase's Filament panels
+     * use (found in review, 2026-08-14).
      *
      * @param  string  $path  Dot notation path (group.key)
      * @param  mixed  $value  Value to store
@@ -97,8 +99,12 @@ class SettingsManager
 
     /**
      * Read a platform-GLOBAL setting (organization_id IS NULL), bypassing tenant
-     * resolution entirely. Use from the platform panel where a stale session
-     * `tenant_id` (left by a prior subdomain visit) must NOT scope the lookup.
+     * resolution entirely. Use from the platform panel, which never resolves a tenant
+     * of its own — this keeps the lookup correct regardless of TenantFeature's
+     * resolution order. Originally written to also guard against a stale session
+     * `tenant_id` (left by a prior subdomain visit) scoping the lookup; that fallback
+     * branch is now gone from every real HTTP request as of VULN-003 Layer 8
+     * (2026-08-31) — see TenantFeature::currentTenant().
      */
     public function getGlobal(string $path, mixed $default = null): mixed
     {
@@ -124,9 +130,16 @@ class SettingsManager
         [$group, $key] = $this->parsePath($path);
 
         // withoutEvents mutes the Setting model's BelongsToOrganization `creating` hook,
-        // which would otherwise auto-fill organization_id from a stale session tenant_id
-        // (left by a prior subdomain visit) and scope this "global" write to that tenant.
-        // withoutGlobalScope skips the read-side tenant filter when matching the existing row.
+        // which would otherwise auto-fill organization_id from whatever tenant
+        // TenantFeature::currentTenant() resolves in the calling context and scope this
+        // "global" write to that tenant instead. Originally guarding specifically against
+        // a stale session tenant_id (left by a prior subdomain visit); that fallback
+        // branch is now gone from every real HTTP request as of VULN-003 Layer 8
+        // (2026-08-31), but the guard stays — defense-in-depth against any future
+        // ambient-tenant context (including the narrow Livewire::test()-only escape
+        // hatch that branch still has), not just the original session case.
+        // withoutGlobalScope skips the read-side tenant filter when matching the
+        // existing row.
         Setting::withoutEvents(function () use ($group, $key, $value) {
             Setting::withoutGlobalScope('organization')->updateOrCreate(
                 ['organization_id' => null, 'group' => $group, 'key' => $key],
@@ -147,12 +160,16 @@ class SettingsManager
 
     /**
      * Read a setting scoped to an EXPLICITLY given organization (or none), bypassing
-     * currentTenant()/session-fallback resolution entirely.
+     * currentTenant() resolution entirely.
      *
      * Use when the calling context has already deterministically resolved the tenant for
-     * THIS request (e.g. the `tenant` request attribute set by ResolveTenant) and the
-     * decision must not be silently overridden by a stale `session('tenant_id')` left by
-     * a prior subdomain visit — see CheckRegistrationEnabled for the motivating case.
+     * THIS request (e.g. the `tenant` request attribute set by ResolveTenant) — see
+     * CheckRegistrationEnabled for the motivating case. Originally written to also guard
+     * against a stale `session('tenant_id')` left by a prior subdomain visit
+     * (currentTenant()'s 3rd fallback branch); that branch is now gone from every real
+     * HTTP request as of VULN-003 Layer 8 (2026-08-31), but explicit-organization
+     * scoping remains correct on its own merits — it doesn't depend on ambient
+     * request/session state at all.
      *
      * A tenant with no row of its own INHERITS the global value — that inherited value is
      * NEVER cached under the tenant's own cache key (only "this tenant has no row of its
