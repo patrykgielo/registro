@@ -274,16 +274,45 @@ dotknięcia magazynu**. `multi_location_stock` nadal OFF.
 
 ### Faza 3 — Egzemplarze
 
+**Cel biznesowy (doprecyzowany 2026-09-07):** nie sama ewidencja, tylko **kontrola, który
+konkretny sprzęt został wydany i czy wrócił ten sam**. Numer seryjny bez powiązania z wydaniem
+służy inwentaryzacji, a wypożyczalnia potrzebuje kontroli.
+
 | # | Krok |
 |---|---|
-| 3.1 | Migracja `service_units`: `organization_id`, `service_id`, **`location_id`**, `serial_number`, `inventory_number`, `status` (`available`/`maintenance`/`in_transit`/`retired`), `acquired_at`, `notes`; UNIQUE `(organization_id, serial_number)` |
+| 3.1 | Migracja `service_units`: `organization_id`, `service_id`, **`location_id`**, `identifier` (**nullable, wolny tekst**), `inventory_number`, `status` (`available`/`maintenance`/`in_transit`/`retired`), `acquired_at`, `notes`; UNIQUE `(organization_id, identifier)` — MySQL dopuszcza wiele `NULL`, więc egzemplarze bez numeru nie kolidują |
 | 3.2 | Obserwator utrzymujący kotwicę: `stocks.quantity = COUNT(units WHERE location_id = L AND status = 'available')`, **w tej samej transakcji** |
-| 3.3 | Generator: z istniejącej `quantity_total` twórz N egzemplarzy bez numeru w oddziale domyślnym (numer uzupełniany ręcznie) |
-| 3.4 | Panel: RelationManager „Egzemplarze" na `ServiceResource` — nr seryjny, oddział, status, historia |
+| 3.3 | Generator: z istniejącej `quantity_total` twórz N egzemplarzy **bez numeru** w oddziale domyślnym |
+| 3.4 | Panel: RelationManager „Egzemplarze" na produkcie — numer, oddział, status, historia |
 | 3.5 | Serwis pojedynczej sztuki: `status = maintenance` zdejmuje 1 z kotwicy (dziś jedyny wyłącznik to `is_active` na **całej** usłudze — all-or-nothing) |
+| 3.6 | **Wydanie: pracownik wskazuje egzemplarz.** Powiązanie egzemplarza z pozycją zamówienia w momencie wydania. Jeśli wybrana sztuka nie ma jeszcze numeru — pracownik wpisuje go **na miejscu** |
+| 3.7 | **Zwrot: walidacja zgodności.** Numer inny niż wydany → **wyraźne ostrzeżenie i wymagane potwierdzenie**, nigdy twarda blokada — wymiana sprzętu w trakcie wypożyczenia bywa uzasadniona |
+| 3.8 | Numery egzemplarzy w **protokole wydania i zwrotu** (PDF) |
+
+#### Decyzje właściciela produktu (2026-09-07)
+
+**Numer to własne oznaczenie firmy**, nie numer producenta — pole tekstowe **bez wymuszonego
+formatu**. Wypożyczalnie mają swoje systemy oznaczeń („KOP-04" na naklejce) i wymuszenie
+formatu wykluczyłoby dokładnie tych odbiorców.
+
+**Egzemplarze powstają dla każdego produktu, numer jest opcjonalny.** Świadomy kompromis:
+spójność kosztem tego, że część sztuk zostanie nienumerowana. Rozbrojone krokiem 3.6 — numer
+uzupełnia się przy pierwszym wydaniu, więc ewidencja wypełnia się przez używanie, a nie
+jednorazowym spisem magazynu.
+
+**Egzemplarz jest widoczny w zamówieniu dla administratora i pracownika.** Klient go nie widzi
+i nie potrzebuje — front się nie zmienia.
+
+**Przypisanie następuje przy wydaniu, nie przy rezerwacji.** Klient rezerwuje „młot wiertarski",
+pracownik przy odbiorze wskazuje konkretną sztukę. Przypisywanie przy składaniu zamówienia
+komplikowałoby dostępność i wymagało zwalniania przypisań przy anulowaniu.
 
 > **Egzemplarz wypożyczony pozostaje `available`** i przypisany do oddziału wydania. Zajętość
 > mieszka wyłącznie w rezerwacjach. Złamanie tej zasady = podwójne odejmowanie sprzętu.
+>
+> To **nie** stoi w sprzeczności z krokiem 3.6: status odpowiada na pytanie „gdzie mieszka
+> i czy sprawny", a powiązanie z zamówieniem — „u kogo fizycznie jest". Dwa różne pytania,
+> dwa różne pola.
 
 ### Faza 4 — Rdzeń dostępności
 
