@@ -92,6 +92,24 @@ regresji na kodzie, który powstał po realnym bugu. Zawężenie locka to osobna
 `INSERT IGNORE` na duplikacie klucza unikalnego zakłada S-lock i w połączeniu z `lockForUpdate`
 jest generatorem zakleszczeń — czyli dokładnie tym, co eager-materializacja miała wyeliminować.
 
+**Faza 3 (`ServiceUnitObserver`) trzyma się tego wyłącznie przez niezmiennik A** ("egzemplarz
+wypożyczony pozostaje `available`", `.claude/rules/rental-availability.md` §5) — wydanie i zwrot
+z definicji nie zmieniają ani `status`, ani `location_id` egzemplarza, więc obserwator (który
+przelicza kotwicę i woła `insertOrIgnore` wyłącznie gdy jedno z tych dwóch pól faktycznie się
+zmieniło — `wasChanged('location_id') || wasChanged('status')`) w ogóle nie odpala na gorącej
+ścieżce dostępności. Materializacja zachodzi tylko przy `created` i przy realnej zmianie
+lokalizacji/statusu — obie to akcje panelu, nigdy ścieżka trzymająca `Service::lockForUpdate()`.
+
+**Na ścieżce trzymającej `Service::lockForUpdate()` NIE WOLNO zmieniać `status` ani `location_id`
+egzemplarza `ServiceUnit`.** Zrobienie tego uruchomi ten sam `insertOrIgnore` obserwatora
+wewnątrz aktywnego locka — dokładnie ten deadlock, który powyższy akapit każe trzymać poza
+ścieżką blokady. Jeśli przyszły etap (wydanie/zwrot z panelu) kiedykolwiek będzie musiał zmienić
+jedno z tych pól w tej samej transakcji co lock — kotwica musi zostać zmaterializowana **przed**
+wejściem w lock, przez `App\Actions\Inventory\SyncServiceLocationStock::forService()`, nie
+liczyć na to, że obserwator zrobi to bezpiecznie w locie. Dowód braku zapisu na kotwicy przy
+zmianie pola niezwiązanego ze statusem/lokalizacją:
+`ServiceUnitObserverTest::test_updating_a_field_unrelated_to_status_or_location_never_touches_the_anchor_table`.
+
 ## Zasada 5 — filtr lokalizacji w outer WHERE
 
 Na `order_items` filtr `location_id` idzie **w zewnętrznym WHERE**. Nigdy:
