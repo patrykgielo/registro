@@ -344,20 +344,52 @@ class CartService
                 'expires_at' => $expiresAt,
             ]);
 
+            // Faza 3 krok 2 (plan-wdrozenia.md, "Ilość > 1 — rozstrzygnięcie"): a cart item
+            // with quantity N expands into N separate OrderItems of quantity 1 each — Faza 3's
+            // service_units gives staff exactly one slot per order item to record which
+            // physical unit was handed over/returned, and a quantity=3 row has nowhere to put
+            // three different unit numbers.
+            //
+            // Splitting total_price by dividing by the ORIGINAL quantity is exact to the cent
+            // today, but NOT for the reason it looks like: calculatePricing() applies
+            // round(..., 2) to the WHOLE product, AFTER multiplying by quantity
+            // (RentalAvailabilityService.php:259 and :267) — it does not round a per-unit rate
+            // and then multiply. What actually guarantees zero remainder is that every price
+            // input is decimal(10,2) (price_per_day, price_per_week, price_per_day_long) and
+            // every multiplier in the formula is an integer (durationDays, weeks, remainingDays,
+            // quantity). A whole number of grosze times an integer is still a whole number of
+            // grosze, so that round() only scrubs float representation noise — it never discards
+            // real value, and dividing back by quantity recovers the per-unit amount exactly.
+            //
+            // That invariant lives in the price COLUMN TYPES and in the multipliers being
+            // integers — not here. If a future pricing rule ever introduces a fractional
+            // per-unit rate (the obvious candidate is $weeklyPerDay = price_per_week / 7, which
+            // calculatePricing():250 already computes but today only compares, never multiplies),
+            // this division starts leaving a remainder and this block must distribute it
+            // instead — otherwise SUM(order_items.total_price) drifts a grosz from orders.subtotal.
             foreach ($items as $item) {
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'service_id' => $item->service_id,
-                    'service_name' => $item->service->name,
-                    'quantity' => $item->quantity,
-                    'start_date' => $item->start_date,
-                    'end_date' => $item->end_date,
-                    'rental_days' => $item->rental_days,
-                    'unit_price' => $item->unit_price,
-                    'total_price' => $item->total_price,
-                    'price_snapshot' => $item->price_snapshot,
-                    'deposit_amount' => $item->service->deposit_amount ?? 0,
-                ]);
+                $perUnitTotalPrice = round(((float) $item->total_price) / $item->quantity, 2);
+                // Only `total` is re-scoped to one unit; `unit`/`unit_price` are per-unit
+                // already, so they carry over verbatim. Nothing reads price_snapshot today
+                // (grepped app/ and resources/) — a future reader must not assume `total`
+                // still means "whole cart line", because since this step it means one unit.
+                $perUnitSnapshot = array_merge($item->price_snapshot ?? [], ['total' => $perUnitTotalPrice]);
+
+                for ($unit = 0; $unit < $item->quantity; $unit++) {
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'service_id' => $item->service_id,
+                        'service_name' => $item->service->name,
+                        'quantity' => 1,
+                        'start_date' => $item->start_date,
+                        'end_date' => $item->end_date,
+                        'rental_days' => $item->rental_days,
+                        'unit_price' => $item->unit_price,
+                        'total_price' => $perUnitTotalPrice,
+                        'price_snapshot' => $perUnitSnapshot,
+                        'deposit_amount' => $item->service->deposit_amount ?? 0,
+                    ]);
+                }
             }
 
             // Optionally persist checkout data back to the user's profile

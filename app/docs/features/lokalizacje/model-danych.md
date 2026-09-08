@@ -211,9 +211,10 @@ zagregowaną wartością z ukrytego pola.
 
 ### `service_units` (nowa) — egzemplarze
 
-`organization_id`, `service_id`, `location_id`, `serial_number`, `inventory_number`,
-`status` (`available` / `maintenance` / `in_transit` / `retired`), `acquired_at`, `notes`
-UNIQUE `(organization_id, serial_number)`
+`organization_id`, `service_id`, `location_id`, **`identifier`** (nie `serial_number` — patrz
+niżej), `inventory_number`, `status` (`available` / `maintenance` / `in_transit` / `retired`),
+`acquired_at`, `notes`
+UNIQUE `(organization_id, identifier)`
 
 Jeden `location_id`, nie para „macierzysta/bieżąca" — bo zwrot idzie **zawsze** do oddziału
 wydania, więc te dwie wartości rozjeżdżałyby się wyłącznie na czas świadomego przeniesienia,
@@ -221,6 +222,217 @@ co pokrywa status `in_transit`.
 
 `status = 'maintenance'` zdejmuje sztukę z kotwicy. Dziś jedynym wyłącznikiem jest `is_active`
 na **całej** usłudze (`app/Models/Service.php:148`) — all-or-nothing.
+
+**Nazewnictwo kolumny — `identifier`, nie `serial_number`.** Ta sekcja mówiła wcześniej
+`serial_number`; to była rozbieżność z `plan-wdrozenia.md`, który jest tu rozstrzygający
+(sekcja „Nazewnictwo kolumny — rozstrzygnięcie"). Powód: to jest **własne oznaczenie firmy**
+(„KOP-04" na naklejce), nie numer seryjny producenta — stąd `identifier`, pole tekstowe bez
+wymuszonego formatu, nullable.
+
+#### Zaimplementowane w krokach 3.1-3.3 (2026-09-08, gałąź `feature/lokalizacje-faza3-egzemplarze`)
+
+`database/migrations/2026_09_08_090000_create_service_units_table.php` (schemat) +
+`2026_09_08_090001_generate_service_units_from_quantity_total.php` (generator) +
+`App\Models\ServiceUnit` + `App\Enums\ServiceUnitStatus` + `App\Observers\ServiceUnitObserver`
+(rejestrowany w `AppServiceProvider` obok `ServiceLocationStockObserver`).
+
+**Status jako plain `string` + PHP enum, nie `$table->enum()`.** W całym repo nie ma ani
+jednego `$table->enum(` (zweryfikowane grepem przed napisaniem migracji) — `.claude/rules/
+tests.md`'s sekcja „MySQL 8.0 gate" tłumaczy dlaczego: SQLite nigdy nie egzekwuje realnego
+ENUM-a, więc literalna kolumna enum ujawniłaby rozjazd dopiero na bramce MySQL, a istniejące
+kolumny statusowe (`orders.status`, `rentals.status`) już używają `string()` + cast na
+`BackedEnum`.
+
+**UNIQUE `(organization_id, identifier)` z wieloma `NULL`-ami — zweryfikowane, nie założone.**
+SQLite i MySQL obie traktują `NULL` jako różny od każdego innego `NULL` w indeksie unikalnym —
+to standardowe zachowanie SQL, nie idiosynkrazja sterownika, i nie jest jednym z rozjazdów,
+przed którymi ostrzega `tests.md` (te dotyczą ENUM-ów, kolejności kluczy JSON, `migrate:rollback
+--path`). Test wykonywalny:
+`CreateServiceUnitsTableMigrationTest::test_multiple_units_without_an_identifier_do_not_collide()`.
+
+**Obserwator (krok 3.2) — pełny przelicznik, nie inkrementacja.** `ServiceUnitObserver` liczy
+`COUNT(service_units WHERE service_id = S AND location_id = L AND status = 'available')` na
+nowo przy każdym create/update/delete jednostki, tym samym wzorcem co
+`Service::recalculateQuantityTotal()` (SUM, nie `+1`/`-1`) — odporne na pominięty przypadek
+brzegowy, bo każdy kolejny zapis tej pary samoleczy się do prawdy. Przy `update()` zmieniającym
+`location_id` lub `status` przelicza **obie** pary (starą i nową) — pominięcie starej
+zostawiłoby jej kotwicę trwale zawyżoną o jednostkę, której już tam nie ma. Po przeliczeniu
+kotwicy woła też `Service::recalculateQuantityTotal()` na tym samym serwisie, w tej samej
+transakcji — bez tego mirror `quantity_total` rozjechałby się z sumą anchorów natychmiast po
+pierwszym zapisie jednostki, a `getAvailableQuantity()` czyta `quantity_total` **dosłownie**
+już dziś (Zasada 2), nie dopiero po Fazie 4.
+
+**`is_active` na `service_location_stocks` — świadomie NIETKNIĘTE przez ten obserwator.**
+Rozstrzygnięcie: `is_active` to przełącznik operatora „czy ten oddział w ogóle sprzedaje ten
+produkt", nieczytany dziś przez żadną logikę (patrz sekcja Fazy 2 wyżej). Wysłanie WSZYSTKICH
+jednostek usługi na serwis w danym oddziale i tak poprawnie komunikuje „zero dostępnych teraz"
+przez samo `quantity = 0` z przelicznika — dopisanie do tego automatycznego przestawienia
+`is_active = false` zlałoby dwa różne pytania („chwilowo zero" vs „nie oferujemy tu wcale") w
+jedno i byłoby realną zmianą zachowania dla przyszłego kodu, który kiedyś zacznie czytać
+`is_active` — nie neutralnym no-opem. Test:
+`ServiceUnitObserverTest::test_sending_the_only_unit_to_maintenance_does_not_touch_the_anchors_is_active_flag()`.
+
+**Generator (krok 3.3) — ryzyko sprawdzone, nie pominięte.** Dosłowne wykonanie instrukcji
+(„z `quantity_total` twórz N egzemplarzy w oddziale domyślnym") koliduje z tenantem, który ma
+**już** rozbity stan na więcej niż jeden oddział: wszystkie N jednostek trafiłyby do oddziału
+głównego, obserwator nadpisałby jego kotwicę całym `quantity_total`, a stan pozostałych
+oddziałów zostałby z liczbą bez żadnych fizycznych jednostek za nią. Migracja generatora dostała
+więc dodatkowy guard (`hasStockOutsidePrimary`) — usługa, której stan jest już rozbity na więcej
+niż oddział główny, jest **pomijana całkowicie**, nie kolidowana. **Nie dotyczy dziś żadnego
+realnego tenanta** (0/8 ma `multi_location_stock` włączone — Faza 2), więc to zabezpieczenie
+przed przyszłością, nie naprawiony bug. Redystrybucja jednostek dla faktycznie rozbitych
+tenantów zostaje jawnie **poza zakresem** tego kroku — należy do przyszłych kroków 3.4/3.5.
+
+Idempotencja generatora (migracja nie może zdublować jednostek przy ponownym uruchomieniu) nie
+opiera się na UNIQUE `(organization_id, identifier)` — każdy wiersz z tego generatora ma
+`identifier = NULL`, więc ograniczenie unikalności nigdy by tego nie złapało (patrz wyżej: wiele
+`NULL`-i współistnieje). Strażnikiem jest sprawdzenie na poziomie usługi: usługa, która ma
+**jakikolwiek** wiersz `service_units`, jest pomijana w całości, nigdy niedopełniana.
+
+Testy: `tests/Feature/Database/CreateServiceUnitsTableMigrationTest.php`,
+`tests/Feature/Database/GenerateServiceUnitsFromQuantityTotalMigrationTest.php`,
+`tests/Unit/Models/ServiceUnitTenantIsolationTest.php`,
+`tests/Feature/Organizations/ServiceUnitObserverTest.php`.
+
+**Niezweryfikowane w tym kroku:** zachowanie FK `cascadeOnDelete` na realnym MySQL (dowiedzione
+tylko na SQLite lokalnie, tak jak Faza 2 — bramka MySQL w CI jest jedynym miejscem, które to
+faktycznie sprawdza); pełny scenariusz twardego usunięcia organizacji przez `service_units`
+(Faza 2 ma na to dedykowany `ServiceLocationStockCascadeDeletionTest` przez prawdziwy model
+`Organization` — dla `service_units` nie napisano odpowiednika w tym kroku, tylko testy FK na
+poziomie samej tabeli); wpływ na panel/RelationManager (kroki 3.4+ — nietworzone tutaj).
+
+#### Zaimplementowane w krokach 3.6-3.7 (2026-09-08, ta sama gałąź) — `order_items.service_unit_id`
+
+`database/migrations/2026_09_08_100000_add_service_unit_id_to_order_items_table.php` dodaje
+**`order_items.service_unit_id`** (nullable, `nullOnDelete`) — kolumna FK, nie tabela pośrednia.
+Uzasadnienie: krok 2 tej fazy (patrz „Ilość > 1 — rozstrzygnięcie" wyżej) sprawił, że **jedna
+pozycja zamówienia = jeden egzemplarz zawsze i wszędzie**, więc tabela pośrednia miałaby sens
+tylko wtedy, gdyby jedna pozycja mogła nieść wiele sztuk — a nie może.
+
+**`nullOnDelete`, nie `restrictOnDelete`** — mimo że `order_items` jest rekordem prawnym
+(retencja Art. 112 VAT, `.claude/rules/migrations.md`'s tabela klasyfikacji FK). Rozstrzyga
+**która strona FK jest chroniona**: `order_items` to legalny rekord, `service_units` to po drugiej
+stronie tego konkretnego FK dane operacyjne bez wymogu retencji. `restrictOnDelete` uczyniłoby
+egzemplarz **trwale nieusuwalny** od pierwszego wydania na cały okres retencji zamówienia (5-6
+lat) — dokładnie ten sam błąd, co „Faza 2's code-reviewer BLOKER 2" opisany wyżej przy
+`service_units.service_id`. Precedens z `.claude/rules/migrations.md`'s tabeli FK onDelete Policy:
+`appointments.staff_id -> nullOnDelete` dla identycznego kształtu problemu.
+
+Izolacja tenanta dla tego FK **nie idzie przez schemat** — `order_items` nie ma własnej kolumny
+`organization_id` (izolacja przez JOIN na zamówieniu, jak w `OrderItem::scopeBlockingAvailability()`).
+Egzekwuje ją `OrderService::handOver()`/`completeReturn()` przez `resolveUnitForItem()`: `service_unit.
+service_id === order_item.service_id` (immutable, więc tranzytywnie pina tenanta) **oraz**
+`service_unit.organization_id === order.organization_id` jako tani, nadmiarowy check.
+
+**Egzemplarz wypożyczony pozostaje `available`** (Invariant A, Zasada 5 wyżej) — przypisanie
+zapisuje WYŁĄCZNIE `order_items.service_unit_id`, nigdy `service_units.status`/`location_id`.
+Konflikt (ta sama sztuka, nakładające się terminy) sprawdza nowy scope
+`OrderItem::scopeAssignedToUnitOverlapping()`, ograniczony do zamówień w stanie `confirmed`/
+`in_progress` — `completed` jest świadomie wykluczone, bo zwrócona sztuka wraca do puli.
+
+**Numer nadawany przy wydaniu** (plan-wdrozenia.md krok 3.6: „Jeśli wybrana sztuka nie ma jeszcze
+numeru — pracownik wpisuje go na miejscu") — `OrderService::handOver()`'s
+`assignIdentifierIfMissing()` wypełnia `service_units.identifier` TYLKO gdy jest `NULL`, nigdy nie
+nadpisuje istniejącego numeru, i sam sprawdza kolizję z UNIQUE `(organization_id, identifier)`
+przed zapisem (czytelny komunikat zamiast surowego `QueryException`).
+
+**Ślad „kto przyjął i czy sztuka się zgadzała"** (wymóg właściciela produktu, potwierdzony wprost
+w zgłoszeniach ClickUp 123k99cu2b3/123k99cu2b4) nie dostał nowej kolumny: `OrderItem::$auditInclude`
+(`app/Traits/Auditable.php`) loguje każdą zmianę `service_unit_id` z `user_id`, a
+`state_histories.custom_properties` (mechanizm biblioteki stanu, już istniejący dla
+`responsible_id`/`responsible_type`) niesie przy każdym przejściu `in_progress`/`completed`
+strukturalny opis niezgodności — `['mismatch_confirmed' => bool, 'mismatches' => [['order_item_id',
+'service_name', 'handed_out_unit_id', 'handed_out_label', 'returned_unit_id', 'returned_label'],
+...]]` — czyli **oba numery, per pozycja**, obok automatycznie zapisanego `responsible_id` tej samej
+transakcji stanu. Przy zwrocie niezgodność **nie blokuje** zwrotu (zgłoszenie 123k99cu2b4: „twarda
+blokada uniemożliwiłaby zamknięcie takiego wypożyczenia i zmusiła pracownika do obchodzenia
+systemu") — wymaga jawnego potwierdzenia (`mismatch_confirmed`), ale w odróżnieniu od siostrzanego
+`amount_mismatch_confirmed` na `record_offline_payment` (tam: informacyjny checkbox, egzekwowanie
+tylko w serwisie) TU checkbox ma `->rule('accepted')` — Filament odrzuca zapis formularza od razu,
+zanim żądanie w ogóle dotrze do `OrderService::completeReturn()` — bo zgłoszenie wprost wymaga
+„nie może dać się kliknąć dalej przypadkiem". Egzekwowanie w serwisie zostaje jako druga, niezależna
+warstwa (ten sam formularz teoretycznie dałoby się ominąć inną ścieżką wywołania metody serwisu).
+
+**Numer przy zwrocie — sugerowany, nigdy wymuszony** (zgłoszenie 123k99cu2b4, przypadek brzegowy
+zostawiony do rozstrzygnięcia): gdy wydany egzemplarz nie ma numeru, nie ma czego porównać z tym,
+co wraca. `ServiceUnitAssignmentForms::returnFields()` pokazuje wtedy to samo opcjonalne pole co
+przy wydaniu (`return_identifiers.{itemId}`), a `OrderService::completeReturn()`'s
+`assignIdentifierIfMissing()` — ten sam prywatny helper co przy wydaniu — wypełnia numer TYLKO
+jeśli faktycznie wybrany egzemplarz go nie ma.
+
+Cztery miejsca UI (`OrderResource.php`'s `mark_in_progress`/`complete`, `EditOrder.php`'s te same
+dwie akcje nagłówkowe) dzielą jeden schemat formularza
+(`App\Filament\Resources\OrderResource\Support\ServiceUnitAssignmentForms`) i wołają wyłącznie
+`OrderService::handOver()`/`completeReturn()` — żadnej logiki domenowej w samym Filamencie.
+
+Testy: `tests/Unit/Services/OrderServiceUnitAssignmentTest.php` (33 przypadki, domena),
+`tests/Feature/Filament/OrderServiceUnitAssignmentFilamentActionTest.php` (9 przypadków,
+dowód że wszystkie cztery miejsca UI zachowują się identycznie, w tym że `mismatch_confirmed`
+faktycznie blokuje zapis na poziomie Filamenta — `assertHasActionErrors`/`assertHasTableActionErrors`,
+nie tylko przechwycony wyjątek serwisu).
+
+#### KRYTYCZNA poprawka po code review (2026-09-08) — anulowanie po wydaniu nie zwalniało sztuki
+
+`OrderItem::scopeAssignedToUnitOverlapping()` blokowała pierwotnie tylko statusy `confirmed`/
+`in_progress`. `OrderService::cancel()` wprost dopuszcza anulowanie zamówienia `in_progress`
+(wyjątkowy przypadek: wymuszony offboarding tenanta) i **nie czyści** przypisania egzemplarza —
+takie zamówienie wypadało więc z zakresu sprawdzenia, a sztuka wyglądała na wolną. Recenzent
+odtworzył to scratch-testem: wydanie → anulowanie z `in_progress` → drugie wydanie tej samej
+sztuki na nakładający się termin **przechodziło**. Dwóch klientów, jeden ponumerowany egzemplarz,
+dwa podpisane protokoły.
+
+**Naprawa oparta na zweryfikowanym fakcie** (grep całego `app/`+`database/` przed napisaniem
+poprawki): `service_unit_id` jest zapisywane WYŁĄCZNIE w `OrderService::handOver()` i
+`::completeReturn()`. Skoro tak, obecność niepustego `service_unit_id` na zamówieniu w statusie
+innym niż `completed`/`refunded` **zawsze** opisuje sprzęt, który wyszedł i nie wrócił —
+niezależnie od tego, dlaczego zamówienie przestało iść naprzód. Reguła: blokują wszystkie
+statusy poza `completed` i `refunded` (`whereNotIn`, nie `whereIn` na wąskiej liście).
+
+**`refunded` wykluczone RAZEM z `completed`, nie samo `completed`** — doprecyzowanie względem
+pierwotnego sformułowania recenzenta („wszystkie poza completed"): maszyna stanów osiąga
+`refunded` WYŁĄCZNIE z `completed` (`OrderStatusStateMachine::transitions()`), czyli fizyczny
+zwrot już nastąpił przy przejściu w `completed` — późniejszy zwrot pieniędzy nie może na nowo
+zablokować sprzętu, który już wrócił.
+
+**Świadoma cena, nieodwracalna dziś:** sztuka z anulowanego-po-wydaniu zamówienia zostaje
+zablokowana na swoje okno dat i **nie ma dziś ścieżki jawnego zwolnienia**. To przyjęty
+kompromis (decyzja właściciela produktu za pośrednictwem code review) — zablokowany sprzęt da
+się odblokować ręcznie (support), dwóch klientów z protokołem na to samo urządzenie już nie.
+**Nie „naprawiaj" tego przez rozluźnienie filtra statusów** bez dodania najpierw jawnej akcji
+zwolnienia.
+
+#### Blokady na `ServiceUnit` (dodane w tej samej poprawce)
+
+`OrderService::resolveUnitForItem()` blokuje teraz wiersz `ServiceUnit` (`lockForUpdate()`) w tej
+samej transakcji, w której zamówienie jest już zablokowane — bez tego dwóch pracowników wydających
+tę samą sztukę w tej samej chwili piszą do RÓŻNYCH wierszy `order_items`, więc żaden unique ich nie
+zatrzymuje i oboje widzą „jeszcze nieprzypisana". Kolejność blokad: `handOver()`/`completeReturn()`
+sortują przypisania po `unit_id` rosnąco PRZED pętlą (`OrderService::sortAssignmentsByUnitId()`) —
+gdy jedno zgłoszenie dotyka więcej niż jednej sztuki, każda współbieżna transakcja w tym kodzie
+blokuje je w tej samej globalnej kolejności, co wyklucza zakleszczenie między dwoma zgłoszeniami
+dotykającymi tych samych dwóch sztuk w odwrotnej kolejności (ten sam problem co
+`rental-availability.md` §3, zastosowany do innej tabeli). Brak dedykowanego testu
+dwupołączeniowego na realnym MySQL dla tego konkretnego locka — ten sam brak co reszta
+tego kroku, `tests/Concurrency/` nie ma dziś scenariusza per-unit.
+
+#### `order_items.service_unit_identifier_snapshot` (dodane w tej samej poprawce, migracja NIEURUCHOMIONA na dev-MySQL)
+
+`service_unit_id` jest `nullOnDelete` — słusznie (patrz uzasadnienie tej kolumny wyżej), ale to
+znaczy, że po usunięciu egzemplarza sam FK **nie pozwala odtworzyć**, że wydano „KOP-04": audyt
+loguje wyłącznie liczbowe `service_unit_id`, a wiersz, do którego on wskazywał, może już nie
+istnieć. Krok 3.8 wstawia numer na protokół — dokument, który klient podpisuje — więc nie może
+zależeć od relacji, która może zniknąć.
+
+`database/migrations/2026_09_08_110000_add_service_unit_identifier_snapshot_to_order_items_table.php`
+dodaje nullable `order_items.service_unit_identifier_snapshot`, wypełniany w TEJ SAMEJ operacji
+`update()` co `service_unit_id` — w `handOver()` przy pierwszym przypisaniu i w `completeReturn()`
+przy potwierdzonej niezgodności. Dokładnie ten sam wzorzec, jakiego ten model już używa dla
+`service_name` i `price_snapshot` (kopia punktu-w-czasie obok FK, nie zamiast niego). **Migracja
+NIE została uruchomiona na dev-MySQL** — team-lead zdecyduje kiedy i gdzie; ćwiczona dotąd
+wyłącznie przez efemeryczny SQLite `RefreshDatabase` w testach.
+
+**Otwarte pytanie, poza zakresem kroków 3.6/3.7:** brak guardu pokrycia (blokady zdjęcia
+pojemności spod przyjętej rezerwacji) — świadomie odłożone do kroku 7.3, jak w planie.
 
 ### `stock_movements` (nowa) — księga ruchu
 

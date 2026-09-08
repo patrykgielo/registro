@@ -540,11 +540,15 @@ class CartServiceTest extends TestCase
         $cart->refresh();
         $this->assertEquals('converted', $cart->status);
 
-        // OrderItem must be created
+        // A cart-item quantity of 2 expands into 2 separate OrderItems of
+        // quantity 1 each (Faza 3 krok 2 — one order item per equipment
+        // unit, so service_units can attach an identifier per row).
+        $this->assertDatabaseCount('order_items', 2);
         $this->assertDatabaseHas('order_items', [
             'order_id' => $order->id,
             'service_id' => $rentalService->id,
-            'quantity' => 2,
+            'quantity' => 1,
+            'total_price' => 300.00,
         ]);
     }
 
@@ -1154,5 +1158,204 @@ class CartServiceTest extends TestCase
         $this->assertTrue($order->expires_at->equalTo(Carbon::parse('2026-04-01 12:20:00')));
 
         Carbon::setTestNow();
+    }
+
+    // -------------------------------------------------------------------------
+    // convertToOrder — cart-quantity expansion into N single-unit OrderItems
+    // (Faza 3 krok 2, plan-wdrozenia.md "Ilość > 1 — rozstrzygnięcie", 2026-09-08)
+    // -------------------------------------------------------------------------
+
+    public function test_convert_to_order_expands_cart_quantity_into_that_many_single_unit_order_items(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 3,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+            'rental_days' => 3,
+            'unit_price' => 100.00,
+            // price_per_day(100) * rental_days(3) * quantity(3) = 900
+            'total_price' => 900.00,
+        ]);
+
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        $items = OrderItem::where('order_id', $order->id)->get();
+
+        $this->assertCount(3, $items);
+        foreach ($items as $item) {
+            $this->assertSame(1, $item->quantity);
+            $this->assertEquals($rentalService->id, $item->service_id);
+            // 900 / 3 — dividing the already cent-exact cart total by the
+            // original quantity is always exact, never a rounding-remainder
+            // split (see CartService::convertToOrder()'s docblock).
+            $this->assertEquals(300.0, (float) $item->total_price);
+        }
+    }
+
+    public function test_convert_to_order_keeps_single_order_item_when_cart_quantity_is_one(): void
+    {
+        // Regression guard for today's path: quantity=1 must not become some
+        // other shape (e.g. an empty expansion) — exactly 1 row, unchanged.
+        $cart = $this->cartWithOneItem();
+
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        $this->assertDatabaseCount('order_items', 1);
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $order->id,
+            'quantity' => 1,
+            'total_price' => 300.00,
+        ]);
+    }
+
+    public function test_convert_to_order_expansion_does_not_change_the_order_total(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 3,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+            'rental_days' => 3,
+            'unit_price' => 100.00,
+            'total_price' => 900.00,
+        ]);
+
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        // Pinned to the SAME number the pre-expansion single-row total_price
+        // would have produced — subtotal is computed from the CART items
+        // (CartService.php:264), before the expansion loop, so it must be
+        // completely unaffected by how many OrderItem rows follow.
+        $this->assertEquals(900.0, (float) $order->subtotal);
+        $this->assertEquals(900.0, (float) $order->total_amount);
+
+        // The split rows must still sum back to that exact figure — no
+        // grosze lost or gained by dividing across N rows.
+        $sumOfOrderItems = OrderItem::where('order_id', $order->id)->sum('total_price');
+        $this->assertEquals(900.0, (float) $sumOfOrderItems);
+    }
+
+    public function test_convert_to_order_expansion_deducts_the_full_quantity_from_availability(): void
+    {
+        $rentalService = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+            'price_per_day' => 100,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $rentalService->id,
+            'quantity' => 3,
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-04-12',
+            'rental_days' => 3,
+            'unit_price' => 100.00,
+            'total_price' => 900.00,
+        ]);
+
+        $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        // 5 in stock, 3 claimed by the 3 split OrderItems together (NOT 1 —
+        // a bug that only deducted the first row — and NOT 9, i.e. counting
+        // 3 rows as if each still carried quantity 3).
+        $available = app(RentalAvailabilityService::class)->getAvailableQuantity(
+            $rentalService->fresh(),
+            Carbon::parse('2026-04-10'),
+            Carbon::parse('2026-04-12'),
+        );
+
+        $this->assertSame(2, $available);
+    }
+
+    public function test_convert_to_order_expands_two_different_services_independently(): void
+    {
+        $serviceA = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+            'price_per_day' => 100,
+        ]);
+        $serviceB = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 5,
+            'price_per_day' => 50,
+        ]);
+
+        $cart = Cart::factory()->active()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        foreach ([$serviceA, $serviceB] as $service) {
+            CartItem::factory()->create([
+                'cart_id' => $cart->id,
+                'service_id' => $service->id,
+                'quantity' => 2,
+                'start_date' => '2026-04-10',
+                'end_date' => '2026-04-12',
+                'rental_days' => 3,
+                'unit_price' => $service->price_per_day,
+                'total_price' => (float) $service->price_per_day * 3 * 2,
+            ]);
+        }
+
+        $order = $this->makeService()->convertToOrder($cart, [
+            'customer_email' => 'x@example.com',
+            'customer_first_name' => 'Jan',
+            'customer_last_name' => 'Testowy',
+        ]);
+
+        $items = OrderItem::where('order_id', $order->id)->get();
+
+        $this->assertCount(4, $items);
+        $this->assertCount(2, $items->where('service_id', $serviceA->id));
+        $this->assertCount(2, $items->where('service_id', $serviceB->id));
+        $this->assertTrue($items->every(fn (OrderItem $item): bool => $item->quantity === 1));
     }
 }

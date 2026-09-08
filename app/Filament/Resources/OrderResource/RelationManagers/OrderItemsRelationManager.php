@@ -34,6 +34,14 @@ class OrderItemsRelationManager extends RelationManager
                     ->label('Usługa')
                     ->searchable(),
 
+                // Faza 3 krok 3.6/3.7 — "administrator i pracownik widzą to w
+                // zamówieniu" (task write-up). Read-only, same as every other
+                // column here: assignment happens through the handover/return
+                // Filament actions (OrderResource.php / EditOrder.php), not here.
+                Tables\Columns\TextColumn::make('serviceUnit.display_label')
+                    ->label('Egzemplarz')
+                    ->placeholder('—'),
+
                 Tables\Columns\TextColumn::make('start_date')
                     ->label('Data od')
                     ->date('d.m.Y'),

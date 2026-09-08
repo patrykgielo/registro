@@ -274,16 +274,92 @@ dotknięcia magazynu**. `multi_location_stock` nadal OFF.
 
 ### Faza 3 — Egzemplarze
 
+**Cel biznesowy (doprecyzowany 2026-09-07):** nie sama ewidencja, tylko **kontrola, który
+konkretny sprzęt został wydany i czy wrócił ten sam**. Numer seryjny bez powiązania z wydaniem
+służy inwentaryzacji, a wypożyczalnia potrzebuje kontroli.
+
 | # | Krok |
 |---|---|
-| 3.1 | Migracja `service_units`: `organization_id`, `service_id`, **`location_id`**, `serial_number`, `inventory_number`, `status` (`available`/`maintenance`/`in_transit`/`retired`), `acquired_at`, `notes`; UNIQUE `(organization_id, serial_number)` |
+| 3.1 | Migracja `service_units`: `organization_id`, `service_id`, **`location_id`**, `identifier` (**nullable, wolny tekst**), `inventory_number`, `status` (`available`/`maintenance`/`in_transit`/`retired`), `acquired_at`, `notes`; UNIQUE `(organization_id, identifier)` — MySQL dopuszcza wiele `NULL`, więc egzemplarze bez numeru nie kolidują |
 | 3.2 | Obserwator utrzymujący kotwicę: `stocks.quantity = COUNT(units WHERE location_id = L AND status = 'available')`, **w tej samej transakcji** |
-| 3.3 | Generator: z istniejącej `quantity_total` twórz N egzemplarzy bez numeru w oddziale domyślnym (numer uzupełniany ręcznie) |
-| 3.4 | Panel: RelationManager „Egzemplarze" na `ServiceResource` — nr seryjny, oddział, status, historia |
+| 3.3 | Generator: z istniejącej `quantity_total` twórz N egzemplarzy **bez numeru** w oddziale domyślnym |
+| 3.4 | Panel: RelationManager „Egzemplarze" na produkcie — numer, oddział, status, historia |
 | 3.5 | Serwis pojedynczej sztuki: `status = maintenance` zdejmuje 1 z kotwicy (dziś jedyny wyłącznik to `is_active` na **całej** usłudze — all-or-nothing) |
+| 3.6 | **Wydanie: pracownik wskazuje egzemplarz.** Powiązanie egzemplarza z pozycją zamówienia w momencie wydania. Jeśli wybrana sztuka nie ma jeszcze numeru — pracownik wpisuje go **na miejscu** |
+| 3.7 | **Zwrot: walidacja zgodności.** Numer inny niż wydany → **wyraźne ostrzeżenie i wymagane potwierdzenie**, nigdy twarda blokada — wymiana sprzętu w trakcie wypożyczenia bywa uzasadniona |
+| 3.8 | Numery egzemplarzy w **protokole wydania i zwrotu** (PDF) |
+
+#### Decyzje właściciela produktu (2026-09-07)
+
+**Numer to własne oznaczenie firmy**, nie numer producenta — pole tekstowe **bez wymuszonego
+formatu**. Wypożyczalnie mają swoje systemy oznaczeń („KOP-04" na naklejce) i wymuszenie
+formatu wykluczyłoby dokładnie tych odbiorców.
+
+**Egzemplarze powstają dla każdego produktu, numer jest opcjonalny.** Świadomy kompromis:
+spójność kosztem tego, że część sztuk zostanie nienumerowana. Rozbrojone krokiem 3.6 — numer
+uzupełnia się przy pierwszym wydaniu, więc ewidencja wypełnia się przez używanie, a nie
+jednorazowym spisem magazynu.
+
+**Egzemplarz jest widoczny w zamówieniu dla administratora i pracownika.** Klient go nie widzi
+i nie potrzebuje — front się nie zmienia.
+
+**Przypisanie następuje przy wydaniu, nie przy rezerwacji.** Klient rezerwuje „młot wiertarski",
+pracownik przy odbiorze wskazuje konkretną sztukę. Przypisywanie przy składaniu zamówienia
+komplikowałoby dostępność i wymagało zwalniania przypisań przy anulowaniu.
+
+#### Ilość > 1 — rozstrzygnięcie (2026-09-08)
+
+**Problem:** `order_items.quantity` może być większe od 1 — strona sprzętu wysyła zaszyte `1`
+(`services/show.blade.php:296`), ale **koszyk pozwala wpisać dowolną liczbę**
+(`cart/show.blade.php:117-123`, `min="1"`, bez górnego limitu) i `CartService::updateQuantity()`
+waliduje wtedy dostępność. Egzemplarz ma tożsamość, ilość jest liczbą — „pięć sztuk" nie wiąże
+się z jednym numerem.
+
+Utrzymywaliśmy więc **dwa sprzeczne modele**: „pozycja = N wymiennych sztuk" (koszyk,
+matematyka dostępności, `× quantity` w mailach i protokołach) oraz „jedna rezerwacja = jedna
+sztuka w oknie czasowym" (strona sprzętu, wcześniejsza decyzja o braku selektora ilości).
+
+**Decyzja:** koszyk zostaje bez zmian — klient może zmienić ilość i tam przechodzi walidacja
+dostępności. Przy **składaniu zamówienia** jedna pozycja koszyka o ilości N rozwija się
+w **N pozycji zamówienia po jednej sztuce**.
+
+Dzięki temu **jedna pozycja zamówienia = jeden egzemplarz**, zawsze i wszędzie — bez tabeli
+pośredniej i bez zamiany `quantity` na „listę egzemplarzy" w wydaniu, zwrocie, protokole
+i panelu.
+
+**Ryzyko sprawdzone przed decyzją:** pętla walidacyjna z Fazy 0 (agregacja popytu rodzeństwa,
+blokady, `CartService.php:213-260`) iteruje po pozycjach **koszyka** i kończy się przed
+tworzeniem `OrderItem` (`:348`). Rozwinięcie dotyka **wyłącznie** bloku tworzącego —
+najbardziej wrażliwy kod, naprawiony po realnym oversellu, zostaje nietknięty.
+
+Skutek widoczny: zamówienie i protokół pokażą N wierszy zamiast jednego z „× N". To zysk —
+protokół, który klient podpisuje, wymienia każdą sztukę z jej numerem osobno.
+
+**Nadużycia nie ogranicza system.** Klient może zamówić trzy identyczne sztuki na ten sam
+termin; jeśli obsłudze coś wyda się podejrzane, dzwoni pod wskazany numer. Świadoma decyzja
+właściciela produktu.
+
+#### Skutek uboczny na plus: kaucja przestaje się rozjeżdżać
+
+Do tej zmiany `orders.deposit_amount` liczyło `kaucja × ilość` (`CartService.php:270`),
+a pojedynczy `order_items.deposit_amount` zapisywał kaucję **bez** mnożenia. Przy ilości 3
+zamówienie mówiło 900 zł, a jego własna pozycja 300 zł — niezmiennik „suma kaucji pozycji =
+kaucja zamówienia" z `models.md` był złamany, choć nikt tego nie zauważył, bo pole pozycji
+nie jest dziś nigdzie czytane. Po rozwinięciu na N wierszy po jednej sztuce obie liczby są
+tą samą liczbą. Naprawione mimochodem, bez osobnej zmiany w kodzie.
+
+#### Nazewnictwo kolumny — rozstrzygnięcie
+
+`model-danych.md:214` mówi `serial_number`, ten plan mówi `identifier`. **Obowiązuje
+`identifier`** — nowsze i zgodne z decyzją, że numer jest **własnym oznaczeniem firmy**,
+nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 
 > **Egzemplarz wypożyczony pozostaje `available`** i przypisany do oddziału wydania. Zajętość
 > mieszka wyłącznie w rezerwacjach. Złamanie tej zasady = podwójne odejmowanie sprzętu.
+>
+> To **nie** stoi w sprzeczności z krokiem 3.6: status odpowiada na pytanie „gdzie mieszka
+> i czy sprawny", a powiązanie z zamówieniem — „u kogo fizycznie jest". Dwa różne pytania,
+> dwa różne pola.
 
 ### Faza 4 — Rdzeń dostępności
 

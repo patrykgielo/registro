@@ -246,6 +246,42 @@ the only hook that sees the submitted value regardless of client input. Pattern 
 
 ---
 
+## Select pojedynczy broni się sam — i tą samą linijką potrafi zablokować edycję (2026-09-08)
+
+Dokładna **odwrotność** sekcji wyżej, więc nie przenoś stamtąd wniosku na oślep.
+
+`Select::relationship()` **bez `multiple()`** re-rozwiązuje przesłaną wartość przez to samo,
+przeskopowane zapytanie, którym renderuje listę (`getInValidationRuleValues()` →
+`getSelectedRecordUsing()`). Brak dopasowania → `Rule::in([])` → odrzucone **każde** id.
+Global scope tenanta działa w tym zapytaniu, więc **cudzy rekord jest odrzucany serwerowo
+bez własnej reguły `exists`**. Mechanizm jest bezwarunkowy: nie zależy od `searchable()`,
+`preload()` ani `disabled()`. Wymaga tylko, żeby pole było dehydrated i żeby nikt nie nadpisał
+`getOptionLabelUsing()`.
+
+**Pułapka:** `modifyQueryUsing` filtruje też re-rozwiązanie **bieżącej** wartości. Filtr typu
+`where('is_active', true)` sprawia, że rekord przypisany do pozycji, która później została
+dezaktywowana, przestaje być rozwiązywalny — i wtedy **nie da się zapisać żadnego pola
+formularza**, nie tylko tego Selecta (Filament waliduje cały formularz). Objaw: błąd na polu,
+którego użytkownik w ogóle nie ruszał.
+
+```php
+// ✅ aktualna wartość zawsze rozwiązywalna, lista nadal tylko aktywne
+modifyQueryUsing: fn (Builder $q, ?Model $record) => $q->where(
+    fn (Builder $inner) => $inner->where('is_active', true)
+        ->when($record, fn (Builder $w) => $w->orWhere('id', $record->location_id))
+),
+```
+Domknięcie wokół `orWhere` jest **load-bearing** — bez niego `orWhere` wychodzi poza pozostałe
+warunki. Precedens: `UnitsRelationManager` (Faza 3 lokalizacji), test
+`test_editing_a_unit_on_a_deactivated_location_still_succeeds` (sfalsyfikowany: na wersji
+jednolinijkowej pada na `location_id`, choć payload niesie sam `status`).
+
+Ta sama mechanika działa dla zwykłego `->options()`: wartość spoza listy jest odrzucana
+serwerowo. Ukrycie opcji w Selekcie pojedynczym **jest** więc walidacją — ale udowodnij to
+testem, zamiast wnioskować z lektury frameworka.
+
+---
+
 ## Autoryzacja: `can*()` NIE jest punktem egzekwowania (incydent 2026-08-07)
 
 **`app/Policies/` w tym projekcie NIE ISTNIEJE. Zero polityk.** Filament bez polityki i bez strict

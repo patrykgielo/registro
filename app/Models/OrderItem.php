@@ -17,21 +17,30 @@ class OrderItem extends Model
     use Auditable, HasFactory;
 
     /**
-     * Only end_date/rental_days/total_price are audited — these are the
-     * fields RentalExtensionService::approve() mutates on an already-paid
-     * order item. Everything else (unit_price, price_snapshot, etc.) is set
-     * once at checkout and never changes afterwards, so it isn't worth
-     * tracking here.
+     * end_date/rental_days/total_price are the fields RentalExtensionService::
+     * approve() mutates on an already-paid order item. service_unit_id is the
+     * Faza 3 krok 3.6/3.7 handover/return assignment — the audit log IS the
+     * "who assigned/reassigned and when" trail requirement.md asks for (see
+     * App\Services\Order\OrderService::handOver()/completeReturn()); no
+     * separate column duplicates it. service_unit_identifier_snapshot is
+     * audited alongside it for the same reason price_snapshot isn't audited
+     * separately from total_price — they always change together, one write.
+     * Everything else (unit_price, price_snapshot, etc.) is set once at
+     * checkout and never changes afterwards, so it isn't worth tracking here.
      */
     protected array $auditInclude = [
         'end_date',
         'rental_days',
         'total_price',
+        'service_unit_id',
+        'service_unit_identifier_snapshot',
     ];
 
     protected $fillable = [
         'order_id',
         'service_id',
+        'service_unit_id',
+        'service_unit_identifier_snapshot',
         'service_name',
         'quantity',
         'start_date',
@@ -50,6 +59,7 @@ class OrderItem extends Model
             'end_date' => 'date',
             'price_snapshot' => 'array',
             'quantity' => 'integer',
+            'service_unit_id' => 'integer',
             'rental_days' => 'integer',
             'unit_price' => 'decimal:2',
             'total_price' => 'decimal:2',
@@ -73,6 +83,20 @@ class OrderItem extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * The physical egzemplarz handed out for this item (Faza 3 krok 3.6),
+     * nullable — assignment is entirely optional. Invariant A
+     * (kontrakt-dostepnosci.md Zasada 5) applies: this FK records WHICH unit
+     * went out, never whether it is "occupied" — ServiceUnit::status/
+     * location_id are never touched by setting this.
+     *
+     * @return BelongsTo<ServiceUnit, $this>
+     */
+    public function serviceUnit(): BelongsTo
+    {
+        return $this->belongsTo(ServiceUnit::class);
     }
 
     /**
@@ -133,6 +157,67 @@ class OrderItem extends Model
                             });
                     });
             })
+            ->select('order_items.*');
+    }
+
+    /**
+     * Order items where the given ServiceUnit is currently assigned AND the
+     * order is in a state where the physical unit has NOT been returned.
+     *
+     * Blocks every status EXCEPT 'completed' and 'refunded' — not just
+     * 'confirmed'/'in_progress' as an earlier version of this scope did.
+     * Verified before writing this (code review, 2026-09-08, grepped every
+     * write to `service_unit_id` across `app/` and `database/`):
+     * `OrderService::handOver()` and `::completeReturn()` are the ONLY two
+     * places that ever write this column. That means a non-null
+     * `service_unit_id` on an order NOT in 'completed'/'refunded' — cancelled
+     * included — always describes a unit that physically left and has not
+     * come back, regardless of why the order stopped moving forward.
+     * `OrderService::cancel()` explicitly allows cancelling an 'in_progress'
+     * order (exceptional: forced tenant offboarding) and does NOT clear the
+     * assignment — a cancelled order that was never handed out has
+     * `service_unit_id === null` and is harmlessly excluded by the `WHERE
+     * service_unit_id = ?` above; one that WAS handed out still has the
+     * physical unit with a customer and must keep blocking it.
+     *
+     * 'refunded' is excluded ALONGSIDE 'completed', not just 'completed'
+     * alone, because the state machine only ever reaches 'refunded' FROM
+     * 'completed' (OrderStatusStateMachine::transitions()) — the physical
+     * return already happened at the 'completed' transition; a later refund
+     * of the money must not re-block equipment that is already back.
+     *
+     * DELIBERATE, DOCUMENTED COST: a unit whose order was cancelled AFTER
+     * handover stays blocked for that order's date window with NO path to
+     * release it today — there is no "return anyway" action for a cancelled
+     * order. This is intentional, not an oversight: the alternative (letting
+     * a cancelled-but-handed-out unit look free) is how two customers can
+     * receive the SAME physical unit with two signed protocols — a strictly
+     * worse failure than a support call to manually re-home a blocked unit.
+     * Do not "fix" this by loosening the status filter without adding an
+     * explicit release action first.
+     *
+     * Same join-not-whereHas shape as scopeBlockingAvailability() above for
+     * the same reason documented there — kept even though this path has no
+     * FOR UPDATE lock of its own on `order_items` (locking now lives on the
+     * `ServiceUnit` row itself — see OrderService::resolveUnitForItem()).
+     */
+    public function scopeAssignedToUnitOverlapping(
+        Builder $query,
+        int $serviceUnitId,
+        Carbon $start,
+        Carbon $end,
+        ?int $excludeItemId = null,
+    ): Builder {
+        return $query
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('order_items.service_unit_id', $serviceUnitId)
+            ->whereNotIn('orders.status', ['completed', 'refunded'])
+            ->whereDate('order_items.start_date', '<=', $end)
+            ->whereDate('order_items.end_date', '>=', $start)
+            ->when(
+                $excludeItemId,
+                fn (Builder $q) => $q->where('order_items.id', '!=', $excludeItemId)
+            )
             ->select('order_items.*');
     }
 }

@@ -57,7 +57,9 @@ class OrderProtocolPdfService
             throw new \DomainException('Protokół zwrotu jest dostępny dopiero po przyjęciu zwrotu sprzętu.');
         }
 
-        return $this->render('orders.protocols.return', $order, 'protokol-zwrotu');
+        return $this->render('orders.protocols.return', $order, 'protokol-zwrotu', [
+            'unitMismatches' => $this->unitMismatchesByItemId($order),
+        ]);
     }
 
     /**
@@ -105,20 +107,81 @@ class OrderProtocolPdfService
             && $order->stateHistory()->where('field', 'status')->where('to', 'in_progress')->exists();
     }
 
-    private function render(string $view, Order $order, string $filenamePrefix): Response
+    /**
+     * @param  array<string, mixed>  $extraViewData
+     */
+    private function render(string $view, Order $order, string $filenamePrefix, array $extraViewData = []): Response
     {
         $order->loadMissing(['items', 'organization']);
 
-        $pdf = Pdf::loadView($view, [
+        $pdf = Pdf::loadView($view, array_merge([
             'order' => $order,
             'org' => $order->organization,
             'pickup' => $this->pickupDetails($order),
             'generatedAt' => now()->format('Y-m-d H:i'),
-        ]);
+        ], $extraViewData));
 
         $filename = $filenamePrefix.'-'.$order->order_number.'.pdf';
 
         return $pdf->download($filename);
+    }
+
+    /**
+     * Faza 3 krok 3.8 (ClickUp 123k99cu2b5, requirement #3) — when a return
+     * was accepted with a CONFIRMED mismatch (the customer handed back a
+     * different physical unit than the one recorded at handover),
+     * `order_items.service_unit_identifier_snapshot` is silently OVERWRITTEN
+     * by OrderService::completeReturn() to describe the unit that actually
+     * came back (see that method's own docblock — same rule as
+     * service_name/price_snapshot: the column always describes "now", not
+     * "at handover"). A return protocol built from the snapshot alone would
+     * therefore be accurate about the return but erase all record that a
+     * mismatch was ever caught and confirmed by staff.
+     *
+     * `state_histories.custom_properties.mismatches` (written by
+     * completeReturn() at the SAME 'completed' transition, see
+     * StateMachine::transitionTo()) is that record — an immutable row on a
+     * library table nobody overwrites afterwards, holding BOTH labels
+     * (`handed_out_label`/`returned_label`) as captured at the moment of
+     * return, independent of ServiceUnit's own nullOnDelete FK on
+     * order_items (VULN-adjacent to the exact problem
+     * service_unit_identifier_snapshot itself exists to solve — see that
+     * column's migration docblock). Reading it needs no extra eager load:
+     * one extra query total for the whole order (not per item), no N+1.
+     *
+     * The state machine's own transitions() map allows exactly one path
+     * INTO 'completed' (from 'in_progress', never re-entered — see
+     * OrderStatusStateMachine::transitions()), so at most one such history
+     * row can ever exist per order; `latest('id')` is defensive, not
+     * load-bearing. An order whose completed_at was set outside
+     * transitionTo() (backfill/import/migration — see that state machine's
+     * own 'completed' hook docblock) has no such row at all; `?? []` below
+     * makes that the same as "no mismatch ever recorded", which is correct
+     * — there is nothing to contradict.
+     *
+     * @return array<int, array{handed_out_label: string|null, returned_label: string|null}>
+     */
+    private function unitMismatchesByItemId(Order $order): array
+    {
+        $history = $order->stateHistory()
+            ->where('field', 'status')
+            ->where('to', 'completed')
+            ->latest('id')
+            ->first();
+
+        if ($history === null) {
+            return [];
+        }
+
+        $mismatches = $history->getCustomProperty('mismatches') ?? [];
+
+        return collect($mismatches)
+            ->keyBy('order_item_id')
+            ->map(fn (array $mismatch): array => [
+                'handed_out_label' => $mismatch[OrderService::MISMATCH_HANDED_OUT_LABEL] ?? null,
+                'returned_label' => $mismatch[OrderService::MISMATCH_RETURNED_LABEL] ?? null,
+            ])
+            ->all();
     }
 
     /**

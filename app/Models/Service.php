@@ -170,6 +170,19 @@ class Service extends Model
         return $this->hasMany(ServiceLocationStock::class);
     }
 
+    /**
+     * Faza 3 (app/docs/features/lokalizacje/model-danych.md) — physical
+     * egzemplarze of this service. See App\Observers\ServiceUnitObserver for
+     * how these keep locationStocks()'s quantities (and, through them,
+     * quantity_total) in sync.
+     *
+     * @return HasMany<ServiceUnit, $this>
+     */
+    public function serviceUnits(): HasMany
+    {
+        return $this->hasMany(ServiceUnit::class);
+    }
+
     // Scopes
 
     public function scopeActive($query)

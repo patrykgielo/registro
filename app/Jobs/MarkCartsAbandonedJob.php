@@ -21,7 +21,10 @@ class MarkCartsAbandonedJob implements ShouldQueue
         $cutoff = now()->subMinutes(30);
 
         Cart::active()
-            ->withCount('items')
+            // Sum of units, not row count — see CheckoutController::show()'s
+            // 'checkout.started' for why this field must mean the same thing across the
+            // whole checkout funnel (checkout.started / cart.abandoned / order.completed).
+            ->withSum('items', 'quantity')
             ->where('updated_at', '<', $cutoff)
             ->chunkById(100, function ($carts) use ($dispatcher): void {
                 foreach ($carts as $cart) {
@@ -29,7 +32,7 @@ class MarkCartsAbandonedJob implements ShouldQueue
 
                     $dispatcher->trackForCart($cart, 'cart.abandoned', [
                         'cart_id' => $cart->id,
-                        'item_count' => $cart->items_count,
+                        'item_count' => $cart->items_sum_quantity ?? 0,
                         'checkout_started' => $cart->checkout_started_at !== null,
                         'last_step' => $cart->last_checkout_step,
                     ]);

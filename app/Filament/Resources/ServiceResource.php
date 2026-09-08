@@ -6,6 +6,7 @@ use App\Actions\Inventory\RouteQuantityFieldToPrimaryLocationStock;
 use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Resources\ServiceResource\RelationManagers\LocationStocksRelationManager;
+use App\Filament\Resources\ServiceResource\RelationManagers\UnitsRelationManager;
 use App\Filament\Support\BuilderBlocks;
 use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Service;
@@ -664,6 +665,7 @@ class ServiceResource extends BaseResource
     {
         return [
             LocationStocksRelationManager::class,
+            UnitsRelationManager::class,
         ];
     }
 

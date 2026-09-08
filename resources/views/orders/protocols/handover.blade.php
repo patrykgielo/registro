@@ -77,7 +77,23 @@
     <tbody>
         @foreach($order->items as $item)
         <tr>
-            <td>{{ $item->service_name }}</td>
+            <td>
+                {{ $item->service_name }}
+                @if($item->quantity === 1 && $item->service_unit_identifier_snapshot)
+                    {{-- quantity === 1 guard: a snapshot recorded against a
+                    pre-rozwinięcie-ilości line (quantity > 1, Faza 3 krok
+                    3.8, ClickUp 123k99cu2b5) names exactly ONE physical
+                    unit, not all of them — printing it unqualified on a
+                    multi-piece line would misrepresent which items the
+                    signature actually covers. Suppressed entirely rather
+                    than a "1 z N szt." label: with no way to say WHICH one,
+                    a partial-scope disclaimer would only look reassuring
+                    without actually identifying anything. Falls back to
+                    today's baseline (equipment identified by name only)
+                    for that line. --}}
+                    <br><span style="font-size: 9px; color: #6b7280;">Nr egz.: {{ $item->service_unit_identifier_snapshot }}</span>
+                @endif
+            </td>
             <td>
                 @if($item->start_date && $item->end_date)
                     {{ $item->start_date->format('d.m.Y') }} – {{ $item->end_date->format('d.m.Y') }}
