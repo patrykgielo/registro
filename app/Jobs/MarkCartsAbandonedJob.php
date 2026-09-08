@@ -32,7 +32,12 @@ class MarkCartsAbandonedJob implements ShouldQueue
 
                     $dispatcher->trackForCart($cart, 'cart.abandoned', [
                         'cart_id' => $cart->id,
-                        'item_count' => $cart->items_sum_quantity ?? 0,
+                        // (int) cast: MySQL's PDO driver returns SUM() over an
+                        // integer column as a numeric STRING (DECIMAL result
+                        // type), unlike SQLite — left uncast, item_count would
+                        // json_encode as a JSON string ("3") instead of a
+                        // number (3) in analytics_events.properties.
+                        'item_count' => (int) ($cart->items_sum_quantity ?? 0),
                         'checkout_started' => $cart->checkout_started_at !== null,
                         'last_step' => $cart->last_checkout_step,
                     ]);

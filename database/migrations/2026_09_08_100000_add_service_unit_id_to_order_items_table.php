@@ -52,11 +52,26 @@ return new class extends Migration
         });
     }
 
+    /**
+     * Order matters on MySQL: `dropIndex()` before `dropConstrainedForeignId()`
+     * fails with 1553 ("needed in a foreign key constraint"). `up()` adds the
+     * FK constraint (via `constrained()`) BEFORE the composite index below it,
+     * so at ALTER time InnoDB has nothing else to satisfy the FK's own index
+     * requirement and ends up relying on `order_items_service_unit_dates_index`
+     * itself (its leftmost column is `service_unit_id`) — dropping that index
+     * first leaves the still-live FK constraint without any backing index,
+     * which MySQL refuses. Dropping the FK constraint FIRST (`dropForeign`)
+     * frees the index to be dropped safely, and only then is the now-unused
+     * column itself removed. Verified against a throwaway mysql:8.0 container,
+     * see CreateServiceUnitsTableMigrationTest/
+     * GenerateServiceUnitsFromQuantityTotalMigrationTest's own rollback tests.
+     */
     public function down(): void
     {
         Schema::table('order_items', function (Blueprint $table) {
+            $table->dropForeign(['service_unit_id']);
             $table->dropIndex('order_items_service_unit_dates_index');
-            $table->dropConstrainedForeignId('service_unit_id');
+            $table->dropColumn('service_unit_id');
         });
     }
 };
