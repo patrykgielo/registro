@@ -309,6 +309,14 @@ Fired by Laravel code directly to `IngestAnalyticsEventsJob`.
 | `order.completed` | `RecordAnalyticsOnOrderPaid` listener | `OrderPaid` event (payment confirmed) | `order_id`, `order_number`, `total_amount`, `item_count`, `is_b2b` |
 | `cart.abandoned` | `MarkCartsAbandonedJob` | Cart status = 'active', `updated_at` < 30 min ago — processed every 5 min | `cart_id`, `item_count`, `checkout_started`, `last_step` |
 
+**`item_count` is `sum(quantity)`, not a row count (since Faza 3 krok 2, lokalizacje).** A
+`CartItem`/`OrderItem` with `quantity` N expands into N `OrderItem` rows of quantity 1 each at
+checkout (`CartService::convertToOrder()`) so an order's equipment can carry a distinct
+`service_units` identifier per row. `->count()` on cart items vs. order items would therefore
+disagree about the same cart even with no items added or removed — `checkout.started`,
+`cart.abandoned` and `order.completed` all sum `quantity` instead, so `item_count` is invariant
+across that expansion and stays comparable across the three funnel steps.
+
 **session_id for server-side events:**
 - Cart events: `server-cart-{cart->id}`
 - Order events: `server-order-{order->id}`

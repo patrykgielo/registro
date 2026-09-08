@@ -146,6 +146,10 @@ All dispatched via `AnalyticsEventDispatcher` → `IngestAnalyticsEventsJob` on 
 | `cart.abandoned` | `MarkCartsAbandonedJob` (every 5 min) | `cart_id`, `item_count`, `checkout_started`, `last_step` |
 | `order.completed` | `RecordAnalyticsOnOrderPaid` listener on `OrderPaid` event | `order_id`, `order_number`, `total_amount`, `item_count`, `is_b2b` |
 
+`item_count` above is `sum(quantity)` across items, not a row count — see
+`app/docs/analytics/technical-reference.md` for why (order items expand 1:N vs. cart items since
+lokalizacje Faza 3 krok 2).
+
 Session IDs for server-side events use synthetic format:
 - `server-cart-{id}` — for cart events
 - `server-order-{id}` — for order events
