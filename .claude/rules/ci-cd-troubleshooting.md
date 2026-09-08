@@ -1691,3 +1691,66 @@ przy pierwszym zapisie.**
 **Dlaczego niewidoczne lokalnie (oba):** #1 wymaga prawdziwego FK (SQLite go nie ma). #2 wymaga
 `PanelWalkthroughTest` trafić akurat na usługę z parametrem bez jednostki — lokalnie SQLite i MySQL
 zwracają inny pierwszy wiersz bez `ORDER BY`, więc lokalny przebieg akurat omijał tę usługę.
+
+## Incydent 2026-09-08: `v0.13.0-rc31` padł na bramce MySQL — ta sama klasa błędu co rc26,
+## jeden poziom głębiej, plus jeden zupełnie niezwiązany bug w kodzie produkcyjnym
+
+`deploy-production.yml`'s "PHPUnit Tests" job (real ephemeral `mysql:8.0`, 0 failures on SQLite,
+same commit) — 8 padających testów, zweryfikowane osobno przez uruchomienie **przed** i **po**
+naprawie na jednorazowym `mysql:8.0` (nigdy `registro-mysql`), z pełnym `git diff` w `app/`
+ograniczonym do plików wymienionych niżej.
+
+**1-3. Ten sam wzorzec co rc26 (`service_location_stocks` → `locations`), jeden poziom głębiej,
+wprowadzony przez Fazę 3 wielooddziałowości (`service_units`, `order_items.service_unit_id`).**
+`CreateLocationsTableMigrationTest` (rc26'owa naprawa) nie znała `service_units.location_id`
+(dodane dzień PO tamtej naprawie) — drugi, niezależny FK → `locations`, którego rollback
+pomijał. `CreateServiceUnitsTableMigrationTest` i `GenerateServiceUnitsFromQuantityTotalMigration
+Test` miały ten sam brak wobec `order_items.service_unit_id` (dodane TEGO SAMEGO dnia, godzinę
+później niż `service_units` samo). **Migracje były poprawne** — naprawa poszła do testów: każdy
+z trzech dopisał rollback/re-migrate swojego zależnego FK w prawdziwej kolejności (`--path` na
+migracji dziecka PRZED migracją rodzica), analogicznie do rc26'owej `DEPENDENT_STOCK_MIGRATION_PATH`.
+Zob. `tests/Feature/Database/CreateLocationsTableMigrationTest.php`,
+`CreateServiceUnitsTableMigrationTest.php`, `GenerateServiceUnitsFromQuantityTotalMigrationTest.php`.
+
+**4. Prawdziwy bug w kodzie produkcyjnym, znaleziony NAPRAWIAJĄC #1-3, nie tą samą przyczyną.**
+`MarkCartsAbandonedJob` (`withSum('items','quantity')`) i `RecordAnalyticsOnOrderPaid`
+(`->items()->sum('quantity')`) zapisywały `item_count` do `analytics_events.properties` (kolumna
+`json`, `array` cast) bez rzutowania na `int`. `Illuminate\Database\Query\Builder::sum()` zwraca
+surową wartość z PDO bez konwersji typu — MySQL deklaruje `SUM()` nad kolumną całkowitoliczbową
+jako `DECIMAL`, a PDO_MySQL zwraca `DECIMAL` jako STRING; SQLite (`.env.testing`) zwraca int.
+Skutek: `item_count` trafiał do `json_encode()` jako `"3"` (JSON string), nie `3` (JSON number) —
+na KAŻDYM środowisku produkcyjnym/UAT (oba MySQL), nie tylko na bramce CI. Niewidoczne w SQLite,
+bo tam ten sam kod produkuje `int`. Naprawa: `(int)` cast w obu miejscach, w kodzie aplikacji —
+nie w teście, bo asercja `=== 3` w `FunnelTrackingTest` jest poprawna, kod produkcyjny był błędny.
+
+**5-7. Skutek wtórny #1-3, nie osobna przyczyna — potwierdzone przez pomiar, nie założone.**
+`MultiTenantUniqueConstraintsTest`, `OrganizationSingletonLockMigrationTest`,
+`TenantProvisioningGuardsTest::test_assert_passes_when_slug_and_database_agree` padały z
+liczbami rekordów WYŻSZYMI niż oczekiwane (`services`: 4 zamiast 2, `organizations`: 6 zamiast 2,
+duplikat `singleton=1`). Mechanizm: DDL w MySQL wykonuje niejawny COMMIT PRZED każdą instrukcją —
+`migrate:rollback`/`migrate` wewnątrz testu z #1-3 commitowały więc również dane wstawione
+WCZEŚNIEJ w tym samym teście (fabryki Organization/Location/Service), zanim `down()` rzucił
+wyjątkiem i przerwał test PRZED liniami odtwarzającymi stan. `RefreshDatabase`'s rollback
+transakcji na to nie ma wpływu — nie ma już czego wycofać, DDL to już scommitował. Rekordy
+zostawały w bazie na resztę przebiegu procesu i kolidowały z późniejszymi testami w tym samym
+batchu. **Naprawienie #1-3 usunęło #5-7 bez dotykania ich plików** — potwierdzone: pełny
+`tests/Feature/Database` + `tests/Feature/Onboarding` + `FunnelTrackingTest` zielony (227/227)
+po naprawie samych #1-4, bez żadnej zmiany w testach Onboarding.
+
+**8. Dodatkowy bug ODKRYTY dopiero przez naprawę #2 (nie był na oryginalnej liście 8 — naprawa
+#2 go odsłoniła).** `add_service_unit_id_to_order_items_table`'s `down()` robił
+`dropIndex('order_items_service_unit_dates_index')` PRZED `dropConstrainedForeignId('service_unit_id')`
+— SQLSTATE 1553 „needed in a foreign key constraint" na MySQL. `up()` dodaje FK (`constrained()`)
+PRZED indeksem złożonym `(service_unit_id, start_date, end_date)`; InnoDB w tym ALTERze wiąże
+wymóg indeksu dla FK z TYM WŁAŚNIE indeksem złożonym (jego lewa kolumna pasuje), więc usunięcie go
+jako pierwsze zostawia żywy FK bez indeksu. Naprawa: `dropForeign()` → `dropIndex()` →
+`dropColumn()`, w tej kolejności — zamiast sugarowego `dropConstrainedForeignId()`, które łączy
+drop FK i drop kolumny w jedno wywołanie i nie daje miejsca na drop indeksu pomiędzy nimi.
+
+**Zapobieganie (uzupełnia rc26'owy wpis):** nowy FK do tabeli, która ma już własny test rollbacku
+`--path` = sprawdź WSZYSTKIE tabele wskazujące na nią (`grep -rn "constrained('nazwa_tabeli')"
+database/migrations/`), nie tylko tę dodaną najwcześniej. Dowolny nowy `dropConstrainedForeignId`/
+ręczny `dropIndex`+`dropForeign` w `down()` = zweryfikuj kolejność na prawdziwym MySQL, nie ufaj
+że SQLite (nie egzekwuje FK-wymaga-indeksu) coś tu potwierdza. Dowolny nowy `->sum(...)`/
+`withSum(...)` zapisywany do kolumny `json`/wysyłany dalej jako liczba = rzutuj na `(int)`/`(float)`
+jawnie w kodzie aplikacji, nie polegaj na typie zwracanym przez sterownik.

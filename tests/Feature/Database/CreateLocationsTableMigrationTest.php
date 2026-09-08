@@ -43,6 +43,20 @@ class CreateLocationsTableMigrationTest extends TestCase
      */
     private const DEPENDENT_STOCK_MIGRATION_PATH = 'database/migrations/2026_08_28_090000_create_service_location_stocks_table.php';
 
+    /**
+     * `service_units.location_id` ALSO FKs to `locations` (Faza 3,
+     * 2026_09_08_090000) — a second, independent dependent added a day after
+     * the fix above, and itself has its OWN dependent
+     * (`order_items.service_unit_id`, 2026_09_08_100000) that must be undone
+     * first or MySQL refuses to drop `service_units` with the same 3730 error
+     * one level removed. Same "mirror the real order" rationale as
+     * DEPENDENT_STOCK_MIGRATION_PATH's own docblock — see
+     * ci-cd-troubleshooting.md's RC31 MySQL gate entry.
+     */
+    private const DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH = 'database/migrations/2026_09_08_100000_add_service_unit_id_to_order_items_table.php';
+
+    private const DEPENDENT_SERVICE_UNITS_MIGRATION_PATH = 'database/migrations/2026_09_08_090000_create_service_units_table.php';
+
     public function test_up_creates_the_table_with_the_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('locations'));
@@ -116,8 +130,11 @@ class CreateLocationsTableMigrationTest extends TestCase
         DB::table('locations')->insert($this->rowFor($org->id, 'a', primarySlot: 1));
         $this->assertTrue(Schema::hasTable('locations'));
 
-        // Dependent FK first — the order a real `migrate:rollback` always
-        // applies (see DEPENDENT_STOCK_MIGRATION_PATH's docblock).
+        // Dependent FKs first — the order a real `migrate:rollback` always
+        // applies (see DEPENDENT_STOCK_MIGRATION_PATH's and
+        // DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH's own docblocks).
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_SERVICE_UNITS_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_STOCK_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
 
@@ -125,6 +142,8 @@ class CreateLocationsTableMigrationTest extends TestCase
 
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::DEPENDENT_STOCK_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_SERVICE_UNITS_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
 
         $this->assertTrue(Schema::hasTable('locations'));
         $this->assertSame(0, DB::table('locations')->count());

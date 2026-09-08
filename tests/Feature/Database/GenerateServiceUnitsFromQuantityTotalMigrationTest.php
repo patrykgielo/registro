@@ -32,6 +32,14 @@ class GenerateServiceUnitsFromQuantityTotalMigrationTest extends TestCase
 
     private const SCHEMA_MIGRATION_PATH = 'database/migrations/2026_09_08_090000_create_service_units_table.php';
 
+    /**
+     * `order_items.service_unit_id` FKs to `service_units` (2026_09_08_100000,
+     * added later the same day) — must be rolled back before SCHEMA_MIGRATION_PATH's
+     * own down() can DROP TABLE service_units. Same rule as
+     * CreateServiceUnitsTableMigrationTest's own copy of this constant.
+     */
+    private const DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH = 'database/migrations/2026_09_08_100000_add_service_unit_id_to_order_items_table.php';
+
     public function test_up_creates_one_unit_per_quantity_total_in_the_primary_location(): void
     {
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
@@ -231,6 +239,9 @@ class GenerateServiceUnitsFromQuantityTotalMigrationTest extends TestCase
         $this->assertTrue(Schema::hasTable('service_units'));
 
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
+        // Dependent FK first — the order a real `migrate:rollback` always
+        // applies (see DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH's docblock).
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::SCHEMA_MIGRATION_PATH])->run();
 
         $this->assertFalse(
@@ -240,6 +251,7 @@ class GenerateServiceUnitsFromQuantityTotalMigrationTest extends TestCase
 
         // Re-migrate so RefreshDatabase's teardown finds the expected state.
         $this->artisan('migrate', ['--path' => self::SCHEMA_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
     }
 }

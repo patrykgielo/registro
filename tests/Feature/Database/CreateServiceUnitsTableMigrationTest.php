@@ -28,6 +28,17 @@ class CreateServiceUnitsTableMigrationTest extends TestCase
 
     private const MIGRATION_PATH = 'database/migrations/2026_09_08_090000_create_service_units_table.php';
 
+    /**
+     * `order_items.service_unit_id` FKs to `service_units` (2026_09_08_100000,
+     * added later the same day). A real `migrate:rollback` always undoes it
+     * first (newer filename → later batch position, see
+     * CreateLocationsTableMigrationTest's DEPENDENT_STOCK_MIGRATION_PATH
+     * docblock for the general rule); rolling back THIS migration via
+     * `--path` in isolation skips that ordering and reproduces the same
+     * SQLSTATE[HY000] 3730 one level removed from locations' own version.
+     */
+    private const DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH = 'database/migrations/2026_09_08_100000_add_service_unit_id_to_order_items_table.php';
+
     public function test_up_creates_the_table_with_the_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('service_units'));
@@ -125,11 +136,15 @@ class CreateServiceUnitsTableMigrationTest extends TestCase
         DB::table('service_units')->insert($this->rowFor($org->id, $service->id, $location->id, null));
         $this->assertTrue(Schema::hasTable('service_units'));
 
+        // Dependent FK first — the order a real `migrate:rollback` always
+        // applies (see DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH's docblock).
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION_PATH])->run();
 
         $this->assertFalse(Schema::hasTable('service_units'));
 
         $this->artisan('migrate', ['--path' => self::MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
 
         $this->assertTrue(Schema::hasTable('service_units'));
         $this->assertSame(0, DB::table('service_units')->count());
