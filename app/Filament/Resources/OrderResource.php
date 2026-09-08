@@ -6,6 +6,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers;
+use App\Filament\Resources\OrderResource\Support\ServiceUnitAssignmentForms;
 use App\Models\Order;
 use App\Models\User;
 use App\Rules\ValidPolishNIP;
@@ -417,15 +418,21 @@ class OrderResource extends BaseResource
                             }
                         }),
 
+                    // Faza 3 krok 3.6 — form() (not requiresConfirmation()) so staff can
+                    // optionally assign a physical egzemplarz per order item; see
+                    // ServiceUnitAssignmentForms's own docblock for why this doesn't add
+                    // an extra click for a tenant that doesn't track units. Domain
+                    // enforcement lives in OrderService::handOver(), not here — mirrors
+                    // record_offline_payment below.
                     Actions\Action::make('mark_in_progress')
                         ->label('Wydano klientowi')
                         ->icon('heroicon-o-truck')
                         ->color('info')
                         ->visible(fn (Order $record): bool => $record->status === 'confirmed')
-                        ->requiresConfirmation()
-                        ->action(function (Order $record): void {
+                        ->form(fn (Order $record): array => ServiceUnitAssignmentForms::handoverFields($record))
+                        ->action(function (Order $record, array $data): void {
                             try {
-                                $record->status()->transitionTo('in_progress');
+                                app(OrderService::class)->handOver($record, $data['unit_assignments'] ?? [], $data['unit_identifiers'] ?? []);
                             } catch (\Exception $e) {
                                 \Filament\Notifications\Notification::make()
                                     ->danger()
@@ -435,15 +442,23 @@ class OrderResource extends BaseResource
                             }
                         }),
 
+                    // Faza 3 krok 3.7 — same shape as mark_in_progress above: form()
+                    // instead of requiresConfirmation(), domain enforcement in
+                    // OrderService::completeReturn().
                     Actions\Action::make('complete')
                         ->label('Sprzęt zwrócony')
                         ->icon('heroicon-o-archive-box-arrow-down')
                         ->color('gray')
                         ->visible(fn (Order $record): bool => $record->status === 'in_progress')
-                        ->requiresConfirmation()
-                        ->action(function (Order $record): void {
+                        ->form(fn (Order $record): array => ServiceUnitAssignmentForms::returnFields($record))
+                        ->action(function (Order $record, array $data): void {
                             try {
-                                $record->status()->transitionTo('completed');
+                                app(OrderService::class)->completeReturn(
+                                    $record,
+                                    $data['returned_units'] ?? [],
+                                    (bool) ($data['mismatch_confirmed'] ?? false),
+                                    $data['return_identifiers'] ?? [],
+                                );
                             } catch (\Exception $e) {
                                 \Filament\Notifications\Notification::make()
                                     ->danger()

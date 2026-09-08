@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\OrderResource\Pages;
 
 use App\Filament\Resources\OrderResource;
+use App\Filament\Resources\OrderResource\Support\ServiceUnitAssignmentForms;
 use App\Filament\Traits\StaysOnPageAfterSave;
 use App\Services\Order\OrderProtocolPdfService;
 use App\Services\Order\OrderService;
@@ -41,30 +42,41 @@ class EditOrder extends EditRecord
                     }
                 }),
 
+            // Faza 3 krok 3.6 — form() instead of requiresConfirmation(), mirroring
+            // OrderResource.php's own table action for the exact same reason (see that
+            // file's comment on this pair): the modal a form already opens replaces the
+            // plain confirm dialog, so a tenant that skips the (optional) unit fields
+            // still submits in the same number of clicks as before.
             Actions\Action::make('mark_in_progress')
                 ->label('Wydano klientowi')
                 ->icon('heroicon-o-truck')
                 ->color('info')
                 ->visible(fn (): bool => $this->record->status === 'confirmed')
-                ->requiresConfirmation()
-                ->action(function (): void {
+                ->form(fn (): array => ServiceUnitAssignmentForms::handoverFields($this->record))
+                ->action(function (array $data): void {
                     try {
-                        $this->record->status()->transitionTo('in_progress');
+                        app(OrderService::class)->handOver($this->record, $data['unit_assignments'] ?? [], $data['unit_identifiers'] ?? []);
                         Notification::make()->success()->title('Status zaktualizowany')->send();
                     } catch (\Exception $e) {
                         Notification::make()->danger()->title('Nie można zmienić statusu')->body($e->getMessage())->send();
                     }
                 }),
 
+            // Faza 3 krok 3.7 — same shape as mark_in_progress above.
             Actions\Action::make('complete')
                 ->label('Sprzęt zwrócony')
                 ->icon('heroicon-o-archive-box-arrow-down')
                 ->color('gray')
                 ->visible(fn (): bool => $this->record->status === 'in_progress')
-                ->requiresConfirmation()
-                ->action(function (): void {
+                ->form(fn (): array => ServiceUnitAssignmentForms::returnFields($this->record))
+                ->action(function (array $data): void {
                     try {
-                        $this->record->status()->transitionTo('completed');
+                        app(OrderService::class)->completeReturn(
+                            $this->record,
+                            $data['returned_units'] ?? [],
+                            (bool) ($data['mismatch_confirmed'] ?? false),
+                            $data['return_identifiers'] ?? [],
+                        );
                         Notification::make()->success()->title('Zamówienie zakończone')->send();
                     } catch (\Exception $e) {
                         Notification::make()->danger()->title('Nie można zakończyć zamówienia')->body($e->getMessage())->send();

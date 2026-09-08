@@ -78,8 +78,39 @@
     </thead>
     <tbody>
         @foreach($order->items as $item)
+        @php
+            // $unitMismatches keyed by order_item_id — see
+            // OrderProtocolPdfService::unitMismatchesByItemId()'s own
+            // docblock. `?? []` guards direct View::make() calls in tests
+            // that render this Blade file without going through the
+            // service at all (see OrderProtocolPdfServiceTest).
+            $mismatch = ($unitMismatches ?? [])[$item->id] ?? null;
+        @endphp
         <tr>
-            <td>{{ $item->service_name }}</td>
+            <td>
+                {{ $item->service_name }}
+                @if($item->quantity === 1)
+                    {{-- Same quantity===1 guard as handover.blade.php: a
+                    unit number (matched or mismatched) recorded against a
+                    pre-rozwinięcie-ilości line names exactly ONE physical
+                    unit, never all of them. --}}
+                    @if($mismatch)
+                        {{-- Faza 3 krok 3.8 requirement #3 (ClickUp
+                        123k99cu2b5): a CONFIRMED mismatch at return means
+                        order_items.service_unit_identifier_snapshot was
+                        overwritten to describe what came BACK — printing
+                        only that would silently erase the fact a different
+                        unit went out. Showing both, sourced from the
+                        immutable state_histories row, is the honest record
+                        of what staff actually verified at the counter. --}}
+                        <br><span style="font-size: 9px; color: #6b7280;">
+                            Wydano: {{ $mismatch['handed_out_label'] ?? '—' }} · Zwrócono: {{ $mismatch['returned_label'] ?? '—' }}
+                        </span>
+                    @elseif($item->service_unit_identifier_snapshot)
+                        <br><span style="font-size: 9px; color: #6b7280;">Nr egz.: {{ $item->service_unit_identifier_snapshot }}</span>
+                    @endif
+                @endif
+            </td>
             <td>
                 @if($item->start_date && $item->end_date)
                     {{ $item->start_date->format('d.m.Y') }} – {{ $item->end_date->format('d.m.Y') }}
