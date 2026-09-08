@@ -25,7 +25,11 @@ class RecordAnalyticsOnOrderPaid implements ShouldQueue
             'order_id' => $order->id,
             'order_number' => $order->order_number,
             'total_amount' => $order->total_amount,
-            'item_count' => $order->items()->count(),
+            // Sum of units, not row count — see CheckoutController::show()'s 'checkout.started'
+            // for why: since Faza 3 krok 2, a single cart quantity expands into that many
+            // OrderItem rows of quantity 1 each, so ->count() here would no longer mean the
+            // same thing as 'checkout.started''s item_count for the same cart/order.
+            'item_count' => $order->items()->sum('quantity'),
             'is_b2b' => $order->customer_type === 'business',
         ]);
     }

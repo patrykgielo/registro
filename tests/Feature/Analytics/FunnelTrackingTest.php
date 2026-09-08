@@ -9,8 +9,11 @@ use App\Jobs\IngestAnalyticsEventsJob;
 use App\Jobs\MarkCartsAbandonedJob;
 use App\Listeners\RecordAnalyticsOnOrderPaid;
 use App\Models\Cart;
+use App\Models\CartItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Organization;
+use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -62,6 +65,49 @@ class FunnelTrackingTest extends TestCase
         ]);
 
         $this->assertNotNull($cart->fresh()->abandoned_at);
+    }
+
+    /**
+     * item_count must be sum(quantity), not a row count — a CartItem row with
+     * quantity=3 expands into 3 OrderItem rows of quantity 1 each at checkout
+     * (Faza 3 krok 2), so counting rows here would disagree with
+     * RecordAnalyticsOnOrderPaid's item_count for the same cart/order even
+     * though nothing was added or removed.
+     */
+    public function test_mark_carts_abandoned_job_reports_sum_of_quantities_not_row_count(): void
+    {
+        Queue::fake();
+
+        $cart = Cart::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'status' => 'active',
+        ]);
+
+        $service = Service::factory()->itemRental()->create(['organization_id' => $this->org->id]);
+
+        // One row, quantity 3 — sum(quantity) = 3, row count = 1.
+        CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $service->id,
+            'quantity' => 3,
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('carts')
+            ->where('id', $cart->id)
+            ->update(['updated_at' => now()->subMinutes(35)->toDateTimeString()]);
+
+        (new MarkCartsAbandonedJob)->handle(
+            new \App\Services\Analytics\AnalyticsEventDispatcher
+        );
+
+        Queue::assertPushed(IngestAnalyticsEventsJob::class, function (IngestAnalyticsEventsJob $job): bool {
+            $reflection = new \ReflectionClass($job);
+            $events = $reflection->getProperty('events')->getValue($job);
+
+            return isset($events[0]['properties']['item_count'])
+                && $events[0]['properties']['item_count'] === 3;
+        });
     }
 
     public function test_mark_carts_abandoned_job_leaves_recent_cart_alone(): void
@@ -240,6 +286,53 @@ class FunnelTrackingTest extends TestCase
             return isset($events[0]['event'])
                 && $events[0]['event'] === 'order.completed'
                 && $serverProps['organization_id'] === $order->organization_id;
+        });
+    }
+
+    /**
+     * item_count must be sum(quantity), not ->items()->count() — see the
+     * matching MarkCartsAbandonedJob test above for why row count would
+     * disagree with 'checkout.started''s item_count for the same cart/order
+     * since Faza 3 krok 2 (cart-quantity expansion into single-unit
+     * OrderItems at checkout).
+     */
+    public function test_record_analytics_on_order_paid_reports_sum_of_quantities_not_row_count(): void
+    {
+        Queue::fake();
+
+        $order = Order::factory()->create([
+            'organization_id' => $this->org->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $service = Service::factory()->itemRental()->create(['organization_id' => $this->org->id]);
+
+        // Two OrderItem rows of quantity 1 each — the shape produced by
+        // CartService::convertToOrder() splitting one cart line of
+        // quantity=2 — sum(quantity) = 2, row count also happens to be 2
+        // here, so add a second row pair to make the two counting
+        // strategies diverge and prove which one is actually used.
+        OrderItem::factory()->count(2)->create([
+            'order_id' => $order->id,
+            'service_id' => $service->id,
+            'quantity' => 1,
+        ]);
+        OrderItem::factory()->create([
+            'order_id' => $order->id,
+            'service_id' => $service->id,
+            'quantity' => 5,
+        ]);
+
+        $listener = new RecordAnalyticsOnOrderPaid(new \App\Services\Analytics\AnalyticsEventDispatcher);
+        $listener->handle(new OrderPaid($order));
+
+        Queue::assertPushed(IngestAnalyticsEventsJob::class, function (IngestAnalyticsEventsJob $job): bool {
+            $reflection = new \ReflectionClass($job);
+            $events = $reflection->getProperty('events')->getValue($job);
+
+            // sum(quantity) = 1+1+5 = 7; row count would have been 3.
+            return isset($events[0]['properties']['item_count'])
+                && $events[0]['properties']['item_count'] === 7;
         });
     }
 }

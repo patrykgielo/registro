@@ -50,7 +50,12 @@ class CheckoutController extends Controller
         if ($cart->checkout_started_at === null) {
             $cart->update(['checkout_started_at' => now()]);
             $this->analytics->trackForCart($cart, 'checkout.started', [
-                'item_count' => $cart->items->count(),
+                // Sum of units, not row count — a CartItem row with quantity=3 expands into
+                // 3 OrderItem rows at checkout (Faza 3 krok 2), so counting rows here and
+                // counting order_items rows in RecordAnalyticsOnOrderPaid would silently
+                // inflate the checkout→paid step of the funnel. sum(quantity) is invariant
+                // across that expansion.
+                'item_count' => $cart->items->sum('quantity'),
                 'cart_total' => $cart->items->sum('total_price'),
             ]);
         }
