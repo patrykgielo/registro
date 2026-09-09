@@ -9,7 +9,9 @@ use App\Exceptions\RentalUnavailableException;
 use App\Models\OrderItem;
 use App\Models\Rental;
 use App\Models\Service;
+use App\Models\ServiceLocationStock;
 use App\Support\TenantFeature;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -51,13 +53,49 @@ class RentalAvailabilityService
      * prior reservation double-counted against itself.
      *
      * Sprint 2: dual-source — accounts for both legacy Rentals and new OrderItems.
+     *
+     * Faza 4 krok 4.1 (plan-wdrozenia.md, kontrakt-dostepnosci.md Zasada 2)
+     * — $locationId, added LAST so every existing call passing
+     * $forUpdate/$excludeRentalId as named arguments keeps working
+     * unchanged. $locationId === null (the only mode any of the 9 call
+     * sites use today — none has been rewired yet, that is Faza 4 krok
+     * 4.4+) reads `services.quantity_total` LITERALLY, exactly as before
+     * this parameter existed — bit-for-bit the same query shape, same
+     * result. This is a deliberate correctness invariant, not an
+     * optimisation: it is what makes "a tenant with no locations behaves
+     * identically" a statement about the CODE, not about data discipline
+     * (a service missing its service_location_stocks row — import, seeder,
+     * a factory that bypasses ServiceUnitObserver — must not silently see
+     * a different, wrong answer just because $locationId happened to stay
+     * null).
+     *
+     * When $locationId is given, capacity comes from the
+     * service_location_stocks anchor row instead of quantity_total (see
+     * locationCapacity() below for the Faza 4 krok 4.3 lock hierarchy), and
+     * both reservation queries gain an EXTRA outer-WHERE filter — never
+     * inside a join or a scope (kontrakt-dostepnosci.md Zasada 5;
+     * OrderItem::scopeBlockingAvailability() and Order::scopeExpired()
+     * stay completely untouched by this change).
+     *
+     * A reservation with location_id === NULL (pre-backfill legacy data,
+     * or a row created before a future write path starts setting it)
+     * BLOCKS EVERY location, not none. This is the conservative direction
+     * kontrakt-dostepnosci.md's Zasada 7 already establishes for this
+     * whole method ("zaniżanie, nie zawyżanie" — under-promise, never
+     * oversell): an unassigned reservation might physically be sitting in
+     * ANY location, so treating it as "definitely not this one" could let
+     * a location-scoped booking co-exist with a reservation for the same
+     * physical unit whose true location was simply never recorded. Blocking
+     * everywhere costs a false "unavailable" at worst; blocking nowhere
+     * risks a real oversell.
      */
     public function getAvailableQuantity(
         Service $service,
         Carbon $start,
         Carbon $end,
         bool $forUpdate = false,
-        ?int $excludeRentalId = null
+        ?int $excludeRentalId = null,
+        ?int $locationId = null
     ): int {
         $blockedStatuses = collect(RentalStatus::cases())
             ->filter(fn (RentalStatus $s) => $s->blocksAvailability())
@@ -75,6 +113,12 @@ class RentalAvailabilityService
             $rentalsQuery->where('id', '!=', $excludeRentalId);
         }
 
+        if ($locationId !== null) {
+            $rentalsQuery->where(function (Builder $q) use ($locationId) {
+                $q->where('location_id', $locationId)->orWhereNull('location_id');
+            });
+        }
+
         if ($forUpdate) {
             $rentalsQuery->lockForUpdate();
         }
@@ -86,6 +130,18 @@ class RentalAvailabilityService
             ->overlappingDates($start, $end)
             ->blockingAvailability();
 
+        // Outer WHERE, appended AFTER blockingAvailability()'s own join +
+        // closure — kontrakt-dostepnosci.md Zasada 5. Qualified column:
+        // scopeBlockingAvailability() joins `orders`, which also has an
+        // unrelated (nonexistent today) `location_id`-shaped column risk
+        // to avoid ambiguity against.
+        if ($locationId !== null) {
+            $ordersQuery->where(function (Builder $q) use ($locationId) {
+                $q->where('order_items.location_id', $locationId)
+                    ->orWhereNull('order_items.location_id');
+            });
+        }
+
         if ($forUpdate) {
             $ordersQuery->lockForUpdate();
         }
@@ -93,7 +149,62 @@ class RentalAvailabilityService
         // Qualified column — scopeBlockingAvailability() joins `orders`.
         $reservedViaOrders = (int) $ordersQuery->sum('order_items.quantity');
 
-        return max(0, ($service->quantity_total ?? 0) - $reservedViaRentals - $reservedViaOrders);
+        $capacity = $locationId === null
+            ? ($service->quantity_total ?? 0)
+            : $this->locationCapacity($service->id, $locationId, $forUpdate);
+
+        return max(0, $capacity - $reservedViaRentals - $reservedViaOrders);
+    }
+
+    /**
+     * Faza 4 krok 4.3 (kontrakt-dostepnosci.md, "Po dodaniu kotwicy") —
+     * capacity for one (service, location) pair, read from the
+     * service_location_stocks anchor row.
+     *
+     * Lock hierarchy, ALWAYS in this order, never reversed:
+     *   1. `services`, by service_id ascending — already acquired by every
+     *      write-path caller BEFORE it ever calls getAvailableQuantity()
+     *      (CartService::addItem()/convertToOrder()'s existing
+     *      `Service::lockForUpdate()` convention, iterated in
+     *      `orderBy('service_id')` order for multi-item carts — see
+     *      CartService.php's own deterministic-lock-order comment). This
+     *      method does not re-acquire that lock; it relies on the caller
+     *      already holding it, exactly like every other query in this
+     *      class already relies on that same convention.
+     *   2. the anchor row itself, by (service_id, location_id) — locked
+     *      HERE, inside the already-acquired Service lock, only when
+     *      $forUpdate is true.
+     *
+     * Missing anchor row reads as capacity 0 and is NEVER inserted here:
+     * kontrakt-dostepnosci.md is explicit that materialising a missing row
+     * (`insertOrIgnore`, App\Actions\Inventory\SyncServiceLocationStock's
+     * job) INSIDE this locking path is a deadlock generator — `INSERT
+     * IGNORE` on a duplicate unique key takes a shared lock, which combined
+     * with `lockForUpdate()` here is exactly the pattern eager
+     * materialisation exists to avoid. A service/location pair with no
+     * stock row at all is, correctly, zero available.
+     *
+     * `withoutGlobalScope('organization')`, matching
+     * Service::recalculateQuantityTotal()'s own precedent and reasoning:
+     * this method already has both `$serviceId` and `$locationId` as
+     * explicit arguments — the UNIQUE(service_id, location_id) constraint
+     * on this table means at most one row can ever match regardless of
+     * ambient tenant context, so there is nothing to gain from depending on
+     * one being resolved, and callers from a context without one (a
+     * console command, a future job) get the same, correct answer instead
+     * of a fail-closed empty result.
+     */
+    private function locationCapacity(int $serviceId, int $locationId, bool $forUpdate): int
+    {
+        $query = ServiceLocationStock::withoutGlobalScope('organization')
+            ->where('service_id', $serviceId)
+            ->where('location_id', $locationId);
+
+        if ($forUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return (int) ($query->value('quantity') ?? 0);
     }
 
     /**

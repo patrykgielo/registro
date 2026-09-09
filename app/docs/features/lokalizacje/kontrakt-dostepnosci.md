@@ -22,6 +22,14 @@ Obie usunięte w Fazie 0. Zostają dwie, które muszą być zmieniane **razem**:
 
 ## Zasada 2 — niezmiennik zerowej regresji
 
+> **Stan 2026-09-09 (Faza 4 etap A, kroki 4.1/4.2/4.3):** sygnatura poniżej jest już w kodzie
+> (`RentalAvailabilityService.php`). Żadne z 9 wywołań jeszcze nie przekazuje `$locationId`
+> (kroki 4.4-4.7) — dopóki tak jest, zachowanie jest bit w bit identyczne jak przed tym etapem.
+> Dowód falsyfikowalności: 26 testów charakteryzujących z kroku 0.2
+> (`RentalAvailabilityServiceTest.php`) przechodzi BEZ ZMIANY; ręczne cofnięcie gałęzi `null`
+> do `$service->quantity_total ?? 0` bez rozgałęzienia na `locationCapacity()` wywala 10/12
+> testów w nowym pliku `RentalAvailabilityServiceLocationTest.php` (zmierzone, nie deklarowane).
+
 ```php
 getAvailableQuantity(Service $s, Carbon $start, Carbon $end,
                      bool $forUpdate = false, ?int $excludeRentalId = null,
@@ -88,6 +96,18 @@ Hierarchia blokad, **zawsze w tej kolejności**:
 serializacją niezależnych oddziałów (dla wypożyczalni SMB nieodczuwalną), kupujemy zero ryzyka
 regresji na kodzie, który powstał po realnym bugu. Zawężenie locka to osobna, późniejsza decyzja.
 
+> **Stan 2026-09-09 (krok 4.3):** hierarchia zaimplementowana jako
+> `RentalAvailabilityService::locationCapacity()` (`private`, wywoływane wyłącznie z wnętrza
+> `getAvailableQuantity()` — Zasada 1 nadal obowiązuje, żaden wywołujący nie widzi tej metody
+> bezpośrednio). Punkt 1 (lock na `services`) NIE jest tu ponownie zdobywany — metoda zakłada, że
+> wywołujący już go trzyma, dokładnie tak jak reszta klasy zakłada to dziś dla `forUpdate: true`.
+> Punkt 2 (`lockForUpdate()` na wierszu kotwicy) wykonuje się tylko gdy `$forUpdate = true`.
+> Brakujący wiersz kotwicy czyta się jako pojemność 0 i **nigdy nie jest materializowany** przez
+> tę metodę — zgodnie z akapitem niżej o `insertOrIgnore` poza ścieżką blokady. Harness
+> `tests/Concurrency/CartCheckoutRaceTest` pozostaje zielony bez zmian (żadne z 9 wywołań nie
+> przekazuje jeszcze `$locationId`, więc `locationCapacity()` nie jest dziś wywoływana na żadnej
+> ścieżce produkcyjnej) — celowo **bez** nowego scenariusza per-oddział, patrz `tests.md`.
+
 **Materializacja brakujących wierszy kotwicy (`insertOrIgnore`) musi zostać POZA ścieżką blokady.**
 `INSERT IGNORE` na duplikacie klucza unikalnego zakłada S-lock i w połączeniu z `lockForUpdate`
 jest generatorem zakleszczeń — czyli dokładnie tym, co eager-materializacja miała wyeliminować.
@@ -121,6 +141,31 @@ Na `order_items` filtr `location_id` idzie **w zewnętrznym WHERE**. Nigdy:
 `OrderItem::scopeBlockingAvailability()` (`OrderItem.php:115-137`) i `Order::scopeExpired()`
 (`Order.php:358-372`) **muszą pozostać lustrzane** — komentarze-kontrakty w obu miejscach wprost
 tego wymagają. Ich rozjazd to overbooking.
+
+> **Stan 2026-09-09:** zaimplementowane w `getAvailableQuantity()` dokładnie tak, jak wyżej —
+> filtr dochodzi jako osobne `->where(...)` DOKLEJONE po `blockingAvailability()`, nigdy do środka
+> jej domknięcia. Ani `scopeBlockingAvailability()`, ani `Order::scopeExpired()` nie zostały
+> dotknięte przez tę zmianę (`git diff` na obu plikach modeli jest pusty).
+
+### `location_id = NULL` na rezerwacji — rozstrzygnięcie (Faza 4 etap A)
+
+Rezerwacja bez przypisanego oddziału (dane sprzed backfillu kroku 4.8, albo wiersz utworzony
+zanim przyszła ścieżka zapisu zacznie ustawiać to pole — 4.4-4.7 wciąż poza zakresem) **blokuje
+KAŻDY oddział, nie żaden**.
+
+Uzasadnienie: metoda nie wie, gdzie fizycznie stoi sprzęt tej rezerwacji — mógł być w dowolnym
+oddziale. Potraktowanie „na pewno nie w tym oddziale" pozwoliłoby rezerwacji ze zgubionym
+oddziałem współistnieć z nową, przypisaną rezerwacją na ten sam fizyczny egzemplarz — czyli
+dokładnie oversell, któremu ta cała metoda ma zapobiegać. Blokowanie wszędzie kosztuje najwyżej
+fałszywe „niedostępne" — ten sam kierunek konserwatywności, co Zasada 7 niżej ("zaniżanie, nie
+zawyżanie"). Implementacja: `->where('location_id', $locationId)->orWhereNull('location_id')`
+po obu stronach (legacy `rentals` i `order_items`).
+
+Dowód falsyfikowalności: `RentalAvailabilityServiceLocationTest::
+test_an_order_item_with_no_location_assigned_blocks_every_location` i
+`test_a_legacy_rental_with_no_location_assigned_blocks_every_location` — usunięcie
+`orWhereNull(...)` z obu miejsc w `RentalAvailabilityService.php` wywala dokładnie te dwa testy,
+żaden inny.
 
 ## Zasada 6 — dowód, nie deklaracja
 

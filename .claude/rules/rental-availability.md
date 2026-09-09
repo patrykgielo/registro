@@ -68,6 +68,14 @@ Nigdy nowej tabeli. To czyni „tenant bez oddziałów zachowuje się identyczni
 o kodzie, a nie o dyscyplinie danych — chroni ~77 miejsc w testach i publiczny kontrakt API
 `total_quantity`.
 
+**Stan 2026-09-09 (Faza 4 etap A):** `?int $locationId = null` jest już w sygnaturze. Gałąź
+z oddziałem czyta pojemność z `service_location_stocks` przez prywatną `locationCapacity()`
+(nigdy poza `getAvailableQuantity()` — Zasada 1 dotyczy też tej pomocniczej metody), z tą samą
+dyscypliną locków (2/3 powyżej). Reszta jest osobno, bo łatwo przeoczyć: **rezerwacja z
+`location_id = NULL` blokuje KAŻDY oddział, nie żaden** — pełne uzasadnienie i dowód
+falsyfikowalności w `kontrakt-dostepnosci.md`. Żadne z 9 wywołań jeszcze nie przekazuje
+`$locationId` (kroki 4.4-4.7 poza zakresem tej dostawy).
+
 ## 7. Sumuj popyt w obrębie jednej transakcji
 
 `getAvailableQuantity()` mówi „ile jest wolne według **zapisanych** rezerwacji". Nie wie, co

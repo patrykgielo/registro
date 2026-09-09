@@ -17,6 +17,7 @@ class CartItem extends Model
     protected $fillable = [
         'cart_id',
         'service_id',
+        'location_id',
         'quantity',
         'start_date',
         'end_date',
@@ -33,6 +34,7 @@ class CartItem extends Model
             'end_date' => 'date',
             'price_snapshot' => 'array',
             'quantity' => 'integer',
+            'location_id' => 'integer',
             'rental_days' => 'integer',
             'unit_price' => 'decimal:2',
             'total_price' => 'decimal:2',
@@ -53,6 +55,19 @@ class CartItem extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * Faza 4 krok 4.8 (plan-wdrozenia.md) — nullable, and stays nullable
+     * forever. CartItem does not block availability
+     * (kontrakt-dostepnosci.md, "Co rezerwuje, a co nie") — this column has
+     * no read-path significance today; see the migration's own docblock.
+     *
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function scopeOverlappingDates(Builder $query, Carbon $start, Carbon $end): Builder

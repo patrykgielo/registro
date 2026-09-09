@@ -16,6 +16,18 @@ regresji dla tenanta jednooddziałowego. Dostępność **nietknięta** — wchod
 **Fazy 3-9 — nierozpoczęte, ale odblokowane.** Bramka postawiona 2026-08-28 (weryfikacja
 testów pół-automatycznych panelu tenanta i frontu) została **zdjęta 2026-08-30**: oba testy
 walkthrough przechodzą i są stałą częścią suite'u.
+**Faza 3 — zmergowana na `develop`** 2026-09-08 (PR #257 kroki 3.1-3.3, PR #259 kroki 3.4-3.8):
+egzemplarze (`service_units`), obserwator utrzymujący kotwicę, wydanie/zwrot konkretnej sztuki
+z numerem na protokole. Wdrożona na UAT.
+**Faza 4 etap A — zmergowana na `develop`** 2026-09-09: kroki 4.1 (`getAvailableQuantity(...,
+?int $locationId = null)`, gałąź `null` bit w bit dzisiejsza), 4.2 (filtr lokalizacji w outer
+WHERE na `order_items`), 4.3 (pojemność z kotwicy `service_location_stocks`, blokowana wewnątrz
+już zdobytego locka na `services`) i 4.8 (`location_id` nullable + indeks na `rentals`/
+`order_items`/`cart_items`, backfill otwartych rezerwacji do oddziału głównego). **Żadne z 9
+wywołań `getAvailableQuantity()` jeszcze nie przekazuje `$locationId`** — to kroki 4.4-4.7,
+świadomie poza zakresem tej dostawy, do zrobienia po review. Do tego czasu zachowanie jest
+bit w bit identyczne jak przed etapem A (dowód: 26 testów charakteryzujących z kroku 0.2 bez
+zmiany + harness współbieżności `tests/Concurrency` zielony bez nowego scenariusza per-oddział).
 
 ## Mapa dokumentów
 
@@ -36,8 +48,8 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 0 | Higiena, dowód współbieżności + naprawa żywego oversellu | [`86cbahqbv`](https://app.clickup.com/t/86cbahqbv) | ✅ **ukończona** 2026-08-27 |
 | 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | ✅ **ukończona** (PR #228/#229/#230) |
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
-| 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ⬜ nierozpoczęta |
-| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ⬜ nierozpoczęta |
+| 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
+| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **etap A ukończony** (kroki 4.1/4.2/4.3/4.8) — 4.4-4.7 pozostają |
 | 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⬜ nierozpoczęta |
 | 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |

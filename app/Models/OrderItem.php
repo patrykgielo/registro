@@ -39,6 +39,7 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'service_id',
+        'location_id',
         'service_unit_id',
         'service_unit_identifier_snapshot',
         'service_name',
@@ -59,6 +60,7 @@ class OrderItem extends Model
             'end_date' => 'date',
             'price_snapshot' => 'array',
             'quantity' => 'integer',
+            'location_id' => 'integer',
             'service_unit_id' => 'integer',
             'rental_days' => 'integer',
             'unit_price' => 'decimal:2',
@@ -83,6 +85,22 @@ class OrderItem extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * Faza 4 krok 4.8 (plan-wdrozenia.md) — nullable, and stays nullable
+     * forever (kontrakt-dostepnosci.md Zasada 2/8.8). ALREADY read by
+     * RentalAvailabilityService::getAvailableQuantity() whenever a $locationId
+     * is passed — no call site passes one yet (Faza 4.4+ wires the nine of
+     * them). What is left to do is start passing it, NOT to wire the read.
+     * The filter lives in the OUTER WHERE of that method, never inside
+     * scopeBlockingAvailability()'s JOIN (Zasada 5).
+     *
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     /**
