@@ -7,6 +7,21 @@
 
 @php
     $isTenantDomain = !is_null(request()->attributes->get('tenant'));
+
+    // Location switcher (Faza 5.2, 86cbahqg8). selectionRequired() is the
+    // ONLY source of truth for whether this renders at all (no additional
+    // "and is this a tenant domain" condition ANDed in here) — a
+    // single-location (or zero-location, or no-tenant) case gets ZERO trace
+    // of this block, not a hidden element (86cbahqg8 acceptance criterion,
+    // see LocationContext::selectionRequired()'s own docblock). Computed
+    // once here and reused by both the desktop dropdown and the mobile
+    // drawer list further down this same template.
+    $__locationContext = app(\App\Support\LocationContext::class);
+    $__locationSwitcherVisible = $__locationContext->selectionRequired();
+    if ($__locationSwitcherVisible) {
+        $__switcherLocations = $__locationContext->activeLocations();
+        $__selectedLocation = $__locationContext->selected();
+    }
 @endphp
 
 <div x-data="{
@@ -43,6 +58,52 @@
 
                 {{-- Desktop Actions --}}
                 <div class="hidden md:flex items-center gap-3">
+                    @if($__locationSwitcherVisible)
+                        <x-interactive.dropdown align="left" width="64">
+                            <x-slot:trigger>
+                                <button
+                                    type="button"
+                                    class="flex items-center gap-2 min-h-11 px-3 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                                    aria-haspopup="true"
+                                    aria-label="{{ $__selectedLocation ? 'Wybrany oddział: '.$__selectedLocation->name.'. Zmień oddział' : 'Wybierz oddział' }}"
+                                >
+                                    <x-heroicon-m-map-pin class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+                                    <span class="max-w-[140px] truncate">{{ $__selectedLocation->name ?? 'Wybierz oddział' }}</span>
+                                    <x-heroicon-m-chevron-up-down class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+                                </button>
+                            </x-slot:trigger>
+
+                            <div class="px-4 pt-1 pb-2 text-xs font-medium uppercase tracking-wide text-text-muted" role="presentation">
+                                Oddziały
+                            </div>
+                            {{-- Faza 5.2 code review (2026-09-09): no cap on locations per
+                                 tenant, so an unbounded list here would run off-screen with no
+                                 way to reach the bottom. Bounded height + its own scroll —
+                                 keyboard users still reach every option, since Tab moves focus
+                                 into an out-of-view row and the browser auto-scrolls the
+                                 nearest scrollable ancestor to keep it visible; no extra JS. --}}
+                            <div class="max-h-72 overflow-y-auto">
+                                @foreach($__switcherLocations as $__location)
+                                    <form method="POST" action="{{ route('location.select') }}">
+                                        @csrf
+                                        <input type="hidden" name="location_id" value="{{ $__location->id }}">
+                                        <input type="hidden" name="redirect_to" value="{{ url()->full() }}">
+                                        <button
+                                            type="submit"
+                                            class="flex w-full min-h-11 items-center justify-between gap-2 px-4 py-2.5 text-sm text-left transition-colors {{ $__selectedLocation?->id === $__location->id ? 'text-brand font-medium bg-brand-subtle' : 'text-text-secondary hover:text-text-primary hover:bg-surface-sunken' }}"
+                                            role="menuitemradio"
+                                            aria-checked="{{ $__selectedLocation?->id === $__location->id ? 'true' : 'false' }}"
+                                        >
+                                            <span class="truncate">{{ $__location->name }}</span>
+                                            @if($__selectedLocation?->id === $__location->id)
+                                                <x-heroicon-m-check class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                            @endif
+                                        </button>
+                                    </form>
+                                @endforeach
+                            </div>
+                        </x-interactive.dropdown>
+                    @endif
                     @auth
                         @php
                             $cartCount = 0;
@@ -201,6 +262,39 @@
                             </div>
                         </div>
                     @endauth
+
+                    @if($__locationSwitcherVisible)
+                        <div class="mb-6 pb-6 border-b border-border">
+                            <p class="px-3 mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">Oddział</p>
+                            {{-- Faza 5.2 code review (2026-09-09): same unbounded-list risk as
+                                 the desktop dropdown — bounded height + its own scroll keeps the
+                                 rest of the drawer (main nav, account, logout) reachable without
+                                 an excessive scroll past dozens of branches. --}}
+                            <div class="max-h-72 overflow-y-auto space-y-1">
+                                @foreach($__switcherLocations as $__location)
+                                    <form method="POST" action="{{ route('location.select') }}">
+                                        @csrf
+                                        <input type="hidden" name="location_id" value="{{ $__location->id }}">
+                                        <input type="hidden" name="redirect_to" value="{{ url()->full() }}">
+                                        <button
+                                            type="submit"
+                                            class="flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-sm rounded-lg text-left transition-colors {{ $__selectedLocation?->id === $__location->id ? 'text-brand font-medium bg-brand-subtle' : 'text-text-secondary hover:text-text-primary hover:bg-surface-sunken' }}"
+                                            role="menuitemradio"
+                                            aria-checked="{{ $__selectedLocation?->id === $__location->id ? 'true' : 'false' }}"
+                                        >
+                                            <span class="flex items-center gap-2 min-w-0">
+                                                <x-heroicon-m-map-pin class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+                                                <span class="truncate">{{ $__location->name }}</span>
+                                            </span>
+                                            @if($__selectedLocation?->id === $__location->id)
+                                                <x-heroicon-m-check class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                            @endif
+                                        </button>
+                                    </form>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
 
                     <nav class="space-y-1">
                         <x-navigation.menu-items location="header" />

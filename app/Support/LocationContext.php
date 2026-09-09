@@ -187,9 +187,19 @@ class LocationContext
     }
 
     /**
+     * Public since Faza 5.2 (86cbahqg8) — the header/drawer switcher needs
+     * the actual rows to render as options, not just the yes/no answer
+     * `selectionRequired()` gives. Deliberately reuses THIS method rather
+     * than a second `Location::active()->...` query in the view layer, which
+     * is exactly the duplication this class's own top-of-file docblock warns
+     * against ("do not let a future step inline its own
+     * `Location::active()->count()` check"). Per-instance cache still
+     * applies (see property docblock) — safe under the current per-request
+     * `app(LocationContext::class)` resolution, never a singleton.
+     *
      * @see find() for why this does not rely on the ambient global scope.
      */
-    private function activeLocations(): Collection
+    public function activeLocations(): Collection
     {
         if ($this->activeLocationsCache !== null) {
             return $this->activeLocationsCache;

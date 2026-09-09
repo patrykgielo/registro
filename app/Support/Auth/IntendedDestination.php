@@ -171,8 +171,21 @@ class IntendedDestination
      * check shared by capture()'s two re-validation points (a fresh
      * candidate, and an already-stored value being re-stamped) and
      * consume()'s own gate.
+     *
+     * Public since Faza 5.2 (86cbahqg8, code review 2026-09-09) — the
+     * location switcher's own redirect_to needed this exact combination
+     * (origin AND the /admin, /platform, /livewire, /api, /webhooks
+     * denylist), not isSameOrigin() alone. `LocationSelectionController` is
+     * a PUBLIC, unauthenticated route: without the path denylist, a crafted
+     * `redirect_to=/admin/...` link handed to a logged-in admin browsing the
+     * storefront in the same tab would pass origin-only validation and land
+     * them mid-panel. Reusing this one check (rather than copying
+     * DENYLISTED_PATH_PREFIXES into the controller) keeps a second call site
+     * from drifting the moment this list changes — same reasoning as making
+     * `LocationContext::activeLocations()` public instead of duplicating its
+     * query.
      */
-    private static function isSafeUrl(string $url, Request $request): bool
+    public static function isSafeUrl(string $url, Request $request): bool
     {
         if (! static::isSameOrigin($url, $request)) {
             return false;

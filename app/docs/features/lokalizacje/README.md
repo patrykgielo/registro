@@ -84,6 +84,34 @@ Weryfikacja: `pint --test` 966 plików / 0 problemów (baseline 962 + 4 nowe pli
 testów, dokładna zgodność). MySQL 8.0 nie uruchamiany osobno dla tego kroku — brak nowych
 migracji ani zapytań wrażliwych na silnik.
 
+**Faza 5 krok 5.2 — gałąź `feature/lokalizacje-faza5-przelacznik`** 2026-09-09, jeszcze nie
+zmergowana: przełącznik oddziału w `components/nav/header.blade.php` (desktop dropdown + lista
+w mobilnym drawerze), czytający wyłącznie `LocationContext::selectionRequired()` — tenant
+jednooddziałowy dostaje dziś identyczny header, bez śladu bloku w HTML. Nowa trasa `POST
+/lokalizacja/wybierz` (`location.select`, publiczna, bez `auth`) →
+`App\Http\Controllers\LocationSelectionController`, walidująca przynależność do bieżącego
+tenanta i aktywność oddziału przed wywołaniem `LocationContext::set()`, więc hand-crafted
+`location_id` dostaje zwykłą odmowę, nigdy 500. Powrót po wyborze przez ukryte pole
+`redirect_to` (renderowane serwerowo z `url()->full()`, nigdy z `Referer`), zwalidowane
+`IntendedDestination::isSameOrigin()` z `auth-redirects.md`.
+
+**Odstępstwo od enumeracji API zgłoszenia:** `LocationContext::activeLocations()` zmieniona
+z `private` na `public` — przełącznik potrzebuje rzeczywistych wierszy do wyrenderowania opcji,
+a druga wersja tego zapytania w widoku byłaby dokładnie duplikacją, przed którą ostrzega
+docblock klasy. Pełne uzasadnienie i trzy falsyfikowalne dowody: `plan-wdrozenia.md`, sekcja
+kroku 5.2.
+
+Poprawki z code review (2026-09-09, ten sam dzień): powrót po wyborze waliduje teraz origin
+**i** ścieżkę (`IntendedDestination::isSafeUrl()`, upubliczniona — denylist `/admin`, `/platform`,
+`/livewire`, `/api`, `/webhooks`, bo trasa jest publiczna i bez uwierzytelnienia); zbyt długi
+`redirect_to` nie blokuje już samego wyboru oddziału (spada tylko na `route('home')`); obie listy
+oddziałów mają `max-h-72 overflow-y-auto` (brak limitu oddziałów na tenanta). Pełne uzasadnienie
+i dowody falsyfikowalności: `plan-wdrozenia.md`, sekcja kroku 5.2.
+
+Weryfikacja: `pint --test` 969/969 (bez zmiany — `IntendedDestination.php` już istniał);
+`php artisan test` (SQLite) 1913 passed / 5 skipped / 0 failed (1910 + 3 nowe testy);
+`npm run build` wykonany.
+
 ## Mapa dokumentów
 
 | Dokument | Odpowiada na pytanie |
@@ -105,7 +133,7 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
 | 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **ukończona (4.1-4.8), etap C niezmergowany** (PR #263/#264 zmergowane; etap C na `feature/lokalizacje-faza4-kalendarz`, code review w toku) |
-| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | 🟡 **krok 5.1 gotowy, niezmergowany** (gałąź `feature/lokalizacje-faza5-kontekst`, code review w toku) |
+| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | 🟡 **kroki 5.1-5.2 gotowe, niezmergowane** (5.1 na `feature/lokalizacje-faza5-kontekst`, 5.2 na `feature/lokalizacje-faza5-przelacznik`, code review w toku) |
 | 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |
 | 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⬜ nierozpoczęta |
