@@ -57,8 +57,18 @@ class RentalExtensionService
      * actually closes the race). Callers on write paths (requestExtension(),
      * approve()) MUST pass true AND already hold a Service::lockForUpdate()
      * lock on the same row before calling this.
+     *
+     * $locationId (Faza 4 krok 4.5, kontrakt-dostepnosci.md — "the ninth call
+     * site, the one that gets skipped") was, until this change, the one
+     * getAvailableQuantity() caller with no location parameter of its own —
+     * an extension could silently claim a unit from a DIFFERENT location than
+     * the one the original item was booked against. Both callers below pass
+     * $item->location_id: the item being extended already carries its own
+     * assignment (set at checkout time by CartService::convertToOrder()), so
+     * there is nothing else to resolve it from — same "read it off the row"
+     * pattern as CartService::updateQuantity().
      */
-    public function checkAvailabilityForExtension(OrderItem $item, Carbon $requestedEndDate, bool $forUpdate = false): int
+    public function checkAvailabilityForExtension(OrderItem $item, Carbon $requestedEndDate, bool $forUpdate = false, ?int $locationId = null): int
     {
         $service = $item->service;
 
@@ -68,7 +78,7 @@ class RentalExtensionService
 
         $extensionStart = $item->end_date->copy()->addDay();
 
-        return $this->availabilityService->getAvailableQuantity($service, $extensionStart, $requestedEndDate, forUpdate: $forUpdate);
+        return $this->availabilityService->getAvailableQuantity($service, $extensionStart, $requestedEndDate, forUpdate: $forUpdate, locationId: $locationId);
     }
 
     /**
@@ -110,7 +120,7 @@ class RentalExtensionService
             // the same service queue here, matching RentalAvailabilityService::createHold().
             $service = Service::lockForUpdate()->findOrFail($item->service_id);
 
-            $available = $this->checkAvailabilityForExtension($item, $requestedEndDate, forUpdate: true);
+            $available = $this->checkAvailabilityForExtension($item, $requestedEndDate, forUpdate: true, locationId: $item->location_id);
 
             if ($available < $item->quantity) {
                 throw new RentalUnavailableException('Wybrany sprzęt nie jest dostępny w podanym terminie.');
@@ -188,7 +198,7 @@ class RentalExtensionService
             Service::lockForUpdate()->findOrFail($item->service_id);
 
             // Re-validate availability (state may have changed)
-            $available = $this->checkAvailabilityForExtension($item, $extensionRequest->requested_end_date, forUpdate: true);
+            $available = $this->checkAvailabilityForExtension($item, $extensionRequest->requested_end_date, forUpdate: true, locationId: $item->location_id);
 
             if ($available < $item->quantity) {
                 throw new RentalUnavailableException('Sprzęt nie jest już dostępny w podanym terminie. Wniosek nie może zostać zatwierdzony.');

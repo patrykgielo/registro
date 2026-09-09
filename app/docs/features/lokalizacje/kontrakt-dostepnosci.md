@@ -23,12 +23,22 @@ Obie usunięte w Fazie 0. Zostają dwie, które muszą być zmieniane **razem**:
 ## Zasada 2 — niezmiennik zerowej regresji
 
 > **Stan 2026-09-09 (Faza 4 etap A, kroki 4.1/4.2/4.3):** sygnatura poniżej jest już w kodzie
-> (`RentalAvailabilityService.php`). Żadne z 9 wywołań jeszcze nie przekazuje `$locationId`
-> (kroki 4.4-4.7) — dopóki tak jest, zachowanie jest bit w bit identyczne jak przed tym etapem.
-> Dowód falsyfikowalności: 26 testów charakteryzujących z kroku 0.2
-> (`RentalAvailabilityServiceTest.php`) przechodzi BEZ ZMIANY; ręczne cofnięcie gałęzi `null`
+> (`RentalAvailabilityService.php`). Dowód falsyfikowalności: 26 testów charakteryzujących z kroku
+> 0.2 (`RentalAvailabilityServiceTest.php`) przechodzi BEZ ZMIANY; ręczne cofnięcie gałęzi `null`
 > do `$service->quantity_total ?? 0` bez rozgałęzienia na `locationCapacity()` wywala 10/12
 > testów w nowym pliku `RentalAvailabilityServiceLocationTest.php` (zmierzone, nie deklarowane).
+>
+> **Aktualizacja, etap B (kroki 4.4/4.5, ten sam dzień):** 8 z 9 wywołań przekazuje `$locationId`
+> — `CartService`'s `addItem()`/`updateQuantity()`/`convertToOrder()`, `CreateRental`,
+> `EditRental`, oraz WSZYSCY TRZEJ wywołujący `RentalExtensionService::checkAvailabilityForExtension()`
+> (jej dwaj wewnętrzni w `RentalExtensionService` i `RentalExtensionController::checkAvailability()`
+> — ten trzeci był pominięty w pierwszym przebiegu 4.5 i doprawiony po code review, patrz
+> `RentalExtensionController.php:41`). Jedynym wciąż martwym wywołaniem jest
+> `RentalBookingController` (frontend availability display, krok 4.6 poza zakresem) i
+> `getMonthlyAvailability()` (krok 4.6/kalendarz — osobna metoda, nie objęta tym parametrem).
+> Zachowanie dla `$locationId === null` pozostaje bit w bit identyczne — dowód: `RentalAvailabilityServiceTest.php`
+> nadal przechodzi bez zmian, a każdy nowy caller ma dziś `null` jako jedyną możliwą wartość
+> tam, gdzie wiersz nigdy jeszcze nie miał ustawionego `location_id`.
 
 ```php
 getAvailableQuantity(Service $s, Carbon $start, Carbon $end,
@@ -49,21 +59,28 @@ nazwanych (`forUpdate:`, `excludeRentalId:`), więc działają bez zmiany.
 
 ## Zasada 3 — dziewięć wywołań, nie osiem
 
-| # | Miejsce | Tryb |
-|---|---|---|
-| 1 | `RentalBookingController:31` | read-only, publiczne API |
-| 2 | `RentalBookingController:48` → `getMonthlyAvailability` | read-only, kalendarz |
-| 3 | `RentalAvailabilityService::createHold` | `@deprecated`, legacy |
-| 4 | `CartService:98` (`addItem`) | zapis |
-| 5 | `CartService:225` (`convertToOrder`) | zapis |
-| 6 | `CartService:509` (`updateQuantity`) | zapis |
-| 7 | **`RentalExtensionService:71`** | przelotka, zapis i odczyt |
-| 8 | `CreateRental:43` | zapis |
-| 9 | `EditRental:43` | zapis |
+| # | Miejsce | Tryb | `$locationId` (stan 2026-09-09, etap B) |
+|---|---|---|---|
+| 1 | `RentalBookingController:31` | read-only, publiczne API | ❌ poza zakresem (krok 4.6, brak `LocationContext`) |
+| 2 | `RentalBookingController:48` → `getMonthlyAvailability` | read-only, kalendarz | ❌ poza zakresem (krok 4.6) |
+| 3 | `RentalAvailabilityService::createHold` | `@deprecated`, legacy | ❌ celowo pominięte, kod martwy |
+| 4 | `CartService:108` (`addItem`) | zapis | ✅ nowy parametr, persystowany na wierszu |
+| 5 | `CartService:249` (`convertToOrder`) | zapis | ✅ `$item->location_id` |
+| 6 | `CartService:576` (`updateQuantity`) | zapis | ✅ `$item->location_id` |
+| 7 | **`RentalExtensionService::checkAvailabilityForExtension()`** (`:71`) | przelotka, zapis i odczyt | ✅ `?int $locationId = null` w sygnaturze |
+| 8 | `CreateRental:43` | zapis | ✅ z nowego pola `location_id` w `RentalResource::form()` |
+| 9 | `EditRental:43` | zapis | ✅ tak samo |
 
-**Pozycja 7 jest tą, którą się pomija.** `checkAvailabilityForExtension()` nie ma dziś parametru
-lokalizacji i przekazuje `$forUpdate` dalej. Bez przepuszczenia przez nią `$locationId`
-przedłużenie wypożyczenia sprzedaje sprzęt z **cudzego oddziału**, cicho.
+**Pozycja 7 to przelotka z TRZEMA wywołującymi, nie jednym** — `RentalExtensionService::requestExtension()`
+(`:123`), `::approve()` (`:201`) i `RentalExtensionController::checkAvailability()` (`:41`, endpoint
+JSON). Pierwszy przebieg kroku 4.5 wywołania w `RentalExtensionService` przekazał wszędzie
+`locationId: $item->location_id` — ale **pominął trzeciego wywołującego**, czyli dokładnie ten sam
+błąd o krok wyżej: „wywołanie, które się pomija" doczekało się własnego pominiętego wywołującego.
+Naprawione po code review (`RentalExtensionController.php:49`). Skutek pominięcia był jednokierunkowy
+i cichy: gdy pula globalna (`quantity_total`) wyczerpana w INNYM oddziale, a sztuka wolna w oddziale
+pozycji — endpoint zwracał `can_extend: false` dla w pełni uprawnionego przedłużenia, bez wyjątku,
+bez logu. Test przechodzący przez ten endpoint HTTP:
+`RentalExtensionControllerTest::test_check_can_extend_is_true_when_the_items_own_location_has_a_free_unit_even_though_the_global_pool_is_exhausted_elsewhere`.
 
 ## Zasada 4 — dyscyplina blokad
 
@@ -103,10 +120,13 @@ regresji na kodzie, który powstał po realnym bugu. Zawężenie locka to osobna
 > wywołujący już go trzyma, dokładnie tak jak reszta klasy zakłada to dziś dla `forUpdate: true`.
 > Punkt 2 (`lockForUpdate()` na wierszu kotwicy) wykonuje się tylko gdy `$forUpdate = true`.
 > Brakujący wiersz kotwicy czyta się jako pojemność 0 i **nigdy nie jest materializowany** przez
-> tę metodę — zgodnie z akapitem niżej o `insertOrIgnore` poza ścieżką blokady. Harness
-> `tests/Concurrency/CartCheckoutRaceTest` pozostaje zielony bez zmian (żadne z 9 wywołań nie
-> przekazuje jeszcze `$locationId`, więc `locationCapacity()` nie jest dziś wywoływana na żadnej
-> ścieżce produkcyjnej) — celowo **bez** nowego scenariusza per-oddział, patrz `tests.md`.
+> tę metodę — zgodnie z akapitem niżej o `insertOrIgnore` poza ścieżką blokady.
+>
+> **Aktualizacja, etap B (krok 4.4):** `locationCapacity()` jest dziś wywoływana na ścieżce
+> produkcyjnej (`CartService::convertToOrder()` czyta `$item->location_id`, ustawiane przez
+> `addItem()`). Harness `tests/Concurrency/CartCheckoutRaceTest` dostał dwa nowe scenariusze
+> per-oddział (ten sam oddział/ostatnia sztuka → jeden wygrywa; różne oddziały/po sztuce każdy →
+> oba przechodzą) — patrz `tests.md`, sekcja „tests/Concurrency".
 
 **Materializacja brakujących wierszy kotwicy (`insertOrIgnore`) musi zostać POZA ścieżką blokady.**
 `INSERT IGNORE` na duplikacie klucza unikalnego zakłada S-lock i w połączeniu z `lockForUpdate`
@@ -150,8 +170,8 @@ tego wymagają. Ich rozjazd to overbooking.
 ### `location_id = NULL` na rezerwacji — rozstrzygnięcie (Faza 4 etap A)
 
 Rezerwacja bez przypisanego oddziału (dane sprzed backfillu kroku 4.8, albo wiersz utworzony
-zanim przyszła ścieżka zapisu zacznie ustawiać to pole — 4.4-4.7 wciąż poza zakresem) **blokuje
-KAŻDY oddział, nie żaden**.
+zanim ścieżka zapisu zaczęła ustawiać to pole — dziś już tylko `RentalBookingController`/
+`getMonthlyAvailability` z kroku 4.6, wciąż poza zakresem) **blokuje KAŻDY oddział, nie żaden**.
 
 Uzasadnienie: metoda nie wie, gdzie fizycznie stoi sprzęt tej rezerwacji — mógł być w dowolnym
 oddziale. Potraktowanie „na pewno nie w tym oddziale" pozwoliłoby rezerwacji ze zgubionym
@@ -214,8 +234,10 @@ Scenariusze pokryte:
 - dwóch klientów, ostatnia sztuka, nakładające się daty → przechodzi dokładnie jeden,
 - ten sam sprzęt, **nienakładające się** okna → przechodzą **oba** (dowód braku fałszywej odmowy).
 
-Świadomie pominięte do Fazy 4: wariant per-oddział (oddziały jeszcze nie istnieją) oraz
-przedłużenie kontra nowa rezerwacja.
+**Aktualizacja, etap B (krok 4.4):** wariant per-oddział DODANY — dwa nowe scenariusze
+(`test_two_concurrent_checkouts_for_the_last_unit_in_the_same_location_only_one_succeeds`,
+`..._in_different_locations_both_succeed`), lustro istniejących dwóch dla dat. Nadal świadomie
+pominięte: przedłużenie kontra nowa rezerwacja (poza zakresem tego etapu).
 
 ## Zasada 7 — sumuj popyt w obrębie jednej transakcji
 
@@ -235,16 +257,17 @@ ani żaden test sekwencyjny tego nie łapały.
 
 ### Naprawa — agregacja popytu rodzeństwa
 
-Wszystkie trzy ścieżki zapisu (`CartService:98`/`:225`/`:509`) odejmują teraz od `$available`
-sumę ilości **rodzeństwa pozycji tej samej usługi w tym samym koszyku**, których okno dat nakłada
-się z badaną pozycją (inkluzywnie po obu stronach, identycznie jak w `getAvailableQuantity()`):
+Wszystkie trzy ścieżki zapisu (`CartService:108` `addItem` / `:249` `convertToOrder` / `:576`
+`updateQuantity`) odejmują teraz od `$available` sumę ilości **rodzeństwa pozycji tej samej
+usługi w tym samym koszyku**, których okno dat nakłada się z badaną pozycją (inkluzywnie po obu
+stronach, identycznie jak w `getAvailableQuantity()`):
 
 - `addItem()` sumuje **istniejące** `CartItem`y (już zaakceptowane wcześniejszymi wywołaniami),
 - `updateQuantity()` sumuje identycznie, **z wyłączeniem edytowanej pozycji** —
   ten sam powód co parametr `$excludeRentalId` w `getAvailableQuantity()`,
-- `convertToOrder()` (rozstrzygająca ścieżka, `CartService.php:213-256`) idzie zachłannie:
+- `convertToOrder()` (rozstrzygająca ścieżka, pętla `CartService.php:237-283`) idzie zachłannie:
   iteruje pozycje w deterministycznej kolejności (`orderBy('service_id')->orderBy('id')`,
-  `CartService.php:185`) i dolicza do popytu tylko te wcześniejsze pozycje TEJ SAME transakcji,
+  `CartService.php:204`) i dolicza do popytu tylko te wcześniejsze pozycje TEJ SAME transakcji,
   które już zostały **zaakceptowane** (nie odrzucone) i nakładają się oknem dat — pozycja odrzucona
   nie zatruwa popytu kolejnej, nienakładającej się z nią pozycji. To rozróżnienie jest konieczne:
   naiwne „zsumuj wszystkie pozycje tej usługi w koszyku" nadmiarowo odrzuciłoby pozycje, które
@@ -257,7 +280,14 @@ widzi „żądane 3, dostępne 1", a nie mylące „żądane 1, dostępne 1".
 
 > Każdy wywołujący, który podejmuje **więcej niż jedną** decyzję w jednej transakcji, musi
 > odejmować od puli to, co sam już zaakceptował — agregując popyt per usługa i nakładające się
-> okno dat. Po dodaniu oddziałów: per usługa **i** oddział.
+> okno dat, i (od kroku 4.4, zaimplementowane) per oddział. `addItem()`/`updateQuantity()`
+> dokładają `->where('location_id', $locationId)` do zapytania o rodzeństwo (Eloquent tłumaczy
+> `where(kolumna, null)` na `whereNull()`, więc `$locationId === null` zachowuje się identycznie
+> jak przed tą zmianą); `convertToOrder()`'s klucz agregujący w PHP to `"{$serviceId}|{$locationId}"`
+> zamiast gołego `$serviceId`. Sfalsyfikowane w obie strony ręczną mutacją kodu (złamano→czerwone
+> testy→cofnięto): brak filtra lokalizacji w zapytaniu o rodzeństwo → fałszywe odrzucenie dwóch
+> nienakładających się kompetencyjnie pozycji w różnych oddziałach; klucz bez `$locationId` w
+> `convertToOrder()` → to samo zjawisko w drugą stronę.
 
 ### Znana konserwatywność: okno, nie szczyt
 

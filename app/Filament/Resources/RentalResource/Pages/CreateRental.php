@@ -44,7 +44,8 @@ class CreateRental extends CreateRecord
                     $service,
                     Carbon::parse($data['start_date']),
                     Carbon::parse($data['end_date']),
-                    forUpdate: true
+                    forUpdate: true,
+                    locationId: $data['location_id'] ?? null
                 );
 
                 if ((int) $data['quantity'] > $available) {

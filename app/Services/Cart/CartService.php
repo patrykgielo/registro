@@ -83,11 +83,21 @@ class CartService
      * service. convertToOrder() re-validates availability again at checkout
      * time, which is the actual point of no return for inventory.
      *
+     * $locationId (Faza 4 krok 4.4, kontrakt-dostepnosci.md) is where the
+     * location dimension ENTERS the cart — unlike updateQuantity()/
+     * convertToOrder() below, there is no existing CartItem row yet to read
+     * it off. Defaults to null, unchanged from today's behaviour, until a
+     * future caller (Faza 5's LocationContext / Faza 6's carts.location_id)
+     * starts passing one; App\Http\Controllers\CartController does not yet.
+     * The value is both forwarded to getAvailableQuantity() AND persisted on
+     * the created row, so updateQuantity()/convertToOrder() can read it back
+     * later from that same row.
+     *
      * @throws RentalUnavailableException when requested quantity exceeds available stock
      */
-    public function addItem(Cart $cart, Service $service, Carbon $start, Carbon $end, int $quantity): CartItem
+    public function addItem(Cart $cart, Service $service, Carbon $start, Carbon $end, int $quantity, ?int $locationId = null): CartItem
     {
-        return DB::transaction(function () use ($cart, $service, $start, $end, $quantity): CartItem {
+        return DB::transaction(function () use ($cart, $service, $start, $end, $quantity, $locationId): CartItem {
             $service = Service::lockForUpdate()->findOrFail($service->id);
 
             // forUpdate: true — see RentalAvailabilityService::getAvailableQuantity()
@@ -95,15 +105,23 @@ class CartService
             // re-read sees another transaction's just-committed reservation
             // under MySQL REPEATABLE READ; the count queries must themselves be
             // locking reads.
-            $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true);
+            $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true, locationId: $locationId);
 
             // getAvailableQuantity() only sees committed Rentals/OrderItems — it
             // is blind to sibling CartItems already sitting in THIS cart for
             // the same service (kontrakt-dostepnosci.md Zasada 7). Without
             // aggregating them, a user can add the same equipment to their own
             // cart repeatedly and oversell themselves (ClickUp 86cb93tfw).
+            //
+            // Scoped to THIS $locationId too (Zasada 7's per-location addendum,
+            // Faza 4 krok 4.4): a sibling in a DIFFERENT location must not
+            // count against this one, or two non-competing locations would
+            // falsely serialise against each other. `where('location_id', null)`
+            // resolves to whereNull() — see CartServiceLocationTest for the
+            // proof this is unchanged while every caller still passes null.
             $existingDemand = (int) CartItem::where('cart_id', $cart->id)
                 ->where('service_id', $service->id)
+                ->where('location_id', $locationId)
                 ->overlappingDates($start, $end)
                 ->sum('quantity');
 
@@ -119,6 +137,7 @@ class CartService
             return CartItem::create([
                 'cart_id' => $cart->id,
                 'service_id' => $service->id,
+                'location_id' => $locationId,
                 'quantity' => $quantity,
                 'start_date' => $start->toDateString(),
                 'end_date' => $end->toDateString(),
@@ -200,14 +219,19 @@ class CartService
             // (kontrakt-dostepnosci.md Zasada 7). Without aggregating sibling
             // demand, three 1-unit CartItems for the same quantity_total=1
             // service each see the same unclaimed unit and all pass (ClickUp
-            // 86cb93tfw). Keyed by service_id, keeps only the start/end/quantity
+            // 86cb93tfw). Keyed by "service_id|location_id" (Faza 4 krok 4.4
+            // addendum — NOT service_id alone), keeps only the start/end/quantity
             // of items ALREADY ACCEPTED in this loop — a rejected item's own
             // demand must not poison a later, non-overlapping item's count (see
             // test_convert_to_order_does_not_over_reject_when_only_middle_item_
             // bridges_two_non_overlapping_windows in CartServiceTest: three
             // items A/B/C where only B overlaps both A and C — summing ALL
             // same-service items regardless of overlap would wrongly reject A
-            // and C too).
+            // and C too). Per-location keying prevents the SAME mistake along a
+            // second axis: two items of the same service in DIFFERENT locations
+            // must not sum against each other (false reject), and two items in
+            // the SAME location must (oversell) — see CartServiceLocationTest for
+            // both directions, falsified independently.
             $acceptedByService = [];
 
             foreach ($items as $item) {
@@ -226,10 +250,13 @@ class CartService
                     $service,
                     $itemStart,
                     $itemEnd,
-                    forUpdate: true
+                    forUpdate: true,
+                    locationId: $item->location_id
                 );
 
-                $siblingDemand = collect($acceptedByService[$item->service_id] ?? [])
+                $demandKey = $item->service_id.'|'.($item->location_id ?? 'null');
+
+                $siblingDemand = collect($acceptedByService[$demandKey] ?? [])
                     ->filter(fn (array $accepted): bool => $itemStart->lte($accepted['end']) && $itemEnd->gte($accepted['start']))
                     ->sum('quantity');
 
@@ -244,7 +271,7 @@ class CartService
                         $itemEnd
                     );
                 } else {
-                    $acceptedByService[$item->service_id][] = [
+                    $acceptedByService[$demandKey][] = [
                         'start' => $itemStart,
                         'end' => $itemEnd,
                         'quantity' => $item->quantity,
@@ -379,6 +406,11 @@ class CartService
                     OrderItem::create([
                         'order_id' => $order->id,
                         'service_id' => $item->service_id,
+                        // Carries the CartItem's own location_id forward verbatim
+                        // (Faza 4 krok 4.4) — every unit split off this line was
+                        // validated against, and claims capacity from, this exact
+                        // (service, location) pair above.
+                        'location_id' => $item->location_id,
                         'service_name' => $item->service->name,
                         'quantity' => 1,
                         'start_date' => $item->start_date,
@@ -538,14 +570,20 @@ class CartService
             $end = Carbon::parse($item->end_date);
 
             // forUpdate: true — see RentalAvailabilityService::getAvailableQuantity() docblock.
-            $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true);
+            // $item->location_id (Faza 4 krok 4.4) is the row's OWN, already-set
+            // location — addItem() is the only place that dimension enters the
+            // cart; this method only ever propagates what's already on the row.
+            $available = $this->availability->getAvailableQuantity($service, $start, $end, forUpdate: true, locationId: $item->location_id);
 
             // Same aggregation as addItem() (kontrakt-dostepnosci.md Zasada 7),
             // excluding this item's OWN (pre-update) row — otherwise its
             // existing quantity would double-count against itself, the same
             // reason getAvailableQuantity() has an $excludeRentalId parameter.
+            // Scoped to the SAME location as this item, matching addItem() —
+            // a sibling in a different location must not count against it.
             $siblingDemand = (int) CartItem::where('cart_id', $cart->id)
                 ->where('service_id', $item->service_id)
+                ->where('location_id', $item->location_id)
                 ->where('id', '!=', $item->id)
                 ->overlappingDates($start, $end)
                 ->sum('quantity');
