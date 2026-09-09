@@ -445,6 +445,62 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > test` (SQLite) 1899 passed/5 skipped/0 failed (1878+21 nowych testów, dokładna zgodność).
 > Pełny opis: `README.md` tego katalogu.
 
+> **Stan 2026-09-09 (krok 5.2, gałąź `feature/lokalizacje-faza5-przelacznik`, niezmergowana):**
+> przełącznik w `components/nav/header.blade.php` — desktop `x-interactive.dropdown` w pasku akcji
+> i lista w mobilnym drawerze, oba czytające `LocationContext::selectionRequired()` jako
+> **jedyny** warunek renderu (nic doklejonego koniunkcją). Tenant z 0 lub 1 aktywną lokalizacją
+> dostaje ZERO śladu bloku w wyjściowym HTML — zweryfikowane asercją na nieobecność, nie na
+> `hidden`/`display:none`, i falsyfikowalnie (patrz niżej). Nowa trasa `POST /lokalizacja/wybierz`
+> (`location.select`) → `App\Http\Controllers\LocationSelectionController::store()`, middleware
+> `[ResolveTenant, RequireTenant, throttle:30,1]`, **bez `auth`** — kontekst jest sesyjny, nie
+> przywiązany do zalogowanego użytkownika. Walidacja `Rule::exists('locations','id')
+> ->where('organization_id', $tenant->id)->where('is_active', true)` (ten sam kształt co
+> `RentalBookingController::locationIdRules()`) odrzuca obcego/nieaktywnego kandydata **przed**
+> wywołaniem `LocationContext::set()` — `set()` dokumentuje niezgodność jako błąd wołającego
+> (rzuca), więc walidacja w kontrolerze jest tym, co zamienia hand-crafted `location_id` w zwykłą
+> odmowę zamiast 500. Powrót po wyborze: ukryte pole `redirect_to` renderowane przez nas z
+> `url()->full()` (nigdy z `Referer`), zwalidowane w kontrolerze przez
+> `IntendedDestination::isSameOrigin()` — wartość poza originem spada na `route('home')`.
+>
+> **Odstępstwo od enumeracji API zgłoszenia, świadome:** `LocationContext::activeLocations()`
+> zmieniona z `private` na `public` — przełącznik potrzebuje samych wierszy do wyrenderowania
+> opcji, a jedyna alternatywa (osobne zapytanie `Location::active()->...` w widoku) jest
+> dokładnie duplikacją, przed którą ostrzega docblock tej klasy na górze pliku. Cache
+> per-instancję i skan po `organization_id` (nie po ambientnym scope) zostają nietknięte —
+> zmieniła się wyłącznie widoczność.
+>
+> Falsyfikowalność (trzy niezależne sprawdzenia, każde cofnięte po potwierdzeniu czerwonego
+> wyniku): `$__locationSwitcherVisible = true` na sztywno →
+> `test_single_location_tenant_gets_no_trace_of_the_switcher` pada; usunięcie
+> `->where('organization_id', ...)` z `Rule::exists(...)` →
+> `test_selecting_another_tenants_location_is_denied_...` pada; usunięcie `isSameOrigin()` z
+> gałęzi przekierowania → `test_an_off_origin_redirect_to_is_not_followed` pada (asercja łapie
+> realny otwarty redirect na `https://evil.example/steal`).
+>
+> **Poprawki z code review (2026-09-09, ten sam dzień):** (1) powrót po wyborze walidowany teraz
+> `IntendedDestination::isSafeUrl()` (origin ORAZ `DENYLISTED_PATH_PREFIXES` — `/admin`,
+> `/platform`, `/livewire`, `/api`, `/webhooks`), nie samym `isSameOrigin()` — trasa jest publiczna
+> i bez uwierzytelnienia, więc `redirect_to=/admin/...` przechodziłoby walidację origin-only mimo
+> realnego celu w panelu. Metoda upubliczniona w `IntendedDestination` (ta sama zasada co
+> `activeLocations()` niżej — reużycie zamiast kopiowania listy prefiksów do kontrolera).
+> (2) `redirect_to` przestało być regułą `$request->validate()` (przekroczenie `max:2048` odrzucało
+> **całe** żądanie, w tym wybór oddziału) — teraz sprawdzane osobno w
+> `resolveRedirectTarget()`, nieprawidłowa/zbyt długa wartość po prostu spada na `route('home')`,
+> a sam wybór oddziału przechodzi. (3) obie listy oddziałów (desktop dropdown, mobilny drawer)
+> dostały `max-h-72 overflow-y-auto` — brak limitu liczby oddziałów na tenanta, a lista bez tego
+> wychodziłaby poza ekran bez możliwości przewinięcia; dostępność z klawiatury zachowana natywnie
+> (Tab przewija najbliższego przewijalnego przodka do widocznego obszaru, bez dodatkowego JS).
+> Trzy nowe testy, wszystkie sfalsyfikowane i cofnięte: przywrócenie `isSameOrigin()` zamiast
+> `isSafeUrl()` czerwieni `test_a_same_origin_but_denylisted_path_redirect_to_is_not_followed`;
+> przywrócenie `redirect_to` do `$request->validate()` czerwieni
+> `test_an_overlong_redirect_to_does_not_block_the_location_selection`; usunięcie `max-h-72` z
+> jednej z klas czerwieni `test_both_switcher_render_sites_have_a_bounded_scrollable_list`.
+>
+> Weryfikacja: `pint --test` 969/969 (bez zmiany liczby plików — `IntendedDestination.php` już
+> istniał); `php artisan test` (SQLite) 1913 passed/5 skipped/0 failed (1910+3 nowe testy,
+> dokładna zgodność); `npm run build` wykonany. MySQL 8.0 nie uruchamiany osobno — brak nowych
+> migracji, walidacja jest zwykłym `Rule::exists`.
+
 > Krok 5.4 jest obowiązkowy w tej samej fazie co 4.1. „Zero zmian w Blade" było reklamowane
 > jako zaleta jednego z wariantów — jest odwrotnie: klient w oddziale Gdańsk zobaczyłby
 > „5 szt. w magazynie" i kalendarz mówiący „niedostępny". To regresja zaufania, nie oszczędność.

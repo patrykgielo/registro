@@ -152,6 +152,13 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, 'throttle:60,1'])
         ->name('calendar');
 });
 
+// Location switcher (Faza 5.2, 86cbahqg8) — deliberately public, no 'auth':
+// LocationContext is session-based, not tied to a logged-in user, and the
+// header switcher this serves is visible to guests too.
+Route::post('/lokalizacja/wybierz', [\App\Http\Controllers\LocationSelectionController::class, 'store'])
+    ->middleware([ResolveTenant::class, RequireTenant::class, 'throttle:30,1'])
+    ->name('location.select');
+
 // Cart & Checkout routes (Sprint 2+ — new e-commerce flow, requires auth + tenant)
 // RequireTenant right after ResolveTenant (VULN-003 Layer 4) — abort_unless($org !== null)
 // alone in Cart/Checkout/OrderController is not enough: TenantFeature::currentTenant()'s
