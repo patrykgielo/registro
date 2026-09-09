@@ -24,25 +24,30 @@ zawyżał dostępność; `Service::availableQuantity()` pomijał status `Held`).
 wywołań produkcyjnych, więc nic nie krzyczało. Usunięte.
 
 Zostają dwie i zmienia się je **razem**: `getAvailableQuantity()` (punkt) i
-`getMonthlyAvailability()` (kalendarz).
+`getMonthlyAvailability()` (kalendarz). Od kroku 4.7 dochodzi **trzecia**, wyłącznie do odczytu
+zbiorczego: `availabilityForServices()` — musi liczyć DOKŁADNIE to co `getAvailableQuantity()`
+dla tych samych danych (dowód: `RentalAvailabilityServiceBulkTest`'s testy porównujące zbiorczy
+wynik z N wywołaniami pojedynczej metody), nigdy własna kopia matematyki.
 
 ## 2. Dziewięć wywołań, nie osiem
 
-`RentalBookingController:31` · `:48` (kalendarz, `getMonthlyAvailability()` — krok 4.6, nadal bez
-`$locationId`) · `createHold` (`@deprecated`) · `CartService:108` (addItem) · `:249`
-(convertToOrder) · `:576` (updateQuantity) · **`RentalExtensionService:81`** · `CreateRental:43` ·
-`EditRental:43`.
+`RentalBookingController:31` · `:48` (kalendarz, `getMonthlyAvailability()`) · `createHold`
+(`@deprecated`) · `CartService:108` (addItem) · `:249` (convertToOrder) · `:576` (updateQuantity)
+· **`RentalExtensionService:81`** · `CreateRental:43` · `EditRental:43`.
 
-**Stan 2026-09-09 (Faza 4 etap B, kroki 4.4/4.5):** wszystkie sześć z powyższych oprócz
-`RentalBookingController`'a przekazują `$locationId` — `CartService`'s trzy wołania czytają je
-z wiersza (`addItem()` dostaje nowy parametr, bo wiersz jeszcze nie istnieje; `updateQuantity()`/
-`convertToOrder()` czytają `$item->location_id`, ustawione wcześniej przez `addItem()`);
-`CreateRental`/`EditRental` mają nowe pole `location_id` w `RentalResource::form()` (opcjonalne —
-kolumna zostaje nullable na stałe, patrz Zasada 6). **Dziewiąte było tym, które się pomijało** —
-`checkAvailabilityForExtension()` była przelotką bez własnego parametru lokalizacji; teraz ma
-`?int $locationId = null`, a oba jej wywołujące (`requestExtension()`/`approve()`) przekazują
-`$item->location_id`. `RentalBookingController` (frontend availability display) zostaje poza
-zakresem — nie ma dziś skąd wziąć wybranego oddziału (`LocationContext` to Faza 5).
+**Stan 2026-09-09 (Faza 4, kroki 4.4-4.6):** wszystkie osiem żywych (`createHold` celowo
+pominięte, martwy kod) przekazują `$locationId`. `CartService`'s trzy wołania czytają je z wiersza
+(`addItem()` dostaje nowy parametr, bo wiersz jeszcze nie istnieje; `updateQuantity()`/
+`convertToOrder()` czytają `$item->location_id`); `CreateRental`/`EditRental` mają pole
+`location_id` w `RentalResource::form()` (opcjonalne — kolumna zostaje nullable na stałe, patrz
+Zasada 6); `checkAvailabilityForExtension()` ma `?int $locationId = null` w sygnaturze.
+`RentalBookingController` (`:31`/`:48`) dostał opcjonalny query param `location_id`, fail-closed
+zwalidowany przeciwko `$service->organization_id` ORAZ `is_active = true`
+(`Rule::exists('locations','id')->where(...)->where('is_active', true)`, code review 2026-09-09 —
+nieaktywny oddział niczego nie sprzedaje, degradacja do puli globalnej pokazałaby cudzy sprzęt)
+— NIE przez `LocationContext` (Faza 5.1, wciąż nie istnieje) — param jest bezstanowy i domyślnie
+`null` (zero regresji). Oba endpointy przepięte w JEDNYM kroku (dowód zgodności:
+`RentalBookingControllerTest::test_point_check_and_calendar_agree_for_the_same_location_and_day`).
 
 ## 3. Blokady — jedno I drugie
 
@@ -79,11 +84,18 @@ o kodzie, a nie o dyscyplinie danych — chroni ~77 miejsc w testach i publiczny
 
 `?int $locationId = null` jest już w sygnaturze. Gałąź z oddziałem czyta pojemność z
 `service_location_stocks` przez prywatną `locationCapacity()` (nigdy poza
-`getAvailableQuantity()` — Zasada 1 dotyczy też tej pomocniczej metody), z tą samą dyscypliną
-locków (2/3 powyżej). Reszta jest osobno, bo łatwo przeoczyć: **rezerwacja z `location_id = NULL`
-blokuje KAŻDY oddział, nie żaden** — pełne uzasadnienie i dowód falsyfikowalności w
-`kontrakt-dostepnosci.md`. Sześć z dziewięciu wywołań przekazuje `$locationId` od Fazy 4 etapu B
-(Zasada 2) — kalendarz (4.6) i zbiorczy `availabilityForServices` (4.7, jeszcze nie istnieje) zostają.
+`getAvailableQuantity()`/`getMonthlyAvailability()` — Zasada 1 dotyczy też tej pomocniczej
+metody), z tą samą dyscypliną locków (2/3 powyżej — `getMonthlyAvailability()` zawsze woła ją z
+`forUpdate: false`, nigdy nie blokuje). Reszta jest osobno, bo łatwo przeoczyć: **rezerwacja
+z `location_id = NULL` blokuje KAŻDY oddział, nie żaden** — pełne uzasadnienie i dowód
+falsyfikowalności w `kontrakt-dostepnosci.md`. `availabilityForServices()` (krok 4.7) rozwiązuje
+to samo bez `WHERE ... OR location_id IS NULL` per wywołanie: sumuje osobno „grupę NULL" per
+usługa i dokłada ją do KAŻDEGO realnego oddziału tej usługi w PHP — jedyny sposób wyrazić tę
+regułę w stałej liczbie zapytań zbiorczych (mechanizm i uzasadnienie w docblocku metody).
+**Kontrakt interfejsu (code review 2026-09-09):** ta metoda buduje `locations` WYŁĄCZNIE z wierszy
+kotwicy — oddział z rezerwacją, ale bez wiersza kotwicy dla tej usługi, jest w wyniku **NIEOBECNY**,
+co znaczy pojemność ZERO, nie „brak ograniczenia". Wywołujący MUSI czytać `?? 0`, nigdy traktować
+brak klucza jako „nielimitowane". Pełne uzasadnienie: `kontrakt-dostepnosci.md` pod Zasadą 5.
 
 ## 7. Sumuj popyt w obrębie jednej transakcji
 
