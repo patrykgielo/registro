@@ -28,13 +28,28 @@ use Illuminate\Database\Eloquent\Collection;
  * models.md). Do not "simplify" these two methods back to a bare
  * `Location::active()->...` call.
  *
- * NEVER bind this class as a singleton/scoped instance in the container.
- * `$activeLocationsCache` is per-instance tenant state — under a long-lived
- * worker (queue, future Octane) a singleton would leak tenant A's locations
- * into tenant B's request, the same shape of bug PR #251 fixed for the
- * navigation cache. The default container resolution (a fresh instance per
- * `app(LocationContext::class)` call) is what makes that safe today — see
- * architecture-models.md.
+ * NEVER bind this class as a `singleton()`. Since Faza 5.5 it IS bound as
+ * `scoped()` (AppServiceProvider), so the header switcher and the product
+ * page's "available elsewhere" section share one `$activeLocationsCache`
+ * instead of issuing the same `locations` query twice per request.
+ *
+ * The difference is the whole point, not a nuance. `$activeLocationsCache` is
+ * per-instance TENANT state; a `singleton()` outlives the process and would
+ * leak tenant A's locations into tenant B's request — the same shape of bug
+ * PR #251 fixed for the navigation cache. `scoped()` is reset by the framework
+ * before every queue job (Worker::daemon() calls forgetScopedInstances()),
+ * and each HTTP request builds a fresh container, so the cache can never
+ * outlive the tenant it was built for.
+ *
+ * That guarantee has ONE boundary worth stating plainly: `scoped()` protects
+ * against the WORKER outliving a tenant, not against a tenant CHANGING inside
+ * one process. If a future command or job ever iterates several tenants in a
+ * single process, it MUST call `app()->forgetInstance(self::class)` on every
+ * switch — otherwise this cache follows it across the tenant boundary. No such
+ * caller exists today (verified: nothing under app/Console, app/Jobs,
+ * app/Listeners or app/Notifications touches this class).
+ *
+ * See architecture-models.md.
  */
 class LocationContext
 {

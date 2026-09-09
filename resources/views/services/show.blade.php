@@ -352,6 +352,44 @@
                                 Obecnie niedostępne
                             </div>
                         @endif
+
+                        {{-- "Dostępne też w" — Faza 5.5 (86cbahqgn). Only ever
+                             non-empty when a branch is selected AND at least one
+                             OTHER active branch has stock (ServiceController::
+                             availableElsewhere()'s own docblock has the full
+                             decision + why). Each row re-submits the same
+                             location.select form header.blade.php's switcher
+                             uses, with redirect_to = THIS product page, so the
+                             customer lands back here already on the new branch. --}}
+                        @if(!empty($availableElsewhere))
+                            <div class="pt-2 border-t border-border" role="region" aria-label="Dostępność w innych oddziałach">
+                                <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">Dostępne też w</h3>
+                                <ul class="space-y-1">
+                                    @foreach($availableElsewhere as $row)
+                                        <li>
+                                            <form method="POST" action="{{ route('location.select') }}">
+                                                @csrf
+                                                <input type="hidden" name="location_id" value="{{ $row['location']->id }}">
+                                                <input type="hidden" name="redirect_to" value="{{ url()->full() }}">
+                                                <button
+                                                    type="submit"
+                                                    class="flex w-full min-h-11 items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-sm text-left text-text-secondary
+                                                           hover:text-text-primary hover:bg-surface-sunken transition-colors duration-150 ease-out cursor-pointer
+                                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                                                    aria-label="Przełącz na oddział {{ $row['location']->name }}, dostępne {{ $row['quantity'] }} szt."
+                                                >
+                                                    <span class="flex items-center gap-1.5 min-w-0">
+                                                        <x-heroicon-m-map-pin class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+                                                        <span class="truncate">{{ $row['location']->name }}</span>
+                                                    </span>
+                                                    <span class="text-text-primary font-medium shrink-0">{{ $row['quantity'] }} szt.</span>
+                                                </button>
+                                            </form>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
                         {{-- ─── Availability Calendar (inside same card) ─── --}}
                         @if(!$service->price_on_request)
                         <div
