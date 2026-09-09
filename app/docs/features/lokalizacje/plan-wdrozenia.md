@@ -377,6 +377,42 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > Kolumny zostają **nullable na stałe**. Wymuszanie `NOT NULL` w środku planu było w jednym
 > z wariantów jedynym krokiem nieodwracalnym, niepodzielnym i umieszczonym w środku — odrzucone.
 
+> **Stan 2026-09-09 (kroki 4.6/4.7, ten sam dzień co etap C):** oba zaimplementowane.
+> `getMonthlyAvailability(..., ?int $locationId = null)` mirroruje `getAvailableQuantity()`'s
+> null-branch/lock-hierarchia (`RentalAvailabilityService.php`) — nigdy nie blokuje, gałąź
+> `null` bit w bit dzisiejsza. `availabilityForServices(Collection $services, Carbon $start,
+> Carbon $end): array` (ten sam plik) — 3 zapytania zbiorcze zawsze, niezależnie od liczby
+> usług (zmierzone: 3 dla 3 usług, 3 dla 50 — `RentalAvailabilityServiceBulkTest`), zwraca
+> `[serviceId => ['total' => int, 'locations' => [locationId => int]]]`. **Nie wpięte do
+> żadnego widoku** — `RentalController::showCategory()` nietknięty, to zadanie Fazy 5.
+>
+> **Rozstrzygnięcie pytania o źródło `$locationId` dla publicznego API** (nie zgadywane —
+> zbadane): oba endpointy `RentalBookingController` (`:31` `checkAvailability`, `:48`
+> `monthlyAvailability`) dostały **opcjonalny query param `location_id`**, fail-closed
+> zwalidowany przez `Rule::exists('locations','id')->where('organization_id',
+> $service->organization_id)` — obcy/nieistniejący `location_id` to `422`, nigdy ciche
+> „wpuszczamy wszystkich" (`ServiceAreaValidator`'s antywzorzec, wprost odrzucony w
+> `agent-usage.md`). Scope po `$service->organization_id`, nie po ponownym rozwiązywaniu
+> tenanta z requestu — `{service:slug}` jest już związane przez `Service::BelongsToOrganization`
+> fail-closed (VULN-003 Layer 2) zanim ten kod się wykona, więc wartość jest już zaufana.
+> Brak parametru = `null` = dzisiejsze zachowanie globalne, zero regresji. `LocationContext`
+> (Faza 5.1) nie musi istnieć — parametr jest bezstanowy; kiedy przełącznik z kroku 5.2
+> powstanie, zacznie go po prostu wysyłać. Oba endpointy zostały przepięte **w tym samym
+> kroku**, zgodnie z kryterium akceptacji: gdyby tylko kalendarz albo tylko punktowe
+> sprawdzenie akceptowały lokalizację, dwa zapytania o ten sam dzień i oddział mogłyby się
+> nie zgodzić — dowód zgodności: `RentalBookingControllerTest::
+> test_point_check_and_calendar_agree_for_the_same_location_and_day`.
+>
+> Weryfikacja: SQLite 1875 passed / 5 skipped (0 failed) — baseline 1854 + 21 nowych testów,
+> dokładna zgodność. MySQL 8.0: `tests/Feature/Database` 183/183, oraz cały nowy/zmieniony
+> zestaw (`RentalAvailabilityServiceLocationTest`, `RentalAvailabilityServiceBulkTest`,
+> `RentalBookingControllerTest`, `RentalAvailabilityServiceTest`) 59/59 — `GROUP BY
+> service_id, location_id` w `availabilityForServices()` sprawdzony pod `ONLY_FULL_GROUP_BY`.
+> `bash scripts/test-concurrency.sh` — 4/4, bez zmian (te kroki nie dotykają ścieżki zapisu).
+> Dowód zgodności zbiorczego z pojedynczym: `RentalAvailabilityServiceBulkTest`'s parity testy
+> porównują `availabilityForServices()` z N wywołaniami `getAvailableQuantity()` na tych samych
+> danych, nie z ręcznie wyliczonymi liczbami. **Faza 4 zamknięta w całości.**
+
 ### Faza 5 — Front klienta
 
 | # | Krok |

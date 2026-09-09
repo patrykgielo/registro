@@ -323,4 +323,94 @@ class RentalAvailabilityServiceLocationTest extends TestCase
         $this->assertEquals(2, $plain);
         $this->assertEquals($plain, $locking);
     }
+
+    // -------------------------------------------------------------------------
+    // Faza 4 krok 4.6 — getMonthlyAvailability()'s $locationId branch. Mirrors
+    // the getAvailableQuantity() tests above exactly, one method down.
+    // -------------------------------------------------------------------------
+
+    public function test_monthly_null_location_id_reads_quantity_total_literally_ignoring_the_anchor_rows(): void
+    {
+        // Anchor rows sum to 3 + 2 = 5, quantity_total is 999 — same proof
+        // as the point-check equivalent above, one level down.
+        $result = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: null);
+
+        $this->assertEquals(999, $result['2026-05-01']['available_quantity']);
+        $this->assertEquals('available', $result['2026-05-01']['status']);
+    }
+
+    public function test_omitting_monthly_location_id_entirely_behaves_identically_to_passing_null_explicitly(): void
+    {
+        $withoutArgument = $this->svc->getMonthlyAvailability($this->item, 2026, 5);
+        $withExplicitNull = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: null);
+
+        $this->assertEquals($withoutArgument, $withExplicitNull);
+    }
+
+    public function test_monthly_location_branch_reads_capacity_from_the_anchor_row(): void
+    {
+        $resultA = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationA->id);
+        $resultB = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationB->id);
+
+        $this->assertEquals(3, $resultA['2026-05-01']['available_quantity']);
+        $this->assertEquals(2, $resultB['2026-05-01']['available_quantity']);
+    }
+
+    public function test_a_monthly_reservation_in_one_location_does_not_reduce_the_calendar_in_another(): void
+    {
+        OrderItem::factory()->create([
+            'order_id' => Order::factory()->paid()->create(['organization_id' => $this->org->id])->id,
+            'service_id' => $this->item->id,
+            'location_id' => $this->locationA->id,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+        ]);
+
+        $resultA = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationA->id);
+        $resultB = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationB->id);
+
+        $this->assertEquals(1, $resultA['2026-05-01']['available_quantity'], 'Location A calendar must reflect its own reservation.');
+        $this->assertEquals('partial', $resultA['2026-05-01']['status']);
+        $this->assertEquals(2, $resultB['2026-05-01']['available_quantity'], 'Location B calendar must be untouched.');
+        $this->assertEquals('available', $resultB['2026-05-01']['status']);
+
+        // A day outside the reservation window must stay fully available in A too.
+        $this->assertEquals(3, $resultA['2026-05-10']['available_quantity']);
+    }
+
+    public function test_a_monthly_reservation_with_no_location_assigned_blocks_the_calendar_for_every_location(): void
+    {
+        OrderItem::factory()->create([
+            'order_id' => Order::factory()->paid()->create(['organization_id' => $this->org->id])->id,
+            'service_id' => $this->item->id,
+            'location_id' => null,
+            'quantity' => 2,
+            'start_date' => $this->start(),
+            'end_date' => $this->end(),
+        ]);
+
+        $resultA = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationA->id);
+        $resultB = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationB->id);
+
+        $this->assertEquals(1, $resultA['2026-05-01']['available_quantity'], 'An unassigned reservation must still block location A on the calendar.');
+        $this->assertEquals(0, $resultB['2026-05-01']['available_quantity'], 'An unassigned reservation must still block location B (capacity 2 - 2).');
+        $this->assertEquals('unavailable', $resultB['2026-05-01']['status']);
+    }
+
+    /**
+     * getMonthlyAvailability() must never lock, with or without a location —
+     * a bare call (no transaction, no lockForUpdate anywhere in the method)
+     * must simply work. This is a smoke test, not a lock-detection test
+     * (SQLite has no real row locks to observe) — its only job is proving
+     * the method signature/branch didn't introduce an accidental
+     * lockForUpdate() call that would deadlock a real concurrent reader
+     * against a writer holding the Service row.
+     */
+    public function test_monthly_availability_with_a_location_does_not_require_or_use_a_transaction(): void
+    {
+        $result = $this->svc->getMonthlyAvailability($this->item, 2026, 5, locationId: $this->locationA->id);
+
+        $this->assertEquals(3, $result['2026-05-01']['available_quantity']);
+    }
 }

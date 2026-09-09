@@ -33,12 +33,17 @@ Obie usunięte w Fazie 0. Zostają dwie, które muszą być zmieniane **razem**:
 > `EditRental`, oraz WSZYSCY TRZEJ wywołujący `RentalExtensionService::checkAvailabilityForExtension()`
 > (jej dwaj wewnętrzni w `RentalExtensionService` i `RentalExtensionController::checkAvailability()`
 > — ten trzeci był pominięty w pierwszym przebiegu 4.5 i doprawiony po code review, patrz
-> `RentalExtensionController.php:41`). Jedynym wciąż martwym wywołaniem jest
-> `RentalBookingController` (frontend availability display, krok 4.6 poza zakresem) i
-> `getMonthlyAvailability()` (krok 4.6/kalendarz — osobna metoda, nie objęta tym parametrem).
+> `RentalExtensionController.php:41`).
 > Zachowanie dla `$locationId === null` pozostaje bit w bit identyczne — dowód: `RentalAvailabilityServiceTest.php`
 > nadal przechodzi bez zmian, a każdy nowy caller ma dziś `null` jako jedyną możliwą wartość
 > tam, gdzie wiersz nigdy jeszcze nie miał ustawionego `location_id`.
+>
+> **Aktualizacja, krok 4.6 (ten sam dzień):** `RentalBookingController` (`:31`
+> `checkAvailability`, `:48` `monthlyAvailability`) przestał być martwym wywołaniem —
+> oba dostały opcjonalny query param `location_id`, przepięte w JEDNYM kroku (zob. tabela
+> Zasady 3 niżej). `getMonthlyAvailability()` też dostała `?int $locationId = null`, tym samym
+> wzorcem co `getAvailableQuantity()` w kroku 4.1 — parametr na końcu, gałąź `null` bit w bit
+> dzisiejsza, nigdy nie blokuje.
 
 ```php
 getAvailableQuantity(Service $s, Carbon $start, Carbon $end,
@@ -59,10 +64,10 @@ nazwanych (`forUpdate:`, `excludeRentalId:`), więc działają bez zmiany.
 
 ## Zasada 3 — dziewięć wywołań, nie osiem
 
-| # | Miejsce | Tryb | `$locationId` (stan 2026-09-09, etap B) |
+| # | Miejsce | Tryb | `$locationId` (stan 2026-09-09, krok 4.6) |
 |---|---|---|---|
-| 1 | `RentalBookingController:31` | read-only, publiczne API | ❌ poza zakresem (krok 4.6, brak `LocationContext`) |
-| 2 | `RentalBookingController:48` → `getMonthlyAvailability` | read-only, kalendarz | ❌ poza zakresem (krok 4.6) |
+| 1 | `RentalBookingController:31` | read-only, publiczne API | ✅ opcjonalny query param `location_id`, fail-closed |
+| 2 | `RentalBookingController:48` → `getMonthlyAvailability` | read-only, kalendarz | ✅ tak samo, przepięte w tym samym kroku |
 | 3 | `RentalAvailabilityService::createHold` | `@deprecated`, legacy | ❌ celowo pominięte, kod martwy |
 | 4 | `CartService:108` (`addItem`) | zapis | ✅ nowy parametr, persystowany na wierszu |
 | 5 | `CartService:249` (`convertToOrder`) | zapis | ✅ `$item->location_id` |
@@ -170,8 +175,9 @@ tego wymagają. Ich rozjazd to overbooking.
 ### `location_id = NULL` na rezerwacji — rozstrzygnięcie (Faza 4 etap A)
 
 Rezerwacja bez przypisanego oddziału (dane sprzed backfillu kroku 4.8, albo wiersz utworzony
-zanim ścieżka zapisu zaczęła ustawiać to pole — dziś już tylko `RentalBookingController`/
-`getMonthlyAvailability` z kroku 4.6, wciąż poza zakresem) **blokuje KAŻDY oddział, nie żaden**.
+zanim ścieżka zapisu zaczęła ustawiać to pole) **blokuje KAŻDY oddział, nie żaden** — od kroku 4.6
+dotyczy to też tego, co widzi `RentalBookingController`/`getMonthlyAvailability`, gdy klient poda
+`location_id`.
 
 Uzasadnienie: metoda nie wie, gdzie fizycznie stoi sprzęt tej rezerwacji — mógł być w dowolnym
 oddziale. Potraktowanie „na pewno nie w tym oddziale" pozwoliłoby rezerwacji ze zgubionym
@@ -186,6 +192,28 @@ test_an_order_item_with_no_location_assigned_blocks_every_location` i
 `test_a_legacy_rental_with_no_location_assigned_blocks_every_location` — usunięcie
 `orWhereNull(...)` z obu miejsc w `RentalAvailabilityService.php` wywala dokładnie te dwa testy,
 żaden inny.
+
+### `availabilityForServices()` — brak klucza w wyniku znaczy ZERO, nie „brak ograniczenia"
+
+Krok 4.7 (code review, 2026-09-09). `capacityByServiceLocation` w `availabilityForServices()`
+buduje się **wyłącznie** z wierszy kotwicy `service_location_stocks`. Kotwica i rezerwacje
+(`rentals`/`order_items`) to dwie niezależne tabele bez FK między sobą — możliwy jest stan, w
+którym oddział B ma rezerwację dla usługi, ale nigdy nie miał dla niej wiersza kotwicy (np.
+rezerwacja z dawnego, jednooddziałowego okresu, albo wiersz kotwicy usunięty ręcznie). W takim
+przypadku `$result[$serviceId]['locations']` **nie zawiera klucza B w ogóle** — nie `0`, tylko
+brak klucza.
+
+Numerycznie to poprawne (`getAvailableQuantity(locationId: B)` też zwróciłoby `0`, bo
+`locationCapacity()` czyta brakujący wiersz jako pojemność 0 — Zasada 2 wyżej). Problem jest
+w **kontrakcie interfejsu**: przyszły wywołujący (Faza 5's kafelek) MUSI czytać ten wynik jako
+`$bulk[$id]['locations'][$locationId] ?? 0`, nigdy `isset(...)` jako „czy w ogóle mamy dane" —
+pomyłka w tę stronę pokazałaby dostępność sprzętu tam, gdzie żadnej kotwicy dla niego nie ma.
+
+Dowód: `RentalAvailabilityServiceBulkTest::
+test_a_location_with_reservations_but_no_anchor_row_is_absent_from_the_result_and_that_means_zero_not_unlimited`
+— tworzy rezerwację w lokalizacji bez wiersza kotwicy, potwierdza brak klucza w wyniku zbiorczym
+ORAZ że `getAvailableQuantity(locationId: $ta)` zwraca jawne `0` dla tej samej lokalizacji —
+dwa różne kształty, ta sama liczba.
 
 ## Zasada 6 — dowód, nie deklaracja
 
