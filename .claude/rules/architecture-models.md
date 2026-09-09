@@ -83,12 +83,23 @@ nawigacji naprawiony w PR #251 (klucz cache bez id tenanta).
 // ❌ NIGDY — jedna instancja przeżywa więcej niż jedno żądanie
 $this->app->singleton(LocationContext::class);
 
-// ✅ Domyślne, niezwiązane rozwiązanie kontenera — nowa instancja przy każdym
-// app(LocationContext::class) — jest OK. Gdyby w przyszłości (Faza 5.2+) cache
-// per-request okazał się potrzebny wydajnościowo, właściwą drogą jest
-// $this->app->scoped(...) albo klucz cache'u zawierający id bieżącego tenanta —
-// NIGDY goły singleton.
+// ✅ OBOWIĄZUJE OD FAZY 5.5 — nagłówek i sekcja „dostępne też w" dzielą jedno
+// zapytanie o oddziały zamiast dwóch na żądanie.
+$this->app->scoped(LocationContext::class);
 ```
+
+**Dlaczego `scoped()` jest bezpieczne, a `singleton()` nie:** framework czyści
+scoped przed **każdym** zadaniem kolejki (`Worker::daemon()` → `forgetScopedInstances()`,
+Horizon dziedziczy ten sam mechanizm), a każde żądanie HTTP buduje świeży kontener.
+Cache nie ma jak przeżyć tenanta, dla którego powstał. Singleton przeżywa proces.
+
+**Granica tej gwarancji, warta wypowiedzenia wprost:** `scoped()` chroni przed
+**workerem przeżywającym tenanta**, nie przed **zmianą tenanta wewnątrz jednego
+procesu**. Komenda albo zadanie iterujące po wielu tenantach w jednym procesie
+**musi** wołać `app()->forgetInstance(LocationContext::class)` przy każdej zmianie —
+inaczej cache przechodzi przez granicę tenanta mimo `scoped()`. Dziś takiego
+wywołującego nie ma (sprawdzone: `app/Console`, `app/Jobs`, `app/Listeners`,
+`app/Notifications` nie dotykają tej klasy).
 
 Powiązane, ale osobne ryzyko tej samej klasy: `find()`/`activeLocations()` w tej
 klasie explicite filtrują po `organization_id` zamiast ufać ambientnemu scope'owi

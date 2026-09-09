@@ -513,6 +513,57 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > nie rezerwują niczego (`CartService.php:140`) — kto pierwszy zapłaci, ten ma sprzęt. Nic tu
 > nie trzeba dobudowywać, wystarczy przepuścić przez to `$locationId` (krok 4.4).
 
+> **Stan 2026-09-09 (krok 5.5, gałąź `feature/lokalizacje-faza5-dostepne-gdzie-indziej`,
+> niezmergowana):** „Dostępne też w" w `services/show.blade.php`, tuż pod istniejącym badge'em
+> dostępności, przed kalendarzem. `ServiceController::availableElsewhere()` czyta WYŁĄCZNIE
+> `$entry['locations']` z tego samego `availabilityForServices()` wywołania, które
+> `rentalAvailabilityFor()` już robi dla badge'a (krok 5.4) — zero nowego zapytania o
+> dostępność. Nazwy oddziałów z `LocationContext::activeLocations()`.
+>
+> **Rozstrzygnięcia (zgłoszenie `86cbahqgn`), z uzasadnieniem:**
+> 1. Sekcja pojawia się WYŁĄCZNIE gdy `selectedLocationId !== null` — brak wyboru pokazuje
+>    sumę globalną (`availableQuantityFor()`'s own docblock), więc nie ma „tu", z którym
+>    kontrastować „gdzie indziej"; ten sam numer już obejmuje wszystkie oddziały. Gdy wybór
+>    istnieje: sekcja renderuje się dla KAŻDEGO innego aktywnego oddziału z zapasem > 0,
+>    **niezależnie od stanu wybranego oddziału** — kryterium zgłoszenia to „wolny gdzie
+>    indziej", nie „wolny gdzie indziej I pusto tutaj". Klient widzący 1 sztukę tu może wciąż
+>    chcieć wiedzieć, że 4 czekają w innym oddziale; ukryty próg pogrzebałby informację, o którą
+>    prosi kryterium akceptacji.
+> 2. Bez limitu liczby pozycji i bez przesortowania po ilości — kolejność to
+>    `activeLocations()->ordered()` (ten sam wybór co przełącznik w headerze dla identycznych
+>    danych, Faza 5.2).
+> 3. Tenant z jednym oddziałem: `selected()` auto-wybiera go za darmo, więc `$locationId` NIE
+>    jest `null`, ale `activeLocations()->reject()` zostawia pustą listę — sekcja i tak nigdy
+>    się nie renderuje. Zweryfikowane testem, nie tylko wywnioskowane.
+>
+> **`LocationContext` związany `scoped()` (`AppServiceProvider::register()`), pierwszy taki
+> przypadek w projekcie.** Przed tym krokiem `header.blade.php`'s `app(LocationContext::class)`
+> i instancja wstrzyknięta do kontrolera były DWIEMA oddzielnymi instancjami (domyślna
+> rozdzielczość kontenera — świeża instancja per wywołanie) z dwoma oddzielnymi
+> `$activeLocationsCache` — dodanie tej sekcji zapłaciłoby więc DRUGIE zapytanie o `locations`,
+> które przełącznik w headerze już opłacił chwilę wcześniej w TYM SAMYM żądaniu. `scoped()` (nie
+> `singleton()` — `architecture-models.md` wprost zakazuje singletona dla tej klasy) sprawia, że
+> oba miejsca dzielą jedną instancję/cache przez czas życia żądania; pod kolejką `scoped()` jest
+> czyszczone między jobami (`Illuminate\Queue\QueueServiceProvider`), więc nie odtwarza ryzyka
+> wycieku tenanta, przed którym ostrzega ten sam plik.
+>
+> Dowód (nie deklaracja): zapytanie o kształt `activeLocations()` (`from "locations" ... order
+> by "sort_order", "name"`, bez `id = ?`/`LIMIT`, odróżnione od `find()`'s pojedynczego
+> odczytu) policzone w logu zapytań JEDNEGO żądania — dokładnie 1. Ręczne cofnięcie `scoped()`
+> do zwykłego bindowania (przywrócone zaraz po pomiarze) reprodukuje dokładnie 2. Test
+> `test_the_active_locations_query_the_header_switcher_needs_is_shared_with_the_new_section_not_duplicated`
+> asertuje `assertCount(1, ...)` na tym samym filtrze. **Metoda z diffu policzonej przed/po
+> liczby zapytań (`->get()` × 2 w jednym teście) okazała się fałszywie zielona w obie strony**
+> — harness testowy Laravela nie niszczy kontenera między symulowanymi żądaniami w jednym
+> teście, więc `scoped()`'s cache przeżywa „rozgrzewkowe" wywołanie i maskuje realny koszt;
+> zmierzone: wariant porównawczy przechodził identycznie z `scoped()` i bez niego.
+>
+> Weryfikacja: `pint --test` 970/970; `php artisan test` (SQLite) 1932 passed/5 skipped/0
+> failed (1922+10 nowych testów, dokładna zgodność); `npm run build` wykonany. 10 nowych testów
+> w `RentalCatalogueLocationAvailabilityTest`, każdy sfalsyfikowany ręcznie (kod złamany →
+> czerwony wynik → cofnięty), w tym dwa przez tymczasowe wyłączenie `availableElsewhere()` i
+> jeden przez tymczasowe usunięcie `scoped()` z `AppServiceProvider`.
+
 ### Faza 6 — Koszyk i checkout
 
 | # | Krok |

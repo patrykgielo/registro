@@ -352,4 +352,299 @@ class RentalCatalogueLocationAvailabilityTest extends TestCase
         $response->assertDontSee('szt. dostępnych');
         $response->assertDontSee('Obecnie niedostępne');
     }
+
+    // -------------------------------------------------------------------------
+    // 4. "Dostępne też w" — Faza 5.5 (86cbahqgn), product page only.
+    // -------------------------------------------------------------------------
+
+    /**
+     * The rescue case the ticket exists for: selected branch has ZERO, a
+     * sibling branch has stock. Falsifiability of "the section only appears
+     * because of this code": ServiceController::availableElsewhere() returning
+     * a hardcoded `[]` makes this test fail (checked manually — see report).
+     */
+    public function test_section_appears_when_the_selected_location_has_none_but_another_does(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true, 'name' => 'Poznań']);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true, 'name' => 'Gdańsk']);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 0);
+        $this->stock($org, $service, $locationB, 2);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertSee('Dostępne też w');
+        $response->assertSee('Gdańsk');
+        $response->assertSee('2 szt.');
+    }
+
+    public function test_section_does_not_appear_when_no_other_location_has_stock(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 0);
+        $this->stock($org, $service, $locationB, 0);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertDontSee('Dostępne też w');
+    }
+
+    /**
+     * Decision (see report): the section is agnostic to the SELECTED branch's
+     * own stock level — it fires on "free elsewhere", not "free elsewhere AND
+     * empty here". A customer seeing 1 unit here may still want to know more
+     * are waiting at another branch.
+     */
+    public function test_section_appears_even_when_the_selected_location_itself_has_stock(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true, 'name' => 'Wrocław']);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 1);
+        $this->stock($org, $service, $locationB, 9);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertSee('Dostępne też w');
+        $response->assertSee('Wrocław');
+        $response->assertSee('9 szt.');
+    }
+
+    /**
+     * A location with a stock row of 0 (not "no row at all") must never be
+     * listed — `filter(quantity > 0)` in availableElsewhere(), distinct from
+     * the "no anchor row" contract already covered above.
+     */
+    public function test_section_never_lists_a_location_with_zero_stock(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true, 'name' => 'Kraków']);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 5);
+        $this->stock($org, $service, $locationB, 0);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        // "Dostępne też w" is the literal heading this feature's own markup
+        // renders (services/show.blade.php) ONLY when $availableElsewhere is
+        // non-empty — its absence is the precise claim. Checking the
+        // location NAME's absence page-wide is unreliable here: header.
+        // blade.php's own switcher (Faza 5.2, unrelated to this feature)
+        // lists every ACTIVE location regardless of stock, TWICE (desktop
+        // dropdown + mobile drawer, per that file's own top-of-block
+        // comment) — "Kraków" legitimately appears on this page already.
+        $response->assertDontSee('Dostępne też w');
+    }
+
+    /**
+     * An inactive location with stock must never appear, even though the
+     * anchor row exists — activeLocations() already filters this at the
+     * source (LocationContext::activeLocations()'s own ->active() scope).
+     */
+    public function test_section_never_lists_an_inactive_location(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $inactive = Location::factory()->for($org, 'organization')->create(['is_active' => false, 'name' => 'Zamknięty Oddział']);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 0);
+        $this->stock($org, $service, $inactive, 3);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertDontSee('Dostępne też w');
+        $response->assertDontSee('Zamknięty Oddział');
+    }
+
+    /**
+     * A DIFFERENT tenant's location must never leak into this list, even if
+     * it happens to have stock for a same-slug/same-id coincidence — proves
+     * LocationContext::activeLocations()'s own tenant filter is what this
+     * feature relies on, not a filter this feature adds itself.
+     */
+    public function test_section_never_lists_another_tenants_location(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $otherOrg = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $otherOrgLocation = Location::factory()->for($otherOrg, 'organization')->create(['is_active' => true, 'name' => 'Cudzy Oddział']);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 0);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertDontSee('Dostępne też w');
+        $response->assertDontSee('Cudzy Oddział');
+    }
+
+    /**
+     * No selection at all (multi-location tenant, nothing chosen yet) → the
+     * badge already shows the combined total (existing behaviour), so there
+     * is no "here" to contrast against — the section must not render.
+     */
+    public function test_section_does_not_appear_without_a_selected_location(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 3);
+        $this->stock($org, $service, $locationB, 4);
+
+        $response = $this->actingAsTenant($org)
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertDontSee('Dostępne też w');
+    }
+
+    /**
+     * Single-location tenant: LocationContext::selected() auto-resolves the
+     * one location for free (its own docblock), so $locationId is never
+     * null here — but activeLocations() reject()ed down to the selected one
+     * leaves an empty list, so the section still correctly never appears.
+     */
+    public function test_section_does_not_appear_for_a_single_location_tenant(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $onlyLocation = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $onlyLocation, 5);
+
+        $response = $this->actingAsTenant($org)
+            ->get(route('service.show', $service))
+            ->assertOk();
+
+        $response->assertDontSee('Dostępne też w');
+    }
+
+    /**
+     * Clicking a row must switch the branch AND land back on this exact
+     * product page (location.select's own redirect_to contract, header.
+     * blade.php's switcher already relies on the same mechanism).
+     */
+    public function test_clicking_a_row_switches_location_and_returns_to_the_same_product_page(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 0);
+        $this->stock($org, $service, $locationB, 2);
+
+        $productUrl = route('service.show', $service);
+
+        $response = $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->from($productUrl)
+            ->post(route('location.select'), [
+                'location_id' => $locationB->id,
+                'redirect_to' => $productUrl,
+            ]);
+
+        $response->assertRedirect($productUrl);
+
+        $followUp = $this->actingAsTenant($org)->get($productUrl)->assertOk();
+        $followUp->assertSee('2 szt. dostępnych');
+    }
+
+    /**
+     * Faza 5.5's core query-count constraint, proven at the SQL level rather
+     * than by comparing two page loads (a before/after page-load comparison
+     * is unsound here — see the note below). Two independent consumers need
+     * the tenant's active-location list in the SAME request:
+     * header.blade.php's switcher (`selectionRequired()`/`activeLocations()`,
+     * Faza 5.2, pre-existing) and THIS phase's
+     * `ServiceController::availableElsewhere()`. Before this phase they were
+     * two separate `LocationContext` instances (default container
+     * resolution, a fresh instance per `app(LocationContext::class)`
+     * call — see the class's own docblock) with two separate
+     * `$activeLocationsCache` fields, so adding this section would have
+     * meant a genuinely NEW `locations` query the header did not already
+     * pay for. `AppServiceProvider::register()`'s new `$this->app->
+     * scoped(LocationContext::class)` (this phase) makes both consumers
+     * share ONE instance/cache for the lifetime of the request, so the
+     * query search for the section is the SAME query the header's own
+     * switcher fires.
+     *
+     * Why not measure via two `->get()` calls and diff the counts (the
+     * pattern the OTHER query-count tests in this file use): Laravel's HTTP
+     * test harness does not tear down `$this->app` between simulated
+     * `->get()` calls within one test method, so a `scoped()` instance
+     * (and its cache) SURVIVES across them — unlike a real php-fpm request,
+     * where the whole container dies at the end of every request. A
+     * "warm-up" `->get()` followed by a "measured" `->get()` would silently
+     * reuse the warm-up's already-populated `$activeLocationsCache`,
+     * making the measured call show ZERO `locations` queries regardless of
+     * whether sharing works — a false positive (measured directly: the
+     * count-diff version of this test passed identically whether the
+     * `scoped()` binding was present or removed entirely). Asserting the
+     * exact count within a SINGLE request's query log has no such blind
+     * spot and was verified to catch the regression it exists for — see
+     * the report for the manual falsification (temporarily reverting to
+     * default container resolution reproduces exactly 2 matching queries
+     * instead of 1, confirmed by an ad-hoc run, not committed here).
+     */
+    public function test_the_active_locations_query_the_header_switcher_needs_is_shared_with_the_new_section_not_duplicated(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $locationA = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $locationB = Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create(['organization_id' => $org->id]);
+        $this->stock($org, $service, $locationA, 1);
+        $this->stock($org, $service, $locationB, 2);
+
+        $productUrl = route('service.show', $service);
+
+        DB::enableQueryLog();
+        $this->actingAsTenant($org)
+            ->withSession(['selected_location_id' => $locationA->id])
+            ->get($productUrl)
+            ->assertOk();
+        $queryLog = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Matches activeLocations()'s own query shape
+        // (`->active()->ordered()->get()`, no `id =` filter, no LIMIT) —
+        // deliberately distinct from LocationContext::find()'s single-row
+        // lookup (`... and "locations"."id" = ? limit 1`, no ORDER BY),
+        // which legitimately fires more than once per request already
+        // (ShareSelectedLocation's pruneStaleSelection() + the controller's
+        // own selectedId() + the header's own selected() call for the
+        // dropdown's checkmark — three pre-existing, UNRELATED call sites,
+        // none of them touched by this phase).
+        $activeLocationsQueries = collect($queryLog)->filter(
+            fn (array $q) => str_contains($q['query'], 'from "locations"') && str_contains($q['query'], 'order by')
+        );
+
+        $this->assertCount(
+            1,
+            $activeLocationsQueries,
+            'activeLocations() must run exactly once per request — got: '.$activeLocationsQueries->pluck('query')->implode(' | ')
+        );
+    }
 }
