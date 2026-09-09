@@ -423,6 +423,28 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 | 5.4 | Strona sprzętu: `services/show.blade.php:71-72` i `:323-326` przestają pokazywać `quantity_total`, zaczynają pokazywać dostępność wybranego oddziału |
 | 5.5 | „Dostępne też w: Gdańsk (2 szt.)" — z `availabilityForServices`. **Bez dystansu** (patrz Poza zakresem) |
 
+> **Stan 2026-09-09 (krok 5.1, gałąź `feature/lokalizacje-faza5-kontekst`, niezmergowana):**
+> `App\Support\LocationContext` + `App\Http\Middleware\ShareSelectedLocation`, dopisany do
+> globalnej grupy `web` (`bootstrap/app.php`, zaraz po `CheckMaintenanceMode`). `selectionRequired()`
+> zaimplementowane dokładnie jak w opisie kroku: `false` dla 0 lub 1 aktywnej lokalizacji tenanta,
+> `true` dla 2+, niezależnie od tego, czy coś jest już wybrane w sesji — to jest WŁAŚCIWOŚĆ
+> TENANTA, nie stanu sesji. `selected()` samodzielnie rewaliduje wybór przy każdym odczycie
+> (bezpieczne nawet bez middleware — konsola, testy, przyszły komponent Livewire poza grupą
+> `web`); middleware istnieje wyłącznie po to, żeby surowa wartość w sesji nie została „duchem"
+> dla kodu, który kiedyś odczyta ją bezpośrednio. Tenant zawsze z `TenantFeature::currentTenant()`
+> (request attribute) — nigdy z sesji (VULN-003 Layer 8). Kryterium akceptacji („obcy tenant w
+> sesji → kontekst czyszczony, nie 500") zweryfikowane przez prawdziwy request HTTP
+> (`ShareSelectedLocationTest`), nie przez wywołanie klasy w izolacji. Ustalenie o zasięgu
+> ciasteczka: `SESSION_DOMAIN` jest falsy w KAŻDYM środowisku tego repo (dev: literalne `null` w
+> `.env.example`, `env()` konwertuje na prawdziwe `null`; prod: pusty string w
+> `docker-compose.prod.yml`) → ciasteczko sesji jest host-only (RFC 6265) wszędzie, więc
+> carry-over między subdomenami przez samo ciasteczko jest dziś niemożliwy — middleware i tak
+> waliduje defensywnie, bo usunięta/dezaktywowana lokalizacja na TYM SAMYM hoście wystarczy do
+> tego samego problemu. Nic jeszcze nie czyta `LocationContext` poza middleware i testami —
+> żaden widok nie dotknięty. Weryfikacja: `pint --test` 966/966 (962+4 nowe pliki); `php artisan
+> test` (SQLite) 1899 passed/5 skipped/0 failed (1878+21 nowych testów, dokładna zgodność).
+> Pełny opis: `README.md` tego katalogu.
+
 > Krok 5.4 jest obowiązkowy w tej samej fazie co 4.1. „Zero zmian w Blade" było reklamowane
 > jako zaleta jednego z wariantów — jest odwrotnie: klient w oddziale Gdańsk zobaczyłby
 > „5 szt. w magazynie" i kalendarz mówiący „niedostępny". To regresja zaufania, nie oszczędność.
@@ -444,6 +466,13 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 | 6.3 | `orders.pickup_location_id` + snapshoty `pickup_location_name`/`_address`; dopisanie do `$auditInclude` i do guardu immutability `Order::updating()` |
 | 6.4 | Walidacja `SubmitCheckoutRequest`: `Rule::exists('locations','id')->where('organization_id', $tenantId)`. **Fail-closed** — nie kopiować failsafe'u z `ServiceAreaValidator:25-33` („brak obszarów = wpuszczamy wszystkich") |
 | 6.5 | Protokół wydania (PDF) i maile zawierają adres oddziału odbioru |
+
+> **Bramka koszyka/checkoutu (code review kroku 5.1, 2026-09-09):** warunek „trzeba wybrać
+> oddział, a nic nie jest wybrane" to `LocationContext::selectionRequired() && $this->selected()
+> === null`. Ma to być **JEDNA metoda tej klasy** (np. `LocationContext::mustPrompt(): bool`),
+> nie warunek składany osobno w 6.2/6.4 i w kroku 5.2 (header). Zgłoszenie 5.1 wprost ostrzega
+> przed rozproszeniem reguły `selectionRequired()` po `->options()` formularzy — ten sam błąd
+> popełniony inaczej to cztery miejsca liczące tę samą koniunkcję samodzielnie.
 
 ### Faza 7 — Przesunięcia między oddziałami
 

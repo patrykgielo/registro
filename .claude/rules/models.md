@@ -241,7 +241,19 @@ class Service extends Model
 **Trait automatycznie:**
 - Dodaje global scope filtrujący po `organization_id`
 - Auto-assigns `organization_id` z `TenantFeature::currentTenant()` przy tworzeniu
-- Pomija scope w console (bez testów)
+- **Pomija scope w console (bez testów) — to znaczy DOSŁOWNIE zero filtrowania, nie fail-closed.**
+  `app()->runningInConsole() && ! app()->runningUnitTests()` (`BelongsToOrganization.php:36-38`)
+  wraca natychmiast, bez żadnego `where`. Prawdziwy `artisan`/kolejka bez ręcznie ustawionego
+  kontekstu tenanta widzi WSZYSTKICH tenantów naraz na modelu z tym traitem — inne niż root-domain
+  HTTP (fail-closed, 0 wierszy, patrz niżej). Pułapka wykryta w code review 2026-09-09
+  (`LocationContext` auto-wybierałby jedyną aktywną lokalizację W CAŁEJ bazie, dowolnego tenanta,
+  z prawdziwej konsoli) — każdy przyszły kod czytający model `BelongsToOrganization` z komendy
+  artisan lub joba kolejki musi sam filtrować po `organization_id`, tak jak
+  `Location::isOnlyLocationForOrganization()`/`LocationContext::find()` — nie polegać na scope'ie.
+  **Test tej pułapki nie złapie domyślnie:** `runningUnitTests()` jest `true` przez cały proces
+  PHPUnit (SAPI `cli`, ale `$app['env'] === 'testing'`), więc dopiero jawne
+  `$this->app->instance('env', 'production')` (przywrócone w `finally`) odtwarza realne warunki
+  konsolowe — zob. `LocationContextConsoleGuardTest`.
 - **FAIL-CLOSED (VULN-003 Layer 2, 2026-07-03):** gdy brak tenanta, scope zwraca ZERO wierszy
   (`whereRaw('1 = 0')`) zamiast no-opować — ALE tylko gdy `ResolveTenant` faktycznie przetworzył
   bieżący request i nic nie znalazł (patrz niżej). **NIE cofaj tego do no-op** bez zrozumienia

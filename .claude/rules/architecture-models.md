@@ -8,6 +8,7 @@ paths:
   - "app/Console/Commands/*Tenant*.php"
   - "config/app.php"
   - "scripts/server/**"
+  - "app/Support/LocationContext.php"
 ---
 
 # Dwa modele wdrożenia — kod poprawny w jednym jest błędem w drugim
@@ -68,6 +69,33 @@ zwraca host z `APP_URL`, nie subdomenę tenanta.
 powiadomienie renderuje się w żądaniu, gdzie `forceRootUrl` już zadziałał.
 Produkcja i dev mają `redis`. To ślepa plamka strukturalna, nie luka w pokryciu —
 test pisany na tę klasę błędów musi generować URL **poza** żądaniem.
+
+## `LocationContext` NIGDY nie może być singletonem (code review, 2026-09-09)
+
+`App\Support\LocationContext` cachuje listę aktywnych lokalizacji w polu instancji
+(`$activeLocationsCache`). Dziś nieszkodliwe — php-fpm resetuje kontener na żądanie,
+brak Octane (ten sam fakt, na którym stoi `forceTenantOriginUrls()` wyżej). Pod
+długożyjącym workerem (kolejka, przyszły Octane) singleton przeciekłby cache
+tenanta A do żądania tenanta B — **dokładnie ten sam kształt błędu**, co wyciek cache'u
+nawigacji naprawiony w PR #251 (klucz cache bez id tenanta).
+
+```php
+// ❌ NIGDY — jedna instancja przeżywa więcej niż jedno żądanie
+$this->app->singleton(LocationContext::class);
+
+// ✅ Domyślne, niezwiązane rozwiązanie kontenera — nowa instancja przy każdym
+// app(LocationContext::class) — jest OK. Gdyby w przyszłości (Faza 5.2+) cache
+// per-request okazał się potrzebny wydajnościowo, właściwą drogą jest
+// $this->app->scoped(...) albo klucz cache'u zawierający id bieżącego tenanta —
+// NIGDY goły singleton.
+```
+
+Powiązane, ale osobne ryzyko tej samej klasy: `find()`/`activeLocations()` w tej
+klasie explicite filtrują po `organization_id` zamiast ufać ambientnemu scope'owi
+`BelongsToOrganization` — bo ten scope **wcale nie filtruje** w prawdziwym
+kontekście konsolowym/kolejki (`app()->runningInConsole() && ! app()->runningUnitTests()`,
+`BelongsToOrganization.php:36-38` — nie fail-closed, tylko **brak filtrowania**).
+Zob. docblock `find()`/`activeLocations()` w `LocationContext.php` i `models.md`.
 
 ## Adres dysku `public` to TRZECI, osobny adres
 
