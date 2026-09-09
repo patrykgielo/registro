@@ -8,6 +8,7 @@ paths:
   - "app/Console/Commands/*Tenant*.php"
   - "config/app.php"
   - "scripts/server/**"
+  - "app/Support/LocationContext.php"
 ---
 
 # Dwa modele wdrożenia — kod poprawny w jednym jest błędem w drugim
@@ -68,6 +69,44 @@ zwraca host z `APP_URL`, nie subdomenę tenanta.
 powiadomienie renderuje się w żądaniu, gdzie `forceRootUrl` już zadziałał.
 Produkcja i dev mają `redis`. To ślepa plamka strukturalna, nie luka w pokryciu —
 test pisany na tę klasę błędów musi generować URL **poza** żądaniem.
+
+## `LocationContext` NIGDY nie może być singletonem (code review, 2026-09-09)
+
+`App\Support\LocationContext` cachuje listę aktywnych lokalizacji w polu instancji
+(`$activeLocationsCache`). Dziś nieszkodliwe — php-fpm resetuje kontener na żądanie,
+brak Octane (ten sam fakt, na którym stoi `forceTenantOriginUrls()` wyżej). Pod
+długożyjącym workerem (kolejka, przyszły Octane) singleton przeciekłby cache
+tenanta A do żądania tenanta B — **dokładnie ten sam kształt błędu**, co wyciek cache'u
+nawigacji naprawiony w PR #251 (klucz cache bez id tenanta).
+
+```php
+// ❌ NIGDY — jedna instancja przeżywa więcej niż jedno żądanie
+$this->app->singleton(LocationContext::class);
+
+// ✅ OBOWIĄZUJE OD FAZY 5.5 — nagłówek i sekcja „dostępne też w" dzielą jedno
+// zapytanie o oddziały zamiast dwóch na żądanie.
+$this->app->scoped(LocationContext::class);
+```
+
+**Dlaczego `scoped()` jest bezpieczne, a `singleton()` nie:** framework czyści
+scoped przed **każdym** zadaniem kolejki (`Worker::daemon()` → `forgetScopedInstances()`,
+Horizon dziedziczy ten sam mechanizm), a każde żądanie HTTP buduje świeży kontener.
+Cache nie ma jak przeżyć tenanta, dla którego powstał. Singleton przeżywa proces.
+
+**Granica tej gwarancji, warta wypowiedzenia wprost:** `scoped()` chroni przed
+**workerem przeżywającym tenanta**, nie przed **zmianą tenanta wewnątrz jednego
+procesu**. Komenda albo zadanie iterujące po wielu tenantach w jednym procesie
+**musi** wołać `app()->forgetInstance(LocationContext::class)` przy każdej zmianie —
+inaczej cache przechodzi przez granicę tenanta mimo `scoped()`. Dziś takiego
+wywołującego nie ma (sprawdzone: `app/Console`, `app/Jobs`, `app/Listeners`,
+`app/Notifications` nie dotykają tej klasy).
+
+Powiązane, ale osobne ryzyko tej samej klasy: `find()`/`activeLocations()` w tej
+klasie explicite filtrują po `organization_id` zamiast ufać ambientnemu scope'owi
+`BelongsToOrganization` — bo ten scope **wcale nie filtruje** w prawdziwym
+kontekście konsolowym/kolejki (`app()->runningInConsole() && ! app()->runningUnitTests()`,
+`BelongsToOrganization.php:36-38` — nie fail-closed, tylko **brak filtrowania**).
+Zob. docblock `find()`/`activeLocations()` w `LocationContext.php` i `models.md`.
 
 ## Adres dysku `public` to TRZECI, osobny adres
 

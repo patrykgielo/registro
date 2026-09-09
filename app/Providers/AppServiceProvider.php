@@ -62,6 +62,7 @@ use App\Services\MaintenanceService;
 use App\Services\Sms\SmsApiGateway;
 use App\Services\Sms\SmsGatewayInterface;
 use App\Services\Sms\SmsService;
+use App\Support\LocationContext;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -100,6 +101,25 @@ class AppServiceProvider extends ServiceProvider
 
         // Register SmsService as singleton
         $this->app->singleton(SmsService::class);
+
+        // Faza 5.5 (86cbahqgn) — request-scoped, NEVER singleton
+        // (architecture-models.md explicitly forbids it: a long-lived worker
+        // would leak tenant A's activeLocations() cache into tenant B's
+        // request, same shape as the navigation-cache bug PR #251 fixed).
+        // Before this, `header.blade.php`'s `app(LocationContext::class)`
+        // call and any controller's constructor-injected instance were two
+        // SEPARATE instances with two separate `$activeLocationsCache`
+        // fields — a controller reading `activeLocations()` for its own
+        // purposes (product page's "available elsewhere" list) always paid
+        // a second `locations` query the header's own switcher had already
+        // paid moments earlier in the SAME request. `scoped()` is the
+        // container's documented per-request lifecycle — cleared between
+        // queue jobs (`Illuminate\Queue\QueueServiceProvider`) exactly like
+        // a singleton would leak but a fresh instance wouldn't, and under
+        // classic php-fpm (this project, no Octane) it behaves like today's
+        // ad-hoc "one instance per request" anyway, since the whole
+        // container dies with the request regardless of binding type.
+        $this->app->scoped(LocationContext::class);
     }
 
     /**

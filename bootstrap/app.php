@@ -68,10 +68,18 @@ return Application::configure(basePath: dirname(__DIR__))
         // CheckMaintenanceMode stays AFTER SubstituteBindings — same relative
         // order as before this change, only ResolveTenant is newly inserted
         // ahead of binding.
+        //
+        // ShareSelectedLocation (Faza 5.1, 86cbahqg3) only needs the `tenant`
+        // request attribute ResolveTenant sets — it doesn't bind any route
+        // parameter, so it doesn't need to sit ahead of SubstituteBindings
+        // the way ResolveTenant does. Appended last so the diff stays a
+        // single new line rather than re-ordering the three above. See its
+        // own class docblock for why /admin and /platform are unaffected.
         $middleware->web(append: [
             \App\Http\Middleware\ResolveTenant::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\CheckMaintenanceMode::class,
+            \App\Http\Middleware\ShareSelectedLocation::class,
         ]);
 
         // Workaround for pest-plugin-browser#1734 (open upstream bug, see the

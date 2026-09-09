@@ -423,6 +423,84 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 | 5.4 | Strona sprzętu: `services/show.blade.php:71-72` i `:323-326` przestają pokazywać `quantity_total`, zaczynają pokazywać dostępność wybranego oddziału |
 | 5.5 | „Dostępne też w: Gdańsk (2 szt.)" — z `availabilityForServices`. **Bez dystansu** (patrz Poza zakresem) |
 
+> **Stan 2026-09-09 (krok 5.1, gałąź `feature/lokalizacje-faza5-kontekst`, niezmergowana):**
+> `App\Support\LocationContext` + `App\Http\Middleware\ShareSelectedLocation`, dopisany do
+> globalnej grupy `web` (`bootstrap/app.php`, zaraz po `CheckMaintenanceMode`). `selectionRequired()`
+> zaimplementowane dokładnie jak w opisie kroku: `false` dla 0 lub 1 aktywnej lokalizacji tenanta,
+> `true` dla 2+, niezależnie od tego, czy coś jest już wybrane w sesji — to jest WŁAŚCIWOŚĆ
+> TENANTA, nie stanu sesji. `selected()` samodzielnie rewaliduje wybór przy każdym odczycie
+> (bezpieczne nawet bez middleware — konsola, testy, przyszły komponent Livewire poza grupą
+> `web`); middleware istnieje wyłącznie po to, żeby surowa wartość w sesji nie została „duchem"
+> dla kodu, który kiedyś odczyta ją bezpośrednio. Tenant zawsze z `TenantFeature::currentTenant()`
+> (request attribute) — nigdy z sesji (VULN-003 Layer 8). Kryterium akceptacji („obcy tenant w
+> sesji → kontekst czyszczony, nie 500") zweryfikowane przez prawdziwy request HTTP
+> (`ShareSelectedLocationTest`), nie przez wywołanie klasy w izolacji. Ustalenie o zasięgu
+> ciasteczka: `SESSION_DOMAIN` jest falsy w KAŻDYM środowisku tego repo (dev: literalne `null` w
+> `.env.example`, `env()` konwertuje na prawdziwe `null`; prod: pusty string w
+> `docker-compose.prod.yml`) → ciasteczko sesji jest host-only (RFC 6265) wszędzie, więc
+> carry-over między subdomenami przez samo ciasteczko jest dziś niemożliwy — middleware i tak
+> waliduje defensywnie, bo usunięta/dezaktywowana lokalizacja na TYM SAMYM hoście wystarczy do
+> tego samego problemu. Nic jeszcze nie czyta `LocationContext` poza middleware i testami —
+> żaden widok nie dotknięty. Weryfikacja: `pint --test` 966/966 (962+4 nowe pliki); `php artisan
+> test` (SQLite) 1899 passed/5 skipped/0 failed (1878+21 nowych testów, dokładna zgodność).
+> Pełny opis: `README.md` tego katalogu.
+
+> **Stan 2026-09-09 (krok 5.2, gałąź `feature/lokalizacje-faza5-przelacznik`, niezmergowana):**
+> przełącznik w `components/nav/header.blade.php` — desktop `x-interactive.dropdown` w pasku akcji
+> i lista w mobilnym drawerze, oba czytające `LocationContext::selectionRequired()` jako
+> **jedyny** warunek renderu (nic doklejonego koniunkcją). Tenant z 0 lub 1 aktywną lokalizacją
+> dostaje ZERO śladu bloku w wyjściowym HTML — zweryfikowane asercją na nieobecność, nie na
+> `hidden`/`display:none`, i falsyfikowalnie (patrz niżej). Nowa trasa `POST /lokalizacja/wybierz`
+> (`location.select`) → `App\Http\Controllers\LocationSelectionController::store()`, middleware
+> `[ResolveTenant, RequireTenant, throttle:30,1]`, **bez `auth`** — kontekst jest sesyjny, nie
+> przywiązany do zalogowanego użytkownika. Walidacja `Rule::exists('locations','id')
+> ->where('organization_id', $tenant->id)->where('is_active', true)` (ten sam kształt co
+> `RentalBookingController::locationIdRules()`) odrzuca obcego/nieaktywnego kandydata **przed**
+> wywołaniem `LocationContext::set()` — `set()` dokumentuje niezgodność jako błąd wołającego
+> (rzuca), więc walidacja w kontrolerze jest tym, co zamienia hand-crafted `location_id` w zwykłą
+> odmowę zamiast 500. Powrót po wyborze: ukryte pole `redirect_to` renderowane przez nas z
+> `url()->full()` (nigdy z `Referer`), zwalidowane w kontrolerze przez
+> `IntendedDestination::isSameOrigin()` — wartość poza originem spada na `route('home')`.
+>
+> **Odstępstwo od enumeracji API zgłoszenia, świadome:** `LocationContext::activeLocations()`
+> zmieniona z `private` na `public` — przełącznik potrzebuje samych wierszy do wyrenderowania
+> opcji, a jedyna alternatywa (osobne zapytanie `Location::active()->...` w widoku) jest
+> dokładnie duplikacją, przed którą ostrzega docblock tej klasy na górze pliku. Cache
+> per-instancję i skan po `organization_id` (nie po ambientnym scope) zostają nietknięte —
+> zmieniła się wyłącznie widoczność.
+>
+> Falsyfikowalność (trzy niezależne sprawdzenia, każde cofnięte po potwierdzeniu czerwonego
+> wyniku): `$__locationSwitcherVisible = true` na sztywno →
+> `test_single_location_tenant_gets_no_trace_of_the_switcher` pada; usunięcie
+> `->where('organization_id', ...)` z `Rule::exists(...)` →
+> `test_selecting_another_tenants_location_is_denied_...` pada; usunięcie `isSameOrigin()` z
+> gałęzi przekierowania → `test_an_off_origin_redirect_to_is_not_followed` pada (asercja łapie
+> realny otwarty redirect na `https://evil.example/steal`).
+>
+> **Poprawki z code review (2026-09-09, ten sam dzień):** (1) powrót po wyborze walidowany teraz
+> `IntendedDestination::isSafeUrl()` (origin ORAZ `DENYLISTED_PATH_PREFIXES` — `/admin`,
+> `/platform`, `/livewire`, `/api`, `/webhooks`), nie samym `isSameOrigin()` — trasa jest publiczna
+> i bez uwierzytelnienia, więc `redirect_to=/admin/...` przechodziłoby walidację origin-only mimo
+> realnego celu w panelu. Metoda upubliczniona w `IntendedDestination` (ta sama zasada co
+> `activeLocations()` niżej — reużycie zamiast kopiowania listy prefiksów do kontrolera).
+> (2) `redirect_to` przestało być regułą `$request->validate()` (przekroczenie `max:2048` odrzucało
+> **całe** żądanie, w tym wybór oddziału) — teraz sprawdzane osobno w
+> `resolveRedirectTarget()`, nieprawidłowa/zbyt długa wartość po prostu spada na `route('home')`,
+> a sam wybór oddziału przechodzi. (3) obie listy oddziałów (desktop dropdown, mobilny drawer)
+> dostały `max-h-72 overflow-y-auto` — brak limitu liczby oddziałów na tenanta, a lista bez tego
+> wychodziłaby poza ekran bez możliwości przewinięcia; dostępność z klawiatury zachowana natywnie
+> (Tab przewija najbliższego przewijalnego przodka do widocznego obszaru, bez dodatkowego JS).
+> Trzy nowe testy, wszystkie sfalsyfikowane i cofnięte: przywrócenie `isSameOrigin()` zamiast
+> `isSafeUrl()` czerwieni `test_a_same_origin_but_denylisted_path_redirect_to_is_not_followed`;
+> przywrócenie `redirect_to` do `$request->validate()` czerwieni
+> `test_an_overlong_redirect_to_does_not_block_the_location_selection`; usunięcie `max-h-72` z
+> jednej z klas czerwieni `test_both_switcher_render_sites_have_a_bounded_scrollable_list`.
+>
+> Weryfikacja: `pint --test` 969/969 (bez zmiany liczby plików — `IntendedDestination.php` już
+> istniał); `php artisan test` (SQLite) 1913 passed/5 skipped/0 failed (1910+3 nowe testy,
+> dokładna zgodność); `npm run build` wykonany. MySQL 8.0 nie uruchamiany osobno — brak nowych
+> migracji, walidacja jest zwykłym `Rule::exists`.
+
 > Krok 5.4 jest obowiązkowy w tej samej fazie co 4.1. „Zero zmian w Blade" było reklamowane
 > jako zaleta jednego z wariantów — jest odwrotnie: klient w oddziale Gdańsk zobaczyłby
 > „5 szt. w magazynie" i kalendarz mówiący „niedostępny". To regresja zaufania, nie oszczędność.
@@ -435,6 +513,57 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > nie rezerwują niczego (`CartService.php:140`) — kto pierwszy zapłaci, ten ma sprzęt. Nic tu
 > nie trzeba dobudowywać, wystarczy przepuścić przez to `$locationId` (krok 4.4).
 
+> **Stan 2026-09-09 (krok 5.5, gałąź `feature/lokalizacje-faza5-dostepne-gdzie-indziej`,
+> niezmergowana):** „Dostępne też w" w `services/show.blade.php`, tuż pod istniejącym badge'em
+> dostępności, przed kalendarzem. `ServiceController::availableElsewhere()` czyta WYŁĄCZNIE
+> `$entry['locations']` z tego samego `availabilityForServices()` wywołania, które
+> `rentalAvailabilityFor()` już robi dla badge'a (krok 5.4) — zero nowego zapytania o
+> dostępność. Nazwy oddziałów z `LocationContext::activeLocations()`.
+>
+> **Rozstrzygnięcia (zgłoszenie `86cbahqgn`), z uzasadnieniem:**
+> 1. Sekcja pojawia się WYŁĄCZNIE gdy `selectedLocationId !== null` — brak wyboru pokazuje
+>    sumę globalną (`availableQuantityFor()`'s own docblock), więc nie ma „tu", z którym
+>    kontrastować „gdzie indziej"; ten sam numer już obejmuje wszystkie oddziały. Gdy wybór
+>    istnieje: sekcja renderuje się dla KAŻDEGO innego aktywnego oddziału z zapasem > 0,
+>    **niezależnie od stanu wybranego oddziału** — kryterium zgłoszenia to „wolny gdzie
+>    indziej", nie „wolny gdzie indziej I pusto tutaj". Klient widzący 1 sztukę tu może wciąż
+>    chcieć wiedzieć, że 4 czekają w innym oddziale; ukryty próg pogrzebałby informację, o którą
+>    prosi kryterium akceptacji.
+> 2. Bez limitu liczby pozycji i bez przesortowania po ilości — kolejność to
+>    `activeLocations()->ordered()` (ten sam wybór co przełącznik w headerze dla identycznych
+>    danych, Faza 5.2).
+> 3. Tenant z jednym oddziałem: `selected()` auto-wybiera go za darmo, więc `$locationId` NIE
+>    jest `null`, ale `activeLocations()->reject()` zostawia pustą listę — sekcja i tak nigdy
+>    się nie renderuje. Zweryfikowane testem, nie tylko wywnioskowane.
+>
+> **`LocationContext` związany `scoped()` (`AppServiceProvider::register()`), pierwszy taki
+> przypadek w projekcie.** Przed tym krokiem `header.blade.php`'s `app(LocationContext::class)`
+> i instancja wstrzyknięta do kontrolera były DWIEMA oddzielnymi instancjami (domyślna
+> rozdzielczość kontenera — świeża instancja per wywołanie) z dwoma oddzielnymi
+> `$activeLocationsCache` — dodanie tej sekcji zapłaciłoby więc DRUGIE zapytanie o `locations`,
+> które przełącznik w headerze już opłacił chwilę wcześniej w TYM SAMYM żądaniu. `scoped()` (nie
+> `singleton()` — `architecture-models.md` wprost zakazuje singletona dla tej klasy) sprawia, że
+> oba miejsca dzielą jedną instancję/cache przez czas życia żądania; pod kolejką `scoped()` jest
+> czyszczone między jobami (`Illuminate\Queue\QueueServiceProvider`), więc nie odtwarza ryzyka
+> wycieku tenanta, przed którym ostrzega ten sam plik.
+>
+> Dowód (nie deklaracja): zapytanie o kształt `activeLocations()` (`from "locations" ... order
+> by "sort_order", "name"`, bez `id = ?`/`LIMIT`, odróżnione od `find()`'s pojedynczego
+> odczytu) policzone w logu zapytań JEDNEGO żądania — dokładnie 1. Ręczne cofnięcie `scoped()`
+> do zwykłego bindowania (przywrócone zaraz po pomiarze) reprodukuje dokładnie 2. Test
+> `test_the_active_locations_query_the_header_switcher_needs_is_shared_with_the_new_section_not_duplicated`
+> asertuje `assertCount(1, ...)` na tym samym filtrze. **Metoda z diffu policzonej przed/po
+> liczby zapytań (`->get()` × 2 w jednym teście) okazała się fałszywie zielona w obie strony**
+> — harness testowy Laravela nie niszczy kontenera między symulowanymi żądaniami w jednym
+> teście, więc `scoped()`'s cache przeżywa „rozgrzewkowe" wywołanie i maskuje realny koszt;
+> zmierzone: wariant porównawczy przechodził identycznie z `scoped()` i bez niego.
+>
+> Weryfikacja: `pint --test` 970/970; `php artisan test` (SQLite) 1932 passed/5 skipped/0
+> failed (1922+10 nowych testów, dokładna zgodność); `npm run build` wykonany. 10 nowych testów
+> w `RentalCatalogueLocationAvailabilityTest`, każdy sfalsyfikowany ręcznie (kod złamany →
+> czerwony wynik → cofnięty), w tym dwa przez tymczasowe wyłączenie `availableElsewhere()` i
+> jeden przez tymczasowe usunięcie `scoped()` z `AppServiceProvider`.
+
 ### Faza 6 — Koszyk i checkout
 
 | # | Krok |
@@ -444,6 +573,13 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 | 6.3 | `orders.pickup_location_id` + snapshoty `pickup_location_name`/`_address`; dopisanie do `$auditInclude` i do guardu immutability `Order::updating()` |
 | 6.4 | Walidacja `SubmitCheckoutRequest`: `Rule::exists('locations','id')->where('organization_id', $tenantId)`. **Fail-closed** — nie kopiować failsafe'u z `ServiceAreaValidator:25-33` („brak obszarów = wpuszczamy wszystkich") |
 | 6.5 | Protokół wydania (PDF) i maile zawierają adres oddziału odbioru |
+
+> **Bramka koszyka/checkoutu (code review kroku 5.1, 2026-09-09):** warunek „trzeba wybrać
+> oddział, a nic nie jest wybrane" to `LocationContext::selectionRequired() && $this->selected()
+> === null`. Ma to być **JEDNA metoda tej klasy** (np. `LocationContext::mustPrompt(): bool`),
+> nie warunek składany osobno w 6.2/6.4 i w kroku 5.2 (header). Zgłoszenie 5.1 wprost ostrzega
+> przed rozproszeniem reguły `selectionRequired()` po `->options()` formularzy — ten sam błąd
+> popełniony inaczej to cztery miejsca liczące tę samą koniunkcję samodzielnie.
 
 ### Faza 7 — Przesunięcia między oddziałami
 

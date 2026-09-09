@@ -68,8 +68,17 @@
                         @if($service->category)
                             <x-ui.badge variant="default">{{ $service->category->name }}</x-ui.badge>
                         @endif
-                        @if($service->quantity_total)
-                            <x-ui.badge variant="brand" dot>{{ $service->quantity_total }} szt. w magazynie</x-ui.badge>
+                        {{-- Faza 5.4 (86cbahqgh) — was $service->quantity_total (tenant-wide
+                             stock, ignoring both reservations and the selected branch).
+                             $availableQuantity is the SAME number the tile the customer
+                             clicked from shows (ServiceController::rentalAvailabilityFor(),
+                             mirrors locationAvailabilityFor() used by the listings) — a
+                             mismatch here is exactly the "two different numbers for the
+                             same equipment" bug the ticket names. --}}
+                        @if($availableQuantity !== null && $availableQuantity > 0)
+                            <x-ui.badge variant="success" dot>{{ $availableQuantity }} szt. dostępnych</x-ui.badge>
+                        @elseif($availableQuantity !== null)
+                            <x-ui.badge variant="error" dot>Obecnie niedostępne</x-ui.badge>
                         @endif
                     </div>
 
@@ -190,6 +199,12 @@
                         thresholdDays: {{ (int) ($service->price_threshold_days ?? 0) }},
                         pricePerWeek: {{ (float) ($service->price_per_week ?? 0) }},
                         depositAmount: {{ (float) ($service->deposit_amount ?? 0) }},
+                        {{-- Faza 5.4 (86cbahqgh) — same selected branch as the badge
+                             above; a full page reload (location.select's redirect
+                             back to this same page) is what re-renders this literal,
+                             so the calendar never needs to react to a change on its
+                             own — see the report for what was verified about this. --}}
+                        selectedLocationId: {{ $selectedLocationId !== null ? (int) $selectedLocationId : 'null' }},
                     })"
                     x-init="init()"
                 >
@@ -323,11 +338,56 @@
                         </div>
                         @endif
 
-                        {{-- Availability badge --}}
-                        @if($service->quantity_total && $service->quantity_total > 0)
+                        {{-- Availability badge — same $availableQuantity as the badge
+                             above and the tile this page was reached from (Faza 5.4,
+                             86cbahqgh); was $service->quantity_total. --}}
+                        @if($availableQuantity !== null && $availableQuantity > 0)
                             <div class="flex items-center gap-2 text-sm text-success pt-2 border-t border-border">
                                 <span class="h-2 w-2 rounded-full bg-success"></span>
-                                Dostępny ({{ $service->quantity_total }} szt.)
+                                Dostępny ({{ $availableQuantity }} szt.)
+                            </div>
+                        @elseif($availableQuantity !== null)
+                            <div class="flex items-center gap-2 text-sm text-error pt-2 border-t border-border">
+                                <span class="h-2 w-2 rounded-full bg-error"></span>
+                                Obecnie niedostępne
+                            </div>
+                        @endif
+
+                        {{-- "Dostępne też w" — Faza 5.5 (86cbahqgn). Only ever
+                             non-empty when a branch is selected AND at least one
+                             OTHER active branch has stock (ServiceController::
+                             availableElsewhere()'s own docblock has the full
+                             decision + why). Each row re-submits the same
+                             location.select form header.blade.php's switcher
+                             uses, with redirect_to = THIS product page, so the
+                             customer lands back here already on the new branch. --}}
+                        @if(!empty($availableElsewhere))
+                            <div class="pt-2 border-t border-border" role="region" aria-label="Dostępność w innych oddziałach">
+                                <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">Dostępne też w</h3>
+                                <ul class="space-y-1">
+                                    @foreach($availableElsewhere as $row)
+                                        <li>
+                                            <form method="POST" action="{{ route('location.select') }}">
+                                                @csrf
+                                                <input type="hidden" name="location_id" value="{{ $row['location']->id }}">
+                                                <input type="hidden" name="redirect_to" value="{{ url()->full() }}">
+                                                <button
+                                                    type="submit"
+                                                    class="flex w-full min-h-11 items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-sm text-left text-text-secondary
+                                                           hover:text-text-primary hover:bg-surface-sunken transition-colors duration-150 ease-out cursor-pointer
+                                                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                                                    aria-label="Przełącz na oddział {{ $row['location']->name }}, dostępne {{ $row['quantity'] }} szt."
+                                                >
+                                                    <span class="flex items-center gap-1.5 min-w-0">
+                                                        <x-heroicon-m-map-pin class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+                                                        <span class="truncate">{{ $row['location']->name }}</span>
+                                                    </span>
+                                                    <span class="text-text-primary font-medium shrink-0">{{ $row['quantity'] }} szt.</span>
+                                                </button>
+                                            </form>
+                                        </li>
+                                    @endforeach
+                                </ul>
                             </div>
                         @endif
                         {{-- ─── Availability Calendar (inside same card) ─── --}}
@@ -872,7 +932,7 @@
 @if($isRental)
 @push('scripts')
 <script>
-function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, pricePerDay, pricePerDayLong, thresholdDays, pricePerWeek, depositAmount }) {
+function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, pricePerDay, pricePerDayLong, thresholdDays, pricePerWeek, depositAmount, selectedLocationId }) {
     return {
         // ── State ─────────────────────────────────────────────────
         year:         currentYear,
@@ -884,6 +944,13 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
         selectedEnd:   null,          // "YYYY-MM-DD" or null
         rangeAvailableQty: null,      // int or null (from AJAX)
         rangeChecking: false,         // loading state
+        // Faza 5.4 (86cbahqgh) — the branch selected server-side when this page
+        // rendered (see selectedLocationId in the x-data call above). Sent on
+        // every AJAX fetch below so the calendar/range-check agree with the
+        // badge rendered above them for the SAME branch, instead of silently
+        // falling back to the tenant-wide total RentalBookingController uses
+        // when the param is absent (kontrakt-dostepnosci.md).
+        selectedLocationId: selectedLocationId ?? null,
 
         pricePerDay:     pricePerDay ?? 0,
         pricePerDayLong: pricePerDayLong ?? 0,
@@ -1066,7 +1133,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
             this.rangeChecking = true;
             this.rangeAvailableQty = null;
             try {
-                const url = `{{ route('rental.availability', $service) }}?start_date=${this.selectedStart}&end_date=${this.selectedEnd}`;
+                let url = `{{ route('rental.availability', $service) }}?start_date=${this.selectedStart}&end_date=${this.selectedEnd}`;
+                if (this.selectedLocationId !== null) url += `&location_id=${this.selectedLocationId}`;
                 const res = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
                 if (!res.ok) throw new Error();
                 const json = await res.json();
@@ -1092,7 +1160,8 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
         // ── Data fetch ────────────────────────────────────────────
         async fetchMonth() {
             this.loading = true;
-            const url = `${apiUrl}?year=${this.year}&month=${this.month}`;
+            let url = `${apiUrl}?year=${this.year}&month=${this.month}`;
+            if (this.selectedLocationId !== null) url += `&location_id=${this.selectedLocationId}`;
             try {
                 const res = await fetch(url, {
                     headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
