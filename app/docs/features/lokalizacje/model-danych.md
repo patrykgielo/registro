@@ -453,15 +453,24 @@ i super-adminów.
 
 ### Zmiany w istniejących tabelach
 
-| Tabela | Zmiana |
-|---|---|
-| `rentals` | `+ location_id` **nullable**, indeks `(service_id, location_id, start_date, end_date)` |
-| `order_items` | jw. |
-| `cart_items` | `+ location_id` nullable |
-| `carts` | `+ location_id` — **oddział na koszyku, nie na pozycji** |
-| `orders` | `+ pickup_location_id` + snapshoty `pickup_location_name` / `_address` |
-| `statistics_daily_snapshots` | `+ location_id NOT NULL DEFAULT 0`, UNIQUE rozszerzony |
-| `services` | **bez zmian schematu** — `quantity_total` zostaje jako mirror |
+| Tabela | Zmiana | Status |
+|---|---|---|
+| `rentals` | `+ location_id` **nullable**, indeks `(service_id, location_id, start_date, end_date)`, FK `nullOnDelete` | ✅ krok 4.8 (2026-09-09) |
+| `order_items` | jw. | ✅ krok 4.8 (2026-09-09) |
+| `cart_items` | `+ location_id` nullable, sama kolumna + indeks, FK `nullOnDelete` (CartItem nie blokuje dostępności — patrz kontrakt-dostepnosci.md) | ✅ krok 4.8 (2026-09-09) |
+| `carts` | `+ location_id` — **oddział na koszyku, nie na pozycji** | ⬜ Faza 6 krok 6.1 |
+| `orders` | `+ pickup_location_id` + snapshoty `pickup_location_name` / `_address` | ⬜ Faza 6 krok 6.3 |
+| `statistics_daily_snapshots` | `+ location_id NOT NULL DEFAULT 0`, UNIQUE rozszerzony | ⬜ Faza 9 |
+| `services` | **bez zmian schematu** — `quantity_total` zostaje jako mirror | — |
+
+Backfill (krok 4.8, migracja `2026_09_09_090003_backfill_location_id_for_open_reservations.php`):
+każdą **otwartą** rezerwację (dokładnie ten sam warunek, który dziś blokuje dostępność —
+`RentalStatus::blocksAvailability()` dla `rentals`, `OrderItem::scopeBlockingAvailability()`'s
+logika dla `order_items`, `carts.status = 'active'` dla `cart_items`) przypisuje do oddziału
+głównego organizacji, per organizacja (nie per wiersz) — każdy tenant ma dokładnie jeden
+`primary_slot` dzięki niezmiennikowi z Fazy 1. `down()` to celowy no-op (ten sam wzorzec co
+`2026_08_28_090001` dla kotwicy) — cofnięcie realnie odbywa się przez `down()` trzech migracji
+schematu powyżej, które usuwają kolumnę w całości.
 
 Kolumny `location_id` zostają **nullable na stałe**. Wymuszanie `NOT NULL` w środku planu byłoby
 krokiem jednocześnie nieodwracalnym, niepodzielnym i umieszczonym w środku — a `.claude/rules/migrations.md`

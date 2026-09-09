@@ -16,6 +16,7 @@ class Rental extends Model
     protected $fillable = [
         'organization_id',
         'service_id',
+        'location_id',
         'customer_id',
         'quantity',
         'start_date',
@@ -85,6 +86,20 @@ class Rental extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * Faza 4 krok 4.8 (plan-wdrozenia.md) — nullable, and stays nullable
+     * forever (kontrakt-dostepnosci.md). ALREADY read by
+     * RentalAvailabilityService::getAvailableQuantity() whenever a $locationId
+     * is passed — no call site passes one yet (Faza 4.4+ wires the nine of
+     * them). What is left to do is start passing it, NOT to wire the read.
+     *
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function customer(): BelongsTo

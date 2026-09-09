@@ -57,6 +57,27 @@ class CreateLocationsTableMigrationTest extends TestCase
 
     private const DEPENDENT_SERVICE_UNITS_MIGRATION_PATH = 'database/migrations/2026_09_08_090000_create_service_units_table.php';
 
+    /**
+     * `rentals.location_id`/`order_items.location_id`/`cart_items.location_id`
+     * (Faza 4 krok 4.8, 2026_09_09_090000/090001/090002) EACH FK to
+     * `locations` independently — a THIRD, fourth and fifth dependent, added
+     * a day after the service_units chain above. Same "mirror the real
+     * order" rationale: these are the NEWEST migrations in the whole chain,
+     * so a real `migrate:rollback` undoes them FIRST, before even the
+     * service_unit_id chain. The backfill migration underneath them
+     * (2026_09_09_090003) creates no FK of its own — nothing requires
+     * rolling it back before `locations` can be dropped — but it is
+     * included anyway for the same realism reason, not because skipping it
+     * would reproduce SQLSTATE 3730.
+     */
+    private const DEPENDENT_BACKFILL_LOCATION_ID_MIGRATION_PATH = 'database/migrations/2026_09_09_090003_backfill_location_id_for_open_reservations.php';
+
+    private const DEPENDENT_CART_ITEMS_LOCATION_MIGRATION_PATH = 'database/migrations/2026_09_09_090002_add_location_id_to_cart_items_table.php';
+
+    private const DEPENDENT_ORDER_ITEMS_LOCATION_MIGRATION_PATH = 'database/migrations/2026_09_09_090001_add_location_id_to_order_items_table.php';
+
+    private const DEPENDENT_RENTALS_LOCATION_MIGRATION_PATH = 'database/migrations/2026_09_09_090000_add_location_id_to_rentals_table.php';
+
     public function test_up_creates_the_table_with_the_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('locations'));
@@ -130,9 +151,13 @@ class CreateLocationsTableMigrationTest extends TestCase
         DB::table('locations')->insert($this->rowFor($org->id, 'a', primarySlot: 1));
         $this->assertTrue(Schema::hasTable('locations'));
 
-        // Dependent FKs first — the order a real `migrate:rollback` always
-        // applies (see DEPENDENT_STOCK_MIGRATION_PATH's and
-        // DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH's own docblocks).
+        // Dependent FKs first — newest migration first, the order a real
+        // `migrate:rollback` always applies (see each DEPENDENT_* constant's
+        // own docblock).
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_BACKFILL_LOCATION_ID_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_CART_ITEMS_LOCATION_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ORDER_ITEMS_LOCATION_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_RENTALS_LOCATION_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_SERVICE_UNITS_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_STOCK_MIGRATION_PATH])->run();
@@ -144,6 +169,10 @@ class CreateLocationsTableMigrationTest extends TestCase
         $this->artisan('migrate', ['--path' => self::DEPENDENT_STOCK_MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::DEPENDENT_SERVICE_UNITS_MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::DEPENDENT_ORDER_ITEM_UNIT_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_RENTALS_LOCATION_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_ORDER_ITEMS_LOCATION_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_CART_ITEMS_LOCATION_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_BACKFILL_LOCATION_ID_MIGRATION_PATH])->run();
 
         $this->assertTrue(Schema::hasTable('locations'));
         $this->assertSame(0, DB::table('locations')->count());
