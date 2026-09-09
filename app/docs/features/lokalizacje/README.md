@@ -52,6 +52,38 @@ per usługa i dołożeniem jej w PHP do każdego realnego oddziału (nie da się
 (zwalidowany przeciwko `organization_id` ORAZ `is_active` oddziału) na obu endpointach naraz —
 nie czeka na `LocationContext` (Faza 5.1), bo param jest bezstanowy.
 
+**Faza 5 krok 5.1 — gałąź `feature/lokalizacje-faza5-kontekst`** 2026-09-09, jeszcze nie
+zmergowana: `App\Support\LocationContext` (jedyne źródło prawdy dla `selectionRequired()` —
+`false` dla 0 lub 1 aktywnej lokalizacji, `true` dla 2+, niezależnie od tego, czy coś jest
+aktualnie wybrane) i middleware `App\Http\Middleware\ShareSelectedLocation`, dopisany do
+globalnej grupy `web` w `bootstrap/app.php` zaraz po `CheckMaintenanceMode` (po `ResolveTenant`,
+zgodnie z porządkiem Layer 7). Middleware czyści `session('selected_location_id')`, gdy nie
+rozwiązuje się do aktywnej lokalizacji bieżącego tenanta (obcy tenant, usunięta, nieaktywna) —
+nigdy nie rzuca. `LocationContext::selected()` jest samodzielnie bezpieczny nawet bez tego
+middleware (rewalidacja przy każdym odczycie) — middleware istnieje wyłącznie po to, żeby surowa
+wartość w sesji nie została „duchem" dla przyszłego kodu czytającego ją bezpośrednio. Tenant
+zawsze pochodzi z `TenantFeature::currentTenant()` (request attribute), nigdy z sesji — sesja
+niesie wyłącznie wybór lokalizacji.
+
+Ustalenie o zasięgu ciasteczka sesji (istotne dla scenariusza „stale session po zmianie
+subdomeny" z opisu zgłoszenia): `SESSION_DOMAIN` jest fałszywe w KAŻDYM środowisku tego projektu
+(`.env.example`: literalne `null`, które `env()` zamienia na prawdziwe `null`;
+`docker-compose.prod.yml`: pusty string `""`) — obie wartości są falsy, więc
+`Symfony\Component\HttpFoundation\Cookie::__toString()` nigdy nie dokleja atrybutu `Domain=`.
+Ciasteczko sesji jest więc **host-only** (RFC 6265) w każdym środowisku — przeglądarka NIE wyśle
+ciasteczka z `tenant-a.{domena}` na `tenant-b.{domena}` ani na domenę główną. Realna „stara
+sesja po zmianie subdomeny" przez carry-over ciasteczka jest więc dziś niemożliwa; middleware
+i tak waliduje defensywnie (błędny tenant nie jest jedynym źródłem nieaktualnego wyboru —
+usunięcie/dezaktywacja lokalizacji na TYM SAMYM hoście wystarczy).
+
+Nic jeszcze nie czyta `LocationContext` poza middleware i testami — żaden widok nie został
+dotknięty (przełącznik w headerze to krok 5.2).
+
+Weryfikacja: `pint --test` 966 plików / 0 problemów (baseline 962 + 4 nowe pliki); pełny
+`php artisan test` (SQLite) 1899 passed / 5 skipped / 0 failed (baseline 1878 + 21 nowych
+testów, dokładna zgodność). MySQL 8.0 nie uruchamiany osobno dla tego kroku — brak nowych
+migracji ani zapytań wrażliwych na silnik.
+
 ## Mapa dokumentów
 
 | Dokument | Odpowiada na pytanie |
@@ -73,7 +105,7 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
 | 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **ukończona (4.1-4.8), etap C niezmergowany** (PR #263/#264 zmergowane; etap C na `feature/lokalizacje-faza4-kalendarz`, code review w toku) |
-| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⬜ nierozpoczęta |
+| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | 🟡 **krok 5.1 gotowy, niezmergowany** (gałąź `feature/lokalizacje-faza5-kontekst`, code review w toku) |
 | 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |
 | 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⬜ nierozpoczęta |
