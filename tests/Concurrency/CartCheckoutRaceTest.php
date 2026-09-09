@@ -29,9 +29,16 @@ use Tests\TestCase;
  * "tests/Concurrency" for the full runbook and the measured result of
  * deliberately breaking each of the two lock layers in turn.
  *
- * Deliberately excludes a per-location scenario: locations do not exist
- * yet (Faza 4 of the multi-location plan), so `getAvailableQuantity()` has
- * no `$locationId` parameter to race on today.
+ * Faza 4 krok 4.4 (kontrakt-dostepnosci.md) added two more scenarios below,
+ * exercising `CartService::convertToOrder()`'s now-location-aware read of
+ * `$item->location_id` (see CartService.php's own docblocks): scenario 3
+ * mirrors scenario 1 but pins the SAME-location oversell race is still
+ * closed once a location is attached to the reservation; scenario 4 mirrors
+ * scenario 2's "przechodzą oba" shape one dimension over — two DIFFERENT
+ * locations, one unit each, both checkouts must succeed, proving locations
+ * don't falsely serialise against each other under real InnoDB locking
+ * (not just sequentially, where SQLite would hide the same bug scenario 2
+ * already guards against for dates).
  */
 final class CartCheckoutRaceTest extends TestCase
 {
@@ -197,7 +204,7 @@ final class CartCheckoutRaceTest extends TestCase
         $this->assertSame(2, OrderItem::where('service_id', $service->id)->count());
     }
 
-    private function makeCartWithItem(Organization $org, User $user, Service $service, Carbon $start, Carbon $end): Cart
+    private function makeCartWithItem(Organization $org, User $user, Service $service, Carbon $start, Carbon $end, ?int $locationId = null): Cart
     {
         $cart = Cart::factory()->active()->create([
             'organization_id' => $org->id,
@@ -207,6 +214,7 @@ final class CartCheckoutRaceTest extends TestCase
         \App\Models\CartItem::factory()->create([
             'cart_id' => $cart->id,
             'service_id' => $service->id,
+            'location_id' => $locationId,
             'quantity' => 1,
             'start_date' => $start->toDateString(),
             'end_date' => $end->toDateString(),
@@ -216,6 +224,135 @@ final class CartCheckoutRaceTest extends TestCase
         ]);
 
         return $cart;
+    }
+
+    /**
+     * Scenario 3 (Faza 4 krok 4.4 — exit gate scenario 1, "ten sam oddział"):
+     * same shape as scenario 1, but the last unit lives behind a
+     * `service_location_stocks` anchor row instead of `quantity_total`, and
+     * both CartItems target the SAME location — exactly one checkout must
+     * still win under real InnoDB locking.
+     */
+    public function test_two_concurrent_checkouts_for_the_last_unit_in_the_same_location_only_one_succeeds(): void
+    {
+        $org = Organization::factory()->itemRental()->create();
+
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $org->id,
+            'quantity_total' => 0, // deliberately wrong/unused — proves the location branch, not this column, is what's being raced
+            'price_per_day' => 100,
+        ]);
+
+        $location = \App\Models\Location::factory()->for($org, 'organization')->create();
+        \App\Models\ServiceLocationStock::where('service_id', $service->id)
+            ->where('location_id', $location->id)
+            ->update(['quantity' => 1]);
+
+        $userA = User::factory()->create();
+        $userB = User::factory()->create();
+
+        $start = Carbon::today()->addDays(10);
+        $end = $start->copy()->addDays(2);
+
+        $cartA = $this->makeCartWithItem($org, $userA, $service, $start, $end, $location->id);
+        $cartB = $this->makeCartWithItem($org, $userB, $service, $start, $end, $location->id);
+
+        [$readyA, $outA] = $this->probeFiles('a');
+        [$readyB, $outB] = $this->probeFiles('b');
+
+        $procA = $this->spawnProbe($cartA->id, 1500, $readyA, $outA, 'a@example.com');
+        $this->waitForFile($readyA);
+
+        $procB = $this->spawnProbe($cartB->id, 0, $readyB, $outB, 'b@example.com');
+
+        $this->waitForFile($outA, 10.0);
+        $this->waitForFile($outB, 10.0);
+        proc_close($procA);
+        proc_close($procB);
+
+        $resultA = $this->readResult($outA);
+        $resultB = $this->readResult($outB);
+
+        $statuses = [$resultA['status'], $resultB['status']];
+        sort($statuses);
+
+        $this->assertSame(
+            ['ok', 'unavailable'],
+            $statuses,
+            'Expected exactly one winner and one RentalUnavailableException. Got: '.json_encode([$resultA, $resultB])
+        );
+
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertSame(1, OrderItem::where('service_id', $service->id)->count());
+        $this->assertSame($location->id, OrderItem::where('service_id', $service->id)->first()->location_id);
+    }
+
+    /**
+     * Scenario 4 (Faza 4 krok 4.4 — exit gate scenario 2, "różne oddziały"):
+     * same service, same dates, but each checkout targets a DIFFERENT
+     * location and each location has exactly one free unit of its own —
+     * both must succeed. This is the scenario that actually proves the
+     * per-location aggregation in CartService::convertToOrder() is correct
+     * under real concurrency, not just sequentially (where a bug that
+     * accidentally shares demand across locations could still slip through
+     * SQLite's absence of real row locking).
+     */
+    public function test_two_concurrent_checkouts_for_the_last_unit_in_different_locations_both_succeed(): void
+    {
+        $org = Organization::factory()->itemRental()->create();
+
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $org->id,
+            'quantity_total' => 0, // deliberately wrong/unused, same reasoning as scenario 3
+            'price_per_day' => 100,
+        ]);
+
+        $locationA = \App\Models\Location::factory()->for($org, 'organization')->create();
+        $locationB = \App\Models\Location::factory()->for($org, 'organization')->create();
+        \App\Models\ServiceLocationStock::where('service_id', $service->id)
+            ->where('location_id', $locationA->id)
+            ->update(['quantity' => 1]);
+        \App\Models\ServiceLocationStock::where('service_id', $service->id)
+            ->where('location_id', $locationB->id)
+            ->update(['quantity' => 1]);
+
+        $userA = User::factory()->create();
+        $userB = User::factory()->create();
+
+        $start = Carbon::today()->addDays(10);
+        $end = $start->copy()->addDays(2);
+
+        $cartA = $this->makeCartWithItem($org, $userA, $service, $start, $end, $locationA->id);
+        $cartB = $this->makeCartWithItem($org, $userB, $service, $start, $end, $locationB->id);
+
+        [$readyA, $outA] = $this->probeFiles('a');
+        [$readyB, $outB] = $this->probeFiles('b');
+
+        // Still queues on the SAME Service row (Zasada 4 serialises by
+        // service, not by location) — 800ms is enough for B to have issued
+        // its own blocking read and be waiting behind A.
+        $procA = $this->spawnProbe($cartA->id, 800, $readyA, $outA, 'a@example.com');
+        $this->waitForFile($readyA);
+
+        $procB = $this->spawnProbe($cartB->id, 0, $readyB, $outB, 'b@example.com');
+
+        $this->waitForFile($outA, 10.0);
+        $this->waitForFile($outB, 10.0);
+        proc_close($procA);
+        proc_close($procB);
+
+        $resultA = $this->readResult($outA);
+        $resultB = $this->readResult($outB);
+
+        $this->assertSame('ok', $resultA['status'], 'A unexpectedly failed: '.json_encode($resultA));
+        $this->assertSame('ok', $resultB['status'], 'B unexpectedly failed: '.json_encode($resultB));
+
+        $this->assertDatabaseCount('orders', 2);
+        $this->assertSame(2, OrderItem::where('service_id', $service->id)->count());
+
+        $locationIds = OrderItem::where('service_id', $service->id)->pluck('location_id')->sort()->values()->all();
+        $expected = collect([$locationA->id, $locationB->id])->sort()->values()->all();
+        $this->assertSame($expected, $locationIds);
     }
 
     /**

@@ -29,6 +29,20 @@ wywołań `getAvailableQuantity()` jeszcze nie przekazuje `$locationId`** — to
 bit w bit identyczne jak przed etapem A (dowód: 26 testów charakteryzujących z kroku 0.2 bez
 zmiany + harness współbieżności `tests/Concurrency` zielony bez nowego scenariusza per-oddział).
 
+**Faza 4 etap B — gałąź `feature/lokalizacje-faza4-przepiecie`** 2026-09-09, jeszcze nie
+zmergowana: kroki 4.4 i 4.5. Osiem z dziewięciu wywołań `getAvailableQuantity()` przekazuje
+`$locationId` — trzy ścieżki `CartService` (`addItem`/`updateQuantity`/`convertToOrder`, wraz
+z agregacją popytu rodzeństwa Zasady 7 przepiętą z per-usługa na per-(usługa,oddział)),
+`CreateRental`/`EditRental` (nowe pole `location_id` w `RentalResource::form()`, formularz nie
+miał go wcale) i „dziewiąte wywołanie" `RentalExtensionService::checkAvailabilityForExtension()` —
+przelotka z trzema wywołującymi (`requestExtension()`, `approve()`,
+`RentalExtensionController::checkAvailability()`), wszystkie trzy teraz przekazują
+`$item->location_id`. Trzeci wywołujący (endpoint HTTP) był pominięty w pierwszym przebiegu i
+doprawiony po code review — pełny opis w `kontrakt-dostepnosci.md` Zasada 3. Harness
+`tests/Concurrency` ma dwa nowe scenariusze per-oddział. Pozostają: 4.6 (`getMonthlyAvailability`,
+kalendarz) i 4.7 (`availabilityForServices`, jeszcze nie istnieje) — `RentalBookingController`
+wciąż nie przekazuje `$locationId`.
+
 ## Mapa dokumentów
 
 | Dokument | Odpowiada na pytanie |
@@ -49,7 +63,7 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | ✅ **ukończona** (PR #228/#229/#230) |
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
-| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **etap A ukończony** (kroki 4.1/4.2/4.3/4.8) — 4.4-4.7 pozostają |
+| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **etap B ukończony, niezmergowany** (kroki 4.1-4.5/4.8) — 4.6/4.7 pozostają |
 | 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⬜ nierozpoczęta |
 | 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |

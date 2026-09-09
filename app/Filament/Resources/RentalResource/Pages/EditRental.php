@@ -45,7 +45,8 @@ class EditRental extends EditRecord
                     Carbon::parse($data['start_date']),
                     Carbon::parse($data['end_date']),
                     forUpdate: true,
-                    excludeRentalId: $record->getKey()
+                    excludeRentalId: $record->getKey(),
+                    locationId: $data['location_id'] ?? null
                 );
 
                 if ((int) $data['quantity'] > $available) {

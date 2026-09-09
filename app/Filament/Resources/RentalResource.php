@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\RentalStatus;
 use App\Enums\ServiceType;
 use App\Filament\Resources\RentalResource\Pages;
+use App\Models\Location;
 use App\Models\Rental;
 use BackedEnum;
 use Filament\Actions;
@@ -13,6 +14,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
@@ -49,6 +51,37 @@ class RentalResource extends BaseResource
                             ->searchable()
                             ->preload()
                             ->required(),
+
+                        // Faza 4 krok 4.4 (kontrakt-dostepnosci.md) — the only
+                        // one of the nine getAvailableQuantity() call sites
+                        // that had NO form field to source $locationId from
+                        // at all (CartService's three call sites read it off
+                        // an existing CartItem row instead). Optional, not
+                        // required: `rentals.location_id` stays nullable
+                        // forever by design (see the migration's own
+                        // docblock) — an admin not yet using multi-location
+                        // must be able to leave this blank and keep today's
+                        // global-quantity_total behaviour exactly.
+                        // Defensive modifyQueryUsing mirrors
+                        // UnitsRelationManager's proven pattern
+                        // (filament-resources.md, "Select pojedynczy broni
+                        // się sam") — `orWhere('id', $record->location_id)`
+                        // keeps an already-assigned-but-since-deactivated
+                        // location resolvable on Edit, or the WHOLE form
+                        // becomes unsavable, not just this field.
+                        Forms\Components\Select::make('location_id')
+                            ->label('Oddział')
+                            ->relationship(
+                                name: 'location',
+                                titleAttribute: 'name',
+                                modifyQueryUsing: fn (Builder $query, ?Rental $record): Builder => $query->where(
+                                    fn (Builder $inner) => $inner->where('is_active', true)
+                                        ->when($record, fn (Builder $withRecord) => $withRecord->orWhere('id', $record->location_id))
+                                ),
+                            )
+                            ->searchable()
+                            ->preload()
+                            ->default(fn () => Location::where('primary_slot', 1)->value('id')),
 
                         Forms\Components\Select::make('customer_id')
                             ->label('Klient')

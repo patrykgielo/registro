@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature\Rental;
 
 use App\Enums\ExtensionRequestStatus;
+use App\Models\Location;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemExtensionRequest;
 use App\Models\Organization;
 use App\Models\Service;
+use App\Models\ServiceLocationStock;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -80,7 +82,7 @@ class RentalExtensionControllerTest extends TestCase
         ]);
     }
 
-    private function paidOrder(): array
+    private function paidOrder(array $itemOverrides = []): array
     {
         $order = Order::factory()->paid()->create([
             'organization_id' => $this->org->id,
@@ -89,7 +91,7 @@ class RentalExtensionControllerTest extends TestCase
             'total_amount' => 500.00,
         ]);
 
-        $item = OrderItem::factory()->create([
+        $item = OrderItem::factory()->create(array_merge([
             'order_id' => $order->id,
             'service_id' => $this->service->id,
             'quantity' => 1,
@@ -98,7 +100,7 @@ class RentalExtensionControllerTest extends TestCase
             'rental_days' => 8,
             'unit_price' => 100.00,
             'total_price' => 800.00,
-        ]);
+        ], $itemOverrides));
 
         return [$order, $item];
     }
@@ -286,6 +288,58 @@ class RentalExtensionControllerTest extends TestCase
 
         $this->assertFalse($response->json('can_extend'));
         $this->assertEquals(0.0, $response->json('estimated_amount'));
+    }
+
+    /**
+     * The regression the team lead's review caught (RentalExtensionController.php:41 was the
+     * THIRD caller of checkAvailabilityForExtension() — the other two, in
+     * RentalExtensionService, were wired in Faza 4 krok 4.5, this endpoint was missed).
+     *
+     * The harmful direction is silent and one-way: the GLOBAL pool (quantity_total, what the
+     * null branch reads) is exhausted by a reservation sitting in a DIFFERENT location, while
+     * the item's OWN location still has a free unit. Without `locationId:` this endpoint falls
+     * back to the null branch and returns `can_extend: false` for a legitimately extendable
+     * item — no exception, no log, nothing to debug. With the fix, the location-scoped branch
+     * ignores location B's reservation entirely and sees location A's real, free capacity.
+     *
+     * Falsifiable: reverting `locationId: $orderItem->location_id` on
+     * RentalExtensionController.php:41 back to a bare call makes this test fail — verified by
+     * hand (see PR report), not just asserted here.
+     */
+    public function test_check_can_extend_is_true_when_the_items_own_location_has_a_free_unit_even_though_the_global_pool_is_exhausted_elsewhere(): void
+    {
+        $this->enableRentalExtension();
+
+        $this->service->update(['quantity_total' => 1]); // the null branch's capacity
+
+        $locationA = Location::factory()->for($this->org, 'organization')->create();
+        $locationB = Location::factory()->for($this->org, 'organization')->create();
+        ServiceLocationStock::where('service_id', $this->service->id)->where('location_id', $locationA->id)->update(['quantity' => 1]);
+        ServiceLocationStock::where('service_id', $this->service->id)->where('location_id', $locationB->id)->update(['quantity' => 1]);
+
+        [$order, $item] = $this->paidOrder(['location_id' => $locationA->id]);
+        $newEndDate = $item->end_date->copy()->addDays(3)->toDateString();
+        $extensionStart = $item->end_date->copy()->addDay();
+        $requestedEnd = $item->end_date->copy()->addDays(3);
+
+        // Exhausts the GLOBAL pool (quantity_total = 1) from location B — must NOT
+        // count against an extension of an item sitting in location A.
+        $blockingOrder = Order::factory()->paid()->create(['organization_id' => $this->org->id]);
+        OrderItem::factory()->create([
+            'order_id' => $blockingOrder->id,
+            'service_id' => $this->service->id,
+            'location_id' => $locationB->id,
+            'quantity' => 1,
+            'start_date' => $extensionStart,
+            'end_date' => $requestedEnd,
+        ]);
+
+        $response = $this->actingAs($this->customer)
+            ->getJson($this->checkUrl($order, $item).'?new_end_date='.$newEndDate)
+            ->assertOk();
+
+        $this->assertTrue($response->json('can_extend'), 'Location A has its own free unit — must not be blocked by location B\'s reservation against the global pool.');
+        $this->assertGreaterThan(0.0, $response->json('estimated_amount'));
     }
 
     // =========================================================================
