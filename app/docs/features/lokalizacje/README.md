@@ -16,6 +16,41 @@ regresji dla tenanta jednooddziałowego. Dostępność **nietknięta** — wchod
 **Fazy 3-9 — nierozpoczęte, ale odblokowane.** Bramka postawiona 2026-08-28 (weryfikacja
 testów pół-automatycznych panelu tenanta i frontu) została **zdjęta 2026-08-30**: oba testy
 walkthrough przechodzą i są stałą częścią suite'u.
+**Faza 3 — zmergowana na `develop`** 2026-09-08 (PR #257 kroki 3.1-3.3, PR #259 kroki 3.4-3.8):
+egzemplarze (`service_units`), obserwator utrzymujący kotwicę, wydanie/zwrot konkretnej sztuki
+z numerem na protokole. Wdrożona na UAT.
+**Faza 4 etap A — zmergowana na `develop`** 2026-09-09 (PR #263): kroki 4.1 (`getAvailableQuantity(...,
+?int $locationId = null)`, gałąź `null` bit w bit dzisiejsza), 4.2 (filtr lokalizacji w outer
+WHERE na `order_items`), 4.3 (pojemność z kotwicy `service_location_stocks`, blokowana wewnątrz
+już zdobytego locka na `services`) i 4.8 (`location_id` nullable + indeks na `rentals`/
+`order_items`/`cart_items`, backfill otwartych rezerwacji do oddziału głównego). **Żadne z 9
+wywołań `getAvailableQuantity()` jeszcze nie przekazuje `$locationId`** — to kroki 4.4-4.7,
+świadomie poza zakresem tej dostawy, do zrobienia po review. Do tego czasu zachowanie jest
+bit w bit identyczne jak przed etapem A (dowód: 26 testów charakteryzujących z kroku 0.2 bez
+zmiany + harness współbieżności `tests/Concurrency` zielony bez nowego scenariusza per-oddział).
+
+**Faza 4 etap B — zmergowana na `develop`** 2026-09-09 (PR #264): kroki 4.4 i 4.5. Osiem z dziewięciu
+wywołań `getAvailableQuantity()` przekazuje `$locationId` — trzy ścieżki `CartService`
+(`addItem`/`updateQuantity`/`convertToOrder`, wraz z agregacją popytu rodzeństwa Zasady 7
+przepiętą z per-usługa na per-(usługa,oddział)), `CreateRental`/`EditRental` (nowe pole
+`location_id` w `RentalResource::form()`, formularz nie miał go wcale) i „dziewiąte wywołanie"
+`RentalExtensionService::checkAvailabilityForExtension()` — przelotka z trzema wywołującymi
+(`requestExtension()`, `approve()`, `RentalExtensionController::checkAvailability()`), wszystkie
+trzy teraz przekazują `$item->location_id`. Trzeci wywołujący (endpoint HTTP) był pominięty
+w pierwszym przebiegu i doprawiony po code review — pełny opis w `kontrakt-dostepnosci.md`
+Zasada 3. Harness `tests/Concurrency` ma dwa nowe scenariusze per-oddział.
+
+**Faza 4 etap C — gałąź `feature/lokalizacje-faza4-kalendarz`** 2026-09-09, jeszcze nie
+zmergowana: kroki 4.6 i 4.7, **Faza 4 zamknięta w całości**.
+`getMonthlyAvailability(..., ?int $locationId = null)` mirroruje `getAvailableQuantity()`'s
+gałąź `null`/dyscyplinę locków (nigdy nie blokuje). `availabilityForServices(Collection
+$services, Carbon $start, Carbon $end): array` — 3 zapytania zbiorcze zawsze, niezależnie od
+liczby usług; `location_id = NULL` na rezerwacji rozwiązane sumowaniem osobnej „grupy NULL"
+per usługa i dołożeniem jej w PHP do każdego realnego oddziału (nie da się jednym
+`GROUP BY`) — **nie wpięte jeszcze do żadnego widoku**, to zadanie Fazy 5.
+`RentalBookingController` dostał opcjonalny, fail-closed query param `location_id`
+(zwalidowany przeciwko `organization_id` ORAZ `is_active` oddziału) na obu endpointach naraz —
+nie czeka na `LocationContext` (Faza 5.1), bo param jest bezstanowy.
 
 ## Mapa dokumentów
 
@@ -36,8 +71,8 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 0 | Higiena, dowód współbieżności + naprawa żywego oversellu | [`86cbahqbv`](https://app.clickup.com/t/86cbahqbv) | ✅ **ukończona** 2026-08-27 |
 | 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | ✅ **ukończona** (PR #228/#229/#230) |
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
-| 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ⬜ nierozpoczęta |
-| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ⬜ nierozpoczęta |
+| 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
+| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **ukończona (4.1-4.8), etap C niezmergowany** (PR #263/#264 zmergowane; etap C na `feature/lokalizacje-faza4-kalendarz`, code review w toku) |
 | 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ⬜ nierozpoczęta |
 | 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |

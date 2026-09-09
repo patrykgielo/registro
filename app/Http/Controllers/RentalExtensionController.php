@@ -38,7 +38,15 @@ class RentalExtensionController extends Controller
         $requestedEndDate = Carbon::parse($request->input('new_end_date'))->startOfDay();
 
         $additionalDays = (int) $orderItem->end_date->diffInDays($requestedEndDate);
-        $available = $this->extensionService->checkAvailabilityForExtension($orderItem, $requestedEndDate);
+        // Faza 4 krok 4.5 follow-up (kontrakt-dostepnosci.md) — this endpoint was the
+        // THIRD caller of checkAvailabilityForExtension(), missed when the other two
+        // (RentalExtensionService::requestExtension()/approve()) were wired. Without
+        // locationId: here it silently fell back to the null/global branch — a false
+        // "can_extend: false" whenever the GLOBAL pool was exhausted in some OTHER
+        // location while the item's own location still had a free unit, with nothing
+        // to debug (no exception, no log). Same "read it off the row" source as the
+        // other two callers.
+        $available = $this->extensionService->checkAvailabilityForExtension($orderItem, $requestedEndDate, locationId: $orderItem->location_id);
         $canExtend = $available >= $orderItem->quantity
             && $this->extensionService->canRequestExtension($order, $orderItem);
 
