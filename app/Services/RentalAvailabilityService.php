@@ -465,6 +465,40 @@ class RentalAvailabilityService
     }
 
     /**
+     * Faza 5.3/5.4 (86cbahqgb/86cbahqgh, plan-wdrozenia.md) — the ONE place
+     * that reads an availabilityForServices() entry into the single number a
+     * catalog tile or product page badge shows. Exists to keep
+     * kontrakt-dostepnosci.md's "brak klucza w `locations` znaczy ZERO, nie
+     * brak ograniczenia" rule in one place instead of three call sites
+     * (RentalController::index()/showCategory(), ServiceController::index())
+     * each re-deriving it — the exact duplication Zasada 1 warns against, one
+     * level up from the raw query.
+     *
+     * $selectedLocationId === null covers BOTH a tenant with zero locations
+     * (the feature is simply unused) AND a multi-location tenant where the
+     * customer has not picked a branch yet — LocationContext::selected()
+     * already collapses "tenant has exactly one active location" into an
+     * explicit id for free (see its own docblock), so by the time this is
+     * called with null, showing anything BUT the combined total would imply
+     * a specific branch nobody chose. `$entry['total']` is exactly
+     * getAvailableQuantity(locationId: null)'s own number for the same
+     * service/window (quantity_total minus every reservation regardless of
+     * location) — i.e. today's pre-Faza-5 global behaviour, computed live
+     * instead of the static `quantity_total` the tile used to read.
+     *
+     * @param  array{total: int, locations: array<int, int>}  $entry  one
+     *                                                                value from availabilityForServices()'s return array
+     */
+    public function availableQuantityFor(array $entry, ?int $selectedLocationId): int
+    {
+        if ($selectedLocationId !== null) {
+            return $entry['locations'][$selectedLocationId] ?? 0;
+        }
+
+        return $entry['total'] ?? 0;
+    }
+
+    /**
      * Create a temporary hold with pessimistic locking.
      * Blocks inventory for HOLD_TTL_MINUTES.
      *

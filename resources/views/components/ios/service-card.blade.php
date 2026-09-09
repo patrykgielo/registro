@@ -8,6 +8,16 @@
     'url' => '#',
     'showCta' => true,
     'variant' => 'default', // 'default' | 'dark'
+    // Faza 5.3 (86cbahqgb) — precomputed by the caller via
+    // RentalAvailabilityService::availabilityForServices() + availableQuantityFor()
+    // (bulk, N+1-safe — see kontrakt-dostepnosci.md). null means the caller
+    // didn't pass one (a non-rental listing, e.g. booking-wizard's time_slot
+    // picker, or content-grid's CMS block) — the badge below simply doesn't
+    // render, same as before this step. NEVER compute this by querying
+    // $service directly here: this component renders once PER CARD, so any
+    // per-card query would reintroduce the exact N+1 the bulk method exists
+    // to prevent.
+    'availableQuantity' => null,
 ])
 
 @php
@@ -37,7 +47,11 @@
 
         // Rental-specific display data
         $rentalPrice = $isRental ? $service->formatted_rental_price : null;
-        $quantityAvailable = $isRental ? $service->quantity_total : null;
+        // Faza 5.3 (86cbahqgb): was `$service->quantity_total` — the tenant-wide
+        // stock count, ignoring both reservations and the selected branch. Never
+        // rendered (dead variable) until this step; now sourced from the
+        // location-scoped $availableQuantity prop the caller computed in bulk.
+        $quantityAvailable = $isRental ? $availableQuantity : null;
 
     } else {
         $isRental = false;
@@ -154,6 +168,23 @@
         <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
             <x-heroicon-m-clock class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
             <span class="service-card__duration-text font-medium">{{ $duration }} min</span>
+        </div>
+        @endif
+
+        {{-- Location-scoped availability (Faza 5.3/5.4, 86cbahqgb/86cbahqgh) —
+             quantity is informational ("is it worth clicking through"), not a
+             promise: the checkout is what actually locks stock
+             (kontrakt-dostepnosci.md, "Co rezerwuje, a co nie"). Uses the
+             canonical x-ui.badge component (Design System v5) rather than a
+             bespoke element, so this reads identically to every other
+             success/error badge in the app. --}}
+        @if($quantityAvailable !== null)
+        <div class="service-card__availability mb-4">
+            @if($quantityAvailable > 0)
+                <x-ui.badge variant="success" dot>Dostępne: {{ $quantityAvailable }} szt.</x-ui.badge>
+            @else
+                <x-ui.badge variant="error" dot>Obecnie niedostępne</x-ui.badge>
+            @endif
         </div>
         @endif
 
