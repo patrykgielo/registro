@@ -67,6 +67,22 @@
                         @if($service->duration_minutes && $service->service_type !== \App\Enums\ServiceType::ItemRental)
                             <x-ui.badge variant="default" icon="clock">{{ $service->formatted_duration }}</x-ui.badge>
                         @endif
+
+                        {{-- Faza 5.3 (86cbahqgb) — mirrors x-ios.service-card's own
+                             availability badge (rentals/*.blade.php) so the SAME
+                             product shows the SAME number regardless of which
+                             listing it was found on. $locationAvailability is only
+                             populated for item_rental services (ServiceController::
+                             locationAvailabilityFor()) — absent here means "not a
+                             rental item", not "zero stock". --}}
+                        @if($service->service_type === \App\Enums\ServiceType::ItemRental && isset($locationAvailability[$service->id]))
+                            @php($availableQty = $locationAvailability[$service->id])
+                            @if($availableQty > 0)
+                                <x-ui.badge variant="success" dot>Dostępne: {{ $availableQty }} szt.</x-ui.badge>
+                            @else
+                                <x-ui.badge variant="error" dot>Obecnie niedostępne</x-ui.badge>
+                            @endif
+                        @endif
                     </div>
                 </x-ui.card>
             @endforeach

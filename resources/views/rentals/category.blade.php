@@ -158,6 +158,7 @@
                     @foreach($services as $service)
                         <x-ios.service-card
                             :service="$service"
+                            :available-quantity="$locationAvailability[$service->id] ?? null"
                             data-animate
                             data-animate-delay="{{ $loop->index * 60 }}"
                         />

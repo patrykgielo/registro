@@ -106,7 +106,7 @@
 
         <x-layout.grid cols="3" gap="8">
             @foreach($featuredServices as $service)
-                <x-ios.service-card :service="$service" />
+                <x-ios.service-card :service="$service" :available-quantity="$locationAvailability[$service->id] ?? null" />
             @endforeach
         </x-layout.grid>
     </x-layout.section>

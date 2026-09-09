@@ -112,6 +112,51 @@ Weryfikacja: `pint --test` 969/969 (bez zmiany — `IntendedDestination.php` ju�
 `php artisan test` (SQLite) 1913 passed / 5 skipped / 0 failed (1910 + 3 nowe testy);
 `npm run build` wykonany.
 
+**Faza 5 kroki 5.3 i 5.4 — gałąź `feature/lokalizacje-faza5-kafelki`** 2026-09-09, jeszcze nie
+zmergowane. Kafelki i strona sprzętu pokazują dostępność **wybranego oddziału**, a nie stanu
+całej firmy.
+
+Oba kroki weszły **razem, nie osobno** — zgłoszenie 5.4 wymaga tego wprost („inaczej strona
+kłamie o dostępności"). Kafelek pokazujący liczbę oddziału obok strony pokazującej stan całej
+firmy dawałby klientowi dwie różne liczby o tym samym sprzęcie w odstępie jednego kliknięcia.
+
+Ożywiona została martwa zmienna `$quantityAvailable` w `service-card.blade.php` — liczona
+i nigdzie nierenderowana od czasu powstania komponentu. **Oba** listingi zostały pokryte:
+wypożyczalnia przez wspólny komponent, katalog usług przez własny markup inline. Zgłoszenie
+ostrzegało przed tym wprost, bo zmiana w jednym miejscu wygląda na skończoną robotę.
+
+Odczyt kontraktu `availabilityForServices()` („brak klucza znaczy pojemność zero, nie brak
+ograniczenia") jest scentralizowany w `RentalAvailabilityService::availableQuantityFor()` —
+jedno miejsce zamiast trzech kopii w kontrolerach. Sfalsyfikowane niezależnie przez autora
+i recenzenta: podmiana zera na sumę globalną czerwieni test.
+
+Klient bez wybranego oddziału widzi sumę globalną, czyli dokładnie dzisiejsze zachowanie —
+pokazanie liczby konkretnego oddziału sugerowałoby wybór, którego nie dokonał.
+
+Brak N+1 pilnuje test **liczący zapytania**, nie sprawdzający wyniki: listing 3 pozycji i 20
+pozycji daje tę samą liczbę zapytań. Autor opisał dwie pułapki pomiaru, na które sam wpadł
+(porównywanie różnych tenantów, brak czyszczenia logu zapytań między pomiarami) — obie
+zaadresowane w kodzie testu, nie tylko w komentarzu.
+
+Kalendarz nie wymagał dodatkowego JavaScriptu: przełącznik oddziału powoduje pełne
+przeładowanie strony, więc wystarczyło dołożyć identyfikator oddziału do dwóch wywołań AJAX.
+Ustalone przez sprawdzenie kodu przełącznika, nie założone.
+
+Zmiana zachowania zgłoszona jawnie: usługa bez prowadzonego stanu magazynowego wcześniej nie
+pokazywała na stronie sprzętu **żadnej** plakietki, teraz pokazuje „Obecnie niedostępne".
+Recenzent potwierdził, że `quantity_total = 0` u sprzętu zawsze znaczy realny brak magazynu,
+więc to poprawna informacja, nie regresja.
+
+**Dług wprowadzony tym krokiem:** plakietka dostępności ma kontrast 2,69:1 i 3,44:1 przy
+wymaganych 4,5:1 (dwa niezależne pomiary). To **nowy** problem, nie odziedziczony — te warianty
+komponentu nie były renderowane nigdzie przed tą zmianą. Świadomie nie naprawiony punktową
+łatką, bo komponent jest kanoniczny; zgłoszenie `123k99cu9u0`.
+
+Weryfikacja: `pint --test` 970/970; `php artisan test` 1922 passed / 5 skipped / 0 failed.
+Sprawdzone w przeglądarce: kafelek dla oddziału bez stanu → „Obecnie niedostępne", dla oddziału
+ze stanem → „Dostępne: 9 szt."; strona sprzętu ta sama liczba, kalendarz z 6 na dniach zajętych
+przez istniejące zamówienie.
+
 ## Mapa dokumentów
 
 | Dokument | Odpowiada na pytanie |
@@ -133,7 +178,7 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
 | 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **ukończona (4.1-4.8), etap C niezmergowany** (PR #263/#264 zmergowane; etap C na `feature/lokalizacje-faza4-kalendarz`, code review w toku) |
-| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | 🟡 **kroki 5.1-5.2 gotowe, niezmergowane** (5.1 na `feature/lokalizacje-faza5-kontekst`, 5.2 na `feature/lokalizacje-faza5-przelacznik`, code review w toku) |
+| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | 🟡 **kroki 5.1-5.4 gotowe** (5.1 i 5.2 zmergowane — PR #267, #268; 5.3/5.4 na `feature/lokalizacje-faza5-kafelki`, po code review). Zostaje 5.5 |
 | 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |
 | 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⬜ nierozpoczęta |

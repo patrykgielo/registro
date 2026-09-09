@@ -4,10 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Enums\ServiceType;
 use App\Models\Service;
+use App\Services\RentalAvailabilityService;
+use App\Support\LocationContext;
 use App\Support\Seo\MetaTagBuilder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class ServiceController extends Controller
 {
+    public function __construct(
+        private readonly RentalAvailabilityService $availability,
+        private readonly LocationContext $locations,
+    ) {}
+
     /**
      * Display a listing of all published services.
      */
@@ -26,7 +35,52 @@ class ServiceController extends Controller
             ->ordered()
             ->paginate(24);
 
-        return view('services.index', compact('services'));
+        return view('services.index', [
+            'services' => $services,
+            // Faza 5.3 code review: $services is a LengthAwarePaginator, and
+            // collect($paginator) is a trap — Paginator is Arrayable, and
+            // getArrayableItems() checks Arrayable BEFORE Traversable, so it
+            // calls ->toArray() and collects the pagination META shape
+            // (current_page, per_page, data: [...]) instead of the rows.
+            // ->getCollection() is the actual Collection of models.
+            'locationAvailability' => $this->locationAvailabilityFor($services->getCollection()),
+        ]);
+    }
+
+    /**
+     * Faza 5.3 (86cbahqgb) — mirrors RentalController::locationAvailabilityFor().
+     * `/uslugi` mixes item_rental and time_slot services on the same page
+     * (see the query above); only the item_rental subset has a location
+     * dimension at all, so only those go into the bulk call — passing
+     * time_slot rows through would waste query time counting reservations
+     * against `quantity_total = null` for services the tile never renders a
+     * quantity badge for anyway (`$isRental` gates that in
+     * service-card.blade.php AND in this view's own inline markup). Still
+     * exactly ONE `availabilityForServices()` call regardless of how many
+     * rentable services are on the paginated page.
+     *
+     * @return array<int, int> serviceId => quantity to display on that tile
+     */
+    private function locationAvailabilityFor(Collection $services): array
+    {
+        $rentable = $services->filter(
+            fn (Service $service) => $service->service_type === ServiceType::ItemRental
+        )->values();
+
+        if ($rentable->isEmpty()) {
+            return [];
+        }
+
+        $today = Carbon::today();
+        $bulk = $this->availability->availabilityForServices($rentable, $today, $today);
+        $locationId = $this->locations->selectedId();
+
+        return $rentable->mapWithKeys(fn (Service $service) => [
+            $service->id => $this->availability->availableQuantityFor(
+                $bulk[$service->id] ?? ['total' => 0, 'locations' => []],
+                $locationId
+            ),
+        ])->all();
     }
 
     /**
@@ -63,8 +117,50 @@ class ServiceController extends Controller
             'schemaService' => $schemaService,
             'schemaBreadcrumbs' => $schemaBreadcrumbs,
             'pageType' => 'service',
+            ...$this->rentalAvailabilityFor($service),
             ...MetaTagBuilder::forModel($service),
         ]);
+    }
+
+    /**
+     * Faza 5.4 (86cbahqgh) — the product page's own badge/calendar/AJAX
+     * fetches MUST agree with the tile the customer clicked from
+     * (`locationAvailabilityFor()` above) for the SAME selected location,
+     * or the customer gets two disagreeing numbers for the same piece of
+     * equipment — exactly the bug the ticket names. Same "today" window,
+     * same `availableQuantityFor()` read, same `LocationContext::selectedId()`
+     * source of truth; the only difference is a single-service call instead
+     * of a bulk one (a product page renders exactly one tile).
+     *
+     * `selectedLocationId` also goes to the view so its Alpine calendar can
+     * put `location_id` on its own AJAX calls (`rental.calendar` /
+     * `rental.availability`) — those already accept the param
+     * (kontrakt-dostepnosci.md Zasada 3, `RentalBookingController`), they
+     * just were not being sent one. `null` for a non-rental service or a
+     * tenant/selection with nothing chosen — both routes already treat
+     * `location_id` as optional (`locationIdRules()`), so an absent value
+     * degrades to today's global behaviour, not an error.
+     *
+     * @return array{availableQuantity: ?int, selectedLocationId: ?int}
+     */
+    private function rentalAvailabilityFor(Service $service): array
+    {
+        $locationId = $this->locations->selectedId();
+
+        if ($service->service_type !== ServiceType::ItemRental) {
+            return ['availableQuantity' => null, 'selectedLocationId' => $locationId];
+        }
+
+        $today = Carbon::today();
+        $bulk = $this->availability->availabilityForServices(collect([$service]), $today, $today);
+
+        return [
+            'availableQuantity' => $this->availability->availableQuantityFor(
+                $bulk[$service->id] ?? ['total' => 0, 'locations' => []],
+                $locationId
+            ),
+            'selectedLocationId' => $locationId,
+        ];
     }
 
     /**
