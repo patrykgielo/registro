@@ -6,15 +6,18 @@ namespace App\Services\Cart;
 
 use App\Exceptions\CartItemOwnershipException;
 use App\Exceptions\CartNotActiveException;
+use App\Exceptions\PickupLocationRequiredException;
 use App\Exceptions\RentalUnavailableException;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Location;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Organization;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\RentalAvailabilityService;
+use App\Support\LocationContext;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -25,6 +28,7 @@ class CartService
     public function __construct(
         protected RentalAvailabilityService $availability,
         protected SettingsManager $settings,
+        protected LocationContext $locationContext,
     ) {}
 
     /**
@@ -36,6 +40,18 @@ class CartService
      * user_id, active_slot) is the actual backstop — if two requests still
      * both reach the INSERT, the loser's QueryException is caught and it
      * re-fetches the row the winner just created.
+     *
+     * `location_id` (Faza 6 krok 6.1) is stamped ONLY on a brand-new INSERT,
+     * from LocationContext::selectedId() — the ambient session selection at
+     * the moment this cart is first created. Deliberately NOT re-stamped on
+     * the `$existing` branch above: an existing cart already has whatever
+     * location it was created with (or backfilled to, for carts predating
+     * this column — see 2026_09_10_090001's own migration), and silently
+     * overwriting that here — behind the customer's back, mid-session, with
+     * no revalidation of the cart's own items against the new location's
+     * stock — is precisely the job Faza 6 krok 6.2's
+     * `CartService::setLocation()` is reserved for (not yet built). This is
+     * a one-time stamp at creation, not a live sync.
      */
     public function getOrCreateCart(Organization $organization, User $user): Cart
     {
@@ -55,6 +71,7 @@ class CartService
                 return Cart::create([
                     'organization_id' => $organization->id,
                     'user_id' => $user->id,
+                    'location_id' => $this->locationContext->selectedId(),
                     'status' => 'active',
                     'expires_at' => now()->addHours(2),
                 ]);
@@ -178,6 +195,12 @@ class CartService
      *
      * @throws CartNotActiveException when cart is not active or has no items
      * @throws RentalUnavailableException when any item no longer has enough stock
+     * @throws PickupLocationRequiredException when the cart's location_id does not
+     *                                         resolve to a Location still belonging
+     *                                         to this cart's own organization (see
+     *                                         the resolution below for when this
+     *                                         can happen despite SubmitCheckoutRequest's
+     *                                         own upstream validation)
      */
     public function convertToOrder(Cart $cart, array $checkoutData): Order
     {
@@ -194,6 +217,68 @@ class CartService
 
             if ($cart->status !== 'active') {
                 throw CartNotActiveException::make();
+            }
+
+            // Faza 6 krok 6.3/6.4 — resolved from the JUST-LOCKED, freshly re-fetched
+            // $cart above (not from LocationContext directly, and not from the
+            // caller's own $cart instance) so this reflects the CURRENT committed
+            // value of carts.location_id, closing the same class of race
+            // convertToOrder()'s own lockForUpdate() docblock describes for
+            // $cart->status. SubmitCheckoutRequest already validated this same
+            // value (fail-closed — see its own docblock) BEFORE this method was
+            // ever called; this is defense-in-depth against the narrow window
+            // between that validation and this locked read — TWO independent
+            // races, not one (code review 2026-09-10, the second one was
+            // missing entirely before this fix):
+            //   1. The Location is DELETED in between — nullOnDelete's FK
+            //      will already have turned carts.location_id itself to NULL
+            //      by the time this SELECT runs, so `$cart->location_id !==
+            //      null` below is already false and find() is never reached.
+            //   2. The Location is DEACTIVATED in between — deactivation does
+            //      NOT touch carts.location_id at all (no FK/observer wipes
+            //      it), so a bare find() would still return the now-closed
+            //      row and this guard would never fire. `->active()` is what
+            //      closes THIS race — without it, an order could be created
+            //      with pickup_location_id pointing at a branch that is no
+            //      longer selling anything.
+            $pickupLocation = $cart->location_id !== null
+                ? Location::withoutGlobalScope('organization')
+                    ->where('organization_id', $cart->organization_id)
+                    ->active()
+                    ->find($cart->location_id)
+                : null;
+
+            // Only genuinely ambiguous (2+ active locations, still nothing
+            // resolved) blocks the order. Code review (2026-09-10): this check
+            // is `$pickupLocation === null && selectionRequired()`, NOT a call
+            // to `LocationContext::mustPrompt()` itself — the two are only
+            // FUNCTIONALLY equivalent here, not the same implementation:
+            // `mustPrompt()` is `selectionRequired() && selected() === null`,
+            // and `$pickupLocation === null` is a DIFFERENT null-check (the
+            // cart's OWN persisted location_id having failed to resolve a row),
+            // not `LocationContext::selected()`. They agree in this codebase
+            // TODAY because SubmitCheckoutRequest's prepareForValidation()
+            // sources `pickup_location_id` from this exact cart, and
+            // CartService::getOrCreateCart() sources `carts.location_id` from
+            // `LocationContext::selectedId()` at creation — but a future change
+            // to either resolution path could make them diverge silently. A 0-
+            // or 1-location tenant simply creates the order with
+            // `pickup_location_id = null` below — the feature stays invisible
+            // to a tenant that has not adopted it.
+            //
+            // Correct, worth naming (code review 2026-09-10): the SAME branch
+            // also covers a tenant whose active count just dropped to exactly
+            // one by deactivating a DIFFERENT location than the one this cart
+            // points to (LocationObserver::updating() only blocks dropping to
+            // ZERO, never to one — see that method's own docblock). If that
+            // drop makes selectionRequired() false, this guard does NOT throw
+            // even though $pickupLocation is null (filtered out by ->active()
+            // above) — the order proceeds with pickup_location_id = null,
+            // identical to how a genuine 0-/1-location tenant is handled. Not
+            // a gap: a tenant effectively down to one active location has
+            // nothing ambiguous left to resolve.
+            if ($pickupLocation === null && $this->locationContext->selectionRequired()) {
+                throw PickupLocationRequiredException::make();
             }
 
             // Deterministic lock order (by service_id) across concurrent checkouts
@@ -369,6 +454,15 @@ class CartService
                 'cart_id' => $cart->id,
                 'ip_address' => $checkoutData['ip'] ?? null,
                 'expires_at' => $expiresAt,
+                // Pickup location (Faza 6 krok 6.3) — all three set together, once,
+                // from the $pickupLocation resolved above. Order::updating()'s guard
+                // deliberately does NOT protect these from later mutation (see that
+                // model's own docblock) — but a future writer changing them MUST
+                // still update all three atomically, the same contract this single
+                // mass-assignment already satisfies.
+                'pickup_location_id' => $pickupLocation?->id,
+                'pickup_location_name' => $pickupLocation?->name,
+                'pickup_location_address' => $pickupLocation?->formattedAddress(),
             ]);
 
             // Faza 3 krok 2 (plan-wdrozenia.md, "Ilość > 1 — rozstrzygnięcie"): a cart item

@@ -18,6 +18,7 @@ class Cart extends Model
     protected $fillable = [
         'organization_id',
         'user_id',
+        'location_id',
         'status',
         'expires_at',
         'customer_email',
@@ -32,6 +33,7 @@ class Cart extends Model
     protected function casts(): array
     {
         return [
+            'location_id' => 'integer',
             'expires_at' => 'datetime',
             'checkout_started_at' => 'datetime',
             'abandoned_at' => 'datetime',
@@ -66,6 +68,22 @@ class Cart extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Faza 6 krok 6.1 (plan-wdrozenia.md) — the PICKUP dimension for the
+     * whole cart, distinct from `CartItem::location()`'s AVAILABILITY
+     * dimension per line (Faza 4 krok 4.8) — see this column's own
+     * migration docblock for how the two relate. Stamped by
+     * CartService::getOrCreateCart() only at cart-creation time; changing
+     * it later is Faza 6 krok 6.2's `CartService::setLocation()`, not yet
+     * built.
+     *
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     /**

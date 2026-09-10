@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Events\OrderAcceptedOffline;
 use App\Exceptions\PaymentGatewayNotConfiguredException;
+use App\Exceptions\PickupLocationRequiredException;
 use App\Exceptions\RentalUnavailableException;
 use App\Http\Requests\Checkout\SubmitCheckoutRequest;
 use App\Models\Cart;
@@ -138,6 +139,16 @@ class CheckoutController extends Controller
             // there is nothing to compensate. Dedicated 'availability' bag — see
             // CartController::add() for why it stays out of the default bag.
             return redirect()->back()->withErrors($e->messages(), 'availability');
+        } catch (PickupLocationRequiredException $e) {
+            // MUST be caught before the generic \Throwable below, same reasoning as
+            // RentalUnavailableException above — this is SubmitCheckoutRequest's own
+            // fail-closed validation losing a narrow TOCTOU race (see
+            // CartService::convertToOrder()'s docblock), not a payment failure. Kept
+            // in the default 'general' bag (not 'availability') — this is not an
+            // inventory conflict, it needs its own honest message.
+            Log::warning('Checkout failed: pickup location no longer resolves', ['exception' => $e, 'user_id' => auth()->id(), 'cart_id' => $cart->id]);
+
+            return redirect()->back()->withErrors(['general' => $e->getMessage()]);
         } catch (\Throwable $e) {
             Log::error('Checkout failed: could not convert cart to order', ['exception' => $e, 'user_id' => auth()->id()]);
 

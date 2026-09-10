@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Orders;
 
 use App\Models\AuditLog;
+use App\Models\Location;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\User;
@@ -146,6 +147,54 @@ class OrderSecurityTest extends TestCase
         $order->refresh();
 
         $this->assertEquals('Admin note', $order->notes);
+    }
+
+    // -------------------------------------------------------------------------
+    // Pickup location (Faza 6 krok 6.3) — deliberately MUTABLE, unlike the
+    // immutable fields above. See Order::booted()'s own docblock for why.
+    // -------------------------------------------------------------------------
+
+    public function test_updating_pickup_location_succeeds_and_is_captured_in_the_audit_log(): void
+    {
+        $org = Organization::factory()->create();
+        $oldLocation = Location::factory()->for($org, 'organization')->create(['name' => 'Stary oddział']);
+        $newLocation = Location::factory()->for($org, 'organization')->create(['name' => 'Nowy oddział']);
+
+        $order = Order::factory()->create([
+            'organization_id' => $org->id,
+            'pickup_location_id' => $oldLocation->id,
+            'pickup_location_name' => $oldLocation->name,
+            'pickup_location_address' => $oldLocation->formattedAddress(),
+        ]);
+
+        // No LogicException — pickup_location_id is not in Order::booted()'s
+        // $immutable list, unlike total_amount/organization_id/order_number/
+        // deposit_amount above.
+        $order->update([
+            'pickup_location_id' => $newLocation->id,
+            'pickup_location_name' => $newLocation->name,
+            'pickup_location_address' => $newLocation->formattedAddress(),
+        ]);
+        $order->refresh();
+
+        $this->assertSame($newLocation->id, $order->pickup_location_id);
+        $this->assertSame('Nowy oddział', $order->pickup_location_name);
+
+        // Falsifiable per team-lead instruction: read the actual persisted
+        // audit row content, not just that SOME 'updated' row exists (that
+        // weaker assertion would still pass if pickup_location_id were
+        // missing from $auditInclude entirely).
+        $log = AuditLog::where('auditable_type', Order::class)
+            ->where('auditable_id', $order->id)
+            ->where('event', 'updated')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($log);
+        $this->assertSame($newLocation->id, $log->new_values['pickup_location_id']);
+        $this->assertSame('Nowy oddział', $log->new_values['pickup_location_name']);
+        $this->assertSame($oldLocation->id, $log->old_values['pickup_location_id']);
+        $this->assertSame('Stary oddział', $log->old_values['pickup_location_name']);
     }
 
     // -------------------------------------------------------------------------

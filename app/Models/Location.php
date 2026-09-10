@@ -130,4 +130,58 @@ class Location extends Model
     {
         return (int) $this->primary_slot === 1;
     }
+
+    /**
+     * Faza 6 code review (2026-09-10) — the deactivation-side twin of
+     * isOnlyLocationForOrganization(). `LocationObserver::deleting()` has
+     * always guarded HARD-deleting the last location; nothing guarded
+     * DEACTIVATING it, which strands every customer with an existing cart
+     * at checkout with no way to fix it (LocationContext::selectionRequired()
+     * is false at zero active locations, so no switcher renders either —
+     * see LocationObserver's own docblock and CheckoutPickupLocationTest for
+     * the reproduced dead end).
+     *
+     * Excludes THIS row's own id — asking "if I turn this one off, would
+     * zero remain", not "am I currently the only one". Used from
+     * `LocationObserver::updating()` only — a create-side use was tried and
+     * reverted (see that method's own note: a not-yet-existing row cannot
+     * strand an existing customer cart, so guarding it there only broke the
+     * legitimate "create a branch as a draft" workflow). Would work
+     * identically from creating() too if ever needed again — a
+     * not-yet-persisted row has no id yet, and whereKeyNot(null) matches
+     * everything, same as no filter at all.
+     */
+    public function isOnlyActiveLocationForOrganization(): bool
+    {
+        return static::withoutGlobalScope('organization')
+            ->where('organization_id', $this->organization_id)
+            ->where('is_active', true)
+            ->whereKeyNot($this->getKey())
+            ->doesntExist();
+    }
+
+    /**
+     * Single-line formatted address, added for Faza 6 krok 6.3
+     * (`CartService::convertToOrder()`) to build `orders.
+     * pickup_location_address` at checkout time — a POINT-IN-TIME snapshot,
+     * not a live reference, so callers must copy the return value rather
+     * than re-deriving it later from a possibly-renamed/deleted Location.
+     *
+     * Correction (code review 2026-09-10): this method does NOT consolidate
+     * any existing duplicate. The shape mirrors two pre-existing, UNTOUCHED
+     * copies of the same "street+building, postal_code+city" format
+     * (`resources/views/components/ios/location-card.blade.php` for this
+     * same Location entity, and `AppointmentResource.php:275` for a
+     * different address entirely) — both still have their own inline
+     * logic. A real consolidation (making those two call this method
+     * instead) was NOT done here and would be a separate, deliberate
+     * change, not a side effect of adding this one.
+     */
+    public function formattedAddress(): string
+    {
+        $street = trim(($this->street ?? '').' '.($this->building ?? ''));
+        $locality = trim(($this->postal_code ?? '').' '.($this->city ?? ''));
+
+        return trim(implode(', ', array_filter([$street, $locality], fn (string $part): bool => $part !== '')));
+    }
 }

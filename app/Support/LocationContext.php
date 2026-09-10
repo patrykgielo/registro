@@ -114,6 +114,33 @@ class LocationContext
     }
 
     /**
+     * Faza 6's own code-review note on step 5.1 (plan-wdrozenia.md:577-582)
+     * names this exact method ahead of time: "trzeba wybrać oddział, a nic
+     * nie jest wybrane" is `selectionRequired() && selected() === null`, and
+     * that conjunction must live in ONE place, not be recomposed separately
+     * by the header switcher (krok 5.2, already shipped against
+     * `selectionRequired()` alone — showing/hiding a switcher never needed
+     * the second half), krok 6.2 (not yet built), and krok 6.4's checkout
+     * gate (`SubmitCheckoutRequest`/`CartService::convertToOrder()`, this
+     * delivery).
+     *
+     * Deliberately NOT "0 or fewer than required locations" — a tenant with
+     * ZERO Location rows (has not adopted this feature at all — no
+     * onboarding path creates one automatically for a freshly provisioned
+     * tenant, only Faza 1's one-time backfill touched pre-existing
+     * organizations) must keep working exactly as it did before this whole
+     * plan started: `selectionRequired()` is false for 0 locations, so this
+     * returns false too, same as the 1-location case. Only a genuinely
+     * AMBIGUOUS tenant (2+ active locations, nothing resolved — including
+     * nothing auto-resolved by `selected()`'s own "exactly one" branch)
+     * must prompt.
+     */
+    public function mustPrompt(): bool
+    {
+        return $this->selectionRequired() && $this->selected() === null;
+    }
+
+    /**
      * Persists an explicit choice. Only ever meant to be called with a
      * Location the caller already resolved from THIS tenant's own active
      * list (e.g. a future switcher built from `activeLocations()`-shaped
