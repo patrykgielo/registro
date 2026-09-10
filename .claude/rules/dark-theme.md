@@ -45,6 +45,32 @@ przy ciemniejszym tekście i potrafi przenieść wynik przez próg.
 Metoda, która daje poprawny wynik: oklch → linear sRGB → spłaszczenie alfy → WCAG.
 Nie wyprowadzaj sRGB tokena oklch z pamięci — policz.
 
+**Zwaliduj swój skrypt, zanim mu uwierzysz.** 2026-09-10 dwa niezależne pomiary tej samej
+pary kolorów dały 4,25 i 4,66 — jeden z nich przepuściłby wariant poniżej progu jako zgodny.
+Rozstrzygnęło dopiero sprawdzenie implementacji na wartościach, których wynik jest znany:
+
+| para | oczekiwane |
+|---|---|
+| `#FF0000` na bieli | 4,00 |
+| `#767676` na bieli | 4,54 (kanoniczna szarość progowa) |
+| `#000000` na bieli | 21,00 |
+| `#0000FF` na bieli | 8,59 |
+
+Skrypt, który nie odtwarza tych czterech, nie nadaje się do rozstrzygania niczego.
+
+**Ciemna karta to `--color-dark-bg-raised` (`#13161a`), nie `--color-dark-bg`.** Klasa
+`.service-card-dark` (`app.css:152`) używa właśnie tego tokenu. Pomiar na ciemniejszym
+z tych dwóch zawyża wynik — na tym potknąłem się 2026-09-10 przy plakietkach statusu.
+
+**Jasność tekstu spełniająca próg na jasnym i ciemnym tle to zbiory ROZŁĄCZNE.** Dla
+plakietek statusu (tekst na tle `bg-{kolor}/10`): jasne tło wymaga L ≤ 0,50–0,54, ciemne
+L ≥ 0,58–0,62. Jeden token nie obsłuży obu powierzchni — potrzebne są dwa zestawy
+(`--color-badge-*` i `--color-badge-*-dark`) albo komponent świadomy powierzchni.
+
+**Nasycona czerwień na ciemnym tle nie osiągnie 4,5:1 przy żadnej jasności** — kanały
+zielony i niebieski są bliskie zeru, a luminancja waży zielony na 0,7152. Trzeba obniżyć
+nasycenie i podnieść jasność, czyli przejść w koral. To ograniczenie fizyczne, nie obejście.
+
 ### Zmienne i kolory, których NIE MA
 
 `--color-dark-section`, `--color-dark-tile`, `.text-dark-primary`, `.text-dark-muted`

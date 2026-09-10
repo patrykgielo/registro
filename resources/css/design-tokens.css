@@ -63,6 +63,46 @@
     --color-error: oklch(55% 0.25 25);
     --color-info: oklch(60% 0.15 250);
 
+    /* ── Status badge (surface-aware, 123k99cu9u0) ──
+       x-ui.badge renders `bg-{color}/10 text-{color}` — a semi-transparent
+       pill, not a solid fill. Flattening that /10 layer over its real card
+       background shows the four --color-success/warning/error/info tokens
+       above pass 4.5:1 WCAG contrast on at most ONE of
+       --color-surface-raised / --color-dark-bg-raised each, and the two
+       surfaces need OPPOSITE lightness direction — no single lightness
+       clears both (see badge.blade.php's $dark prop).
+       Measurement method, confirmed against the ACTUAL Tailwind v4 build
+       output rather than assumed: `grep bg-error\/10` in the compiled CSS
+       shows Tailwind emits a plain alpha-channel fallback
+       (`background-color:#d9001b1a`) ahead of a `color-mix(in oklab, ...)`
+       enhancement — and `color-mix()` with `transparent` carries the same
+       color forward and only interpolates alpha (CSS Color 5), so both
+       resolve to the SAME thing: the base color's own sRGB at ~10% alpha,
+       painted over the card. Browsers composite a painted alpha layer over
+       a solid parent in gamma-encoded (non-linear) sRGB — NOT linear-light
+       sRGB — so contrast must be computed the same way: oklch → linear sRGB
+       → gamma-encode → alpha-composite with the card's own gamma-encoded
+       color → linearize the RESULT for WCAG relative luminance. An earlier
+       pass at this ticket flattened in linear space instead (matching
+       dark-theme.md's rule for a *translucent-TEXT* case, text-white/80 —
+       not the same operation as a translucent BACKGROUND painted over a
+       parent) and got contrast values that don't match what actually
+       renders; corrected here after a second reviewer's independent
+       calculation caught the mismatch on the light surface.
+       error-dark also has its chroma reduced (0.25→0.15): red's blue+green
+       channels are near zero, so relative luminance (WCAG weights green
+       0.7152) stays low at any lightness for H=25 — C=0.25 only reaches
+       4.5:1 right at L=0.68 (razor-thin, texthex #ff333f), so a lighter,
+       less saturated coral is used instead for real margin (6.7:1). */
+    --color-badge-success: oklch(50% 0.2 145);
+    --color-badge-warning: oklch(53% 0.15 75);
+    --color-badge-error: oklch(52% 0.25 25);
+    --color-badge-info: oklch(52% 0.15 250);
+    --color-badge-success-dark: oklch(72% 0.2 145);
+    --color-badge-warning-dark: oklch(75% 0.15 75);
+    --color-badge-error-dark: oklch(76% 0.15 25);
+    --color-badge-info-dark: oklch(74% 0.15 250);
+
     /* ── Dark sections (generic — tenant overrides these) ── */
     --color-dark-bg: oklch(15% 0.01 250);
     --color-dark-bg-raised: oklch(20% 0.01 250);

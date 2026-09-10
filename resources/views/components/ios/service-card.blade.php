@@ -180,10 +180,14 @@
              success/error badge in the app. --}}
         @if($quantityAvailable !== null)
         <div class="service-card__availability mb-4">
+            {{-- :dark="$isDark" (123k99cu9u0) — this is the one x-ui.badge
+                 caller that renders on BOTH card surfaces (light and
+                 service-card-dark), so it's the one that must tell the
+                 badge which token set to use; see badge.blade.php. --}}
             @if($quantityAvailable > 0)
-                <x-ui.badge variant="success" dot>Dostępne: {{ $quantityAvailable }} szt.</x-ui.badge>
+                <x-ui.badge variant="success" dot :dark="$isDark">Dostępne: {{ $quantityAvailable }} szt.</x-ui.badge>
             @else
-                <x-ui.badge variant="error" dot>Obecnie niedostępne</x-ui.badge>
+                <x-ui.badge variant="error" dot :dark="$isDark">Obecnie niedostępne</x-ui.badge>
             @endif
         </div>
         @endif
