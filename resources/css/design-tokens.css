@@ -88,15 +88,21 @@
        not the same operation as a translucent BACKGROUND painted over a
        parent) and got contrast values that don't match what actually
        renders; corrected here after a second reviewer's independent
-       calculation caught the mismatch on the light surface.
+       calculation caught the mismatch on the light surface. Final numbers
+       below were re-verified against actual rendered pixels (Playwright/
+       Chromium, this project's own bundled browser — screenshot each
+       swatch, read it back via canvas getImageData, feed the real 8-bit
+       RGB into the WCAG formula), not just computed — the formula itself
+       was checked first against 4 canonical pairs (#FF0000/white=4.00,
+       #767676/white=4.54, #000000/white=21.00, #0000FF/white=8.59).
        error-dark also has its chroma reduced (0.25→0.15): red's blue+green
        channels are near zero, so relative luminance (WCAG weights green
        0.7152) stays low at any lightness for H=25 — C=0.25 only reaches
        4.5:1 right at L=0.68 (razor-thin, texthex #ff333f), so a lighter,
        less saturated coral is used instead for real margin (6.7:1). */
-    --color-badge-success: oklch(50% 0.2 145);
+    --color-badge-success: oklch(49% 0.2 145);
     --color-badge-warning: oklch(53% 0.15 75);
-    --color-badge-error: oklch(52% 0.25 25);
+    --color-badge-error: oklch(51% 0.25 25);
     --color-badge-info: oklch(52% 0.15 250);
     --color-badge-success-dark: oklch(72% 0.2 145);
     --color-badge-warning-dark: oklch(75% 0.15 75);
