@@ -58,6 +58,16 @@ Rozstrzygnęło dopiero sprawdzenie implementacji na wartościach, których wyni
 
 Skrypt, który nie odtwarza tych czterech, nie nadaje się do rozstrzygania niczego.
 
+**Przyczyna tamtej rozbieżności, warta zapamiętania:** przezroczystość **tła** mieszana jest
+w przestrzeni **gamma**, nie liniowej. Przeglądarka maluje warstwę `bg-{kolor}/10` na
+nieprzezroczystym rodzicu w wartościach zakodowanych gamma — spłaszczanie w świetle liniowym
+zawyża kontrast. To inna operacja niż spłaszczanie półprzezroczystego **tekstu** opisane wyżej,
+i właśnie ta różnica dała 4,66 zamiast 4,25.
+
+Rozstrzygnięcie ostateczne: odczytaj **rzeczywisty piksel** z przeglądarki (Playwright jest
+w obrazie dla `tests/Browser`) i porównaj z przeliczeniem. Gdy obie drogi dają ten sam hex,
+wynik jest pewny; gdy się rozjeżdżają, myli się przeliczenie.
+
 **Ciemna karta to `--color-dark-bg-raised` (`#13161a`), nie `--color-dark-bg`.** Klasa
 `.service-card-dark` (`app.css:152`) używa właśnie tego tokenu. Pomiar na ciemniejszym
 z tych dwóch zawyża wynik — na tym potknąłem się 2026-09-10 przy plakietkach statusu.
