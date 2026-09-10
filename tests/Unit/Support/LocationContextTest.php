@@ -204,4 +204,52 @@ class LocationContextTest extends TestCase
 
         $this->assertSame($locationB->id, session('selected_location_id'));
     }
+
+    // -------------------------------------------------------------------------
+    // mustPrompt() — Faza 6 krok 6.4's named single source of truth
+    // (plan-wdrozenia.md:577-582). Each case below is the mirror image of an
+    // existing selectionRequired()/selected() test above — falsifiable by
+    // dropping either half of the `&&` in mustPrompt()'s own body.
+    // -------------------------------------------------------------------------
+
+    public function test_must_prompt_is_false_with_zero_locations(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $this->actingAsTenant($org);
+
+        $this->assertFalse($this->context->mustPrompt());
+    }
+
+    public function test_must_prompt_is_false_with_exactly_one_active_location(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        Location::factory()->for($org, 'organization')->create(['is_active' => true]);
+        $this->actingAsTenant($org);
+
+        $this->assertFalse($this->context->mustPrompt());
+    }
+
+    public function test_must_prompt_is_true_with_two_locations_and_nothing_selected(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        Location::factory()->for($org, 'organization')->count(2)->create(['is_active' => true]);
+        $this->actingAsTenant($org);
+
+        $this->assertTrue($this->context->mustPrompt());
+    }
+
+    public function test_must_prompt_is_false_with_two_locations_once_one_is_selected(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        [$locationA, $locationB] = Location::factory()->for($org, 'organization')->count(2)->create(['is_active' => true]);
+        $this->actingAsTenant($org);
+        $this->context->set($locationB);
+
+        $this->assertFalse($this->context->mustPrompt());
+    }
+
+    public function test_must_prompt_is_false_with_no_resolved_tenant(): void
+    {
+        $this->assertFalse($this->context->mustPrompt());
+    }
 }

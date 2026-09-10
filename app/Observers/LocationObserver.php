@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Observers;
 
+use App\Exceptions\LocationCannotBeDeactivatedException;
 use App\Exceptions\LocationCannotBeDeletedException;
 use App\Models\Location;
 use App\Support\TenantFeature;
@@ -13,7 +14,11 @@ use Illuminate\Support\Facades\DB;
  * Guarantees "exactly one primary location per organization"
  * (app/docs/features/lokalizacje/tryb-jednooddzialowy.md) around the
  * `locations.primary_slot` shadow column and its
- * UNIQUE(organization_id, primary_slot) constraint.
+ * UNIQUE(organization_id, primary_slot) constraint — AND, since Faza 6's
+ * code review (2026-09-10), "an existing ACTIVE location is never
+ * deactivated down to zero" (updating() below — deliberately NOT creating(),
+ * see that method's own note), the invariant every LocationContext consumer
+ * since Faza 5.1 has assumed without anyone enforcing the WRITE side of it.
  *
  * Same shadow-column idea as App\Models\Cart::booted() + `carts.active_slot`,
  * but that one only ever derives its own row's value from its own `status` —
@@ -42,6 +47,19 @@ class LocationObserver
             return;
         }
 
+        // NOTE (code review 2026-09-10): a create-side twin of updating()'s
+        // deactivation guard below was tried here and REVERTED — a brand new
+        // Location cannot possibly strand an EXISTING customer cart (nothing
+        // could have referenced its id before it existed; a cart's
+        // location_id is only ever stamped from an ALREADY-active Location,
+        // see CartService::getOrCreateCart()), so blocking it would only
+        // break the legitimate "create a branch as a draft, activate it once
+        // it's ready" admin workflow — confirmed by 8 unrelated existing
+        // tests failing (LocationContextTest, ContentGridResolverTest,
+        // ShareSelectedLocationTest and others all deliberately construct an
+        // inactive-only-location fixture to test THAT state). The dead end
+        // this review round is about is specifically DEACTIVATING an
+        // already-relied-upon location — see updating() below.
         if ((int) $location->primary_slot === 1) {
             $this->demoteExistingPrimary($organizationId, excludeId: null);
 
@@ -80,6 +98,30 @@ class LocationObserver
      */
     public function updating(Location $location): void
     {
+        // Faza 6 code review (2026-09-10) — mirrors deleting()'s
+        // isOnlyLocationForOrganization() guard, one level softer: HARD
+        // deletion of the last location was always blocked, but nothing
+        // blocked DEACTIVATING it. `is_active` has no guard of its own
+        // (grepped both this observer and Location.php before this fix —
+        // zero). An admin unchecking "Aktywna" on a tenant's one remaining
+        // branch strands every customer with an EXISTING cart at checkout
+        // (Faza 6 krok 6.4's fail-closed pickup_location_id validation now
+        // rejects it) with no way to recover: LocationContext::
+        // selectionRequired() is false at zero active locations, so the
+        // header switcher does not even render — reproduced end-to-end in
+        // LocationDeactivationGuardTest before this fix, confirming this was
+        // a genuine dead end, not just "safe but inconvenient". Checked
+        // independently of the primary_slot branch below — a location can be
+        // deactivated without touching primary_slot at all.
+        if ($location->isDirty('is_active') && $location->is_active === false && $location->isOnlyActiveLocationForOrganization()) {
+            throw new LocationCannotBeDeactivatedException(
+                "Cannot deactivate location [{$location->id}]: it is the only active location for organization ".
+                "[{$location->organization_id}]. Every tenant must keep at least one active location so customers ".
+                'can complete checkout (tryb-jednooddzialowy.md, Faza 6 krok 6.4). A full business closure belongs '.
+                'on the Organization (lifecycle_state), not on its last Location.'
+            );
+        }
+
         if (! $location->isDirty('primary_slot') || (int) $location->primary_slot !== 1) {
             return;
         }

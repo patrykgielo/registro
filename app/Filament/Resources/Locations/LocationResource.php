@@ -132,4 +132,40 @@ class LocationResource extends BaseResource
             $action->halt();
         }
     }
+
+    /**
+     * Faza 6 code review (2026-09-10) — the deactivation-side twin of
+     * guardDeletion() above, same "friendly Filament halt in front of the
+     * model-layer LocationCannotBeDeactivatedException" split. Called from
+     * EditLocation::handleRecordUpdate() only — a brand new Location being
+     * CREATED inactive is deliberately NOT guarded (see
+     * App\Observers\LocationObserver::creating()'s own note on why that was
+     * tried and reverted: a not-yet-existing row cannot strand an existing
+     * customer cart). Unlike guardDeletion() (a single DeleteAction with a
+     * `before()` hook and `$action->halt()`), a normal form Save has no
+     * equivalent Action to halt, so the caller instead
+     * `throw new \Filament\Support\Exceptions\Halt` itself after this
+     * returns true (same pattern EditRental::handleRecordUpdate() already
+     * uses for its own availability guard — see that file).
+     *
+     * $wouldBeActive is the SUBMITTED form value, not $record->is_active
+     * (the pre-edit DB value) — using the latter would never catch a genuine
+     * deactivation attempt.
+     */
+    public static function guardDeactivation(Location $record, bool $wouldBeActive): bool
+    {
+        if ($wouldBeActive || ! $record->isOnlyActiveLocationForOrganization()) {
+            return false;
+        }
+
+        Notification::make()
+            ->title('Nie można dezaktywować ostatniej aktywnej lokalizacji')
+            ->body('Każdy tenant musi mieć co najmniej jedną aktywną lokalizację, inaczej klienci z '.
+                'istniejącym koszykiem nie będą mogli dokończyć zamówienia. Aby czasowo zamknąć całą '.
+                'działalność, użyj statusu organizacji (Platform), nie dezaktywacji ostatniej lokalizacji.')
+            ->danger()
+            ->send();
+
+        return true;
+    }
 }

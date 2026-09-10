@@ -581,6 +581,148 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > przed rozproszeniem reguły `selectionRequired()` po `->options()` formularzy — ten sam błąd
 > popełniony inaczej to cztery miejsca liczące tę samą koniunkcję samodzielnie.
 
+> **Etap A — kroki 6.1/6.3/6.4 dostarczone (2026-09-10, branch `feature/lokalizacje-faza6-odbior`).**
+> Krok 6.2 (`CartService::setLocation()` z rewalidacją) i 6.5 (protokół/maile) świadomie
+> POZA zakresem tej dostawy.
+>
+> **`LocationContext::mustPrompt(): bool`** dodana dokładnie jak zapowiada notatka wyżej —
+> `selectionRequired() && selected() === null`. Jedyne miejsce liczące tę koniunkcję; 6.4 jej
+> używa, 6.2/5.2 mają jej użyć zamiast własnej kopii.
+>
+> **Relacja koszyk↔pozycja (rozstrzygnięcie):** `carts.location_id` (6.1) i `cart_items.location_id`
+> (Faza 4.8) są NIEZALEŻNE — pierwsza to wymiar ODBIORU, druga to wymiar DOSTĘPNOŚCI
+> (kontrakt-dostepnosci.md Zasada 7). Pozycja NIE dziedziczy z koszyka w tej dostawie:
+> `CartController::add()` nigdy nie przekazywał `$locationId` do `CartService::addItem()` (zweryfikowane
+> grepem), więc `cart_items.location_id` jest dziś martwe w produkcji niezależnie od tej zmiany.
+> Źródłem prawdy dla punktu odbioru przy checkoucie jest WYŁĄCZNIE `carts.location_id`.
+>
+> **Kto zapisuje `carts.location_id`:** `CartService::getOrCreateCart()` — TYLKO przy tworzeniu
+> NOWEGO (więc zawsze pustego) koszyka, z `LocationContext::selectedId()`. Gałąź „koszyk już
+> istnieje" nigdy go nie nadpisuje — to świadomie zostawione krokowi 6.2, bo zmiana lokalizacji na
+> NIEPUSTYM koszyku wymaga rewalidacji pozycji, której ta dostawa nie buduje.
+>
+> **Niezmienność punktu odbioru (rozstrzygnięcie):** MUTOWALNY, nie w `$immutable` w
+> `Order::updating()` — ale w `$auditInclude`, więc każda zmiana jest audytowana. Uzasadnienie:
+> sprzęt fizycznie stoi w oddziale, klient legalnie dzwoni z prośbą o zmianę przed odbiorem; to ten
+> sam „ostrzegaj, nie blokuj" co Faza 3 dla niezgodnego zwrotu, zastosowany krok wcześniej w tym
+> samym cyklu życia. Finansowe/prawne pola (kwoty, zgody RODO) są immutable, bo nie mają
+> odpowiednika tej reguły — audytowalność, nie niezmienność, jest właściwym mechanizmem tutaj.
+>
+> **Istniejące zamówienia/koszyki (rozstrzygnięcie):** backfill TYLKO otwartych — dokładnie ta sama
+> definicja „blokuje dostępność" co Faza 4.8 (`paid`/`confirmed`/`in_progress` lub `pending_payment`
+> w oknie TTL/grace). Zamknięte zamówienia (`completed`/`cancelled`/faktycznie wygasłe) i
+> nieaktywne koszyki (`converted`/`abandoned`) NIE są dotykane — to rekord historyczny sprzed
+> istnienia tej koncepcji, retroaktywne przypisanie obecnego oddziału głównego byłoby fikcją, nie
+> faktem. Bez backfillu aktywnych koszyków fail-closed walidacja checkoutu zablokowałaby KAŻDEGO
+> klienta w trakcie sesji w dniu wdrożenia — zmierzone, nie założone (patrz niżej).
+>
+> **Oddziały nieaktywne:** `SubmitCheckoutRequest`'s `Rule::exists` filtruje `is_active = true` —
+> ta sama postawa co `RentalBookingController`/`LocationSelectionController`. Oddział wyłączony
+> między dodaniem do koszyka a checkoutem odrzuca zamówienie (422), nie cicho podstawia inny
+> oddział.
+>
+> **Zero-regresji (odkrycie, nie założenie):** ŻADNA ścieżka provisioningu nowego tenanta
+> (`registro:tenant-provision`) nie tworzy `Location` automatycznie — tylko jednorazowy backfill
+> Fazy 1 dotknął tenantów ISTNIEJĄCYCH w tamtym momencie. Tenant z ZERO lokalizacji (dziś: każdy
+> świeżo dostarczony, dopóki admin ręcznie nie doda oddziału w panelu) MUSI checkoutować identycznie
+> jak przed całym tym planem — pierwsza wersja `pickup_location_id` jako gołe `required` złamałaby
+> to (odkryte przez 45 czerwonych testów istniejącej suity, nie przez recenzję). Naprawa:
+> `Rule::requiredIf(fn () => LocationContext::mustPrompt())` — wymaga wyboru WYŁĄCZNIE dla
+> faktycznie niejednoznacznego tenanta (2+ aktywne, nic nie rozwiązane), nigdy dla zero- ani
+> jedno-lokalizacyjnego.
+>
+> **Weryfikacja:** `pint --test` 982/982 (SQLite); `php artisan test` 1985 passed/5 skipped/0
+> failed (SQLite, baseline 1935 + 50 nowych); pełna suita **na prawdziwym jednorazowym `mysql:8.0`**
+> 1982 passed/5 skipped/**3 failed** — te 3 istniały już przed tą zmianą i są niezwiązane
+> (`ServiceTest`/`NormalizesEmptyJsonToNullTest`, kolejność kluczy JSON MySQL vs SQLite, znany wzorzec
+> z `tests.md`). `tests/Feature/Database` osobno: 211/211 na MySQL, w tym naprawiony
+> `CreateLocationsTableMigrationTest` (patrz `ci-cd-troubleshooting.md`, incydent 2026-09-10 — trzeci
+> wystąpienie tej samej klasy błędu co rc26/rc31, tym razem złapane lokalnie przed PR-em).
+> `bash scripts/test-concurrency.sh` 4/4 zielone, bez zmian (żadna ze zmian nie dotyka blokad
+> `RentalAvailabilityService`). Każdy kluczowy test (fail-closed guard, audyt, cross-tenant reject)
+> sfalsyfikowany ręcznie: zepsuty → czerwony → cofnięty, `git diff` czysty po każdym.
+>
+> **Czego NIE zweryfikowano:** UI (brak zmian w Blade — punkt odbioru NIE ma dziś żadnego pola
+> formularza; rozwiązywany wyłącznie przez `LocationContext`/`carts.location_id`, zero nowego kroku
+> dla klienta); Faza 6.5 (protokół/maile z adresem oddziału) — poza zakresem, `pickup_location_name`/
+> `_address` istnieją i są gotowe do odczytu, ale nic jeszcze ich nie czyta.
+
+> **Runda code review (2026-09-10) — trzy domknięcia:**
+>
+> 1. **Ślepy zaułek: dezaktywacja ostatniego aktywnego oddziału.** `LocationObserver::deleting()`
+>    chronił od zawsze przed HARD usunięciem ostatniej lokalizacji — nic nie chroniło przed
+>    DEZAKTYWACJĄ. Klient z istniejącym koszykiem tracił możliwość checkoutu, a przełącznik w
+>    headerze się nie renderował (`selectionRequired()` fałsz przy zerze aktywnych), więc nie było
+>    z czego się wycofać. Rozstrzygnięcie: **guard** w `LocationObserver::updating()` (lustro
+>    `deleting()`'a), nie „wyczyść wybór i przepuść" — pełne zamknięcie działalności ma iść przez
+>    status organizacji (`lifecycle_state`), nie przez dezaktywację jedynej lokalizacji. Guard
+>    **wyłącznie na `updating()`** — wersja lustrzana na `creating()` została wypróbowana i
+>    COFNIĘTA: nowo tworzony wiersz nie może osierocić ISTNIEJĄCEGO koszyka (nic nie mogło się do
+>    niego odwoływać, zanim powstał), a zablokowanie złamałoby legalny przepływ „utwórz oddział
+>    jako szkic, aktywuj później" — odkryte przez 8 nietrafionych czerwonych testów
+>    (`LocationContextTest` i inne, celowo budujące fixture z jedną nieaktywną lokalizacją).
+>    Test odtwarzający pełny ciąg (koszyk → próba dezaktywacji → checkout) w
+>    `LocationDeactivationCheckoutGuardTest`.
+> 2. **Docblock w `CartService::convertToOrder()` poprawiony** — twierdził, że warunek „mirrors
+>    `mustPrompt()` gate exactly"; faktycznie sprawdza `$pickupLocation === null &&
+>    selectionRequired()`, funkcjonalnie równoważne dziś, ale NIE tę samą implementację. Opis
+>    teraz mówi wprost o tej różnicy i o tym, kiedy mogłyby się rozjechać.
+> 3. **Ostrzeżenie o mass-assignment dopisane** przy trzech polach `pickup_location_*` w
+>    `Order::$fillable` — konkretne: skąd wartości mają pochodzić (zawsze świeży odczyt `Location`
+>    z bazy, scoped po `organization_id`), czego nigdy nie wolno (surowego `$request`/
+>    `$checkoutData` bezpośrednio w te trzy klucze).
+>
+> Weryfikacja: `pint --test` 986/986; `php artisan test` 1996 passed/5 skipped/0 failed (SQLite,
+> +11 nowych testów tej rundy); `bash scripts/test-concurrency.sh` 4/4 bez zmian. Guard
+> sfalsyfikowany ręcznie dwukrotnie (przed i po uproszczeniu do samego `updating()`). Jeden
+> pre-istniejący test (`UnitsRelationManagerTest::test_editing_a_unit_on_a_deactivated_location_
+> still_succeeds`) wymagał drugiej aktywnej lokalizacji w fixture — jego własny przedmiot (edycja
+> UI egzemplarza) jest niezwiązany z tym guardem, poprawiono fixture, nie guard.
+
+> **Runda code review (2026-09-10), druga tura — trzy dalsze domknięcia:**
+>
+> 4. **Odczyt punktu odbioru w `CartService::convertToOrder()` nie filtrował aktywności.**
+>    `Location::find($cart->location_id)` (bez `->active()`) łapał wyścig z USUNIĘCIEM (FK zeruje
+>    kolumnę), ale nie z DEZAKTYWACJĄ (kolumna zostaje nietknięta). W wąskim oknie między
+>    walidacją a zablokowanym odczytem `find()` zwracał istniejący, ale zamknięty oddział — guard
+>    się nie odpalał, zamówienie powstawało z punktem odbioru wskazującym zamknięty oddział.
+>    Naprawa: `->active()` dopisane do zapytania. Oba docblocki (guard w `convertToOrder()` i
+>    `PickupLocationRequiredException`) teraz opisują OBA wyścigi — usunięcie i dezaktywację —
+>    zamiast tylko pierwszego. Skutek uboczny nazwany wprost w komentarzu: dla tenanta, którego
+>    aktywna liczba spadła do jednego przez dezaktywację INNEGO oddziału niż ten na koszyku,
+>    `selectionRequired()` też spada do fałszu i zamówienie przechodzi z pustym punktem odbioru —
+>    spójne z obsługą tenanta 0-/1-lokalizacyjnego, nie luka. Dwa nowe testy w
+>    `CartServicePickupLocationTest` (wyścig z dezaktywacją → odrzucenie przy nadal niejednoznacznym
+>    tenancie; spadek do jednej aktywnej → przejście z `pickup_location_id = null`), oba
+>    sfalsyfikowane ręcznie.
+> 5. **Usunięcie oddziału omija dziennik audytu — udokumentowane, NIE naprawione (decyzja
+>    team-lead).** Zerowanie `pickup_location_id` przy usunięciu Lokalizacji dzieje się na
+>    poziomie bazy (`nullOnDelete`) — MySQL zeruje FK bez ładowania modelu `Order`, więc
+>    `Auditable` nigdy się nie odpala. Snapshot (`pickup_location_name`/`_address`) zostaje
+>    poprawny — dokument nie kłamie — ale `audit_logs` nie ma wpisu o tej zmianie. Ścieżka jest
+>    realnie osiągalna: usunięcie oddziału, który nie jest ani główny, ani jedyny, jest dziś
+>    dozwolone nawet gdy wskazują na niego otwarte zamówienia. Udokumentowane przy polu w
+>    `Order::$auditInclude` i w migracji `2026_09_10_090002_add_pickup_location_to_orders_table.php`.
+> 6. **Docblock `Location::formattedAddress()` poprawiony** — sugerował konsolidację istniejących
+>    duplikatów (karta lokalizacji, `AppointmentResource`). Nie konsolidował — oba pliki
+>    nietknięte, mają własne kopie tego samego kształtu. Opis mówi teraz wprost, że to
+>    odniesienie do istniejącego kształtu, nie przeniesienie logiki.
+>
+> **Do planu, nie do kodu — mutowalność punktu odbioru PRZED vs PO wydaniu.** Recenzent zgadza
+> się z decyzją „mutowalny, nie immutable" (patrz pierwsza runda wyżej), ale z zastrzeżeniem:
+> analogia z Fazy 3 („ostrzegaj, nie blokuj" dla niezgodnego oddziału zwrotu) dotyczy fizycznej
+> rozbieżności w PRZYSZŁOŚCI, nie dokumentu kłamiącego o PRZESZŁOŚCI. Zmiana punktu odbioru
+> zamówienia, które jeszcze nie zostało wydane (status `pending_payment`/`paid`/`confirmed`) jest
+> zwykłą korektą — nic się jeszcze nie wydarzyło. Zmiana punktu odbioru zamówienia JUŻ wydanego
+> (status `in_progress`/`completed`, przejście `confirmed → in_progress` = zdarzenie
+> `OrderHandedOver`, `OrderStatusStateMachine.php:110-113`) to dokument twierdzący, że klient
+> odebrał sprzęt gdzie indziej, niż faktycznie odebrał. Przyszła akcja „zmień punkt odbioru" (poza
+> zakresem tej dostawy) MUSI rozróżniać te dwa przypadki inaczej niż samą mutowalność/audytem —
+> predykat już istnieje w kodzie: `$order->status` względem granicy `confirmed`/`in_progress`,
+> ten sam punkt, który dziś decyduje o wysłaniu `OrderHandedOver`. Nie implementowane w tej
+> dostawie — dziś nie ma żadnej ścieżki mutacji tych pól poza jednorazowym zapisem w
+> `CartService::convertToOrder()`, więc to nie jest żywy błąd.
+
 ### Faza 7 — Przesunięcia między oddziałami
 
 **Zwrot nie wymaga ani jednej linii kodu.** Sprzęt wraca zawsze do oddziału wydania, a dostępność
