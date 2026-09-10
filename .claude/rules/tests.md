@@ -226,6 +226,34 @@ $this->assertEquals($expected, $errorMessage);
 2. Run `docker compose exec app php artisan test` - tests in Docker
 3. OR run tests with SQLite: `php artisan test` (requires pdo_sqlite)
 
+## „Brak nowych migracji" NIE znaczy „niezależne od silnika" (2026-09-10, rc34)
+
+Wdrożenie `rc34` padło na bramce przez **jeden** test, który asertował treść zapytania:
+
+```php
+str_contains($q['query'], 'from "locations"')   // ❌ tylko SQLite
+preg_match('/from [`"]locations[`"]/', $q['query'])  // ✅ oba silniki
+```
+
+SQLite i Postgres cytują identyfikatory `"`, MySQL — `` ` ``. Filtr zaszyty na cudzysłowie nie
+dopasował na bramce **niczego**, więc asercja „dokładnie jedno zapytanie" dostała **zero**.
+Test nie tyle padł, co **przestał cokolwiek sprawdzać** na tym silniku — gorszy wariant, bo na
+SQLite nadal świecił na zielono.
+
+Autor świadomie pominął sprawdzenie na MySQL, uzasadniając to tym, że **nie dodał migracji**.
+To prawda i to **nieistotne**. Właściwe kryterium nie brzmi „czy zmieniam schemat", tylko:
+
+> **czy kod albo test dotyka czegokolwiek, co silnik może wyrazić inaczej.**
+
+Znane w tym repo: cytowanie identyfikatorów, kolejność kluczy JSON, typ wyniku `SUM()`
+(MySQL oddaje string), wiele `NULL` w UNIQUE, `ONLY_FULL_GROUP_BY`, niejawny COMMIT przy DDL,
+brak egzekwowania FK przy `DROP TABLE` na SQLite. Cztery z nich kosztowały już wdrożenie.
+
+**Praktycznie:** każda asercja na `DB::getQueryLog()`, każdy surowy SQL i każde porównanie
+wyniku agregatu wymaga przebiegu na `mysql:8.0`, choćby zmiana nie tknęła bazy.
+
+---
+
 ## MySQL 8.0 gate (`deploy-production.yml`) — what SQLite hides
 
 The Feature suite ran against real `mysql:8.0` for the first time on 2026-08-15 (v0.13.0-rc11,

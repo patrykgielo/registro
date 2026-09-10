@@ -631,14 +631,25 @@ class RentalCatalogueLocationAvailabilityTest extends TestCase
         // Matches activeLocations()'s own query shape
         // (`->active()->ordered()->get()`, no `id =` filter, no LIMIT) —
         // deliberately distinct from LocationContext::find()'s single-row
-        // lookup (`... and "locations"."id" = ? limit 1`, no ORDER BY),
-        // which legitimately fires more than once per request already
-        // (ShareSelectedLocation's pruneStaleSelection() + the controller's
-        // own selectedId() + the header's own selected() call for the
-        // dropdown's checkmark — three pre-existing, UNRELATED call sites,
-        // none of them touched by this phase).
+        // lookup (`... and "locations"."id" = ? limit 1` / backtick
+        // equivalent, no ORDER BY), which legitimately fires more than once
+        // per request already (ShareSelectedLocation's pruneStaleSelection()
+        // + the controller's own selectedId() + the header's own selected()
+        // call for the dropdown's checkmark — three pre-existing, UNRELATED
+        // call sites, none of them touched by this phase).
+        //
+        // Identifier-quote character is driver-specific — SQLite/Postgres
+        // grammars quote with `"`, MySQL's with `` ` `` (Illuminate\Database\
+        // Query\Grammars\MySqlGrammar::$tablePrefix / wrapValue) — a filter
+        // hardcoded to `"locations"` only ever matches on SQLite and passed
+        // "actual size 0" (not 2) on the real MySQL CI gate, i.e. it stopped
+        // testing anything on that engine instead of failing loudly
+        // (deploy-production.yml run 34441748884, 2026-09-10). Matched
+        // WITHOUT hardcoding either quote character — same class of gotcha
+        // as tests.md's "asercje, które psuje MySQL, a SQLite przepuszcza".
         $activeLocationsQueries = collect($queryLog)->filter(
-            fn (array $q) => str_contains($q['query'], 'from "locations"') && str_contains($q['query'], 'order by')
+            fn (array $q) => preg_match('/from [`"]locations[`"]/', $q['query']) === 1
+                && str_contains($q['query'], 'order by')
         );
 
         $this->assertCount(
