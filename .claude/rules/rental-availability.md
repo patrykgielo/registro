@@ -145,3 +145,77 @@ Od Fazy 4 kroku 4.4 harness (`tests/Concurrency/CartCheckoutRaceTest.php`) ma te
 per-oddział, lustro istniejących dwóch dla dat: ten sam oddział/ostatnia sztuka → dokładnie jeden
 wygrywa; różne oddziały/po jednej sztuce każdy → oba przechodzą. Uruchom przez
 `bash scripts/test-concurrency.sh`.
+
+## 9. Punkt odbioru = lokalizacja magazynowa, aż do Fazy 7
+
+Do czasu transferów międzyoddziałowych (Faza 7) `carts.location_id` (punkt odbioru) i lokalizacja,
+z której schodzi zapas, MUSZĄ być tą samą wartością — jedno źródło prawdy, nigdy dwa niezależne.
+
+**Incydent (Faza 6 krok 6.2, naprawiony):** `CartController::add()` nigdy nie przekazywał
+`$locationId` do `CartService::addItem()` — każdy realny dodaj-do-koszyka walidował się względem
+puli CAŁEJ firmy, nie wybranego oddziału. Kafelek mówił „niedostępne w tym oddziale", koszyk mówił
+„jasne". Naprawa: `addItem()` sam wyprowadza `$locationId` z `$cart->location_id` (gdy ustawione,
+zawsze wygrywa nad tym, co przekazał wywołujący) — pojedyncza linia czyni koszyk jedynym źródłem
+prawdy, zamiast ufać każdemu call site z osobna.
+
+**Gojenie starych wierszy:** `CartService::syncItemLocationsToCart(Cart $cart, ?int $locationId)`
+uruchamiana na początku `addItem()`/`updateQuantity()`/`convertToOrder()` — nadpisuje `location_id`
+każdego `CartItem`, którego wartość nie zgadza się z celem (w tym `NULL` z koszyków sprzed tej
+poprawki). `convertToOrder()` celuje w ROZWIĄZANY, aktywny `$pickupLocation?->id` (nie surowy
+`$cart->location_id`) — koszyk wskazujący właśnie dezaktywowany oddział musi walidować się jak
+zamówienie bez punktu odbioru (globalna pula), nie jak zamknięty oddział z zerowym stanem.
+`setLocation()` (zmiana oddziału) stempluje NOWĄ lokalizację na KAŻDYM ocalałym wierszu, nie tylko
+tych ze zmienioną ilością — inaczej stary wiersz zostaje przypięty do poprzedniego oddziału.
+
+**Testy ścieżek zapisu przez prawdziwy punkt wejścia, nigdy ręczne `cart_items.location_id`.**
+Właśnie tak ten bug się ukrył: `CartServiceLocationTest` woła `addItem()` bezpośrednio z jawnym
+`$locationId`, więc nie zauważył, że jedyny produkcyjny wywołujący (`CartController::add()`) nigdy
+tego argumentu nie przekazywał. Dowód wymaga POST przez prawdziwą trasę (`cart.add`,
+`checkout.submit`) na tenancie z 2+ aktywnymi oddziałami i sprzętem zaopatrzonym tylko w jednym.
+
+**Drugi incydent (naprawiony 2026-09-19): koszyk blokowany jest na WSZYSTKICH czterech ścieżkach
+zapisu, nie tylko dwóch.** `setLocation()`/`convertToOrder()` od zawsze blokowały wiersz koszyka
+(`Cart::where('id', $cart->id)->lockForUpdate()->firstOrFail()`) przed odczytem `location_id` —
+`addItem()`/`updateQuantity()` czytały je z instancji `$cart` przekazanej przez wywołującego,
+załadowanej w OSOBNEJ, już zacommitowanej transakcji (`CartController::add()` →
+`getOrCreateCart()`), więc mogła być dowolnie nieaktualna. Naprawa: `addItem()`/`updateQuantity()`
+też blokują i re-czytają wiersz koszyka JAKO PIERWSZE w swojej transakcji, ten sam globalny
+porządek co pozostałe dwie ścieżki (koszyk → usługi rosnąco po id → wiersze kotwicy stanu). **Sam
+odczyt bez blokady NIE wystarczy** — pod REPEATABLE READ zwykłe `SELECT` może nadal zwrócić stan
+sprzed commitu, podczas gdy `setLocation()` trzyma blokadę w trakcie swojej transakcji; tylko
+blokujący odczyt gwarantuje zaczekanie na commit i zwrócenie świeżej wartości.
+
+**Dwa niezależne dowody, dwa różne obserwowane skutki — żaden nie jest domysłem, oba zmierzone.**
+
+1. **Cichy rozjazd danych** (scenariusz motywujący naprawę, teoretycznie najgorszy): karta 1
+   potwierdza zmianę oddziału A→B (`setLocation()` commituje), karta 2 w tym samym momencie jest
+   w środku `addItem()`/`updateQuantity()` z nieaktualnym `$cart` (A) — sprawdza dostępność i
+   zapisuje `location_id=A`, mimo że `carts.location_id=B` już zacommitowane. Dowód
+   **sekwencyjny, deterministyczny, SQLite wystarcza** (bez procesów/MySQL — cała staleness
+   odtwarzana jednym, już-załadowanym obiektem `Cart` w jednym procesie PHP, bez żadnego
+   timingu): `CartServicePickupLocationTest::test_add_item_with_a_stale_in_memory_cart_...`
+   i `::test_update_quantity_with_a_stale_in_memory_cart_...` — oba wołają `setLocation()`
+   naprawdę (commit A→B), potem `addItem()`/`updateQuantity()` na OSOBNYM, wcześniej
+   załadowanym obiekcie `$stale` wskazującym A, ze stanem magazynowym ustawionym TAK, żeby
+   sprawdzenie dostępności dało RÓŻNY wynik zależnie od tego, które miejsce (A czy B) faktycznie
+   zostanie użyte. Sfalsyfikowane niezależnie dla obu metod: usunięcie `Cart::where(...)
+   ->lockForUpdate()->firstOrFail()` z `addItem()` → operacja, która MUSI zostać odrzucona
+   (magazyn B pusty), przechodzi bez wyjątku; to samo dla `updateQuantity()`. Przywrócenie →
+   oba czerwone testy znów zielone.
+
+2. **Realny deadlock InnoDB** — to, co faktycznie zaobserwowano przy falsyfikacji
+   `tests/Concurrency/CartLocationChangeRaceTest.php`'s `--action=addItem` (usunięcie blokady z
+   `addItem()`, dwa prawdziwe procesy, prawdziwy MySQL): NIE cichy rozjazd, tylko
+   `SQLSTATE[40001]: 1213 Deadlock found`. Mechanizm (zweryfikowany względem dokumentacji
+   InnoDB o blokadach FK, nie zgadnięty): `addItem()` bez naprawy trzyma X-lock na wierszu
+   `services` (`Service::lockForUpdate()`), po czym jego `INSERT` do `cart_items` — przez FK
+   `cart_items.cart_id → carts.id` — wymaga S-locka na macierzystym wierszu `carts`, żeby
+   sprawdzić więz integralności. Ten wiersz `carts` trzyma już WYŁĄCZNIE `setLocation()` (jego
+   własny `lockForUpdate()` na koszyku, od samego początku transakcji). Jednocześnie
+   `setLocation()`, po swoim opóźnieniu, próbuje wejść w `Service::lockForUpdate()` na TYM SAMYM
+   wierszu `services`, który trzyma `addItem()`. Klasyczny cykl AB-BA: `setLocation()` czeka na
+   `addItem()` (usługa), `addItem()` czeka na `setLocation()` (koszyk, przez FK) — InnoDB wybiera
+   ofiarę i zwraca 1213 zamiast po cichu wpuścić złe dane. **Wniosek:** brak dyscypliny blokad na
+   jednej z czterech ścieżek nie ryzykuje wyłącznie cichej korupcji — może też naprawdę wysypać
+   żądanie klienta błędem bazy danych. Nie licz na to, że produkcyjny objaw ZAWSZE będzie ciche
+   rozjechanie; zależy od dokładnego przeplotu, który wiersz FK blokuje pierwszy.

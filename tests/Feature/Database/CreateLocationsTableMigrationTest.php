@@ -78,6 +78,28 @@ class CreateLocationsTableMigrationTest extends TestCase
 
     private const DEPENDENT_RENTALS_LOCATION_MIGRATION_PATH = 'database/migrations/2026_09_09_090000_add_location_id_to_rentals_table.php';
 
+    /**
+     * Faza 6 krok 6.1/6.3 (2026_09_10_090000-090003) — a SIXTH and SEVENTH
+     * independent dependent, added a day after the Faza 4 krok 4.8 chain
+     * above. Same "mirror the real order" rationale as every DEPENDENT_*
+     * constant above: these are the NEWEST migrations in the whole chain, so
+     * a real `migrate:rollback` undoes them FIRST — reproduced here by
+     * MySQL's own SQLSTATE 3730 the first time this test ran after adding
+     * them (measured, not assumed: dropping `locations` with
+     * `carts_location_id_foreign` still in place). The two backfill
+     * migrations (090001/090003) create no FK of their own — nothing
+     * requires rolling them back before `locations` can be dropped — but are
+     * included anyway for the same realism reason as
+     * DEPENDENT_BACKFILL_LOCATION_ID_MIGRATION_PATH above.
+     */
+    private const DEPENDENT_PICKUP_LOCATION_ORDERS_BACKFILL_MIGRATION_PATH = 'database/migrations/2026_09_10_090003_backfill_pickup_location_for_open_orders.php';
+
+    private const DEPENDENT_PICKUP_LOCATION_ORDERS_MIGRATION_PATH = 'database/migrations/2026_09_10_090002_add_pickup_location_to_orders_table.php';
+
+    private const DEPENDENT_ACTIVE_CARTS_BACKFILL_MIGRATION_PATH = 'database/migrations/2026_09_10_090001_backfill_location_id_for_active_carts.php';
+
+    private const DEPENDENT_CARTS_LOCATION_MIGRATION_PATH = 'database/migrations/2026_09_10_090000_add_location_id_to_carts_table.php';
+
     public function test_up_creates_the_table_with_the_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('locations'));
@@ -154,6 +176,10 @@ class CreateLocationsTableMigrationTest extends TestCase
         // Dependent FKs first — newest migration first, the order a real
         // `migrate:rollback` always applies (see each DEPENDENT_* constant's
         // own docblock).
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_PICKUP_LOCATION_ORDERS_BACKFILL_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_PICKUP_LOCATION_ORDERS_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ACTIVE_CARTS_BACKFILL_MIGRATION_PATH])->run();
+        $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_CARTS_LOCATION_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_BACKFILL_LOCATION_ID_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_CART_ITEMS_LOCATION_MIGRATION_PATH])->run();
         $this->artisan('migrate:rollback', ['--path' => self::DEPENDENT_ORDER_ITEMS_LOCATION_MIGRATION_PATH])->run();
@@ -173,6 +199,10 @@ class CreateLocationsTableMigrationTest extends TestCase
         $this->artisan('migrate', ['--path' => self::DEPENDENT_ORDER_ITEMS_LOCATION_MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::DEPENDENT_CART_ITEMS_LOCATION_MIGRATION_PATH])->run();
         $this->artisan('migrate', ['--path' => self::DEPENDENT_BACKFILL_LOCATION_ID_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_CARTS_LOCATION_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_ACTIVE_CARTS_BACKFILL_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_PICKUP_LOCATION_ORDERS_MIGRATION_PATH])->run();
+        $this->artisan('migrate', ['--path' => self::DEPENDENT_PICKUP_LOCATION_ORDERS_BACKFILL_MIGRATION_PATH])->run();
 
         $this->assertTrue(Schema::hasTable('locations'));
         $this->assertSame(0, DB::table('locations')->count());

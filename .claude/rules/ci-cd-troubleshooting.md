@@ -1754,3 +1754,23 @@ ręczny `dropIndex`+`dropForeign` w `down()` = zweryfikuj kolejność na prawdzi
 że SQLite (nie egzekwuje FK-wymaga-indeksu) coś tu potwierdza. Dowolny nowy `->sum(...)`/
 `withSum(...)` zapisywany do kolumny `json`/wysyłany dalej jako liczba = rzutuj na `(int)`/`(float)`
 jawnie w kodzie aplikacji, nie polegaj na typie zwracanym przez sterownik.
+
+## Incydent 2026-09-10 (Faza 6 etap A, wielooddziałowość): trzeci wystąpienie tej samej klasy —
+## tym razem złapane PRZED wdrożeniem, nie na bramce
+
+`carts.location_id` (2026_09_10_090000) i `orders.pickup_location_id` (2026_09_10_090002) —
+DWA kolejne, niezależne FK → `locations`, dodane dzień po rc31'owej naprawie. `CreateLocationsTable
+MigrationTest` (rc26/rc31'owa naprawa) o nich nie wiedziała — dokładnie ten sam brak co za każdym
+razem wcześniej. Różnica tym razem: znalezione lokalnie, uruchamiając `tests/Feature/Database` na
+jednorazowym `mysql:8.0` PRZED PR-em (`SQLSTATE[HY000]: 3730 Cannot drop table 'locations'
+referenced by a foreign key constraint 'carts_location_id_foreign'`), zamiast dopiero na bramce
+`deploy-production.yml`. Naprawa identyczna jak rc26/rc31: dwie nowe stałe `DEPENDENT_*` +
+rollback/re-migrate w prawdziwej kolejności zależności (`--path` na FK dziecka PRZED `locations`),
+zob. `CreateLocationsTableMigrationTest.php`.
+
+**Wniosek, nie tylko dla tego repo:** rc26'owa/rc31'owa rada „sprawdź WSZYSTKIE tabele wskazujące
+na `locations`" wymaga aktywnego `grep` PRZED napisaniem migracji z nowym FK, nie tylko w
+momencie naprawy bramki — trzy niezależne zespoły/sesje trafiły w ten sam brak, bo żadna nie
+zrobiła tego kroku z wyprzedzeniem. Jednorazowy `mysql:8.0` + `bash tests/Feature/Database` jako
+rutynowy krok PRZED PR-em na każdej migracji dodającej FK do `locations` (albo do dowolnej innej
+tabeli z istniejącym testem `--path`-rollbacku) jest tańszy niż czekanie na bramkę.

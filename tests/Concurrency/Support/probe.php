@@ -18,13 +18,30 @@ declare(strict_types=1);
 | Coordination is by FILE SIGNAL + injected delay, not a fixed sleep guessed
 | from outside: a DB::listen() hook fires the instant this process's own
 | transaction issues the query that matters — `Service::lockForUpdate()`,
-| the first statement in CartService::convertToOrder() that touches the
-| contended row — touches --ready-file at that exact moment, then (if
-| --delay-ms > 0) holds the transaction open for that long before letting
-| the query return. The orchestrating test waits for --ready-file to exist
-| before starting a second probe, so the second probe's own lock attempt is
-| guaranteed to land while the first is still holding the row — deterministic,
-| not raced.
+| the first statement CartService::convertToOrder()/setLocation() both issue
+| against the contended row — touches --ready-file at that exact moment,
+| then (if --delay-ms > 0) holds the transaction open for that long before
+| letting the query return. The orchestrating test waits for --ready-file to
+| exist before starting a second probe, so the second probe's own lock
+| attempt is guaranteed to land while the first is still holding the row —
+| deterministic, not raced.
+|
+| --action selects which CartService write path this probe drives:
+| 'convertToOrder' (default, unchanged from Faza 4/6.1's own scenarios),
+| 'setLocation' (Faza 6 krok 6.2 — requires --new-location-id), or 'addItem'
+| (Faza 6 krok 6.2 follow-up, 2026-09-19 — requires --service-id,
+| --start-date, --end-date; --quantity defaults to 1). All three lock the
+| `services` row (Service::lockForUpdate()); 'addItem' additionally locks the
+| `carts` row FIRST (same fix that made setLocation()/convertToOrder() do
+| it), which --lock-watch below exists to let a scenario wait on instead.
+|
+| --lock-watch picks WHICH table's first `for update` query fires the ready
+| signal + holds --delay-ms (default 'services', unchanged for every
+| existing scenario). Set to 'carts' to race the NEW cart-row lock addItem()/
+| updateQuantity() now take — CartLocationChangeRaceTest's addItem-vs-
+| setLocation scenario watches 'carts' on the setLocation() side so the
+| delay actually holds the contended cart row, not the (uncontended, in that
+| scenario) services row.
 |
 | Safety: this process takes its DB_* purely from real OS environment
 | variables the parent test passes via proc_open(..., env: null) (inherited
@@ -43,6 +60,13 @@ $options = getopt('', [
     'ready-file:',
     'out-file:',
     'customer-email:',
+    'action:',
+    'new-location-id:',
+    'lock-watch:',
+    'service-id:',
+    'start-date:',
+    'end-date:',
+    'quantity:',
 ]);
 
 foreach (['cart-id', 'ready-file', 'out-file', 'customer-email'] as $required) {
@@ -57,6 +81,34 @@ $delayMs = (int) ($options['delay-ms'] ?? 0);
 $readyFile = (string) $options['ready-file'];
 $outFile = (string) $options['out-file'];
 $customerEmail = (string) $options['customer-email'];
+$action = (string) ($options['action'] ?? 'convertToOrder');
+$lockWatch = (string) ($options['lock-watch'] ?? 'services');
+
+if (! in_array($action, ['convertToOrder', 'setLocation', 'addItem'], true)) {
+    fwrite(STDERR, "probe.php: --action must be 'convertToOrder', 'setLocation' or 'addItem', got '{$action}'\n");
+    exit(2);
+}
+
+if (! in_array($lockWatch, ['services', 'carts'], true)) {
+    fwrite(STDERR, "probe.php: --lock-watch must be 'services' or 'carts', got '{$lockWatch}'\n");
+    exit(2);
+}
+
+if ($action === 'setLocation' && ! isset($options['new-location-id'])) {
+    fwrite(STDERR, "probe.php: --action=setLocation requires --new-location-id\n");
+    exit(2);
+}
+
+if ($action === 'addItem' && (! isset($options['service-id']) || ! isset($options['start-date']) || ! isset($options['end-date']))) {
+    fwrite(STDERR, "probe.php: --action=addItem requires --service-id, --start-date and --end-date\n");
+    exit(2);
+}
+
+$newLocationId = isset($options['new-location-id']) ? (int) $options['new-location-id'] : null;
+$serviceId = isset($options['service-id']) ? (int) $options['service-id'] : null;
+$startDate = isset($options['start-date']) ? (string) $options['start-date'] : null;
+$endDate = isset($options['end-date']) ? (string) $options['end-date'] : null;
+$quantity = (int) ($options['quantity'] ?? 1);
 
 // Refuse to run against anything that looks like the dev database. Belt
 // and suspenders with CartCheckoutRaceTest::setUp()'s own matching guard —
@@ -85,18 +137,20 @@ $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
 $hookFired = false;
+$watchedTable = '`'.$lockWatch.'`';
 
-Illuminate\Support\Facades\DB::listen(function ($query) use (&$hookFired, $readyFile, $delayMs): void {
+Illuminate\Support\Facades\DB::listen(function ($query) use (&$hookFired, $readyFile, $delayMs, $watchedTable): void {
     if ($hookFired) {
         return;
     }
 
     $sql = strtolower($query->sql);
 
-    // The first (and, for these fixtures, only) locking read CartService
-    // issues against the shared `services` row — see
-    // CartService::convertToOrder() and kontrakt-dostepnosci.md Zasada 4.
-    if (! str_contains($sql, '`services`') || ! str_contains($sql, 'for update')) {
+    // The first locking read CartService issues against --lock-watch's table
+    // ('services' by default — see CartService::convertToOrder() and
+    // kontrakt-dostepnosci.md Zasada 4; 'carts' for scenarios racing the cart
+    // row lock itself, e.g. addItem() vs setLocation(), 2026-09-19).
+    if (! str_contains($sql, $watchedTable) || ! str_contains($sql, 'for update')) {
         return;
     }
 
@@ -109,20 +163,56 @@ Illuminate\Support\Facades\DB::listen(function ($query) use (&$hookFired, $ready
     }
 });
 
-$result = ['cart_id' => $cartId, 'pid' => getmypid()];
+$result = ['cart_id' => $cartId, 'pid' => getmypid(), 'action' => $action];
 
 try {
     $cart = App\Models\Cart::findOrFail($cartId);
 
-    $order = app(App\Services\Cart\CartService::class)->convertToOrder($cart, [
-        'customer_email' => $customerEmail,
-        'customer_first_name' => 'Proba',
-        'customer_last_name' => (string) $cartId,
-    ]);
+    if ($action === 'setLocation') {
+        $newLocation = App\Models\Location::findOrFail($newLocationId);
 
-    $result['status'] = 'ok';
-    $result['order_id'] = $order->id;
-    $result['order_number'] = $order->order_number;
+        $report = app(App\Services\Cart\CartService::class)->setLocation($cart, $newLocation);
+
+        $result['status'] = 'ok';
+        // setLocation() never throws (see its own docblock) — the OUTCOME
+        // that matters for a race is how much quantity actually survived,
+        // not an exception class. Reload the item to report its POST-write
+        // quantity; 0 means it was removed entirely.
+        $item = $cart->items()->first();
+        $result['kept_quantity'] = $item?->quantity ?? 0;
+        $result['reduced_count'] = count($report['reduced']);
+        $result['removed_count'] = count($report['removed']);
+    } elseif ($action === 'addItem') {
+        // $cart is loaded above via a PLAIN, unlocked App\Models\Cart::findOrFail()
+        // — deliberately mirroring CartController::add(), which loads the
+        // cart in a separate, already-committed transaction
+        // (getOrCreateCart()) before ever calling addItem(). Whatever
+        // location_id this read sees is exactly the "stale in-memory $cart"
+        // a real concurrent request would carry into addItem().
+        $service = App\Models\Service::findOrFail($serviceId);
+
+        $item = app(App\Services\Cart\CartService::class)->addItem(
+            $cart,
+            $service,
+            Illuminate\Support\Carbon::parse($startDate),
+            Illuminate\Support\Carbon::parse($endDate),
+            $quantity
+        );
+
+        $result['status'] = 'ok';
+        $result['item_id'] = $item->id;
+        $result['item_location_id'] = $item->location_id;
+    } else {
+        $order = app(App\Services\Cart\CartService::class)->convertToOrder($cart, [
+            'customer_email' => $customerEmail,
+            'customer_first_name' => 'Proba',
+            'customer_last_name' => (string) $cartId,
+        ]);
+
+        $result['status'] = 'ok';
+        $result['order_id'] = $order->id;
+        $result['order_number'] = $order->order_number;
+    }
 } catch (App\Exceptions\RentalUnavailableException $e) {
     $result['status'] = 'unavailable';
     $result['message'] = $e->getMessage();

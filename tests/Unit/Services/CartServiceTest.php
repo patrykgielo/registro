@@ -13,6 +13,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Services\Cart\CartService;
 use App\Services\RentalAvailabilityService;
+use App\Support\LocationContext;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -179,7 +180,7 @@ class CartServiceTest extends TestCase
         $availabilityMock = $this->createMock(RentalAvailabilityService::class);
         $availabilityMock->method('getAvailableQuantity')->willReturn(2);
 
-        $service = new CartService($availabilityMock, app(SettingsManager::class));
+        $service = new CartService($availabilityMock, app(SettingsManager::class), app(LocationContext::class));
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('dostępnych 2 szt.');
@@ -455,7 +456,7 @@ class CartServiceTest extends TestCase
         $availabilityMock->method('getAvailableQuantity')->willReturn(5);
         $availabilityMock->method('calculatePricing')->willReturn($newPricing);
 
-        $service = new CartService($availabilityMock, app(SettingsManager::class));
+        $service = new CartService($availabilityMock, app(SettingsManager::class), app(LocationContext::class));
 
         $updated = $service->updateQuantity($cart, $item, 2);
 
@@ -487,7 +488,7 @@ class CartServiceTest extends TestCase
         $availabilityMock = $this->createMock(RentalAvailabilityService::class);
         $availabilityMock->method('getAvailableQuantity')->willReturn(2);
 
-        $service = new CartService($availabilityMock, app(SettingsManager::class));
+        $service = new CartService($availabilityMock, app(SettingsManager::class), app(LocationContext::class));
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('dostępnych 2 szt.');

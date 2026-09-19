@@ -5,14 +5,21 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Location;
+use App\Services\Cart\CartService;
 use App\Support\Auth\IntendedDestination;
 use App\Support\LocationContext;
+use App\Support\Settings\SettingsManager;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
  * Faza 5.2 (86cbahqg8) — write side of the header/drawer location switcher.
+ * Faza 6 krok 6.2 (86cbahqgv) extended store() below with the non-empty-cart
+ * confirmation step — deliberately the SAME route/controller, not a second
+ * one (the team lead's own instruction): a second POST back to THIS action,
+ * carrying `confirmed=1`, is how the customer answers the question.
  *
  * `LocationContext::set()` already enforces "belongs to the current tenant
  * AND active" — but by THROWING, because its own docblock treats a mismatch
@@ -29,8 +36,12 @@ class LocationSelectionController extends Controller
 {
     private const MAX_REDIRECT_LENGTH = 2048;
 
-    public function store(Request $request, LocationContext $locations): RedirectResponse
-    {
+    public function store(
+        Request $request,
+        LocationContext $locations,
+        CartService $cart,
+        SettingsManager $settings
+    ): RedirectResponse|View {
         $tenant = $request->attributes->get('tenant');
         abort_unless($tenant !== null, 404);
 
@@ -47,6 +58,10 @@ class LocationSelectionController extends Controller
                     ->where('organization_id', $tenant->id)
                     ->where('is_active', true),
             ],
+            // Faza 6 krok 6.2 — set by the confirmation view's own form
+            // (this same action, posted a second time), never by the
+            // switcher itself. Absent/false on every first attempt.
+            'confirmed' => ['nullable', 'boolean'],
         ]);
 
         // Re-fetched with an explicit organization_id filter rather than
@@ -59,6 +74,46 @@ class LocationSelectionController extends Controller
             ->where('organization_id', $tenant->id)
             ->active()
             ->findOrFail($validated['location_id']);
+
+        // Faza 6 krok 6.2 — only engaged for a customer who can actually HAVE
+        // a cart (authenticated + rentals enabled for this tenant). A guest,
+        // or an authenticated visitor on a time_slot-only tenant, has nothing
+        // for a location switch to revalidate — falls straight through to
+        // the unconditional set() below, identical to Faza 5.2's original
+        // behaviour.
+        if (auth()->check() && $settings->isRentalEnabled()) {
+            $userCart = $cart->getOrCreateCart($tenant, auth()->user());
+
+            // Cart already points at this exact location (including the
+            // common case of a brand-new cart getOrCreateCart() just stamped
+            // with this same selection) — nothing to revalidate or confirm.
+            if ($userCart->location_id !== $location->id) {
+                // "Zmiana oddziału z niepustym koszykiem to JAWNA DECYZJA
+                // KLIENTA z rewalidacją" (86cbahqgv) — the prompt is about
+                // moving the customer's PICKUP POINT while they have a
+                // pending order, which matters even when every item still
+                // fits at the new branch (a different city to collect from
+                // is not a stock question). An EMPTY cart has nothing to
+                // move yet — getOrCreateCart() itself already documents
+                // "an empty cart needs no revalidation" for the same reason
+                // — so it skips straight to setLocation() below with zero
+                // items to decide on, same as the plain set() path used to.
+                if (! $request->boolean('confirmed') && $userCart->items()->exists()) {
+                    return view('cart.location-change-confirm', [
+                        'currentLocation' => $userCart->location,
+                        'newLocation' => $location,
+                        'preview' => $cart->previewLocationChange($userCart, $location),
+                        'redirectTo' => $this->resolveRedirectTarget($request),
+                    ]);
+                }
+
+                $report = $cart->setLocation($userCart, $location);
+
+                if ($report['reduced'] !== [] || $report['removed'] !== []) {
+                    session()->flash('location_change_report', $report);
+                }
+            }
+        }
 
         $locations->set($location);
 

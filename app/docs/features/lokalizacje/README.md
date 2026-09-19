@@ -112,9 +112,27 @@ Weryfikacja: `pint --test` 969/969 (bez zmiany — `IntendedDestination.php` ju�
 `php artisan test` (SQLite) 1913 passed / 5 skipped / 0 failed (1910 + 3 nowe testy);
 `npm run build` wykonany.
 
-**Faza 5 kroki 5.3 i 5.4 — gałąź `feature/lokalizacje-faza5-kafelki`** 2026-09-09, jeszcze nie
-zmergowane. Kafelki i strona sprzętu pokazują dostępność **wybranego oddziału**, a nie stanu
-całej firmy.
+**Faza 6 krok 6.5 — gałąź `feature/lokalizacje-faza6-adres-odbioru`** 2026-09-19, jeszcze nie
+zmergowana: protokół wydania/zwrotu (PDF) i maile zamówienia pokazują adres oddziału odbioru
+zamiast adresu firmy (ClickUp `86cbahqhb`). Jeden resolver —
+`SettingsManager::pickupDetailsFor(Order $order)` — czyta snapshot zamówienia
+(`pickup_location_name`/`pickup_location_address`, krok 6.3), nigdy żywy wiersz `Location`;
+bez snapshotu zachowuje się bit w bit jak dziś (`contactDetailsFor()`). Tożsamość firmy
+(nazwa, telefon, e-mail) na PDF-ach zostaje firmowa — nowy, osobno podpisany blok „Punkt
+odbioru/zwrotu sprzętu" pojawia się TYLKO gdy snapshot istnieje, zwrot pokazuje ten sam
+oddział co wydanie. Maile: zero zmian w treściach szablonów — `{{pickup_address}}`/
+`{{pickup_phone}}` (jedyne dwa klucze, `ORDER_ACCEPTED_OFFLINE`/`ORDER_PAID`) rozwiązują się
+przez ten sam resolver; dwie nowe zmienne (`pickup_location_name`/`_address`) zbudowane pod
+przyszłą edycję treści, nieużywane dziś przez żaden szablon. **Telefon/e-mail przy adresie
+oddziału zostają firmowe (ogólne), nie oddziałowe** — `Location` ma własne `phone`/`email`,
+świadomie nieujawnione tutaj; decyzja właściciela produktu 2026-09-19, rozszerzenie
+migawki o telefon/e-mail oddziału to osobne zgłoszenie (ClickUp `123k99cvcvw`). Pełny opis i falsyfikacja: `plan-wdrozenia.md`, sekcja kroku 6.5.
+
+Weryfikacja: `pint --test` 993/993; `php artisan test` (SQLite) 2047 passed/5 skipped/0 failed
+(2027 + 20 nowych testów); `npm run build` wykonany.
+
+**Faza 5 kroki 5.3 i 5.4 — zmergowane na `develop`** 2026-09-09 (PR #269). Kafelki i strona
+sprzętu pokazują dostępność **wybranego oddziału**, a nie stanu całej firmy.
 
 Oba kroki weszły **razem, nie osobno** — zgłoszenie 5.4 wymaga tego wprost („inaczej strona
 kłamie o dostępności"). Kafelek pokazujący liczbę oddziału obok strony pokazującej stan całej
@@ -178,8 +196,8 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
 | 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **ukończona (4.1-4.8), etap C niezmergowany** (PR #263/#264 zmergowane; etap C na `feature/lokalizacje-faza4-kalendarz`, code review w toku) |
-| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | 🟡 **kroki 5.1-5.4 gotowe** (5.1 i 5.2 zmergowane — PR #267, #268; 5.3/5.4 na `feature/lokalizacje-faza5-kafelki`, po code review). Zostaje 5.5 |
-| 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ⬜ nierozpoczęta |
+| 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ✅ **ukończona** (PR #267, #268, #269, #270 — kroki 5.1-5.5 wszystkie na `develop`) |
+| 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | 🟡 kroki 6.1-6.4 zmergowane (etap A + #277), 6.5 na `feature/lokalizacje-faza6-adres-odbioru` |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |
 | 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⬜ nierozpoczęta |
 | 9 | Statystyki per oddział | [`86cbahqk0`](https://app.clickup.com/t/86cbahqk0) | ⬜ nierozpoczęta |

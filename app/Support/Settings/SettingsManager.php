@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Settings;
 
+use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Setting;
 use App\Services\Payment\Przelewy24Service;
@@ -675,6 +676,64 @@ class SettingsManager
             'city' => (string) $this->getForOrganization('contact.city', $organization, ''),
             'phone' => (string) $this->getForOrganization('contact.phone', $organization, ''),
             'email' => (string) $this->getForOrganization('contact.email', $organization, ''),
+        ];
+    }
+
+    /**
+     * Faza 6 krok 6.5 (plan-wdrozenia.md, ClickUp 86cbahqhb) — the single place that
+     * decides WHICH address is "where the customer picks up/returns equipment" for a
+     * given order: the order's own checkout-time snapshot
+     * (`pickup_location_name`/`pickup_location_address`, Faza 6 krok 6.3,
+     * `CartService::convertToOrder()`) when one exists, falling back to
+     * contactDetailsFor() — today's exact behaviour — when it doesn't (orders placed
+     * before this feature, or a tenant with no locations at all). Deliberately reads
+     * the ORDER's snapshot, never the live Location row: the address on the row can
+     * change after checkout (rename, house move), but a document already
+     * shown/emailed to the customer must keep saying what was true at checkout —
+     * same reasoning as the snapshot columns' own migration docblock
+     * (2026_09_10_090002_add_pickup_location_to_orders_table.php).
+     *
+     * Company identity — name, phone, email — is UNCHANGED by this: those always
+     * come from contactDetailsFor(), even when a branch snapshot exists (the
+     * snapshot only ever captured name + formatted address, never phone/email — see
+     * that migration). Only the address line and the branch's own name
+     * (`location_name`, null when there is no snapshot) are location-aware.
+     *
+     * Phone/email stay company-wide by product owner decision (2026-09-19): a
+     * multi-branch customer calling the number printed next to their branch's
+     * address reaches the company's general contact. Location HAS its own
+     * `phone`/`email` columns; surfacing them means extending the checkout-time
+     * snapshot (migration + backfill), tracked as ClickUp 123k99cvcvw. Never read
+     * the live Location row here instead — the snapshot is what the customer was
+     * promised.
+     *
+     * Same 5-key contract as contactDetailsFor() (see that method's own docblock for
+     * why raw fields, not a pre-assembled string) plus `location_name`. When a
+     * snapshot exists, the whole formatted address is returned in `address_line` and
+     * `postal_code`/`city` come back empty — a caller that only renders one address
+     * block (customer's own order page, order emails) can keep using
+     * `address_line`/`postal_code`/`city` exactly as before with no risk of showing
+     * the same line twice. A caller that needs a distinct, clearly labelled branch
+     * block ALONGSIDE an unchanged company-identity block (the protocol PDFs) reads
+     * `location_name` to decide whether to render that block at all.
+     *
+     * @return array{address_line: string, postal_code: string, city: string, phone: string, email: string, location_name: ?string}
+     */
+    public function pickupDetailsFor(Order $order): array
+    {
+        $contact = $this->contactDetailsFor($order->organization);
+
+        if ($order->pickup_location_name === null) {
+            return [...$contact, 'location_name' => null];
+        }
+
+        return [
+            'address_line' => (string) $order->pickup_location_address,
+            'postal_code' => '',
+            'city' => '',
+            'phone' => $contact['phone'],
+            'email' => $contact['email'],
+            'location_name' => $order->pickup_location_name,
         ];
     }
 

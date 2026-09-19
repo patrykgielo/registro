@@ -64,6 +64,25 @@
     </tr>
 </table>
 
+@if($branch ?? null)
+{{-- Faza 6 krok 6.5 — pickup-branch block, distinct from the "Wynajmujący"
+company-identity block above which stays unchanged. Rendered only when the
+order carries a checkout-time pickup-location snapshot (multi-location
+tenant that had locations at the time of this order); absent entirely for
+single-/zero-location tenants and orders placed before this feature. --}}
+<table class="parties" style="margin-top: 4px;">
+    <tr>
+        <td style="width:100%;">
+            <div class="label">Punkt odbioru sprzętu</div>
+            <strong>{{ $branch['name'] }}</strong>
+            @if($branch['address'])
+                <br>{{ $branch['address'] }}
+            @endif
+        </td>
+    </tr>
+</table>
+@endif
+
 <h2>Wydawany sprzęt</h2>
 <table class="items">
     <thead>

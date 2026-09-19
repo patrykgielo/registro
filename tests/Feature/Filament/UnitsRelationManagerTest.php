@@ -234,6 +234,13 @@ class UnitsRelationManagerTest extends TestCase
      */
     public function test_editing_a_unit_on_a_deactivated_location_still_succeeds(): void
     {
+        // A second active location is required before this deactivation:
+        // LocationObserver::updating() (Faza 6 code review, 2026-09-10) now
+        // blocks deactivating a tenant's ONLY active location — this test's
+        // own subject is unrelated to that guard (unit editing UI, not
+        // deactivation itself), so the fixture just needs a realistic
+        // "closing ONE of several branches" shape instead of tripping it.
+        Location::factory()->for($this->tenant, 'organization')->create(['is_active' => true]);
         $location = Location::factory()->for($this->tenant, 'organization')->create();
         $service = $this->itemRentalService($this->tenant);
         $unit = ServiceUnit::withoutGlobalScope('organization')->create([

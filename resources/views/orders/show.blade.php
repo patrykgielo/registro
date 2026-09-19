@@ -432,7 +432,19 @@
                     $pickupPostal   = $pickup['postal_code'];
                     $pickupCity     = $pickup['city'];
                     $pickupPhone    = $pickup['phone'];
-                    $hasPickupInfo  = $pickupAddress || $pickupCity || $pickupPhone;
+                    // Faza 6 krok 6.5 — set only when the order carries a
+                    // checkout-time pickup-location snapshot (SettingsManager::
+                    // pickupDetailsFor()); null for orders predating the
+                    // feature or tenants without locations, in which case
+                    // this section renders exactly as before.
+                    $pickupLocationName = $pickup['location_name'];
+                    // $pickupLocationName included explicitly (code review, 2026-09-19):
+                    // without it, a branch with a name but an empty formatted address
+                    // (Location's street/city fields all blank) AND no company phone
+                    // configured in Settings would hide the WHOLE section, silently
+                    // dropping the one piece of information that did exist (the branch
+                    // name) — the section's own job per this feature.
+                    $hasPickupInfo  = $pickupAddress || $pickupCity || $pickupPhone || $pickupLocationName;
                 @endphp
                 @if($hasPickupInfo)
                 <section aria-labelledby="pickup-heading">
@@ -440,6 +452,11 @@
                         <h2 id="pickup-heading" class="text-base font-semibold text-text-primary mb-5">
                             Miejsce odbioru sprzętu
                         </h2>
+                        @if($pickupLocationName)
+                            <p class="text-sm font-medium text-text-primary -mt-3 mb-4">
+                                {{ $pickupLocationName }}
+                            </p>
+                        @endif
                         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                             @if($pickupAddress || $pickupCity)
                             <div>
