@@ -513,8 +513,12 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > nie rezerwują niczego (`CartService.php:140`) — kto pierwszy zapłaci, ten ma sprzęt. Nic tu
 > nie trzeba dobudowywać, wystarczy przepuścić przez to `$locationId` (krok 4.4).
 
-> **Stan 2026-09-09 (krok 5.5, gałąź `feature/lokalizacje-faza5-dostepne-gdzie-indziej`,
-> niezmergowana):** „Dostępne też w" w `services/show.blade.php`, tuż pod istniejącym badge'em
+> **Krok 5.5 — zmergowany na `develop`** (PR #270, „pokaż, w którym oddziale sprzęt stoi
+> wolny"). Poniższy opis (pierwotnie datowany 2026-09-09, gałąź
+> `feature/lokalizacje-faza5-dostepne-gdzie-indziej`) poprawiony 2026-09-19 przy code
+> review kroku 6.5 — status „niezmergowana" był nieaktualny.
+>
+> „Dostępne też w" w `services/show.blade.php`, tuż pod istniejącym badge'em
 > dostępności, przed kalendarzem. `ServiceController::availableElsewhere()` czyta WYŁĄCZNIE
 > `$entry['locations']` z tego samego `availabilityForServices()` wywołania, które
 > `rentalAvailabilityFor()` już robi dla badge'a (krok 5.4) — zero nowego zapytania o
@@ -722,6 +726,73 @@ nie numerem seryjnym producenta. `model-danych.md` poprawione (Faza 3 krok 1).
 > ten sam punkt, który dziś decyduje o wysłaniu `OrderHandedOver`. Nie implementowane w tej
 > dostawie — dziś nie ma żadnej ścieżki mutacji tych pól poza jednorazowym zapisem w
 > `CartService::convertToOrder()`, więc to nie jest żywy błąd.
+
+> **Krok 6.2 — zmergowany na `develop`** (PR #277, „zmiana oddziału z pełnym koszykiem
+> i zakup z oddziału odbioru"): `CartService::setLocation()`/`previewLocationChange()`
+> z rewalidacją dostępności, dokładnie jak zapowiada wiersz 6.2 w tabeli wyżej. Ten wpis
+> dopisany 2026-09-19 przy okazji kroku 6.5 — poprzednie sesje dostarczyły 6.2 bez
+> odpowiedniego wpisu w tym pliku planu (sam PR i pełny opis: pamięć agenta
+> `project_lokalizacje_faza6_krok62_zmiana_oddzialu.md`, nieskopiowana tutaj).
+
+> **Krok 6.5 — gałąź `feature/lokalizacje-faza6-adres-odbioru`, jeszcze nie zmergowana.**
+> Protokół wydania/zwrotu i maile pokazują adres oddziału odbioru zamiast adresu firmy
+> (ClickUp `86cbahqhb`), zamykając powiązane zgłoszenie `123k99ct3j0` (adres w dwóch
+> miejscach — zakładka Kontakt w Ustawieniach vs `locations`) dla wszystkich trzech
+> ścieżek, które do tej pory czytały wyłącznie Ustawienia.
+>
+> **Jeden resolver, trzy konsumenci:** `SettingsManager::pickupDetailsFor(Order $order)`
+> — czyta snapshot zamówienia (`pickup_location_name`/`pickup_location_address`, krok
+> 6.3), NIGDY żywy wiersz `Location` (adres mógł się zmienić po checkoucie — dokument już
+> pokazany/wysłany klientowi ma mówić prawdę sprzed zmiany, ten sam argument co w
+> docblocku migracji 6.3). Brak snapshotu (zamówienie sprzed tej funkcji, tenant bez
+> lokalizacji) → dokładnie dzisiejsze zachowanie, `contactDetailsFor()`. Ten sam kontrakt
+> 5-kluczowy co `contactDetailsFor()` (`address_line`/`postal_code`/`city`/`phone`/
+> `email`) plus `location_name` — gdy snapshot istnieje, cały sformatowany adres trafia
+> do `address_line`, a `postal_code`/`city` wracają puste, więc strona klienta (jeden blok
+> adresu, bez zmiany kształtu) nie duplikuje linii.
+>
+> **Tożsamość firmy zostaje firmowa.** Blok „Wynajmujący" na obu PDF-ach (nazwa firmy,
+> telefon, e-mail) czyta jak dotąd `contactDetailsFor()` — resolver go NIE dotyka. Snapshot
+> nigdy nie objął telefonu/e-maila (tylko nazwa + adres, patrz migracja 6.3), więc telefon
+> i e-mail w `pickupDetailsFor()` też zawsze pochodzą z Ustawień, nawet gdy branch istnieje.
+> Oba szablony PDF dostały NOWY, osobno podpisany blok „Punkt odbioru sprzętu" (wydanie) /
+> „Punkt zwrotu sprzętu" (zwrot) — zwrot pokazuje TEN SAM oddział co wydanie (decyzja
+> produktowa: sprzęt zawsze wraca do oddziału wydania), renderowany wyłącznie gdy snapshot
+> istnieje; bez niego PDF wygląda bit w bit jak przed tą zmianą.
+>
+> **DECYZJA WŁAŚCICIELA PRODUKTU (2026-09-19): zostaje kontakt firmowy.** Klient
+> wielooddziałowego tenanta dzwoniąc/pisząc pod telefon/e-mail wydrukowany obok adresu SWOJEGO
+> oddziału trafia dziś na kontakt OGÓLNOFIRMOWY, nie na ten konkretny oddział — `Location` ma
+> własne kolumny `phone`/`email` (`Location::$fillable`), po prostu nieujawniane w tym miejscu.
+> Świadomie NIE naprawione w tej dostawie — snapshot zamówienia nigdy nie objął telefonu/
+> e-maila (tylko nazwa + adres, migracja 6.3), więc dociągnięcie ich wymagałoby albo
+> rozszerzenia snapshotu (kolejna migracja danych), albo odczytu ŻYWEGO wiersza `Location`
+> (sprzeczne z zasadą „snapshot, nigdy żywy wiersz" tego kroku). Rozszerzenie migawki o
+> telefon/e-mail oddziału: osobne zgłoszenie ClickUp `123k99cvcvw`.
+>
+> **Maile: zero zmian w treści szablonów.** `{{pickup_address}}`/`{{pickup_phone}}` już
+> istniały w ciałach `ORDER_ACCEPTED_OFFLINE` i `ORDER_PAID` (jedyne dwa klucze, które ich
+> używają — `ORDER_CONFIRMED`/`ORDER_CANCELLED`/`ORDER_HANDED_OVER`/`ORDER_RETURNED` nie
+> niosą adresu wcale) i teraz po prostu rozwiązują się przez ten sam resolver w
+> `BuildsOrderRentalEmailVariables::buildRentalVariables()` — żadna migracja szablonu nie
+> była potrzebna. Dwie nowe zmienne, `pickup_location_name`/`pickup_location_address`
+> (pusty string bez snapshotu), zbudowane i przekazane do `sendFromTemplate()`, ale
+> nieużywane przez żaden dziś zasiany szablon — gotowe pod przyszłą edycję treści.
+>
+> **Falsyfikacja (trzy niezależne przebiegi, każdy cofnięty po potwierdzeniu czerwonego
+> wyniku):** `pickupDetailsFor()` zredukowane do samego `contactDetailsFor()` →
+> `SettingsManagerPickupDetailsTest` 2/4 czerwone; `branchDetails()` w
+> `OrderProtocolPdfService` zwracające na sztywno `null` → 3
+> testy PDF czerwone (etykieta „Punkt odbioru/zwrotu sprzętu" znika); ta sama redukcja w
+> `BuildsOrderRentalEmailVariables` → 4/6 testów maili czerwone. Przypadek `qatest`
+> (adres pusty w Ustawieniach, snapshot na zamówieniu) pokryty osobnym testem na
+> wszystkich trzech powierzchniach.
+>
+> **Weryfikacja:** `pint --test` 993/993 (990 + 3 nowe pliki testów); `php artisan test`
+> (SQLite) 2047 passed/5 skipped/0 failed (baseline 2027 + 20 nowych testów, dokładna
+> zgodność). `npm run build` wykonany (dotknięte Blade to widoki PDF/e-mail/strony
+> zamówienia, bez zmian w CSS/JS, ale zbudowane zgodnie z zasadą). MySQL 8.0 nie
+> uruchamiany osobno — brak nowych migracji, zero zapytań wrażliwych na silnik.
 
 ### Faza 7 — Przesunięcia między oddziałami
 
