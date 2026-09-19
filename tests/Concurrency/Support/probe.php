@@ -26,22 +26,34 @@ declare(strict_types=1);
 | attempt is guaranteed to land while the first is still holding the row —
 | deterministic, not raced.
 |
-| --action selects which CartService write path this probe drives:
+| --action selects which write path this probe drives:
 | 'convertToOrder' (default, unchanged from Faza 4/6.1's own scenarios),
-| 'setLocation' (Faza 6 krok 6.2 — requires --new-location-id), or 'addItem'
+| 'setLocation' (Faza 6 krok 6.2 — requires --new-location-id), 'addItem'
 | (Faza 6 krok 6.2 follow-up, 2026-09-19 — requires --service-id,
-| --start-date, --end-date; --quantity defaults to 1). All three lock the
-| `services` row (Service::lockForUpdate()); 'addItem' additionally locks the
-| `carts` row FIRST (same fix that made setLocation()/convertToOrder() do
-| it), which --lock-watch below exists to let a scenario wait on instead.
+| --start-date, --end-date; --quantity defaults to 1), or 'createUnit'
+| (code review follow-up, 2026-09-19, ClickUp 123k99cvc54 — requires
+| --organization-id, --service-id, --location-id; --identifier optional).
+| The first three lock the `services` row (Service::lockForUpdate());
+| 'addItem' additionally locks the `carts` row FIRST (same fix that made
+| setLocation()/convertToOrder() do it); 'createUnit' does NOT go through
+| CartService at all — it creates a real App\Models\ServiceUnit INSIDE an
+| explicit DB::transaction() (see the action itself for why this wrapping is
+| necessary, not just convenient), whose App\Observers\ServiceUnitObserver::
+| materializePlaceholdersForFirstUnit() locks the `service_location_stocks`
+| anchor row and, since the code review fix, the `service_units` COUNT read
+| too.
 |
-| --lock-watch picks WHICH table's first `for update` query fires the ready
-| signal + holds --delay-ms (default 'services', unchanged for every
-| existing scenario). Set to 'carts' to race the NEW cart-row lock addItem()/
-| updateQuantity() now take — CartLocationChangeRaceTest's addItem-vs-
-| setLocation scenario watches 'carts' on the setLocation() side so the
-| delay actually holds the contended cart row, not the (uncontended, in that
-| scenario) services row.
+| --lock-watch picks WHICH query fires the ready signal + holds --delay-ms
+| (default 'services', unchanged for every existing scenario). 'carts' races
+| the cart-row lock addItem()/updateQuantity() take (CartLocationChangeRaceTest's
+| addItem-vs-setLocation scenario) — both 'services' and 'carts' require the
+| matched query to say `for update` (a genuine lock acquisition). 'service_units'
+| is DIFFERENT on purpose: it matches the first `count(*) ... from
+| \`service_units\`` query REGARDLESS of `for update`, so the SAME probe/test
+| can exercise BOTH the fixed code (a locking count) and the pre-fix code (a
+| plain, unlocked count) at the identical logical point — "how many units
+| exist for this pair" — which is what ServiceUnitFirstUnitRaceTest.php's own
+| falsification (reverting ServiceUnitObserver.php) depends on.
 |
 | Safety: this process takes its DB_* purely from real OS environment
 | variables the parent test passes via proc_open(..., env: null) (inherited
@@ -67,32 +79,43 @@ $options = getopt('', [
     'start-date:',
     'end-date:',
     'quantity:',
+    'organization-id:',
+    'location-id:',
+    'identifier:',
 ]);
 
-foreach (['cart-id', 'ready-file', 'out-file', 'customer-email'] as $required) {
+$action = (string) ($options['action'] ?? 'convertToOrder');
+$lockWatch = (string) ($options['lock-watch'] ?? 'services');
+
+if (! in_array($action, ['convertToOrder', 'setLocation', 'addItem', 'createUnit'], true)) {
+    fwrite(STDERR, "probe.php: --action must be 'convertToOrder', 'setLocation', 'addItem' or 'createUnit', got '{$action}'\n");
+    exit(2);
+}
+
+if (! in_array($lockWatch, ['services', 'carts', 'service_units'], true)) {
+    fwrite(STDERR, "probe.php: --lock-watch must be 'services', 'carts' or 'service_units', got '{$lockWatch}'\n");
+    exit(2);
+}
+
+// 'cart-id'/'customer-email' only apply to the Cart-based actions;
+// 'createUnit' does not touch a Cart at all.
+$requiredOptions = ['ready-file', 'out-file'];
+$requiredOptions = $action === 'createUnit'
+    ? [...$requiredOptions, 'organization-id', 'service-id', 'location-id']
+    : [...$requiredOptions, 'cart-id', 'customer-email'];
+
+foreach ($requiredOptions as $required) {
     if (! isset($options[$required])) {
-        fwrite(STDERR, "probe.php: missing required --{$required}\n");
+        fwrite(STDERR, "probe.php: missing required --{$required} for --action={$action}\n");
         exit(2);
     }
 }
 
-$cartId = (int) $options['cart-id'];
+$cartId = isset($options['cart-id']) ? (int) $options['cart-id'] : null;
 $delayMs = (int) ($options['delay-ms'] ?? 0);
 $readyFile = (string) $options['ready-file'];
 $outFile = (string) $options['out-file'];
-$customerEmail = (string) $options['customer-email'];
-$action = (string) ($options['action'] ?? 'convertToOrder');
-$lockWatch = (string) ($options['lock-watch'] ?? 'services');
-
-if (! in_array($action, ['convertToOrder', 'setLocation', 'addItem'], true)) {
-    fwrite(STDERR, "probe.php: --action must be 'convertToOrder', 'setLocation' or 'addItem', got '{$action}'\n");
-    exit(2);
-}
-
-if (! in_array($lockWatch, ['services', 'carts'], true)) {
-    fwrite(STDERR, "probe.php: --lock-watch must be 'services' or 'carts', got '{$lockWatch}'\n");
-    exit(2);
-}
+$customerEmail = (string) ($options['customer-email'] ?? '');
 
 if ($action === 'setLocation' && ! isset($options['new-location-id'])) {
     fwrite(STDERR, "probe.php: --action=setLocation requires --new-location-id\n");
@@ -109,6 +132,9 @@ $serviceId = isset($options['service-id']) ? (int) $options['service-id'] : null
 $startDate = isset($options['start-date']) ? (string) $options['start-date'] : null;
 $endDate = isset($options['end-date']) ? (string) $options['end-date'] : null;
 $quantity = (int) ($options['quantity'] ?? 1);
+$organizationId = isset($options['organization-id']) ? (int) $options['organization-id'] : null;
+$locationId = isset($options['location-id']) ? (int) $options['location-id'] : null;
+$identifier = isset($options['identifier']) ? (string) $options['identifier'] : null;
 
 // Refuse to run against anything that looks like the dev database. Belt
 // and suspenders with CartCheckoutRaceTest::setUp()'s own matching guard —
@@ -138,19 +164,35 @@ $kernel->bootstrap();
 
 $hookFired = false;
 $watchedTable = '`'.$lockWatch.'`';
+$requireForUpdate = $lockWatch !== 'service_units';
 
-Illuminate\Support\Facades\DB::listen(function ($query) use (&$hookFired, $readyFile, $delayMs, $watchedTable): void {
+Illuminate\Support\Facades\DB::listen(function ($query) use (&$hookFired, $readyFile, $delayMs, $watchedTable, $requireForUpdate): void {
     if ($hookFired) {
         return;
     }
 
     $sql = strtolower($query->sql);
 
-    // The first locking read CartService issues against --lock-watch's table
-    // ('services' by default — see CartService::convertToOrder() and
-    // kontrakt-dostepnosci.md Zasada 4; 'carts' for scenarios racing the cart
-    // row lock itself, e.g. addItem() vs setLocation(), 2026-09-19).
-    if (! str_contains($sql, $watchedTable) || ! str_contains($sql, 'for update')) {
+    if (! str_contains($sql, $watchedTable)) {
+        return;
+    }
+
+    // 'services'/'carts': the first LOCKING read CartService issues against
+    // --lock-watch's table ('services' by default — see
+    // CartService::convertToOrder() and kontrakt-dostepnosci.md Zasada 4;
+    // 'carts' for scenarios racing the cart row lock itself, e.g. addItem()
+    // vs setLocation(), 2026-09-19) — `for update` IS the thing being raced.
+    //
+    // 'service_units': deliberately the OPPOSITE — matches the first
+    // `count(*)` query regardless of `for update`, so the identical hook
+    // point exists in BOTH the fixed code (a locking count) and the
+    // pre-fix code (a plain, unlocked count) — see this file's own
+    // docblock on --lock-watch.
+    if ($requireForUpdate) {
+        if (! str_contains($sql, 'for update')) {
+            return;
+        }
+    } elseif (! str_contains($sql, 'count(')) {
         return;
     }
 
@@ -166,9 +208,43 @@ Illuminate\Support\Facades\DB::listen(function ($query) use (&$hookFired, $ready
 $result = ['cart_id' => $cartId, 'pid' => getmypid(), 'action' => $action];
 
 try {
-    $cart = App\Models\Cart::findOrFail($cartId);
+    if ($action === 'createUnit') {
+        // Deliberately wrapped in an EXPLICIT DB::transaction() here, unlike
+        // the other three actions (which call CartService methods that open
+        // their own). A bare, unwrapped ServiceUnit::create() (matching
+        // Filament's default -- AdminPanelProvider never calls
+        // ->databaseTransactions(), which defaults to false, confirmed
+        // against vendor/filament/filament/src/Panel/Concerns/
+        // HasDatabaseTransactions.php) auto-commits the unit's own INSERT
+        // BEFORE App\Observers\ServiceUnitObserver::created() even starts
+        // its own transaction -- which makes the exact "two units both
+        // think they're first" race UNREACHABLE by construction: each
+        // process's own insert-then-count ordering makes it mathematically
+        // impossible for both processes to simultaneously miss each
+        // other's already-committed unit (proved, not assumed, while
+        // building this test -- see ServiceUnitFirstUnitRaceTest.php's own
+        // docblock). Wrapping in a transaction here reproduces the ACTUAL
+        // vulnerable scenario the fix defends against: the observer's own
+        // docblock explicitly documents supporting a caller that already
+        // has an ambient transaction open ("either starts one or ... becomes
+        // a savepoint") -- a bulk/batch unit-creation action, or a future
+        // ->databaseTransactions(true) panel, both legitimate, undramatic
+        // ways to reach it for real.
+        Illuminate\Support\Facades\DB::transaction(function () use ($organizationId, $serviceId, $locationId, $identifier, &$result): void {
+            $unit = App\Models\ServiceUnit::withoutGlobalScope('organization')->create([
+                'organization_id' => $organizationId,
+                'service_id' => $serviceId,
+                'location_id' => $locationId,
+                'identifier' => $identifier,
+                'status' => App\Enums\ServiceUnitStatus::Available->value,
+            ]);
 
-    if ($action === 'setLocation') {
+            $result['unit_id'] = $unit->id;
+        });
+
+        $result['status'] = 'ok';
+    } elseif ($action === 'setLocation') {
+        $cart = App\Models\Cart::findOrFail($cartId);
         $newLocation = App\Models\Location::findOrFail($newLocationId);
 
         $report = app(App\Services\Cart\CartService::class)->setLocation($cart, $newLocation);
@@ -183,12 +259,13 @@ try {
         $result['reduced_count'] = count($report['reduced']);
         $result['removed_count'] = count($report['removed']);
     } elseif ($action === 'addItem') {
-        // $cart is loaded above via a PLAIN, unlocked App\Models\Cart::findOrFail()
-        // — deliberately mirroring CartController::add(), which loads the
-        // cart in a separate, already-committed transaction
-        // (getOrCreateCart()) before ever calling addItem(). Whatever
-        // location_id this read sees is exactly the "stale in-memory $cart"
-        // a real concurrent request would carry into addItem().
+        // Deliberately a PLAIN, unlocked App\Models\Cart::findOrFail() — mirrors
+        // CartController::add(), which loads the cart in a separate,
+        // already-committed transaction (getOrCreateCart()) before ever
+        // calling addItem(). Whatever location_id this read sees is exactly
+        // the "stale in-memory $cart" a real concurrent request would carry
+        // into addItem().
+        $cart = App\Models\Cart::findOrFail($cartId);
         $service = App\Models\Service::findOrFail($serviceId);
 
         $item = app(App\Services\Cart\CartService::class)->addItem(
@@ -203,6 +280,8 @@ try {
         $result['item_id'] = $item->id;
         $result['item_location_id'] = $item->location_id;
     } else {
+        $cart = App\Models\Cart::findOrFail($cartId);
+
         $order = app(App\Services\Cart\CartService::class)->convertToOrder($cart, [
             'customer_email' => $customerEmail,
             'customer_first_name' => 'Proba',

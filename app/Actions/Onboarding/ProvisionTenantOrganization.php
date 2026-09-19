@@ -27,6 +27,11 @@ use Spatie\Permission\Models\Role;
  * - Owner has no password: access is via the existing invite-link mechanism
  *   (User::initiatePasswordSetup(), same as Filament's UserResource) instead of
  *   a password collected inline -- there is no operator-facing form here.
+ * - The primary Location is ensured on EVERY call, not only when the
+ *   organization is newly created (code review 2026-09-19, ClickUp
+ *   123k99cvc53 follow-up) -- see SeedOrganizationDefaults::
+ *   ensurePrimaryLocation()'s own docblock for why re-running this command
+ *   against an existing, location-less org must heal it.
  */
 class ProvisionTenantOrganization
 {
@@ -82,6 +87,11 @@ class ProvisionTenantOrganization
             // this against an already-linked owner updates the pivot role (no-op
             // when unchanged) instead of throwing a duplicate-pivot error.
             $owner->organizations()->syncWithoutDetaching([$org->id => ['role' => 'owner']]);
+
+            // Unconditional -- unlike seedDefaults->execute() below, this must
+            // also run (and heal) on a re-run against an EXISTING organization
+            // that has zero locations. See its own docblock.
+            $this->seedDefaults->ensurePrimaryLocation($org);
 
             if ($orgWasCreated) {
                 $this->seedDefaults->execute($org);

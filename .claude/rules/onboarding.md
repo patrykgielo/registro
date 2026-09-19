@@ -88,6 +88,30 @@ $org->hasModule('services')  // true jeśli industry to umożliwia
 
 Super-admin może nadpisać moduły w Platform panel (zapisuje do `settings.modules.*`).
 
+## Provisioning zakłada (i LECZY) pierwszy oddział (ClickUp 123k99cvc53, 2026-09-19)
+
+`ProvisionTenantOrganization::execute()` woła `SeedOrganizationDefaults::ensurePrimaryLocation($org)`
+**bezwarunkowo, na KAŻDYM wywołaniu** — nowy tenant i ponowne uruchomienie na już istniejącym —
+tworząc jeden `Location` ("Siedziba główna", `is_active=true`, bez adresu — tenant jeszcze nie ma
+`contact.*` w ustawieniach). Bez tego nowy tenant miał ZERO lokalizacji i `ServiceResource`'s pole
+„Ilość w magazynie" ciche wyłączało się (`RouteQuantityFieldToPrimaryLocationStock::
+tenantHasExactlyOneActiveLocation() === 0`) — każdy nowy produkt zapisywał `quantity_total = NULL`,
+bez błędu. Idempotentne przez `Location::exists()` (dowolny status, nie tylko `is_active`) —
+organizacja z choćby jedną lokalizacją, nawet nieaktywną, nigdy nie dostaje drugiej.
+
+**Pułapka naprawiona w code review tego samego dnia:** pierwsza wersja tej poprawki wołała
+`ensurePrimaryLocation()` z WEWNĄTRZ `SeedOrganizationDefaults::execute()`, którą
+`ProvisionTenantOrganization` woła TYLKO gdy `$orgWasCreated` — więc ponowne uruchomienie
+`registro:tenant-provision --slug=<istniejący>` na tenancie sprzed tej poprawki (zero
+lokalizacji) NIGDY go nie leczyło, mimo że to dokładnie ścieżka naprawy, po którą sięgnąłby
+operator. `ensurePrimaryLocation()` jest teraz PUBLICZNA i wołana OSOBNO od `execute()` (który
+zostaje `$orgWasCreated`-only — `seedSettings()` używa `updateOrCreate` i nadpisałby ustawienia,
+które admin już zmienił, gdyby wołać go na istniejącym tenancie).
+
+Vertical seedery (`SeedEquipmentRental::seed()`, `SeedVerticalDataCommand`) materializują teraz
+`service_location_stocks` dla każdej utworzonej usługi (`SyncServiceLocationStock::forService()`)
+— katalog tworzony bezpośrednio przez Eloquent, poza panelem, nigdy wcześniej tego nie robił.
+
 ## Seed data — referencja (opt-in manualny, nie auto)
 
 Vertical seedery są dostępne, ale **NIE są wywoływane automatycznie** podczas provisioningu.
