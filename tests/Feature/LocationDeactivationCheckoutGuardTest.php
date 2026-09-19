@@ -10,6 +10,7 @@ use App\Models\CartItem;
 use App\Models\Location;
 use App\Models\Organization;
 use App\Models\Service;
+use App\Models\ServiceLocationStock;
 use App\Models\User;
 use App\Services\Payment\Przelewy24Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -125,6 +126,15 @@ class LocationDeactivationCheckoutGuardTest extends TestCase
             'organization_id' => $this->tenant->id,
             'quantity_total' => 5,
         ]);
+        // Faza 6 krok 6.2 fix — checkout now validates this item against the
+        // cart's own location, not the tenant-wide pool. A real service
+        // saved through ServiceResource gets this anchor row for free
+        // (RouteQuantityFieldToPrimaryLocationStock); this factory-built one
+        // needs it stamped explicitly.
+        ServiceLocationStock::withoutGlobalScope('organization')->updateOrCreate(
+            ['service_id' => $service->id, 'location_id' => $this->location->id],
+            ['organization_id' => $this->tenant->id, 'quantity' => 5, 'is_active' => true]
+        );
         $cart = Cart::factory()->active()->create([
             'user_id' => $this->customer->id,
             'organization_id' => $this->tenant->id,

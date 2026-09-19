@@ -9,6 +9,7 @@ use App\Models\CartItem;
 use App\Models\Location;
 use App\Models\Organization;
 use App\Models\Service;
+use App\Models\ServiceLocationStock;
 use App\Models\User;
 use App\Services\Payment\Przelewy24Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -96,6 +97,20 @@ class CheckoutPickupLocationTest extends TestCase
             'quantity_total' => 5,
         ]);
 
+        // Faza 6 krok 6.2 fix — checkout now validates this item against
+        // the cart's own location, not the tenant-wide pool (see
+        // CartService::addItem()'s docblock). A real service saved through
+        // ServiceResource gets this anchor row for free
+        // (RouteQuantityFieldToPrimaryLocationStock); this factory-built one
+        // needs it stamped explicitly, same as CartServiceLocationTest's own
+        // setUp() — only relevant when $locationId is actually set below.
+        if ($locationId !== null) {
+            ServiceLocationStock::withoutGlobalScope('organization')->updateOrCreate(
+                ['service_id' => $service->id, 'location_id' => $locationId],
+                ['organization_id' => $org->id, 'quantity' => 5, 'is_active' => true]
+            );
+        }
+
         $cart = Cart::factory()->active()->create([
             'user_id' => $this->user->id,
             'organization_id' => $org->id,
@@ -159,6 +174,11 @@ class CheckoutPickupLocationTest extends TestCase
             'organization_id' => $this->org->id,
             'quantity_total' => 5,
         ]);
+        // Faza 6 krok 6.2 fix — see cartWithItem()'s own comment above.
+        ServiceLocationStock::withoutGlobalScope('organization')->updateOrCreate(
+            ['service_id' => $service->id, 'location_id' => $location->id],
+            ['organization_id' => $this->org->id, 'quantity' => 5, 'is_active' => true]
+        );
 
         $response = $this->actingAs($this->user)
             ->actingAsTenant($this->org)
