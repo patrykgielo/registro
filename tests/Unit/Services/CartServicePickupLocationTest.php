@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\Exceptions\PickupLocationRequiredException;
+use App\Exceptions\RentalUnavailableException;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Location;
 use App\Models\Organization;
 use App\Models\Service;
+use App\Models\ServiceLocationStock;
 use App\Models\User;
 use App\Services\Cart\CartService;
 use App\Support\LocationContext;
@@ -25,10 +27,14 @@ use Tests\TestCase;
  * ONLY for the genuinely ambiguous case (LocationContext::mustPrompt()'s own
  * exact conjunction — see that method's docblock). Deliberately a separate
  * file from CartServiceLocationTest.php: that file is about the Faza 4
- * AVAILABILITY dimension (cart_items.location_id, unwired in production
- * today); this one is about the Faza 6 PICKUP dimension (carts.location_id
- * / orders.pickup_location_id) — the two are independent, see
- * carts.location_id's own migration docblock for why.
+ * AVAILABILITY dimension (cart_items.location_id); this one is about the
+ * Faza 6 PICKUP dimension (carts.location_id / orders.pickup_location_id).
+ * The two are independent columns (see carts.location_id's own migration
+ * docblock for why) but, since the krok 6.2 wiring fix
+ * (CartService::addItem()), the PICKUP dimension now drives the AVAILABILITY
+ * one whenever a cart has one — see CartService::syncItemLocationsToCart()
+ * and rental-availability.md's own "punkt odbioru = lokalizacja magazynowa"
+ * rule.
  */
 class CartServicePickupLocationTest extends TestCase
 {
@@ -52,6 +58,22 @@ class CartServicePickupLocationTest extends TestCase
     private function actingAsTenant(Organization $org): void
     {
         $this->app['request']->attributes->set('tenant', $org);
+    }
+
+    /**
+     * Same anchor-row provisioning CartServiceLocationTest's own setUp()
+     * does — see the call sites' comment for why a factory-built Service
+     * needs this explicitly (ServiceLocationStockObserver only backfills
+     * EXISTING services when a NEW Location is created, and a NEW Service
+     * only gets its primary-location row when saved through the real
+     * ServiceResource form, not a bare factory create()).
+     */
+    private function stockAt(Service $service, Location $location, int $quantity): void
+    {
+        ServiceLocationStock::withoutGlobalScope('organization')->updateOrCreate(
+            ['service_id' => $service->id, 'location_id' => $location->id],
+            ['organization_id' => $service->organization_id, 'quantity' => $quantity, 'is_active' => true]
+        );
     }
 
     private function cartWithItem(Cart $cart, Service $service): CartItem
@@ -155,6 +177,14 @@ class CartServicePickupLocationTest extends TestCase
             'organization_id' => $this->org->id,
             'quantity_total' => 5,
         ]);
+        // Faza 6 krok 6.2 fix — addItem()/convertToOrder() now validate
+        // against the CART's own location, not the tenant-wide pool (see
+        // CartService::addItem()'s docblock). A real service, saved through
+        // ServiceResource, gets this anchor row for free
+        // (RouteQuantityFieldToPrimaryLocationStock); this factory-built one
+        // needs it stamped explicitly, same as CartServiceLocationTest's own
+        // setUp().
+        $this->stockAt($service, $location, 5);
         $this->actingAsTenant($this->org);
 
         $cart = $this->cartService->getOrCreateCart($this->org, $this->user);
@@ -215,6 +245,8 @@ class CartServicePickupLocationTest extends TestCase
             'organization_id' => $this->org->id,
             'quantity_total' => 5,
         ]);
+        // See stockAt() call in the "propagates" test above for why this is needed.
+        $this->stockAt($service, $locationA, 5);
         $this->actingAsTenant($this->org);
         app(LocationContext::class)->set($locationA);
 
@@ -332,6 +364,117 @@ class CartServicePickupLocationTest extends TestCase
 
         $this->assertNull($order->pickup_location_id);
         $this->assertNull($order->pickup_location_name);
+    }
+
+    // -------------------------------------------------------------------------
+    // addItem()/updateQuantity() — must derive location from the CURRENT,
+    // locked cart row, never a caller's stale in-memory Cart instance (Faza 6
+    // krok 6.2 follow-up, 2026-09-19). Deterministic SEQUENTIAL pin of the
+    // same bug tests/Concurrency/CartLocationChangeRaceTest.php proves under
+    // real MySQL concurrency — no two OS processes needed here: a single
+    // process holding an already-loaded Cart object across a REAL, committed
+    // setLocation() call reproduces the exact staleness a controller's
+    // separately-loaded $cart would have, without any timing at all.
+    // -------------------------------------------------------------------------
+
+    public function test_add_item_with_a_stale_in_memory_cart_checks_availability_against_the_carts_current_location_not_the_stale_one(): void
+    {
+        [$locationA, $locationB] = Location::factory()->for($this->org, 'organization')->count(2)->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 999, // unused — capacity comes from the per-location anchor rows below
+        ]);
+        $this->stockAt($service, $locationA, 5);
+        $this->stockAt($service, $locationB, 0);
+        $this->actingAsTenant($this->org);
+        app(LocationContext::class)->set($locationA);
+
+        $cart = $this->cartService->getOrCreateCart($this->org, $this->user);
+
+        // Loaded BEFORE the switch below — same shape as
+        // CartController::add(): getOrCreateCart() runs in its OWN,
+        // already-committed transaction before this exact object is ever
+        // handed to addItem(). $stale keeps reading location_id = A in PHP
+        // regardless of what happens to the row afterwards.
+        $stale = Cart::find($cart->id);
+        $this->assertSame($locationA->id, $stale->location_id);
+
+        // Real switch A -> B, committed (empty cart — nothing to
+        // revalidate, straight through to the cart update).
+        $this->cartService->setLocation($cart->fresh(), $locationB);
+        $this->assertSame($locationB->id, $cart->fresh()->location_id);
+
+        // $locationB has ZERO stock, $locationA (the stale value) has 5.
+        // addItem() must check against the CART'S CURRENT location (B) and
+        // reject — using the stale A would wrongly accept.
+        $this->expectException(RentalUnavailableException::class);
+
+        $this->cartService->addItem(
+            $stale,
+            $service,
+            now()->addDay(),
+            now()->addDays(3),
+            1
+        );
+    }
+
+    public function test_update_quantity_with_a_stale_in_memory_cart_checks_availability_against_the_carts_current_location_not_the_stale_one(): void
+    {
+        [$locationA, $locationB] = Location::factory()->for($this->org, 'organization')->count(2)->create(['is_active' => true]);
+        $service = Service::factory()->itemRental()->create([
+            'organization_id' => $this->org->id,
+            'quantity_total' => 999, // unused — capacity comes from the per-location anchor rows below
+        ]);
+        // B has just enough stock (1) to let the item SURVIVE the switch
+        // below at its original quantity, but not enough for the increase
+        // this test asks for afterwards. A has plenty of both.
+        $this->stockAt($service, $locationA, 5);
+        $this->stockAt($service, $locationB, 1);
+        $this->actingAsTenant($this->org);
+        app(LocationContext::class)->set($locationA);
+
+        $cart = $this->cartService->getOrCreateCart($this->org, $this->user);
+        $item = CartItem::factory()->create([
+            'cart_id' => $cart->id,
+            'service_id' => $service->id,
+            'location_id' => $locationA->id,
+            'quantity' => 1,
+            'start_date' => now()->addDay()->toDateString(),
+            'end_date' => now()->addDays(3)->toDateString(),
+            'rental_days' => 3,
+            'unit_price' => 100.00,
+            'total_price' => 100.00,
+        ]);
+
+        // Loaded BEFORE the switch below — same shape as
+        // CartController::updateQuantity().
+        $stale = Cart::find($cart->id);
+        $this->assertSame($locationA->id, $stale->location_id);
+
+        // Real switch A -> B, committed — the item survives at its original
+        // quantity (B has exactly enough) and is re-stamped to B by
+        // setLocation() itself.
+        $this->cartService->setLocation($cart->fresh(), $locationB);
+        $this->assertSame($locationB->id, $cart->fresh()->location_id);
+        $this->assertSame($locationB->id, $item->fresh()->location_id, 'setLocation() must have re-stamped the surviving item to B first.');
+
+        // $stale (location A) is now handed to updateQuantity(), asking for
+        // MORE than $locationB's stock (1) allows but well within $locationA's
+        // (5). If the check ran against the stale A, this would wrongly
+        // succeed — and (via syncItemLocationsToCart()) drag the item's
+        // location_id back to A even though carts.location_id already
+        // committed to B. The CURRENT B must reject it instead.
+        try {
+            $this->cartService->updateQuantity($stale, $item, 2);
+            $this->fail('updateQuantity() must reject a quantity the CURRENT location cannot cover, even from a stale $cart pointing at a location that could cover it.');
+        } catch (RentalUnavailableException) {
+            // expected
+        }
+
+        // The rejection must not have corrupted anything: the item stays
+        // exactly where setLocation() left it.
+        $this->assertSame(1, $item->fresh()->quantity);
+        $this->assertSame($locationB->id, $item->fresh()->location_id);
     }
 
     /**

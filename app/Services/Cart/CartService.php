@@ -50,8 +50,8 @@ class CartService
      * overwriting that here — behind the customer's back, mid-session, with
      * no revalidation of the cart's own items against the new location's
      * stock — is precisely the job Faza 6 krok 6.2's
-     * `CartService::setLocation()` is reserved for (not yet built). This is
-     * a one-time stamp at creation, not a live sync.
+     * `CartService::setLocation()` is built for. This is a one-time stamp
+     * at creation, not a live sync.
      */
     public function getOrCreateCart(Organization $organization, User $user): Cart
     {
@@ -103,19 +103,68 @@ class CartService
      * $locationId (Faza 4 krok 4.4, kontrakt-dostepnosci.md) is where the
      * location dimension ENTERS the cart — unlike updateQuantity()/
      * convertToOrder() below, there is no existing CartItem row yet to read
-     * it off. Defaults to null, unchanged from today's behaviour, until a
-     * future caller (Faza 5's LocationContext / Faza 6's carts.location_id)
-     * starts passing one; App\Http\Controllers\CartController does not yet.
-     * The value is both forwarded to getAvailableQuantity() AND persisted on
-     * the created row, so updateQuantity()/convertToOrder() can read it back
-     * later from that same row.
+     * it off. Defaults to null (unchanged behaviour for a cart with no
+     * pickup location — single-location/no-location tenant).
+     *
+     * Faza 6 krok 6.2 fix (rental-availability.md, "pickup location = stock
+     * location until Phase 7"): `$cart->location_id`, when set, ALWAYS wins
+     * over whatever the caller passed — this is the single line that makes
+     * the cart's own pickup point the one source of truth for which pool
+     * this add is validated against, rather than trusting each call site to
+     * agree. Load-bearing in production: `App\Http\Controllers\CartController
+     * ::add()` has never passed a `$locationId` argument at all, so without
+     * this derivation a multi-location tenant's every real add-to-cart
+     * validated against the tenant-wide pool regardless of which branch the
+     * customer had selected — the tile said "unavailable in this branch",
+     * the cart said "sure". `syncItemLocationsToCart()` below heals any
+     * sibling row already in this cart whose stored value predates this fix
+     * (or a later branch switch), so the sibling-demand query a few lines
+     * down — which filters by the STORED `location_id` column — stays
+     * correct too. The value is both forwarded to getAvailableQuantity() AND
+     * persisted on the created row, so updateQuantity()/convertToOrder() can
+     * read it back later from that same row.
+     *
+     * **Race fix (2026-09-19, rental-availability.md Zasada 9):** the caller's
+     * `$cart` instance is loaded in a SEPARATE, already-committed transaction
+     * (`CartController::add()` -> `getOrCreateCart()`), so by the time THIS
+     * transaction opens it can be arbitrarily stale — a concurrent
+     * `setLocation()` confirming a branch switch commits a new `location_id`
+     * on this exact row in between. `$cart->location_id` below is therefore
+     * read off a FRESH, locked re-fetch of the row (same global lock order as
+     * `setLocation()`/`convertToOrder()`: cart row first, then services),
+     * never the caller's own in-memory object — see that re-fetch's own
+     * inline comment for why an unlocked re-read would not be enough either.
      *
      * @throws RentalUnavailableException when requested quantity exceeds available stock
      */
     public function addItem(Cart $cart, Service $service, Carbon $start, Carbon $end, int $quantity, ?int $locationId = null): CartItem
     {
         return DB::transaction(function () use ($cart, $service, $start, $end, $quantity, $locationId): CartItem {
+            // Locking read, not a plain re-fetch: under MySQL REPEATABLE READ a
+            // normal SELECT can still return the pre-commit snapshot while a
+            // concurrent setLocation() holds this row locked mid-transaction —
+            // only `lockForUpdate()` is guaranteed to block until that
+            // transaction commits and then return the fresh, post-commit
+            // value (same reasoning as setLocation()/convertToOrder()'s own
+            // `Cart::where('id', $cart->id)->lockForUpdate()->firstOrFail()`,
+            // now shared by all four cart write paths).
+            $cart = Cart::where('id', $cart->id)->lockForUpdate()->firstOrFail();
+
+            $locationId = $cart->location_id ?? $locationId;
+
             $service = Service::lockForUpdate()->findOrFail($service->id);
+
+            // $cart->location_id — the RAW column, not the just-derived
+            // $locationId above — is the sync target. When the cart has no
+            // pickup location of its own ($cart->location_id === null),
+            // this must no-op regardless of which explicit $locationId THIS
+            // particular add happens to carry: a cart with no pickup point
+            // is exactly the scenario where a caller may still add items at
+            // several different explicit locations independently (see
+            // CartServiceLocationTest) — syncing them all to whatever
+            // location the LATEST add() call passed would silently corrupt
+            // every earlier sibling instead of healing anything.
+            $this->syncItemLocationsToCart($cart, $cart->location_id);
 
             // forUpdate: true — see RentalAvailabilityService::getAvailableQuantity()
             // docblock: locking the Service row alone does not guarantee this
@@ -164,6 +213,51 @@ class CartService
                 'price_snapshot' => $pricing,
             ]);
         });
+    }
+
+    /**
+     * Faza 6 krok 6.2 fix — until Phase 7 (transfers) exists, the pickup
+     * location and the stock location for every line in a cart MUST be the
+     * same one (rental-availability.md). `cart_items.location_id` is only
+     * ever written at addItem() time; a cart whose OWN `location_id`
+     * changes afterwards (via setLocation()'s branch switch, or via the
+     * one-time gap between Faza 6 krok 6.1's deploy — which started
+     * stamping NEW carts — and this fix — which is the first thing to
+     * forward that value into `addItem()`) would otherwise leave rows
+     * behind that no longer match, and every query in this class that reads
+     * `location_id` straight off a CartItem row (the sibling-demand
+     * aggregations in addItem()/updateQuantity(), and
+     * convertToOrder()'s own per-item validation + the value it carries onto
+     * `order_items.location_id`) would silently validate against — or sell
+     * from — the wrong pool. Re-asserting this invariant here, before any of
+     * that math runs, means every OTHER line in this file can go on trusting
+     * `$item->location_id` verbatim.
+     *
+     * Takes the target location as an explicit parameter rather than always
+     * reading `$cart->location_id` itself — convertToOrder() must sync
+     * against its own RESOLVED, active-filtered `$pickupLocation`, not the
+     * cart's raw column value (which can still point at a location that was
+     * deactivated moments ago; see that method's own call site for why).
+     * addItem()/updateQuantity() pass `$cart->location_id` straight through,
+     * since neither has (or needs) a separate resolution step.
+     *
+     * No-ops when `$locationId === null` (single-location/no-location
+     * tenant, a multi-location tenant that has never resolved one, or —
+     * inside convertToOrder() — one whose resolved pickup point is null) —
+     * Zasada 6, kontrakt-dostepnosci.md: that case must stay bit-for-bit
+     * identical to before this fix, never zero-filled to a guessed location.
+     */
+    private function syncItemLocationsToCart(Cart $cart, ?int $locationId): void
+    {
+        if ($locationId === null) {
+            return;
+        }
+
+        CartItem::where('cart_id', $cart->id)
+            ->where(function ($query) use ($locationId): void {
+                $query->whereNull('location_id')->orWhere('location_id', '!=', $locationId);
+            })
+            ->update(['location_id' => $locationId]);
     }
 
     /**
@@ -280,6 +374,22 @@ class CartService
             if ($pickupLocation === null && $this->locationContext->selectionRequired()) {
                 throw PickupLocationRequiredException::make();
             }
+
+            // Faza 6 krok 6.2 fix — see syncItemLocationsToCart() docblock.
+            // Deliberately targets the RESOLVED, active-filtered
+            // `$pickupLocation` computed above, not the cart's raw
+            // `location_id` column: a cart still pointing at a location that
+            // was JUST deactivated (the "drops to exactly one" branch
+            // above) must validate its items against the SAME pool the
+            // order itself falls back to (global, `pickup_location_id =
+            // null`) — not against a now-closed branch's stock, which this
+            // method already treats as "nothing to resolve" one guard
+            // earlier. Must run before $items is queried below: a cart item
+            // added before this fix existed (or before a later
+            // setLocation() branch switch) can still carry a stale/NULL
+            // location_id, and this method's own per-item validation below
+            // trusts $item->location_id verbatim.
+            $this->syncItemLocationsToCart($cart, $pickupLocation?->id);
 
             // Deterministic lock order (by service_id) across concurrent checkouts
             // avoids lock-ordering deadlocks when a cart has multiple items.
@@ -658,6 +768,23 @@ class CartService
         }
 
         return DB::transaction(function () use ($cart, $item, $quantity): CartItem {
+            // Race fix (2026-09-19) — same reasoning as addItem()'s own
+            // inline comment: the caller's $cart instance can be stale by
+            // the time this transaction opens, so `$cart->location_id` below
+            // (both here and inside syncItemLocationsToCart()) must come from
+            // a FRESH, locked re-fetch, not the caller's in-memory object.
+            // Same global lock order as addItem()/setLocation()/
+            // convertToOrder(): cart row first, then the service.
+            $cart = Cart::where('id', $cart->id)->lockForUpdate()->firstOrFail();
+
+            // Faza 6 krok 6.2 fix — see syncItemLocationsToCart() docblock.
+            // Must run BEFORE $item->location_id is read below, then refresh
+            // $item so the in-memory instance reflects whatever this just
+            // wrote (the helper issues a query-builder UPDATE, which does
+            // not touch $item's own attributes).
+            $this->syncItemLocationsToCart($cart, $cart->location_id);
+            $item->refresh();
+
             $service = Service::lockForUpdate()->findOrFail($item->service_id);
 
             $start = Carbon::parse($item->start_date);
@@ -699,5 +826,193 @@ class CartService
 
             return $item->fresh();
         });
+    }
+
+    /**
+     * Faza 6 krok 6.2 (86cbahqgv, plan-wdrozenia.md) — read-only projection
+     * of what switching the cart's PICKUP location (`carts.location_id`,
+     * krok 6.1) to $newLocation would do to its existing items, for the
+     * confirmation prompt the acceptance criterion demands ("pytanie, nie
+     * błąd") BEFORE anything is mutated. `forUpdate: false` throughout —
+     * this is display for a question, not the point of commitment; see
+     * setLocation() below for the authoritative, locked re-check.
+     *
+     * Deliberately does NOT read `cart_items.location_id` for the
+     * evaluation itself — every item is evaluated directly against
+     * `$newLocation`'s own capacity (the question being asked is "what
+     * would this item claim if the cart's pickup point becomes
+     * $newLocation", not "what did it claim before"), the same way
+     * addItem() would if the customer added that exact item fresh at the
+     * new branch. `setLocation()` below IS the write path that brings the
+     * stored column in line with this evaluation once the customer
+     * confirms — see that method's own docblock (Faza 6 krok 6.2 fix).
+     *
+     * @return list<array{item: CartItem, requested: int, available: int, kept: int}>
+     */
+    public function previewLocationChange(Cart $cart, Location $newLocation): array
+    {
+        return $this->evaluateLocationChange($cart, $newLocation, forUpdate: false);
+    }
+
+    /**
+     * Faza 6 krok 6.2 — the authoritative write path for changing a cart's
+     * pickup location, named ahead of time by `carts.location_id`'s own
+     * migration docblock ("WITH revalidation of the cart's existing
+     * items"). Re-validates every item against $newLocation's OWN capacity
+     * under lock (Zasada 3/7, rental-availability.md — same discipline as
+     * convertToOrder()) rather than trusting whatever
+     * previewLocationChange() showed the customer moments earlier: stock at
+     * the new branch can change in that window exactly like it can between
+     * checkout's own prompt and its locked re-check.
+     *
+     * Never throws for an item that no longer fully fits — the ticket's own
+     * framing rules that out ("odmowa bez wyjścia jest sprzeczna z
+     * zamówieniem": the customer already said yes to the branch switch, a
+     * hard rejection here would leave them with no way forward). Each
+     * item's quantity is clamped down to whatever IS available at the new
+     * branch (never increased above what the customer already had), or the
+     * item is removed entirely when nothing is available there. The
+     * returned report describes exactly what changed so the caller can
+     * disclose it — mirroring convertToOrder()'s "collect every problem,
+     * decide once" shape one step earlier in the funnel, except resolving
+     * instead of blocking.
+     *
+     * Faza 6 krok 6.2 fix: DOES now stamp `cart_items.location_id` to
+     * `$newLocation->id` on every surviving item (previously deliberately
+     * skipped — see git history — on the theory that nothing downstream
+     * read the column yet). That stopped being true the moment addItem()
+     * started deriving its own `$locationId` from `$cart->location_id`:
+     * without re-stamping here, a customer who switches branches keeps
+     * every EXISTING item pointed at the OLD branch's pool while every NEW
+     * item they add lands in the new one, which is precisely the
+     * pickup-location-vs-stock-location mismatch this whole fix exists to
+     * close. Written for every kept item, not only the ones whose quantity
+     * changed — `evaluateLocationChange()` re-validates ALL of them against
+     * `$newLocation`, so a decision that happens to keep the same quantity
+     * is still a decision about the new location and must not leave a
+     * stale value behind.
+     *
+     * @return array{reduced: list<array{item: CartItem, from: int, to: int}>, removed: list<CartItem>}
+     */
+    public function setLocation(Cart $cart, Location $newLocation): array
+    {
+        return DB::transaction(function () use ($cart, $newLocation): array {
+            // Same reasoning as convertToOrder()'s own lockForUpdate() docblock:
+            // a locking read on this SPECIFIC row, not a Builder discarded
+            // without ->first()/->get(). Guards against a double-submitted
+            // confirm (two tabs) racing each other's revalidation.
+            $cart = Cart::where('id', $cart->id)->lockForUpdate()->firstOrFail();
+
+            $decisions = $this->evaluateLocationChange($cart, $newLocation, forUpdate: true);
+
+            $reduced = [];
+            $removed = [];
+
+            foreach ($decisions as $decision) {
+                $item = $decision['item'];
+                $kept = $decision['kept'];
+
+                if ($kept === 0) {
+                    $removed[] = $item;
+                    $item->delete();
+
+                    continue;
+                }
+
+                if ($kept < $decision['requested']) {
+                    $pricing = $this->availability->calculatePricing($item->service, $item->rental_days, $kept);
+
+                    $item->update([
+                        'quantity' => $kept,
+                        'location_id' => $newLocation->id,
+                        'unit_price' => $pricing['unit_price'],
+                        'total_price' => $pricing['total'],
+                        'price_snapshot' => $pricing,
+                    ]);
+
+                    $reduced[] = ['item' => $item->fresh(), 'from' => $decision['requested'], 'to' => $kept];
+                } else {
+                    // Quantity/pricing unchanged, but this row must still be
+                    // re-stamped to the NEW pickup location — see this
+                    // method's own docblock.
+                    $item->update(['location_id' => $newLocation->id]);
+                }
+            }
+
+            $cart->update(['location_id' => $newLocation->id]);
+
+            return ['reduced' => $reduced, 'removed' => $removed];
+        });
+    }
+
+    /**
+     * Shared core of previewLocationChange()/setLocation() — greedy,
+     * deterministic ordering (`orderBy('service_id')->orderBy('id')`,
+     * same as convertToOrder()) so both methods reach the SAME decision for
+     * the same cart state, and so reverting $forUpdate manually reproduces
+     * convertToOrder()'s own read/write split for a falsifiability check.
+     *
+     * Sibling aggregation mirrors convertToOrder()'s Zasada 7 pattern, keyed
+     * by service_id ALONE (not "service_id|location_id" like convertToOrder) —
+     * every item here is being evaluated against the SAME $newLocation, so
+     * there is only one location bucket in play, unlike convertToOrder()
+     * where each item can carry its own already-set location_id.
+     *
+     * `$forUpdate` controls BOTH the Service row lock and
+     * getAvailableQuantity()'s own locking reads together — never locking
+     * for a read-only preview (would serialise unrelated readers for
+     * nothing) and never skipping the lock for the real write (would reopen
+     * exactly the oversell race Zasada 3 exists to close).
+     *
+     * @return list<array{item: CartItem, requested: int, available: int, kept: int}>
+     */
+    private function evaluateLocationChange(Cart $cart, Location $newLocation, bool $forUpdate): array
+    {
+        if ($newLocation->organization_id !== $cart->organization_id || ! $newLocation->is_active) {
+            throw new \InvalidArgumentException(
+                'CartService::setLocation() requires an active Location belonging to the cart\'s own organization.'
+            );
+        }
+
+        $items = $cart->items()->with('service')->orderBy('service_id')->orderBy('id')->get();
+
+        $acceptedByService = [];
+        $decisions = [];
+
+        foreach ($items as $item) {
+            $service = $forUpdate
+                ? Service::lockForUpdate()->findOrFail($item->service_id)
+                : $item->service;
+
+            $itemStart = Carbon::parse($item->start_date);
+            $itemEnd = Carbon::parse($item->end_date);
+
+            $available = $this->availability->getAvailableQuantity(
+                $service,
+                $itemStart,
+                $itemEnd,
+                forUpdate: $forUpdate,
+                locationId: $newLocation->id
+            );
+
+            $siblingDemand = collect($acceptedByService[$item->service_id] ?? [])
+                ->filter(fn (array $accepted): bool => $itemStart->lte($accepted['end']) && $itemEnd->gte($accepted['start']))
+                ->sum('quantity');
+
+            $kept = min($item->quantity, max(0, $available - $siblingDemand));
+
+            if ($kept > 0) {
+                $acceptedByService[$item->service_id][] = ['start' => $itemStart, 'end' => $itemEnd, 'quantity' => $kept];
+            }
+
+            $decisions[] = [
+                'item' => $item,
+                'requested' => $item->quantity,
+                'available' => $available,
+                'kept' => $kept,
+            ];
+        }
+
+        return $decisions;
     }
 }
