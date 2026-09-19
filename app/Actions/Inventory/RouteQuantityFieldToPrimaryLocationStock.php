@@ -8,6 +8,7 @@ use App\Enums\ServiceType;
 use App\Models\Location;
 use App\Models\Service;
 use App\Models\ServiceLocationStock;
+use App\Models\ServiceUnit;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -32,14 +33,29 @@ final class RouteQuantityFieldToPrimaryLocationStock
 {
     public static function tenantHasExactlyOneActiveLocation(?int $organizationId): bool
     {
+        return self::activeLocationCount($organizationId) === 1;
+    }
+
+    /**
+     * ClickUp 123k99cvc53: ServiceResource's helperText needs to tell the
+     * two "field disabled" causes apart — a tenant with ZERO active
+     * locations has nowhere for the "Stany magazynowe" tab this field's
+     * message points to to show anything (LocationStocksRelationManager's
+     * own emptyStateDescription says so explicitly), so pointing an admin
+     * there for THAT specific case is actively misleading. Kept as its own
+     * public method rather than inlined in tenantHasExactlyOneActiveLocation()
+     * so both call sites (that method, and ServiceResource) share one query.
+     */
+    public static function activeLocationCount(?int $organizationId): int
+    {
         if (! $organizationId) {
-            return false;
+            return 0;
         }
 
         return Location::withoutGlobalScope('organization')
             ->where('organization_id', $organizationId)
             ->where('is_active', true)
-            ->count() === 1;
+            ->count();
     }
 
     /**
@@ -67,7 +83,28 @@ final class RouteQuantityFieldToPrimaryLocationStock
 
         $primaryLocation = self::primaryLocationOf($organizationId);
 
-        return ! $primaryLocation || ! self::serviceHasStockOutsideItsPrimaryLocation($service, $primaryLocation);
+        if (! $primaryLocation) {
+            return true;
+        }
+
+        if (self::serviceHasStockOutsideItsPrimaryLocation($service, $primaryLocation)) {
+            return false;
+        }
+
+        // ClickUp 123k99cvc54: once the primary location has any egzemplarz
+        // (ServiceUnit) of its own, ServiceUnitObserver becomes the anchor's
+        // sole writer for that (service, location) pair — every unit
+        // create/update/delete recomputes service_location_stocks.quantity
+        // from a COUNT() and overwrites whatever is there. Leaving this
+        // field enabled would make it a SECOND writer racing the observer:
+        // an admin typing a number here and saving would silently clobber
+        // the unit-derived count back to an arbitrary value the very next
+        // time any unit changed. Same "single writer" contract already
+        // enforced above for the "stock split across locations" case, just
+        // scoped to the primary location specifically (a unit at a
+        // DIFFERENT, non-primary location does not disable this field —
+        // that location was never reachable through it anyway).
+        return ! self::primaryLocationHasUnits($service, $primaryLocation);
     }
 
     public static function handle(Service $service): void
@@ -151,6 +188,21 @@ final class RouteQuantityFieldToPrimaryLocationStock
         return ServiceLocationStock::withoutGlobalScope('organization')
             ->where('service_id', $service->id)
             ->where('location_id', '!=', $primaryLocation->id)
+            ->exists();
+    }
+
+    /**
+     * True when this service has at least one egzemplarz (ServiceUnit)
+     * registered at the org's primary location specifically — a unit at
+     * some OTHER location does not count, that location was never reachable
+     * through this single-number field anyway (it only ever routes into the
+     * primary's own row).
+     */
+    private static function primaryLocationHasUnits(Service $service, Location $primaryLocation): bool
+    {
+        return ServiceUnit::withoutGlobalScope('organization')
+            ->where('service_id', $service->id)
+            ->where('location_id', $primaryLocation->id)
             ->exists();
     }
 }

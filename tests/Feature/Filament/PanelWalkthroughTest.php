@@ -229,22 +229,15 @@ class PanelWalkthroughTest extends TestCase
         // shape (2026_08_27_120001_backfill_primary_location_for_organizations gave every
         // tenant's primary branch the literal slug "siedziba-glowna"). LocationObserver
         // auto-promotes the first location of an org to primary.
-        // 'phone' pinned explicitly -- known flaky fixture (test-engineer memory:
-        // LocationFactory's fake()->phoneNumber() is en_US locale and occasionally generates an
-        // "x1234" extension that fails the form's ->tel() validation; reproduced once while
-        // building this file as a spurious "phone field format is invalid" on a no-op save).
-        Location::factory()->create([
-            'organization_id' => $this->tenantB->id,
-            'name' => 'Siedziba główna',
-            'slug' => 'siedziba-glowna',
-            'phone' => '+48501234567',
-        ]);
-        Location::factory()->create([
-            'organization_id' => $this->tenantA->id,
-            'name' => 'Siedziba główna',
-            'slug' => 'siedziba-glowna',
-            'phone' => '+48501234568',
-        ]);
+        //
+        // No manual Location::factory()->create() here anymore (ClickUp 123k99cvc53) --
+        // ProvisionTenantOrganization::execute() -> SeedOrganizationDefaults now creates this
+        // EXACT row itself (name "Siedziba główna", same auto-slug "siedziba-glowna") for every
+        // newly provisioned organization, through the real onboarding path this test already
+        // drives above. Manually creating a second one here would collide on
+        // UNIQUE(organization_id, slug) against the org's own auto-created row -- not a
+        // cross-tenant collision, a same-tenant duplicate. The cross-tenant slug collision this
+        // comment originally set up by hand now happens for free, identically, on both tenants.
 
         $this->staffUserA = User::factory()->create();
         $this->staffUserA->assignRole('staff');

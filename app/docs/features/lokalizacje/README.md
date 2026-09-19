@@ -131,6 +131,51 @@ migawki o telefon/e-mail oddziału to osobne zgłoszenie (ClickUp `123k99cvcvw`)
 Weryfikacja: `pint --test` 993/993; `php artisan test` (SQLite) 2047 passed/5 skipped/0 failed
 (2027 + 20 nowych testów); `npm run build` wykonany.
 
+**Poprawki onboardingu/magazynu (ClickUp `123k99cvc53`/`123k99cvcc3`/`123k99cvc54`) — gałąź
+`feature/lokalizacje-onboarding-stan`** 2026-09-19, jeszcze nie zmergowana: trzy błędy znalezione
+przy czytaniu kodu rc37, wszystkie w torze „nowy tenant → produkt → dostępność", żaden nie
+wymagał migracji (zmierzone na dev: 0/8 organizacji bez lokalizacji, 0/26 usług `item_rental` bez
+wiersza stanu). (1) `registro:tenant-provision` nie zakładał żadnej `Location` —
+`SeedOrganizationDefaults::ensurePrimaryLocation()` teraz zakłada „Siedziba główna" tak jak Faza 1's
+jednorazowy backfill robił dla starszych tenantów. (2) `SeedEquipmentRental`/`onboarding:seed-
+vertical` tworzyły usługi bez `service_location_stocks` — `SyncServiceLocationStock::forService()`
+wołane teraz z obu miejsc; kolejność odwrotna (oddział zakładany PO katalogu) naprawiona w
+`forLocation()` — genuine pierwszy oddział organizacji dziedziczy `quantity_total` zamiast zera.
+(3) pierwszy `ServiceUnit` nadpisywał ręcznie wpisaną ilość magazynową wartością `COUNT()` —
+`ServiceUnitObserver::materializePlaceholdersForFirstUnit()` dopełnia różnicę bezimiennymi
+egzemplarzami; pole „Ilość w magazynie" i inline-edycja w „Stany magazynowe" wyłączają się per
+(usługa, oddział) od pierwszego egzemplarza. Pełny opis: `model-danych.md`, `tryb-jednooddzialowy.md`.
+
+**Code review tego samego dnia, dwa poprawione bloki:** (a) `ensurePrimaryLocation()` w
+pierwszej wersji leczyła tylko NOWO tworzoną organizację (`$orgWasCreated`) — ponowne
+uruchomienie komendy na już istniejącym, bezoddziałowym tenancie nigdy go nie leczyło; wołana
+teraz bezwarunkowo, osobno od `SeedOrganizationDefaults::execute()` (który zostaje
+`$orgWasCreated`-only — `updateOrCreate` na ustawieniach nadpisałby to, co admin już zmienił).
+(b) `ServiceUnitObserver::materializePlaceholdersForFirstUnit()`'s `COUNT()` był bez blokady —
+dwa niemal-równoczesne pierwsze egzemplarze tej samej pary (usługa, oddział) mogły OBA uznać się
+za pierwsze i obie dopełnić kotwicę. Warunek wstępny zmierzony, nie założony: gołe
+`ServiceUnit::create()` (domyślne zachowanie panelu — żaden panel nie włącza
+`databaseTransactions()`) autocommituje INSERT egzemplarza ZANIM obserwator w ogóle otworzy
+własną transakcję, co czyni „dwa procesy jednocześnie nie widzą siebie nawzajem" matematycznie
+nieosiągalnym dla dwóch OSOBNYCH takich wywołań — realny wyścig wymaga wywołującego z już
+otwartą transakcją otaczającą (masowe tworzenie, przyszły panel z `databaseTransactions(true)`) —
+dokładnie ta konwencja, którą klasa już deklaruje we własnym docblocku. Naprawione
+`lockForUpdate()` na wierszu kotwicy PRZED sprawdzeniem liczby egzemplarzy, a samo liczenie też
+jako blokujący odczyt (REPEATABLE READ nie odświeża zwykłego SELECT-a po samym czekaniu na inny
+lock — Zasada 3 w `rental-availability.md`). **Wynik falsyfikacji zmierzony, nie przewidziany:**
+cofnięcie blokady nie dało cichej inflacji — dało prawdziwy `SQLSTATE[40001]: 1213 Deadlock
+found` na drugim `insertOrIgnore` (ten sam bezpieczny tryb awarii co „Realny deadlock InnoDB" w
+`rental-availability.md`, inny mechanizm). Kolejność blokad tego obserwatora (kotwica →
+`services`) zostaje ODWROTNA względem koszyka (`services` → kotwica) — ryzyko istniało już PRZED
+tą poprawką, niepogorszone, nienaprawione w tym kroku (dotyka gorącej ścieżki checkoutu,
+wymagałoby własnego harnessu współbieżności) — patrz `ServiceUnitObserver.php`'s docblock.
+
+Weryfikacja: `pint --test` 997/997; `php artisan test` (SQLite) 2067 passed/5 skipped/0 failed
+(2051 + 16 nowych testów w domyślnym testsuite, dokładna zgodność —
+`ServiceUnitFirstUnitRaceTest` żyje w `tests/Concurrency`, poza domyślnym testsuite);
+`bash scripts/test-concurrency.sh` 7/7 (1 nowy scenariusz: dwa równoczesne pierwsze egzemplarze
+tej samej pary, prawdziwy MySQL).
+
 **Faza 5 kroki 5.3 i 5.4 — zmergowane na `develop`** 2026-09-09 (PR #269). Kafelki i strona
 sprzętu pokazują dostępność **wybranego oddziału**, a nie stanu całej firmy.
 

@@ -209,6 +209,23 @@ już dziś**, nie dopiero po Fazie 4.
 wyłączone**. Bez `dehydrated(false)` zapis formularza po cichu nadpisałby rozbity stan per oddział
 zagregowaną wartością z ukrytego pola.
 
+**Niezmiennik (ClickUp 123k99cvc53/cvcc3, naprawiony 2026-09-19): każda usługa `item_rental` ma
+wiersz `service_location_stocks` dla KAŻDEGO aktywnego oddziału swojej organizacji, `quantity_total`
+= SUMA tych wierszy — zawsze, nie dopiero po pierwszym otwarciu zakładki „Stany magazynowe".**
+Trzy ścieżki materializują to teraz z góry, nie leniwie: `SeedOrganizationDefaults` zakłada
+pierwszy oddział przy `registro:tenant-provision` (bez tego pole „Ilość w magazynie" ciche się
+wyłączało — zero lokalizacji, zero błędu); `SeedEquipmentRental::seed()` i
+`SeedVerticalDataCommand` wołają `SyncServiceLocationStock::forService()` dla każdej utworzonej
+usługi (katalog seedowany bezpośrednio przez Eloquent nigdy nie przechodził przez panel, więc
+`afterCreate()` na `CreateService` nigdy się nie odpalał); `CreateService::afterCreate()` woła to
+samo dla KAŻDEGO tenanta, nie tylko jednooddziałowego. Kolejność odwrotna (oddział zakładany PO
+katalogu) ma swój własny przypadek w `SyncServiceLocationStock::forLocation()`: gdy nowo tworzony
+oddział jest GENUINE pierwszym dla organizacji (nie tylko „obecnie główny" — organizacja może
+przepiąć `primary_slot` na późniejszy oddział, nie czyniąc go pierwszym), usługi bez żadnego
+wiersza stanu dostają `quantity_total` zamiast zera, tak samo jak `forService()` już robi dla
+odwrotnej kolejności. DRUGI i kolejny nowy oddział zawsze zero-fill, niezależnie od tego, kiedy
+powstał katalog.
+
 ### `service_units` (nowa) — egzemplarze
 
 `organization_id`, `service_id`, `location_id`, **`identifier`** (nie `serial_number` — patrz
@@ -293,6 +310,29 @@ Testy: `tests/Feature/Database/CreateServiceUnitsTableMigrationTest.php`,
 `tests/Feature/Database/GenerateServiceUnitsFromQuantityTotalMigrationTest.php`,
 `tests/Unit/Models/ServiceUnitTenantIsolationTest.php`,
 `tests/Feature/Organizations/ServiceUnitObserverTest.php`.
+
+**Wersja ONGOING tego samego ryzyka (ClickUp 123k99cvc54, naprawione 2026-09-19) — generator
+wyżej to jednorazowa migracja, ale usługa może dostać swój PIERWSZY egzemplarz długo po niej,
+mając już ręcznie wpisaną ilość w polu „Ilość w magazynie".** Bez zabezpieczenia
+`recalculateAnchor()`'s `COUNT()` nadpisywał kotwicę z „5" na „1" w momencie dodania pierwszego
+egzemplarza — dokładnie ten sam mechanizm ryzyka co generator, tylko wyzwalany z panelu, nie z
+migracji. `ServiceUnitObserver::materializePlaceholdersForFirstUnit()` (wywoływane z `created()`
+PRZED `recalculateAnchor()`) rozwiązuje to identycznie jak generator: gdy to naprawdę PIERWSZY
+wiersz `service_units` dla pary (usługa, oddział) i istniejący wiersz kotwicy ma ilość wyższą niż
+to, co pokrywa nowo utworzona jednostka, dopełnia różnicę bezimiennymi egzemplarzami (numer
+opcjonalny — ta sama decyzja produktowa co generator) o statusie `available`. Jednostka utworzona
+od razu w `maintenance`/`retired` NIE liczy się do pokrycia — dopełniane jest wtedy CAŁE
+poprzednie `quantity`, żeby dostępność (nie surowa liczba egzemplarzy) została zachowana. Drugi i
+kolejny egzemplarz tej samej pary nigdy nie wyzwala kolejnej rundy (warunek: dokładnie 1 wiersz
+`service_units` dla tej pary PO wstawieniu) — inaczej każdy kolejny zapis winduje kotwicę bez
+końca. Surowy `INSERT` (nie Eloquent `create()`), żeby nie retriggerować własnego obserwatora.
+
+**Niezmiennik od tego momentu: gdy para (usługa, oddział) ma choć jeden egzemplarz, pole „Ilość w
+magazynie" i inline-edycja w „Stany magazynowe" przestają być pisarzem tej konkretnej kotwicy** —
+`RouteQuantityFieldToPrimaryLocationStock::eligibleForDirectRouting()` i
+`LocationStocksRelationManager`'s `TextInputColumn::disabled()` sprawdzają to per (usługa,
+oddział), osobno od istniejącego warunku „stan rozjechany na inny oddział". Egzemplarz w
+oddziale A nie blokuje pola dla oddziału B tej samej usługi.
 
 **Niezweryfikowane w tym kroku:** zachowanie FK `cascadeOnDelete` na realnym MySQL (dowiedzione
 tylko na SQLite lokalnie, tak jak Faza 2 — bramka MySQL w CI jest jedynym miejscem, które to

@@ -8,6 +8,7 @@ use App\Actions\Inventory\SyncServiceLocationStock;
 use App\Enums\ServiceType;
 use App\Models\Service;
 use App\Models\ServiceLocationStock;
+use App\Models\ServiceUnit;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -74,6 +75,20 @@ class LocationStocksRelationManager extends RelationManager
                     ->label('Ilość')
                     ->type('number')
                     ->rules(['required', 'integer', 'min:0'])
+                    // ClickUp 123k99cvc54: once THIS (service, location) pair
+                    // has any egzemplarz of its own, ServiceUnitObserver is
+                    // the sole writer of this row's quantity — it recomputes
+                    // it from a COUNT() on every unit create/update/delete.
+                    // Leaving the inline edit open here would make it a
+                    // second writer racing the observer, the exact same
+                    // hazard the parent form's "Ilość w magazynie" field is
+                    // already guarded against
+                    // (RouteQuantityFieldToPrimaryLocationStock::
+                    // eligibleForDirectRouting()) — mirrored here per-row
+                    // instead of per-service, since a service can have units
+                    // at location A and none yet at B (that row stays
+                    // editable).
+                    ->disabled(fn (ServiceLocationStock $record): bool => self::locationHasUnits($record))
                     ->afterStateUpdated(function (ServiceLocationStock $record): void {
                         DB::transaction(function () use ($record): void {
                             $record->service->recalculateQuantityTotal();
@@ -88,6 +103,14 @@ class LocationStocksRelationManager extends RelationManager
             ->toolbarActions([])
             ->emptyStateHeading('Brak stanów magazynowych')
             ->emptyStateDescription('Ta organizacja nie ma jeszcze żadnego aktywnego oddziału.');
+    }
+
+    private static function locationHasUnits(ServiceLocationStock $record): bool
+    {
+        return ServiceUnit::withoutGlobalScope('organization')
+            ->where('service_id', $record->service_id)
+            ->where('location_id', $record->location_id)
+            ->exists();
     }
 
     public function canCreate(): bool

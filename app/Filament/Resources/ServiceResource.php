@@ -303,9 +303,7 @@ class ServiceResource extends BaseResource
                             // through LocationStocksRelationManager below.
                             ->disabled(fn (?Model $record): bool => ! self::tenantEligibleForDirectQuantityField($record))
                             ->dehydrated(fn (?Model $record): bool => self::tenantEligibleForDirectQuantityField($record))
-                            ->helperText(fn (?Model $record): ?string => self::tenantEligibleForDirectQuantityField($record)
-                                ? null
-                                : 'Więcej niż jeden aktywny oddział (lub żaden), albo istnieje stan magazynowy na innym oddziale — ustaw ilości w zakładce "Stany magazynowe" poniżej.'),
+                            ->helperText(fn (?Model $record): ?string => self::quantityFieldHelperText($record)),
 
                         Forms\Components\Select::make('rental_category_id')
                             ->label('Kategoria')
@@ -695,6 +693,36 @@ class ServiceResource extends BaseResource
             TenantFeature::currentTenant()?->id,
             $record instanceof Service ? $record : null,
         );
+    }
+
+    /**
+     * ClickUp 123k99cvc53/123k99cvc54: null when the field is directly
+     * editable (nothing to explain); otherwise tells the admin WHY it is
+     * disabled and where the number actually lives now — three distinct
+     * causes, each pointing somewhere different, so a single generic
+     * message would be actively wrong for at least one of them (pointing to
+     * "Stany magazynowe" when the org has zero locations sends the admin to
+     * a tab that can only ever say "Ta organizacja nie ma jeszcze żadnego
+     * aktywnego oddziału" — LocationStocksRelationManager's own
+     * emptyStateDescription).
+     */
+    private static function quantityFieldHelperText(?Model $record): ?string
+    {
+        if (self::tenantEligibleForDirectQuantityField($record)) {
+            return null;
+        }
+
+        $organizationId = TenantFeature::currentTenant()?->id;
+
+        if (RouteQuantityFieldToPrimaryLocationStock::activeLocationCount($organizationId) === 0) {
+            return 'Brak aktywnego oddziału — dodaj oddział w sekcji "Lokalizacje", zanim ustawisz ilość w magazynie.';
+        }
+
+        if ($record instanceof Service && $record->exists && $record->serviceUnits()->exists()) {
+            return 'Ten produkt ma zarejestrowane egzemplarze — ustaw ilość w zakładce "Egzemplarze" poniżej.';
+        }
+
+        return 'Więcej niż jeden aktywny oddział, albo istnieje stan magazynowy na innym oddziale — ustaw ilości w zakładce "Stany magazynowe" poniżej.';
     }
 
     private static function isRentalType(mixed $value): bool

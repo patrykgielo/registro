@@ -81,9 +81,31 @@ final class SyncServiceLocationStock
 
     /**
      * Ensures every item_rental service of the location's organization has a
-     * (zero-quantity) row for this NEW location. Always 0 — unlike
-     * forService() there is no "opening quantity" to infer here, this
-     * location genuinely has none of anything yet.
+     * row for this NEW location. Zero for an "additional branch" — unlike
+     * forService() there is no opening quantity to infer, that location
+     * genuinely has none of anything yet.
+     *
+     * Exception (ClickUp 123k99cvcc3, reverse-order case): when this
+     * location is the organization's ONLY one — genuinely its first-ever,
+     * not merely "currently primary" (an org can re-promote a later branch
+     * to primary without it being the first) — a service that has NO stock
+     * row anywhere yet gets this location seeded with its `quantity_total`
+     * instead of 0, mirroring exactly what forService() already does for
+     * the opposite ordering (location first, product second). Without this,
+     * a tenant whose very first location is created AFTER its catalogue
+     * already exists (theoretically reachable today only for an
+     * organization that predates SeedOrganizationDefaults's own primary-
+     * location seeding, or one whose only location was somehow never
+     * created) would see every existing product's stock silently reset to 0
+     * the moment the admin adds that first branch, discarding whatever
+     * quantity_total already said.
+     *
+     * A service that already has a stock row SOMEWHERE (impossible in the
+     * "genuinely first location" branch by construction, since no other
+     * location can have anchored one — kept as an explicit check rather
+     * than assumed, so a future caller passing a location that turns out
+     * not to be first degrades safely to the ordinary zero-fill) still
+     * gets 0 here, same as any other new location.
      */
     public static function forLocation(Location $location): void
     {
@@ -91,22 +113,42 @@ final class SyncServiceLocationStock
             return;
         }
 
-        $serviceIds = Service::withoutGlobalScope('organization')
+        $services = Service::withoutGlobalScope('organization')
             ->where('organization_id', $location->organization_id)
             ->where('service_type', ServiceType::ItemRental->value)
-            ->pluck('id');
+            ->get(['id', 'quantity_total']);
 
-        if ($serviceIds->isEmpty()) {
+        if ($services->isEmpty()) {
             return;
         }
 
+        $isOnlyLocationForOrganization = Location::withoutGlobalScope('organization')
+            ->where('organization_id', $location->organization_id)
+            ->count() === 1;
+
+        // organization_id filter is defense-in-depth, not the primary scope
+        // (service_id already comes from an organization_id-filtered $services
+        // query above) — code review 2026-09-19: an explicit filter here
+        // survives a future caller that passes an already-unscoped service_id
+        // list, instead of silently trusting the caller's own scoping.
+        $serviceIdsWithExistingStock = $isOnlyLocationForOrganization
+            ? ServiceLocationStock::withoutGlobalScope('organization')
+                ->where('organization_id', $location->organization_id)
+                ->whereIn('service_id', $services->pluck('id'))
+                ->distinct()
+                ->pluck('service_id')
+                ->all()
+            : [];
+
         $now = now();
 
-        $rows = $serviceIds->map(fn (int $serviceId) => [
+        $rows = $services->map(fn (Service $service) => [
             'organization_id' => $location->organization_id,
-            'service_id' => $serviceId,
+            'service_id' => $service->id,
             'location_id' => $location->id,
-            'quantity' => 0,
+            'quantity' => ($isOnlyLocationForOrganization && ! in_array($service->id, $serviceIdsWithExistingStock, true))
+                ? ($service->quantity_total ?? 0)
+                : 0,
             'is_active' => true,
             'created_at' => $now,
             'updated_at' => $now,
