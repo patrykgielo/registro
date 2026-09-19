@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Onboarding\Seeders;
 
+use App\Actions\Inventory\SyncServiceLocationStock;
 use App\Enums\ServiceType;
 use App\Models\Organization;
 use App\Models\RentalCategory;
@@ -25,7 +26,7 @@ class SeedEquipmentRental implements VerticalSeeder
             ]);
 
             foreach ($categoryData['items'] as $itemSort => $item) {
-                Service::withoutGlobalScope('organization')->create([
+                $service = Service::withoutGlobalScope('organization')->create([
                     'organization_id' => $organization->id,
                     'service_type' => ServiceType::ItemRental,
                     'rental_category_id' => $category->id,
@@ -43,6 +44,22 @@ class SeedEquipmentRental implements VerticalSeeder
                     'is_active' => true,
                     'sort_order' => $itemSort,
                 ]);
+
+                // ClickUp 123k99cvcc3 — this Service::create() never touches
+                // service_location_stocks on its own (no model observer does
+                // this generally, deliberately: RouteQuantityFieldToPrimaryLocationStockTest
+                // / SyncServiceLocationStockTest's established fixture pattern
+                // — create an item_rental service, then manually seed an
+                // asymmetric stock split for it — depends on a freshly created
+                // service NOT already owning a row, so a blanket Service::created
+                // observer was rejected, see app/docs/features/lokalizacje/
+                // model-danych.md). A seeded catalogue showed 0 available
+                // everywhere until an admin happened to open one product's
+                // "Stany magazynowe" tab. Called here directly (not only from
+                // SeedVerticalDataCommand, which wraps this) so any direct
+                // `$seeder->seed($org)` caller — this seeder used standalone in
+                // tests, for one — gets consistent stock too.
+                SyncServiceLocationStock::forService($service);
             }
         }
     }

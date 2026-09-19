@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Actions\Inventory\SyncServiceLocationStock;
 use App\Actions\Onboarding\Seeders\VerticalSeeder;
 use App\Enums\Industry;
+use App\Enums\ServiceType;
 use App\Models\Organization;
 use App\Models\RentalCategory;
 use App\Models\Service;
@@ -105,6 +107,7 @@ class SeedVerticalDataCommand extends Command
                     $this->purgeExistingData($org);
                 }
                 $seeder->seed($org);
+                $this->materializeLocationStocks($org);
             });
         } catch (\Throwable $e) {
             Log::error('onboarding:seed-vertical transaction failed — rolled back', [
@@ -159,6 +162,49 @@ class SeedVerticalDataCommand extends Command
         $this->info('[DRY-RUN] Brak zmian — tryb podglądu.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ClickUp 123k99cvcc3: a VerticalSeeder creates Service rows directly
+     * (Service::withoutGlobalScope('organization')->create(), never through
+     * ServiceResource's Create page), so neither
+     * RouteQuantityFieldToPrimaryLocationStock::handle() (afterCreate() on
+     * that Filament page) nor LocationStocksRelationManager's lazy mount
+     * ever runs for them — a freshly seeded item_rental catalogue showed 0
+     * available everywhere until an admin happened to open one specific
+     * product's "Stany magazynowe" tab. Runs for EVERY VerticalSeeder here
+     * at the COMMAND level, not hardcoded into SeedEquipmentRental itself —
+     * a future vertical adding item_rental services is covered without
+     * remembering to call this on its own. A time_slot-only vertical
+     * (SeedAutoDetailing, SeedGeneralServices today) simply has no matching
+     * rows to iterate.
+     *
+     * Runs inside the same DB::transaction() as the seed itself — a failed
+     * seed rolls back the stock rows with it, never leaving a half-seeded
+     * catalogue with inconsistent stock. SyncServiceLocationStock::forService()
+     * is itself idempotent (insertOrIgnore, never overwrites an existing
+     * row), so this is also safe to run again on a --force re-seed.
+     *
+     * `whereDoesntHave('locationStocks')` (code review 2026-09-19, NIT):
+     * SeedEquipmentRental already calls forService() itself, per item, as it
+     * creates each Service — so by the time this method runs, every service
+     * THAT seeder produced already has its stock rows, and calling
+     * forService() again here would be pure duplicate work (a locations
+     * query + an exists() check per service, for nothing). Filtering to
+     * services with ZERO stock rows keeps this method doing real work only
+     * for a FUTURE vertical seeder that does not call forService() itself —
+     * the actual reason this command-level safety net exists at all (see
+     * above) — without re-doing SeedEquipmentRental's own, already-complete
+     * job.
+     */
+    private function materializeLocationStocks(Organization $org): void
+    {
+        Service::withoutGlobalScope('organization')
+            ->where('organization_id', $org->id)
+            ->where('service_type', ServiceType::ItemRental->value)
+            ->whereDoesntHave('locationStocks')
+            ->get()
+            ->each(fn (Service $service) => SyncServiceLocationStock::forService($service));
     }
 
     private function resolveOrganization(string $identifier): ?Organization

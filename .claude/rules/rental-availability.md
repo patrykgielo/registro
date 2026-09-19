@@ -219,3 +219,30 @@ blokujący odczyt gwarantuje zaczekanie na commit i zwrócenie świeżej wartoś
    jednej z czterech ścieżek nie ryzykuje wyłącznie cichej korupcji — może też naprawdę wysypać
    żądanie klienta błędem bazy danych. Nie licz na to, że produkcyjny objaw ZAWSZE będzie ciche
    rozjechanie; zależy od dokładnego przeplotu, który wiersz FK blokuje pierwszy.
+
+## 10. Kotwica zawsze istnieje — brak wiersza to teraz anomalia, nie normalny stan
+
+Od ClickUp 123k99cvc53/cvcc3 (2026-09-19) **każda usługa `item_rental` ma wiersz
+`service_location_stocks` dla każdego aktywnego oddziału swojej organizacji** — provisioning
+zakłada pierwszy oddział, vertical seedery i `CreateService::afterCreate()` materializują wiersze
+od razu, `SyncServiceLocationStock::forLocation()` zachowuje `quantity_total` (nie zeruje) gdy
+nowy oddział jest genuine pierwszym dla organizacji. Zasada 6's „brak wiersza kotwicy = pojemność
+zero" zostaje bit w bit ta sama — to nadal poprawny odczyt dla nowego kodu — ale dziś brak wiersza
+u usługi `item_rental` z aktywnym oddziałem sygnalizuje raczej lukę w powyższych ścieżkach niż
+normalny, oczekiwany stan.
+
+Osobno: od pierwszego egzemplarza (`ServiceUnit`) danej pary (usługa, oddział),
+`ServiceUnitObserver` jest JEDYNYM pisarzem tej kotwicy — pole „Ilość w magazynie" i inline-edycja
+w „Stany magazynowe" wyłączają się per (usługa, oddział)
+(`RouteQuantityFieldToPrimaryLocationStock::eligibleForDirectRouting()`). Pierwszy egzemplarz przy
+już istniejącej ręcznej ilości materializuje różnicę jako bezimienne placeholdery zamiast
+zerować kotwicę do 1 — `ServiceUnitObserver::materializePlaceholdersForFirstUnit()`, pełny opis w
+`app/docs/features/lokalizacje/model-danych.md`.
+
+**Ten mechanizm ma własną blokadę (code review 2026-09-19) — `lockForUpdate()` na wierszu
+kotwicy PRZED liczeniem egzemplarzy, samo liczenie też blokujące** (ta sama zasada co Zasada 3
+wyżej: czekanie na cudzy lock nie odświeża zwykłego SELECT-a). Dowód dwuprocesowy na prawdziwym
+MySQL: `tests/Concurrency/ServiceUnitFirstUnitRaceTest.php`. Kolejność blokad TEGO obserwatora
+(kotwica → `services`) jest ODWROTNA względem koszyka (`services` → kotwica) — ryzyko AB-BA
+istniało już przed tą poprawką (nie pogorszone, nie naprawione — dotyka gorącej ścieżki
+checkoutu), patrz `ServiceUnitObserver.php`'s własny docblock.
