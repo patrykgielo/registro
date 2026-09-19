@@ -19,15 +19,26 @@ trait BuildsOrderRentalEmailVariables
     /**
      * Build rental-specific template variables from order data.
      *
-     * Reads pickup/contact info via SettingsManager::contactDetailsFor() — the single
-     * canonical accessor for this, queue-safe because it takes the organization
-     * explicitly rather than resolving TenantFeature::currentTenant() (which depends on
-     * request/session state a queue worker doesn't have). Do NOT read
-     * $order->organization->settings (the JSON column) — see contactDetailsFor()'s own
-     * docblock for why a shared accessor exists instead of each caller reading the
-     * settings table directly.
+     * Reads pickup/contact info via SettingsManager::pickupDetailsFor() (Faza 6 krok
+     * 6.5) — the single canonical accessor for this, queue-safe because it takes the
+     * order explicitly rather than resolving TenantFeature::currentTenant() (which
+     * depends on request/session state a queue worker doesn't have). Prefers the
+     * order's own checkout-time pickup-location snapshot when one exists, falling
+     * back to the tenant's contact settings otherwise — same resolver, same fallback,
+     * as the customer's own order page and the protocol PDFs. Do NOT read
+     * $order->organization->settings (the JSON column) — see
+     * SettingsManager::contactDetailsFor()'s own docblock for why a shared accessor
+     * exists instead of each caller reading the settings table directly.
      *
-     * @return array<string, string>
+     * `pickup_location_name`/`pickup_location_address` are exposed as new template
+     * variables (empty string when no snapshot exists) for a FUTURE template edit —
+     * no existing seeded template references them yet, so adding them here changes
+     * nothing about what a customer sees today. `pickup_address`/`pickup_phone`
+     * DO change behaviour: they already exist in ORDER_ACCEPTED_OFFLINE/ORDER_PAID
+     * bodies and now resolve to the branch address when a snapshot exists, exactly
+     * like the order page above — no template body edit required.
+     *
+     * @return array<string, string|TrustedHtml>
      */
     private function buildRentalVariables(Order $order): array
     {
@@ -62,7 +73,7 @@ trait BuildsOrderRentalEmailVariables
             ? number_format((float) $order->deposit_amount, 2, ',', ' ').' zł'
             : '';
 
-        $contact = app(SettingsManager::class)->contactDetailsFor($order->organization);
+        $contact = app(SettingsManager::class)->pickupDetailsFor($order);
         $phone = $contact['phone'];
 
         $pickupAddress = trim(implode(', ', array_filter([
@@ -76,6 +87,8 @@ trait BuildsOrderRentalEmailVariables
             'deposit_amount' => $depositAmount,
             'pickup_address' => $pickupAddress,
             'pickup_phone' => $phone,
+            'pickup_location_name' => $contact['location_name'] ?? '',
+            'pickup_location_address' => $order->pickup_location_address ?? '',
         ];
     }
 }

@@ -66,6 +66,23 @@
     </tr>
 </table>
 
+@if($branch ?? null)
+{{-- Faza 6 krok 6.5 — same branch as the handover protocol: equipment
+always returns to the branch that issued it (product decision,
+plan-wdrozenia.md), so there is only ever one branch snapshot per order. --}}
+<table class="parties" style="margin-top: 4px;">
+    <tr>
+        <td style="width:100%;">
+            <div class="label">Punkt zwrotu sprzętu</div>
+            <strong>{{ $branch['name'] }}</strong>
+            @if($branch['address'])
+                <br>{{ $branch['address'] }}
+            @endif
+        </td>
+    </tr>
+</table>
+@endif
+
 <h2>Zwracany sprzęt</h2>
 <table class="items">
     <thead>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services;
 
+use App\Models\Location;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Organization;
@@ -503,4 +504,158 @@ class OrderProtocolPdfServiceTest extends TestCase
         $this->assertStringContainsString('Wynajmujący', $html);
         $this->assertStringContainsString('Najemca', $html);
     }
+
+    // -------------------------------------------------------------------------
+    // Pickup-branch block (Faza 6 krok 6.5, ClickUp 86cbahqhb) — distinct from
+    // the "Wynajmujący" company-identity block above, which the tests above
+    // already pin as unchanged. Invokes the service's private branchDetails()
+    // directly via reflection, same pattern as pickupDetails() above.
+    // -------------------------------------------------------------------------
+
+    /**
+     * @return array{name: string, address: string}|null
+     */
+    private function branchDetails(Order $order): ?array
+    {
+        $method = new \ReflectionMethod($this->service, 'branchDetails');
+        $method->setAccessible(true);
+
+        return $method->invoke($this->service, $order);
+    }
+
+    public function test_branch_details_is_null_without_a_pickup_snapshot(): void
+    {
+        $order = Order::factory()->inProgress()->create([
+            'pickup_location_id' => null,
+            'pickup_location_name' => null,
+            'pickup_location_address' => null,
+        ]);
+
+        $this->assertNull($this->branchDetails($order));
+    }
+
+    public function test_branch_details_reads_the_orders_own_snapshot_not_the_live_location_row(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $location = Location::factory()->for($org)->create([
+            'name' => 'Oddział Gdańsk',
+            'street' => 'ul. Portowa 8',
+            'postal_code' => '80-001',
+            'city' => 'Gdańsk',
+        ]);
+        $order = Order::factory()->inProgress()->create([
+            'organization_id' => $org->id,
+            'pickup_location_id' => $location->id,
+            'pickup_location_name' => $location->name,
+            'pickup_location_address' => $location->formattedAddress(),
+        ]);
+
+        // The Location row changes AFTER checkout — the protocol must keep
+        // showing what was promised at checkout time, not the current row.
+        $location->update(['name' => 'Oddział Gdańsk (PRZENIESIONY)', 'city' => 'Sopot']);
+
+        $branch = $this->branchDetails($order);
+
+        $this->assertSame('Oddział Gdańsk', $branch['name']);
+        $this->assertSame('ul. Portowa 8, 80-001 Gdańsk', $branch['address']);
+    }
+
+    public function test_handover_protocol_pdf_renders_the_labelled_pickup_branch_block(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $location = Location::factory()->for($org)->create([
+            'name' => 'Oddział Gdańsk',
+            'street' => 'ul. Portowa 8',
+            'postal_code' => '80-001',
+            'city' => 'Gdańsk',
+        ]);
+        $order = Order::factory()->inProgress()->create([
+            'organization_id' => $org->id,
+            'pickup_location_id' => $location->id,
+            'pickup_location_name' => $location->name,
+            'pickup_location_address' => $location->formattedAddress(),
+        ]);
+        $order->load(['items', 'organization']);
+
+        $html = View::make('orders.protocols.handover', [
+            'order' => $order,
+            'org' => $order->organization,
+            'pickup' => ['address' => '', 'phone' => '', 'email' => ''],
+            'branch' => $this->branchDetails($order),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringContainsString('Punkt odbioru sprzętu', $html);
+        $this->assertStringContainsString('Oddział Gdańsk', $html);
+        $this->assertStringContainsString('ul. Portowa 8, 80-001 Gdańsk', $html);
+    }
+
+    public function test_return_protocol_pdf_renders_the_labelled_pickup_branch_block_with_return_wording(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+        $location = Location::factory()->for($org)->create([
+            'name' => 'Oddział Poznań',
+            'street' => 'ul. Zwrotna 3',
+            'postal_code' => '61-000',
+            'city' => 'Poznań',
+        ]);
+        $order = Order::factory()->completed()->create([
+            'organization_id' => $org->id,
+            'pickup_location_id' => $location->id,
+            'pickup_location_name' => $location->name,
+            'pickup_location_address' => $location->formattedAddress(),
+        ]);
+        $order->load(['items', 'organization']);
+
+        $html = View::make('orders.protocols.return', [
+            'order' => $order,
+            'org' => $order->organization,
+            'pickup' => ['address' => '', 'phone' => '', 'email' => ''],
+            'branch' => $this->branchDetails($order),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringContainsString('Punkt zwrotu sprzętu', $html);
+        $this->assertStringContainsString('Oddział Poznań', $html);
+        $this->assertStringContainsString('ul. Zwrotna 3, 61-000 Poznań', $html);
+    }
+
+    /**
+     * Fallback — every OTHER test in this file renders both protocol views
+     * without ever passing a 'branch' key at all (the pre-existing tests
+     * above this section). This pins that the view itself tolerates a
+     * genuinely missing key too, not just an explicit null, and that no
+     * "Punkt odbioru/zwrotu" label leaks in when there is nothing to show.
+     */
+    public function test_handover_protocol_pdf_shows_no_branch_block_without_a_snapshot(): void
+    {
+        $order = Order::factory()->inProgress()->create([
+            'pickup_location_id' => null,
+            'pickup_location_name' => null,
+            'pickup_location_address' => null,
+        ]);
+        $order->load(['items', 'organization']);
+
+        $html = View::make('orders.protocols.handover', [
+            'order' => $order,
+            'org' => $order->organization,
+            'pickup' => ['address' => '', 'phone' => '', 'email' => ''],
+            'branch' => $this->branchDetails($order),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringNotContainsString('Punkt odbioru sprzętu', $html);
+    }
+
+    // NOTE (code review, 2026-09-19): a
+    // "test_handover_protocol_pdf_end_to_end_includes_branch_when_snapshot_present"
+    // test used to live here, calling handoverProtocol() directly and asserting
+    // ONLY status 200 — that assertion is unaffected by whether branchDetails()
+    // is wired into render() at all (confirmed: hardcoding 'branch' => null
+    // inside render() still leaves it green). The real end-to-end proof — a
+    // genuine HTTP download through the actual route, with the view data that
+    // reached Pdf::loadView() captured via View::composer() — now lives in
+    // tests/Feature/Orders/OrderProtocolDownloadTest.php, which also covers the
+    // admin/staff path (same controller/route, see OrderProtocolController's own
+    // class docblock — there is no separate admin route to also cover).
 }

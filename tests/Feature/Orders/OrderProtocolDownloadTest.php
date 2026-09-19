@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Orders;
 
+use App\Models\Location;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\View;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -288,5 +290,164 @@ class OrderProtocolDownloadTest extends TestCase
             ->get(route('orders.protocol.handover', $order));
 
         $response->assertNotFound();
+    }
+
+    // -------------------------------------------------------------------------
+    // Pickup-branch block (Faza 6 krok 6.5, ClickUp 86cbahqhb) — real HTTP
+    // download through the actual route, not View::make() called directly
+    // (code review, 2026-09-19: a status-200-only test through the service's
+    // public method used to stand in for this and did not actually exercise
+    // whether branchDetails() reaches Pdf::loadView() — hardcoding
+    // 'branch' => null inside OrderProtocolPdfService::render() left it green).
+    //
+    // dompdf's PDF bytes are opaque to a response assertion (no pdftotext in
+    // the app container — see order-protocols.md's own note on this), so the
+    // proof captures the ACTUAL array handed to Pdf::loadView() via
+    // View::composer(), which fires for real inside
+    // barryvdh/laravel-dompdf's loadView() (it calls
+    // $this->view->make($view, $data)->render(), the same Factory the
+    // composer event hooks into) — not a second, parallel render.
+    // -------------------------------------------------------------------------
+
+    public function test_handover_protocol_http_download_passes_the_branch_snapshot_to_the_real_pdf_view(): void
+    {
+        $captured = &$this->captureComposedViewDataRef('orders.protocols.handover');
+
+        $user = User::factory()->create();
+        $location = Location::factory()->for($this->org)->create([
+            'name' => 'Oddział Gdańsk',
+            'street' => 'ul. Portowa 8',
+            'building' => null,
+            'postal_code' => '80-001',
+            'city' => 'Gdańsk',
+        ]);
+        $order = Order::factory()->inProgress()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+            'pickup_location_id' => $location->id,
+            'pickup_location_name' => $location->name,
+            'pickup_location_address' => $location->formattedAddress(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->get(route('orders.protocol.handover', $order));
+
+        $response->assertOk();
+        $this->assertNotNull($captured['branch'] ?? null, 'branchDetails() never reached the real Pdf::loadView() call');
+        $this->assertSame('Oddział Gdańsk', $captured['branch']['name']);
+        $this->assertSame('ul. Portowa 8, 80-001 Gdańsk', $captured['branch']['address']);
+    }
+
+    public function test_return_protocol_http_download_passes_the_branch_snapshot_to_the_real_pdf_view(): void
+    {
+        $captured = &$this->captureComposedViewDataRef('orders.protocols.return');
+
+        $user = User::factory()->create();
+        $location = Location::factory()->for($this->org)->create([
+            'name' => 'Oddział Poznań',
+            'street' => 'ul. Zwrotna 3',
+            'postal_code' => '61-000',
+            'city' => 'Poznań',
+        ]);
+        $order = Order::factory()->completed()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+            'pickup_location_id' => $location->id,
+            'pickup_location_name' => $location->name,
+            'pickup_location_address' => $location->formattedAddress(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->get(route('orders.protocol.return', $order));
+
+        $response->assertOk();
+        $this->assertNotNull($captured['branch'] ?? null, 'branchDetails() never reached the real Pdf::loadView() call');
+        $this->assertSame('Oddział Poznań', $captured['branch']['name']);
+        $this->assertSame('ul. Zwrotna 3, 61-000 Poznań', $captured['branch']['address']);
+    }
+
+    /**
+     * Fallback through the real route — an order without a snapshot must
+     * reach the view with `branch === null` (no block rendered), exactly
+     * today's behaviour, proven through the actual HTTP/render pipeline
+     * rather than assumed from the Unit-level view test alone.
+     */
+    public function test_handover_protocol_http_download_passes_null_branch_without_a_snapshot(): void
+    {
+        $captured = &$this->captureComposedViewDataRef('orders.protocols.handover');
+
+        $user = User::factory()->create();
+        $order = Order::factory()->inProgress()->create([
+            'user_id' => $user->id,
+            'organization_id' => $this->org->id,
+            'pickup_location_id' => null,
+            'pickup_location_name' => null,
+            'pickup_location_address' => null,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->actingAsTenant($this->org)
+            ->get(route('orders.protocol.handover', $order));
+
+        $response->assertOk();
+        $this->assertArrayHasKey('branch', $captured);
+        $this->assertNull($captured['branch']);
+    }
+
+    /**
+     * Same controller/route serves the admin/staff download (see
+     * OrderProtocolController's own class docblock — there is no separate
+     * admin path) — confirms the branch snapshot reaches the real view for
+     * that caller too, not just the customer's own request.
+     */
+    public function test_staff_handover_protocol_http_download_passes_the_branch_snapshot_to_the_real_pdf_view(): void
+    {
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+
+        $captured = &$this->captureComposedViewDataRef('orders.protocols.handover');
+
+        $customer = User::factory()->create();
+        $staff = User::factory()->create();
+        $staff->assignRole('admin');
+        $location = Location::factory()->for($this->org)->create(['name' => 'Oddział Łódź']);
+        $order = Order::factory()->inProgress()->create([
+            'user_id' => $customer->id,
+            'organization_id' => $this->org->id,
+            'pickup_location_id' => $location->id,
+            'pickup_location_name' => $location->name,
+            'pickup_location_address' => $location->formattedAddress(),
+        ]);
+
+        $response = $this->actingAs($staff)
+            ->actingAsTenant($this->org)
+            ->get(route('orders.protocol.handover', $order));
+
+        $response->assertOk();
+        $this->assertSame('Oddział Łódź', $captured['branch']['name'] ?? null);
+    }
+
+    /**
+     * Registers a View::composer() callback for the given protocol view
+     * BEFORE the request runs, returning a reference the test method can
+     * still read AFTER the HTTP call completes. The composer only fires
+     * later, inside Pdf::loadView() -> Factory::make()->render() (deep
+     * inside the request/response cycle triggered by $this->get(...)), so a
+     * plain `use (&$var)` closure declared in the test body would capture a
+     * variable that goes out of scope before the composer ever runs — the
+     * `&` return + `=&` at each call site keeps the SAME array alive across
+     * that boundary.
+     *
+     * @return array<string, mixed>
+     */
+    private function &captureComposedViewDataRef(string $view): array
+    {
+        $captured = [];
+        View::composer($view, function ($composedView) use (&$captured) {
+            $captured = $composedView->getData();
+        });
+
+        return $captured;
     }
 }

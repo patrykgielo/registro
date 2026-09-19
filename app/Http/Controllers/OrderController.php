@@ -39,11 +39,13 @@ class OrderController extends Controller
         $rentalExtensionEnabled = $this->settings->isRentalExtensionEnabled();
         $order->load(['items.extensionRequests', 'organization']);
 
-        // "Miejsce odbioru sprzętu" section — the settings TABLE's contact.*
-        // group (what SystemSettings' Contact tab saves), via the single
-        // canonical accessor. NOT $order->organization->settings, the JSON
-        // column — see contactDetailsFor()'s own docblock for why.
-        $pickup = $this->settings->contactDetailsFor($order->organization);
+        // "Miejsce odbioru sprzętu" section — the order's own checkout-time
+        // pickup-location snapshot when one exists (Faza 6 krok 6.5), falling
+        // back to the settings TABLE's contact.* group (what SystemSettings'
+        // Contact tab saves) otherwise. Single canonical accessor — see
+        // SettingsManager::pickupDetailsFor()'s own docblock for why. NOT
+        // $order->organization->settings, the JSON column.
+        $pickup = $this->settings->pickupDetailsFor($order);
 
         return view('orders.show', compact('order', 'rentalExtensionEnabled', 'pickup'));
     }

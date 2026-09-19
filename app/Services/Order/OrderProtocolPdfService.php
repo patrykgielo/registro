@@ -118,6 +118,7 @@ class OrderProtocolPdfService
             'order' => $order,
             'org' => $order->organization,
             'pickup' => $this->pickupDetails($order),
+            'branch' => $this->branchDetails($order),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ], $extraViewData));
 
@@ -208,5 +209,35 @@ class OrderProtocolPdfService
         ])));
 
         return ['address' => $address, 'phone' => $contact['phone'], 'email' => $contact['email']];
+    }
+
+    /**
+     * Faza 6 krok 6.5 (ClickUp 86cbahqhb) — the NEW "pickup/return branch" block,
+     * distinct from the "Wynajmujący" (lessor/company identity) block built by
+     * pickupDetails() above, which stays company-sourced and UNCHANGED by this
+     * feature. Returns null (block not rendered — zero visual change from before
+     * this feature) unless the order carries a checkout-time pickup-location
+     * snapshot (Faza 6 krok 6.3). Return protocols reuse the SAME snapshot as
+     * handover protocols — product decision: equipment always returns to the
+     * branch that issued it (plan-wdrozenia.md, decyzje właściciela produktu
+     * 2026-08-26), so there is only ever one branch to name per order, never a
+     * separate "return location".
+     *
+     * Goes through SettingsManager::pickupDetailsFor() — the same single resolver
+     * used by the customer's own order page and the order-paid/accepted-offline
+     * emails — rather than reading $order->pickup_location_name/_address directly,
+     * so the "snapshot vs no snapshot" decision has exactly one implementation.
+     *
+     * @return array{name: string, address: string}|null
+     */
+    private function branchDetails(Order $order): ?array
+    {
+        $pickup = $this->settings->pickupDetailsFor($order);
+
+        if ($pickup['location_name'] === null) {
+            return null;
+        }
+
+        return ['name' => $pickup['location_name'], 'address' => $pickup['address_line']];
     }
 }

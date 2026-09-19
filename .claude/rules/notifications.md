@@ -325,6 +325,17 @@ newline jest legalną treścią (podział akapitów), nie wektorem ataku na nag�
 `customer_last_name` nadal `['nullable','string','max:100']`, bez ograniczenia control chars) —
 osobna decyzja, nierozstrzygnięta.
 
+## Dodanie zmiennej do buildera NIE wymaga migracji szablonu
+
+`EmailTemplate::substitutePlaceholders()` zamienia WYŁĄCZNIE tokeny `{{key}}` faktycznie
+obecne w treści (`preg_replace_callback` na `$template`, nie na `$data`) — klucz w tablicy
+zmiennych, którego żaden zasiany szablon nie referencuje, jest po prostu ignorowany, zero
+efektu ubocznego. Bezpiecznie dokładać nowe zmienne do buildera (`buildRentalVariables()` i
+podobne) **pod przyszłą edycję treści**, bez migracji zmieniającej `html_body`/`text_body`
+istniejących wierszy — migracja szablonu jest potrzebna dopiero, gdy nowy token ma faktycznie
+pojawić się w treści (Faza 6 krok 6.5: `pickup_location_name`/`pickup_location_address`
+dodane do `BuildsOrderRentalEmailVariables` bez dotykania żadnego wiersza `email_templates`).
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
