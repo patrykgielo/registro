@@ -6,6 +6,7 @@ namespace App\Notifications;
 
 use App\Channels\EmailServiceChannel;
 use App\Enums\TemplateKey;
+use App\Models\Organization;
 use App\Models\User;
 use App\Services\Email\EmailService;
 use Illuminate\Bus\Queueable;
@@ -26,9 +27,13 @@ class UserRegisteredNotification extends Notification implements ShouldBeUnique,
 
     /**
      * Create a new notification instance.
+     *
+     * @param  \App\Models\Organization|null  $organization  Tenant to brand this email for — see
+     *                                                       UserRegistered event's own docblock.
      */
     public function __construct(
-        public User $user
+        public User $user,
+        public ?Organization $organization = null
     ) {
         $this->onQueue('emails');
     }
@@ -82,7 +87,8 @@ class UserRegisteredNotification extends Notification implements ShouldBeUnique,
                 [
                     'user_id' => $notifiable->id,
                     'notification' => 'UserRegisteredNotification',
-                ]
+                ],
+                organization: $this->organization
             );
         } catch (\Exception $e) {
             Log::error('UserRegisteredNotification failed', [

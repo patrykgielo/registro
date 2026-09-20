@@ -291,7 +291,7 @@ class UserResource extends BaseResource
                             $token = $record->initiatePasswordSetup();
 
                             // Send email via event (same flow as user creation)
-                            event(new AdminCreatedUser($record));
+                            event(new AdminCreatedUser($record, TenantFeature::currentTenant()));
 
                             \Log::info('Password setup email resent by admin', [
                                 'admin_id' => auth()->id(),

@@ -68,6 +68,8 @@ class OrderConfirmedNotification extends Notification implements ShouldBeUnique,
         $order = $this->order;
         $customerName = trim($order->customer_first_name.' '.$order->customer_last_name);
 
+        $order->loadMissing('organization');
+
         try {
             $emailService->sendFromTemplate(
                 TemplateKey::ORDER_CONFIRMED->value,
@@ -82,7 +84,8 @@ class OrderConfirmedNotification extends Notification implements ShouldBeUnique,
                 [
                     'order_id' => $order->id,
                     'notification' => 'OrderConfirmedNotification',
-                ]
+                ],
+                organization: $order->organization
             );
         } catch (\Exception $e) {
             Log::error('OrderConfirmedNotification failed', [

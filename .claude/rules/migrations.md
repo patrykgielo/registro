@@ -64,6 +64,18 @@ override tego samego klucza. Wzorzec + testy pinujące:
 `2026_08_14_160000_seed_rental_return_reminder_email_templates.php`,
 `2026_08_16_120002_seed_order_accepted_offline_email_templates.php`.
 
+**Wzbogacenie TREŚCI istniejącego już zasianego klucza** (nie nowy klucz — nowa zmienna w
+body istniejącego szablonu) to inny wzorzec: exact-value `WHERE html_body = stary_tekst`,
+NIGDY ślepy `UPDATE` — nadpisanie tenanta lub ręcznie zmienionego globalnego wiersza musi
+zostać nietknięte. Wzorzec + testy: `2026_08_14_100000_fix_order_paid_pickup_html_separator.php`,
+`2026_09_20_100000_enrich_admin_new_order_email_template.php`. **Pułapka wspólna dla obu
+wzorców:** klucz zasiany WYŁĄCZNIE przez `EmailTemplateSeeder` (nie przez żadną migrację
+bazową) nie istnieje jeszcze, gdy migracja danych biegnie podczas `migrate:fresh` w testach —
+`--seeder` uruchamia się DOPIERO po wszystkich migracjach, więc `up()` dopasowuje 0 wierszy
+(prawdziwy, niewidoczny z testu no-op) i cichy sukces zależy od tego, że `EmailTemplateSeeder.php`
+ma już wpisaną docelową (wzbogaconą) treść wprost — inaczej świeże środowisko/testy dostają
+starą treść, a nowy token (`{{payment_note}}` itp.) zostaje dosłownym tekstem w mailu.
+
 ## FK onDelete Policy — tenant lifecycle (Faza 5.2)
 
 `organization_id` FK behaviour is **category-driven**, not uniform:

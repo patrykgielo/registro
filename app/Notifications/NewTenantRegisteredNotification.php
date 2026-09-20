@@ -25,6 +25,14 @@ use Throwable;
  * Sent to an address configured in /platform, not to a User -- the operator is
  * not necessarily a row in the users table of the installation they run, and
  * routing this through `Notification::route()` keeps it that way.
+ *
+ * Deliberately sent WITHOUT branding (no `organization` passed to
+ * sendFromTemplate()) even though `$this->organization` is right there: the
+ * RECIPIENT is the platform operator, not the tenant — branding a
+ * platform-internal "a new business signed up" alert with the new tenant's
+ * OWN logo/colors would be backwards (an operator's inbox showing a
+ * customer's brand). This is unlike TenantWelcomeNotification, whose
+ * recipient IS that tenant's own owner.
  */
 class NewTenantRegisteredNotification extends Notification implements ShouldBeUnique, ShouldQueue
 {

@@ -94,7 +94,8 @@ class AppointmentRescheduledNotification extends Notification implements ShouldB
                 [
                     'appointment_id' => $appointment->id,
                     'notification' => 'AppointmentRescheduledNotification',
-                ]
+                ],
+                organization: $appointment->organization
             );
         } catch (\Exception $e) {
             Log::error('AppointmentRescheduledNotification failed', [

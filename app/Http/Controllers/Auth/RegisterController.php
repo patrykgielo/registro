@@ -106,7 +106,7 @@ class RegisterController extends Controller
             ]);
         }
 
-        event(new UserRegistered($user));
+        event(new UserRegistered($user, $tenant instanceof Organization ? $tenant : null));
 
         return redirect(IntendedDestination::consume($request) ?? CustomerLandingUrl::for($request));
     }

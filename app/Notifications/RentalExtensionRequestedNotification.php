@@ -63,7 +63,8 @@ class RentalExtensionRequestedNotification extends Notification implements Shoul
                 [
                     'extension_request_id' => $req->id,
                     'notification' => 'RentalExtensionRequestedNotification',
-                ]
+                ],
+                organization: $req->order->organization
             );
         } catch (\Exception $e) {
             Log::error('RentalExtensionRequestedNotification failed', [

@@ -93,7 +93,8 @@ class AppointmentCreatedNotification extends Notification implements ShouldBeUni
                     'appointment_id' => $appointment->id,
                     'recipient_type' => $this->recipientType,
                     'notification' => 'AppointmentCreatedNotification',
-                ]
+                ],
+                organization: $appointment->organization
             );
         } catch (\Exception $e) {
             Log::error('AppointmentCreatedNotification failed', [

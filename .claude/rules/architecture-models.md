@@ -142,9 +142,17 @@ niczego nie zmienia. To jest różnica MODELOZALEŻNA i dlatego mieszka w tym pl
 a nie w `middleware.md`.
 
 **Poza żądaniem (kolejka, CLI, scheduler) wymuszenie nie działa** i adres spada na `APP_URL`,
-czyli domenę główną — patrz sekcja wyżej. Do tego `horizon` i `scheduler` nie montują
-wolumenu `storage-app-public` (ClickUp `123k99ct3za`), więc na kolejce plik bywa nie tylko
-pod złym adresem, ale i nieosiągalny.
+czyli domenę główną — patrz sekcja wyżej.
+
+**Naprawione (ClickUp `123k99ct3za`):** `horizon` teraz montuje `storage-app-public`
+read-only (tak jak `nginx`, nigdy rw jak `app` — żaden `ShouldQueue` job tam nie pisze), więc
+plik na kolejce jest przynajmniej OSIĄGALNY z dysku, nawet gdy adres URL wyżej wciąż spada na
+`APP_URL`. Wymaga redeployu `docker-compose.prod.yml` na UAT, żeby zadziałało — sama edycja
+pliku nic nie zmienia w działającym kontenerze. `scheduler` celowo nadal nic nie montuje: każdy
+`Schedule::job(...)` renderujący branded mail wykonuje się w `horizon` (kolejka), a żaden
+`Schedule::command(...)` uruchamiany inline w `scheduler` nie dotyka `EmailService`/`notify()`
+(zgrepowane, zero trafień) — ponowna zmiana w `routes/console.php` wymaga ponownego sprawdzenia
+tego założenia.
 
 ## Odczyt env w kontenerze
 

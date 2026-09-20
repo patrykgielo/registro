@@ -90,7 +90,8 @@ class AppointmentCancelledNotification extends Notification implements ShouldBeU
                 [
                     'appointment_id' => $appointment->id,
                     'notification' => 'AppointmentCancelledNotification',
-                ]
+                ],
+                organization: $appointment->organization
             );
         } catch (\Exception $e) {
             Log::error('AppointmentCancelledNotification failed', [

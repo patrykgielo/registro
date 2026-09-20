@@ -63,7 +63,8 @@ class RentalExtensionApprovedNotification extends Notification implements Should
                 [
                     'extension_request_id' => $req->id,
                     'notification' => 'RentalExtensionApprovedNotification',
-                ]
+                ],
+                organization: $req->order->organization
             );
         } catch (\Exception $e) {
             Log::error('RentalExtensionApprovedNotification failed', [
