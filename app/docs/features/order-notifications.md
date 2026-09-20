@@ -2,6 +2,8 @@
 
 **Implemented:** 2026-03-29
 **Extended:** 2026-08-12 (`feature/handover-return-emails`) — handover + return
+**Extended:** 2026-09-20 (`feature/maile-wlasciciel-i-logo`) — owner notified for offline
+(pay-at-pickup) orders too; every order email now goes through a shared branded layout
 
 ---
 
@@ -23,6 +25,8 @@ send record. Handover and return notifications close that gap.
 
 | Trigger | Recipient | Template Key | Notification Class |
 |---------|-----------|-------------|-------------------|
+| Checkout completed, "pay at pickup" chosen | Customer | `order-accepted-offline` | `OrderAcceptedOfflineNotification('customer')` |
+| Checkout completed, "pay at pickup" chosen | Org owner (admin) | `admin-new-order` | `OrderAcceptedOfflineNotification('admin')` |
 | Payment confirmed (P24 webhook) | Customer | `order-paid` | `OrderPaidNotification('customer')` |
 | Payment confirmed (P24 webhook) | Org owner (admin) | `admin-new-order` | `OrderPaidNotification('admin')` |
 | Admin confirms order (`paid → confirmed`) | Customer | `order-confirmed` | `OrderConfirmedNotification` |
@@ -30,12 +34,47 @@ send record. Handover and return notifications close that gap.
 | Admin accepts return (`in_progress → completed`, "Sprzęt zwrócony") | Customer | `order-returned` | `OrderReturnedNotification` |
 | Order cancelled (`* → cancelled`) | Customer | `order-cancelled` | `OrderCancelledNotification` |
 
-**No admin copy for handover/return** — unlike `OrderPaid`, both transitions are
-triggered by the admin themselves through the Filament UI, so there is no new
-information reaching them that they didn't already cause. This mirrors
+**No admin copy for handover/return** — unlike `OrderPaid`/`OrderAcceptedOffline`, both
+transitions are triggered by the admin themselves through the Filament UI, so there is no
+new information reaching them that they didn't already cause. This mirrors
 `OrderConfirmed`/`OrderCancelled` (also admin-triggered, customer-only) rather
-than `OrderPaid` (webhook-triggered, genuinely new to the admin — hence the
-`'admin'` variant there).
+than `OrderPaid`/`OrderAcceptedOffline` (customer-triggered on the storefront, genuinely
+new to the admin — hence the `'admin'` variant on both).
+
+### Owner notification for offline (pay-at-pickup) orders (2026-09-20, ClickUp 123k99cvc55)
+
+Before this, `AppServiceProvider`'s `OrderAcceptedOffline` listener notified the customer
+only — the owner had NO email path for a new order placed with `settlement_method =
+'offline'`, only for one paid via Przelewy24. Since offline is the only settlement method
+live on UAT today, the owner had to watch the panel for every single order.
+
+**Decision: reuse `admin-new-order`, not a new key.** `OrderPaidNotification`'s existing
+`'admin'` branch already sends this key for "a new order needs your attention" — that
+sentence is equally true regardless of settlement method, and the body itself never
+claimed anything about payment status. A `{{payment_note}}` token (new, see below)
+distinguishes "Zapłacono online" from "Płatność przy odbiorze (gotówka lub przelew)" so the
+owner can tell the two apart without a second template to keep in sync. This is different
+from the customer-facing `order-accepted-offline` vs `order-paid` split (`ORDER_ACCEPTED_OFFLINE`
+docblock, `OrderAcceptedOfflineNotification.php`) — that split exists because the CUSTOMER
+body makes a factual claim ("zostało opłacone") that would be false for an unpaid
+reservation. The owner-facing body makes no such claim, so no split is needed there.
+
+`OrderAcceptedOfflineNotification` gained a `$recipientType` constructor param (`'customer'`
+default, mirrors `OrderPaidNotification`'s own signature) — the `'admin'` branch sends
+`admin-new-order` with `buildRentalVariables($order)` (same items/pickup fields the
+customer template already uses) plus `payment_note`. `AppServiceProvider`'s listener now
+loads `organization.owner` and notifies it, mirroring `OrderPaid`'s existing pattern exactly.
+
+**`admin-new-order`'s body itself was enriched** (previously: customer name, order number,
+total only) to add `{{payment_note}}`, `{{items_list_html}}`/`{{items_list_text}}`,
+`{{pickup_address}}`/`{{pickup_phone}}` — both `OrderPaidNotification`'s admin branch and
+`OrderAcceptedOfflineNotification`'s now populate all of these, so the owner sees WHAT was
+ordered and WHERE it will be picked up, not just that an order exists.
+`database/migrations/2026_09_20_100000_enrich_admin_new_order_email_template.php` patches
+this onto already-provisioned stacks (exact-value match, same pattern as
+`2026_08_14_100000_fix_order_paid_pickup_html_separator.php`) — `EmailTemplateSeeder.php`
+was updated in the same change so fresh installs seed the enriched body directly. See
+"Existing-tenant provisioning" below for why this migration exists at all.
 
 ---
 
@@ -93,7 +132,27 @@ AppServiceProvider::registerEventListeners()
   other test in this suite already has thanks to `TestReferenceDataSeeder` running once per test
   process via `Tests\TestCase::$seeder`, and which would otherwise mask exactly this class of bug)
 
-**Modified:**
+**New (2026-09-20):**
+- `app/Support/Email/EmailBrandedLayout.php`
+- `resources/views/emails/branded-layout.blade.php`
+- `database/migrations/2026_09_20_100000_enrich_admin_new_order_email_template.php`
+- `tests/Feature/Notifications/OrderAcceptedOfflineAdminNotificationTest.php`
+- `tests/Feature/Notifications/OrderEmailBrandedLayoutTest.php`
+- `tests/Feature/Database/AdminNewOrderEmailTemplateMigrationTest.php`
+
+**Modified (2026-09-20):**
+- `app/Notifications/OrderAcceptedOfflineNotification.php` — `$recipientType` param, `'admin'` branch
+- `app/Providers/AppServiceProvider.php` — `OrderAcceptedOffline` listener notifies `organization.owner` too
+- `app/Services/Email/EmailService.php` — `sendFromTemplate(..., ?Organization $organization = null)`, wraps via `EmailBrandedLayout`
+- `app/Support/Settings/SettingsManager.php` — `emailBrandingFor(?Organization)`
+- `app/Models/EmailTemplate.php` — `resolveActive(..., ?Organization $organization = null)`
+- `app/Notifications/OrderPaidNotification.php`, `OrderConfirmedNotification.php`,
+  `OrderCancelledNotification.php`, `OrderHandedOverNotification.php`, `OrderReturnedNotification.php`,
+  `RentalReturnDueSoonNotification.php`, `RentalReturnOverdueNotification.php` — all now pass
+  `$order->organization` into `sendFromTemplate()`
+- `database/seeders/EmailTemplateSeeder.php` — enriched `admin-new-order` body (both languages)
+
+**Modified (earlier):**
 - `app/Enums/TemplateKey.php` — 6 order-lifecycle cases: `ORDER_PAID`, `ORDER_CONFIRMED`,
   `ORDER_CANCELLED`, `ORDER_HANDED_OVER`, `ORDER_RETURNED`, `ADMIN_NEW_ORDER`
 - `app/Providers/AppServiceProvider.php` — event listeners in `registerEventListeners()`
@@ -176,12 +235,84 @@ attempted in this branch.
 
 | Key | Variables |
 |-----|-----------|
+| `order-accepted-offline` | `customer_name`, `order_number`, `total_amount`, `hold_until`, `orders_url`, `app_name`, `items_list_html`, `items_list_text`, `deposit_amount`, `pickup_address`, `pickup_phone` |
 | `order-paid` | `customer_name`, `order_number`, `total_amount`, `orders_url`, `app_name`, `items_list_html`, `items_list_text`, `deposit_amount`, `pickup_address`, `pickup_phone` |
 | `order-confirmed` | `customer_name`, `order_number`, `orders_url`, `app_name` |
 | `order-handed-over` | `customer_name`, `order_number`, `orders_url`, `app_name`, `items_list_html`, `items_list_text` |
 | `order-returned` | `customer_name`, `order_number`, `orders_url`, `app_name`, `items_list_html`, `items_list_text` |
 | `order-cancelled` | `customer_name`, `order_number`, `reason`, `orders_url`, `app_name` |
-| `admin-new-order` | `customer_name`, `order_number`, `total_amount`, `admin_url`, `app_name` |
+| `admin-new-order` | `customer_name`, `order_number`, `total_amount`, `payment_note`, `admin_url`, `app_name`, `items_list_html`, `items_list_text`, `pickup_address`, `pickup_phone` |
+
+---
+
+## Branded layout wrapper (2026-09-20, ClickUp 123k99cvc56)
+
+Every order email above is a DB-templated send through `EmailService::sendFromTemplate()`,
+which — until now — handed the rendered `html_body` straight to `SmtpMailer::send()`
+(`$message->html($htmlBody)`, no layout at all). A tenant's configured header logo/brand
+color (`design.use_logo_in_emails`, `design.use_color_in_emails`, `appearance.header_logo`,
+`design.brand_color` — already used by `vendor.mail.*` view composer for `MailMessage`-based
+mails like the service-area inquiry notification) never reached any DB-templated mail.
+
+**Fix, at the `EmailService` layer, not the transport:** `sendFromTemplate()` gained an
+optional `?Organization $organization` parameter. When given, the rendered body is wrapped
+by `App\Support\Email\EmailBrandedLayout::wrap()` — a Blade view
+(`resources/views/emails/branded-layout.blade.php`) with a logo/brand-color header and a
+contact-details footer (`SettingsManager::contactDetailsFor($organization)`) — BEFORE the
+result is stored in `email_sends.body_html` and handed to the gateway. Every order
+notification listed above now passes `$order->organization` (loaded via `loadMissing()`)
+into this parameter. No stored `email_templates.html_body`/`text_body` was touched — a
+tenant's own template override still renders exactly as before, just inside the shared
+shell now.
+
+**Branding must be resolved WITHOUT ambient tenant state** — `EmailService` runs inside a
+Horizon queue worker (`architecture-models.md`'s "Kolejka nie ma kontekstu żądania"), which
+has no request, no Filament tenant, nothing `SettingsManager::get()`/`headerLogo()`/
+`brandColor()` (all ambient-`TenantFeature::currentTenant()`-based) could resolve. New
+method `SettingsManager::emailBrandingFor(?Organization $organization): array` mirrors the
+already-established explicit-organization pattern (`getForOrganization()`,
+`contactDetailsFor()`, `pickupDetailsFor()`) instead.
+
+**Same-class bug found and fixed in the same change:** `EmailTemplate::resolveActive()` had
+the identical ambient-tenant dependency — a tenant's OWN override of `order-paid` (or any
+order template) never applied to a real queued send, only the global row, because
+`TenantFeature::currentTenant()` is always null in a worker. This was previously documented
+as "deliberate, accepted" (see `PasswordResetNotification`'s docblock — still true for
+callers that don't have an `Organization` to name). Since every order notification now
+already carries `$order->organization` for branding, `resolveActive()` gained the same
+optional `?Organization $organization = null` parameter and `EmailService` passes it
+through — closing the gap for every order template as a direct consequence, at zero extra
+plumbing cost. Every OTHER caller (SMS, any notification not yet passing an organization)
+is completely unaffected — the parameter defaults to `null`, preserving today's ambient
+resolution exactly.
+
+**A tenant's own `html_body` may be a full HTML document** (the column is a free-text
+Filament field) — `EmailBrandedLayout::wrap()` detects a literal `<html` (case-insensitive)
+in the rendered body and returns it untouched instead of nesting `<html>` inside `<html>`.
+
+**Logo resolution depends on a file existing on the SAME disk the caller reads from** —
+`SettingsManager::emailBrandingFor()` calls the same path-validation helper `headerLogo()`
+uses, which does `Storage::disk('public')->exists($normalized)` before returning a URL.
+`docker-compose.prod.yml` used to not mount the `storage-app-public` volume on `horizon` at
+all (ClickUp `123k99ct3za`) — this existence check always returned `false` inside the worker
+even for a tenant with a real, configured logo, and the email silently rendered the clean
+text-brand header instead (never a broken `<img>` — the "no broken image" requirement held),
+with no exception or log line anywhere. **Fixed** (devops, same ClickUp ticket): `horizon`
+now mounts `storage-app-public` read-only, same target path as `app`/`nginx` — read-only
+because every `ShouldQueue` job was grepped for a `Storage::disk('public')` write and none
+exist; `app` remains the sole writer. `scheduler` still mounts nothing, deliberately: every
+`Schedule::job(...)` that renders branded mail actually executes inside `horizon` (queued),
+and every `Schedule::command(...)` that runs inline in `scheduler` was grepped for
+EmailService/notify() usage with zero hits. **Requires a redeploy of `docker-compose.prod.yml`
+on UAT to take effect** — editing the file alone does not change the running `horizon`
+container; see `ci-cd-troubleshooting.md` and `tenant-compose-stack.md`. The rest of the
+branding (brand color, brand name, contact footer) reads only from the `settings` DB table
+and was never affected by this gap.
+
+Files: `app/Support/Email/EmailBrandedLayout.php`,
+`resources/views/emails/branded-layout.blade.php`,
+`app/Support/Settings/SettingsManager.php::emailBrandingFor()`. Tests:
+`tests/Feature/Notifications/OrderEmailBrandedLayoutTest.php`.
 
 `order-handed-over`/`order-returned` reuse `OrderPaidNotification::buildRentalVariables()`'s item-table
 approach (own copy per notification, same style as the rest of this file — see `models.md`'s "no

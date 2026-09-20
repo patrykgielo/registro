@@ -62,7 +62,8 @@ class RentalExtensionRejectedNotification extends Notification implements Should
                 [
                     'extension_request_id' => $req->id,
                     'notification' => 'RentalExtensionRejectedNotification',
-                ]
+                ],
+                organization: $req->order->organization
             );
         } catch (\Exception $e) {
             Log::error('RentalExtensionRejectedNotification failed', [

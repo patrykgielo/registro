@@ -367,7 +367,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // User Registration (end CUSTOMER creating an account on a tenant's site)
         Event::listen(UserRegistered::class, function (UserRegistered $event) {
-            $event->user->notify(new UserRegisteredNotification($event->user));
+            $event->user->notify(new UserRegisteredNotification($event->user, $event->organization));
         });
 
         // Tenant Registration (a BUSINESS signing up for this installation).
@@ -423,7 +423,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Admin Created User (password setup email)
         Event::listen(AdminCreatedUser::class, function (AdminCreatedUser $event) {
-            $event->user->notify(new AdminCreatedUserNotification($event->user));
+            $event->user->notify(new AdminCreatedUserNotification($event->user, $event->organization));
         });
 
         // Appointment Created
@@ -455,18 +455,24 @@ class AppServiceProvider extends ServiceProvider
 
         // ========== ORDER NOTIFICATIONS ==========
 
-        // Order Accepted Offline: notify customer only (order is reserved,
-        // NOT paid yet — staff records the actual payment later via
+        // Order Accepted Offline: notify customer + admin/org owner (order is
+        // reserved, NOT paid yet — staff records the actual payment later via
         // OrderService::recordOfflinePayment(), which fires OrderPaid itself).
+        // ClickUp 123k99cvc55: before this, the owner had no email for this
+        // path at all — only OrderPaid notified them.
         Event::listen(OrderAcceptedOffline::class, function (OrderAcceptedOffline $event) {
-            $order = $event->order->load('user');
+            $order = $event->order->load(['user', 'organization.owner']);
 
             if ($order->user) {
-                $order->user->notify(new OrderAcceptedOfflineNotification($order));
+                $order->user->notify(new OrderAcceptedOfflineNotification($order, 'customer'));
             } else {
                 \Log::warning('OrderAcceptedOffline: no user attached, skipping customer notification', [
                     'order_id' => $order->id,
                 ]);
+            }
+
+            if ($order->organization?->owner) {
+                $order->organization->owner->notify(new OrderAcceptedOfflineNotification($order, 'admin'));
             }
         });
 

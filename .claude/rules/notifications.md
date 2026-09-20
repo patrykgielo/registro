@@ -336,6 +336,88 @@ istniejących wierszy — migracja szablonu jest potrzebna dopiero, gdy nowy tok
 pojawić się w treści (Faza 6 krok 6.5: `pickup_location_name`/`pickup_location_address`
 dodane do `BuildsOrderRentalEmailVariables` bez dotykania żadnego wiersza `email_templates`).
 
+## Branded layout — kontrakt (2026-09-20)
+
+`EmailService::sendFromTemplate()` przyjmuje opcjonalny `?Organization $organization`. Gdy
+podany, `App\Support\Email\EmailBrandedLayout::wrap()` owija wyrenderowany `html_body` w
+`resources/views/emails/branded-layout.blade.php` (logo/kolor marki w nagłówku, dane
+kontaktowe w stopce) **PRZED** zapisem do `email_sends.body_html` i wysyłką — żaden
+zapisany `email_templates.html_body`/`text_body` nie jest dotykany, nadpisanie tenanta
+nadal renderuje się bez zmian, tylko wewnątrz wspólnej powłoki.
+
+**Zawsze przekazuj `$order->organization` (albo analogiczny jawny tenant), NIGDY nie
+polegaj na ambiencie** — `EmailService` biegnie w workerze Horizon bez requestu, więc
+`SettingsManager::get()`/`headerLogo()`/`brandColor()` (wszystkie oparte o
+`TenantFeature::currentTenant()`) zwrócą wartości dla ŻADNEGO tenanta. Użyj
+`SettingsManager::emailBrandingFor(?Organization)` — wariant jawny, wzorowany na
+`getForOrganization()`/`contactDetailsFor()`.
+
+**`$organization === null` NIE znaczy "brandingiem platformy"** — code review złapał
+dokładnie ten regres (2026-09-20, przed shipem): `wrap()` był bezwarunkowy, więc KAŻDY
+caller bez jawnego tenanta (wtedy: 20 z 28 miejsc) dostawał `emailBrandingFor(null)` →
+`config('app.name')` = "Registro" wpisane w widoczny nagłówek/stopkę maila do klienta
+tenanta. Fix: `EmailService::sendFromTemplate()` woła `wrap()` TYLKO gdy
+`$organization !== null`; w przeciwnym razie treść leci nieowinięta, bajt w bajt jak przed
+istnieniem tego parametru (`tests/Feature/Notifications/UnbrandedSendsAreByteIdenticalTest.php`
+pinuje to dosłownie). Test-strażnik nie może asertować wyłącznie `subject` —
+`PasswordResetEmailTest::test_the_email_carries_the_tenants_name_not_the_platforms()`
+przeszedł przez ten regres niezauważenie, dopóki nie dopisano asercji na `body_html`.
+
+**`$organization` to OSTATNI parametr, zawsze jako named argument (`organization: $x`)**
+— nie przed `$type`. Wcześniejsza kolejność (`$organization` przed `$type`) pozwoliłaby
+przyszłemu pozycyjnemu `$type` po cichu związać się z `$organization` (typy się nie zgadzają
+dopiero w runtime — `string` vs `?Organization` — ale błąd łapie się dopiero przy
+pierwszym callerze, który faktycznie poda `$type`). Wszystkie 20+ miejsc wywołujących
+`sendFromTemplate()` z tenantem używają `organization: ...`, nigdy pozycyjnie.
+
+**Rodziny callerów — kto dostaje branding, kto zostaje goły, i dlaczego:**
+
+| Sposób ustalenia tenanta | Przykłady | Mechanizm |
+|---|---|---|
+| Relacja modelu (`BelongsToOrganization`) | `Appointment*`, `RentalCancelled`, `ProcessRemindersJob` | `$model->organization` |
+| Przez zagnieżdżony model | `RentalExtension{Approved,Rejected,Requested}` | `$req->order->organization` |
+| Właściwość konstruktora, która JEST organizacją | `TenantWelcomeNotification` | `$this->organization` |
+| Wątek zdarzenia (Event → Notification) | `UserRegistered`→`UserRegisteredNotification`, `AdminCreatedUser`→`AdminCreatedUserNotification` | tenant znany SYNCHRONICZNIE w miejscu dispatch (request/panel Filament), niesiony przez event |
+
+**Świadomie BEZ brandingu (`organization` zawsze `null`), z udokumentowanym powodem
+w klasie/joba:**
+- `PasswordResetNotification` — brak bezpiecznego sposobu ustalenia tenanta bez ambientu
+  (patrz jej własny docblock).
+- `ServiceAreaAvailableNotification` — `service_area_waitlist` NIE MA kolumny
+  `organization_id` (pre-existing bug: migracja celowała w `service_area_waitlists`, l.mn.,
+  zamiast prawdziwej nazwy tabeli w l.poj. — `Schema::hasTable()` cicho pominął całą
+  operację; nienaprawione, osobny ticket).
+- `NewTenantRegisteredNotification` — odbiorcą jest operator PLATFORMY, nie tenant;
+  branding cudzym logo byłby odwrotnością intencji.
+- `SendAdminDigestJob` — agregat WSZYSTKICH tenantów naraz, brak jednej organizacji.
+- `TestEmail`/`TestEmailFlowCommand` — narzędzia dev, brak `--tenant`.
+- `registro:password-setup-link` (CLI) — użytkownik może należeć do WIELU organizacji,
+  brak bezpiecznego wyboru jednej (w przeciwieństwie do 2 miejsc Filamentowych
+  dispatchujących ten sam `AdminCreatedUser`, które MAJĄ rozwiązany tenant panelu).
+
+**`EmailTemplate::resolveActive()` ma ten sam opcjonalny parametr** — nadpisanie szablonu
+przez tenanta wcześniej NIGDY nie działało w prawdziwym workerze kolejki (dokumentowane
+jako świadome ograniczenie w `PasswordResetNotification`'s docblock), bo też opierało się
+wyłącznie o ambient `currentTenant()`. Każdy caller `sendFromTemplate()`, który już ma
+`Organization` pod ręką (do brandingu albo z innego powodu), automatycznie odblokowuje
+poprawne nadpisanie szablonu dla tego samego wywołania — zero dodatkowego kodu.
+
+**`html_body` bywa PEŁNYM dokumentem** (tenant-editable) — `wrap()` wykrywa `<html` w treści
+i NIE owija drugi raz (uniknięcie `<html>` w `<html>`).
+
+## Nowy odbiorca istniejącej notyfikacji = sprawdź czy szablon niesie potrzebne dane
+
+`OrderAcceptedOfflineNotification` (customer-only) dostał `$recipientType='admin'` reużywający
+`admin-new-order` (ten sam klucz co `OrderPaidNotification`'s admin branch) zamiast nowego
+klucza — bo treść "nowe zamówienie wymaga Twojej uwagi" jest prawdziwa niezależnie od metody
+rozliczenia. Nowy klucz miałby sens tylko, gdyby istniejący ZAKŁADAŁ coś nieprawdziwego dla
+nowego kontekstu (dokładnie to uzasadnia `order-accepted-offline` vs `order-paid` po stronie
+klienta — "zostało opłacone" byłoby fałszem). Reużywając klucza dla nowego wywołania: sprawdź,
+czy treść szablonu ma WSZYSTKIE tokeny, których potrzebuje NOWY caller — `admin-new-order`
+nie miał `{{items_list_html}}`/`{{pickup_address}}`, więc migracja danych wzbogaciła treść
+(exact-match wzorzec z `2026_08_14_100000_fix_order_paid_pickup_html_separator.php`), zanim
+nowy caller zaczął wysyłać te zmienne.
+
 ## Istniejące Notifications (reference)
 
 **EmailServiceChannel (DB templates + tracking):**
@@ -345,9 +427,10 @@ dodane do `BuildsOrderRentalEmailVariables` bez dotykania żadnego wiersza `emai
 - `UserRegisteredNotification` - rejestracja
 - `PasswordResetNotification` - reset hasła
 - `AdminCreatedUserNotification` - setup hasła dla admin-created users
-- `OrderPaidNotification`, `OrderConfirmedNotification`, `OrderHandedOverNotification`,
-  `OrderReturnedNotification`, `OrderCancelledNotification` - cykl życia zamówienia (wynajem);
-  patrz `app/docs/features/order-notifications.md`
+- `OrderAcceptedOfflineNotification`, `OrderPaidNotification`, `OrderConfirmedNotification`,
+  `OrderHandedOverNotification`, `OrderReturnedNotification`, `OrderCancelledNotification` -
+  cykl życia zamówienia (wynajem); pierwsze dwa mają `$recipientType` (customer/admin), patrz
+  `app/docs/features/order-notifications.md`
 - `RentalReturnDueSoonNotification`, `RentalReturnOverdueNotification` - przypomnienia o zwrocie
   sprzętu (dzień przed `order_items.end_date` / po nim), wysyłane przez
   `ProcessRentalReturnRemindersJob` (osobny job, NIE `reminder_configs`/`ReminderLog` —

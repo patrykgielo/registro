@@ -39,6 +39,11 @@ use Illuminate\Support\Facades\Log;
  *
  * Scheduled: Daily at 8:00 AM via Laravel Scheduler
  * Queue: emails
+ *
+ * Deliberately sent WITHOUT branding (no `organization` passed to
+ * sendFromTemplate()): the stats aggregate across ALL tenants and the
+ * recipients are every admin/super-admin platform-wide, not one tenant's
+ * staff — there is no single organization this digest belongs to.
  */
 class SendAdminDigestJob implements ShouldBeUnique, ShouldQueue
 {

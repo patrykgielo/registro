@@ -9,7 +9,9 @@ use App\Models\EmailEvent;
 use App\Models\EmailSend;
 use App\Models\EmailSuppression;
 use App\Models\EmailTemplate;
+use App\Models\Organization;
 use App\Models\User;
+use App\Support\Email\EmailBrandedLayout;
 use App\Support\Settings\SettingsManager;
 use Illuminate\Support\Facades\Log;
 
@@ -26,7 +28,8 @@ class EmailService
      */
     public function __construct(
         private readonly EmailGatewayInterface $gateway,
-        private readonly SettingsManager $settings
+        private readonly SettingsManager $settings,
+        private readonly EmailBrandedLayout $brandedLayout
     ) {}
 
     /**
@@ -52,6 +55,26 @@ class EmailService
      * @param  array  $data  Variables to render in template
      * @param  array  $metadata  Additional data for tracking (user_id, appointment_id, etc.)
      * @param  string  $type  Email type (transactional, marketing, newsletter) - affects consent check
+     * @param  Organization|null  $organization  Tenant to brand the email for (logo, brand color,
+     *                                           footer contact — see EmailBrandedLayout) AND to
+     *                                           resolve that tenant's own template override
+     *                                           (EmailTemplate::resolveActive()). Pass the
+     *                                           notification's own $order->organization/similar
+     *                                           explicitly; this method runs in a queue worker with
+     *                                           no ambient tenant to resolve on its own. **null is
+     *                                           NOT "use platform branding"** — it means "send the
+     *                                           bare rendered body, unwrapped, exactly like before
+     *                                           this parameter existed" (see EmailBrandedLayout call
+     *                                           below). Genuinely tenant-less sends (platform-operator
+     *                                           digests, a waitlist entry with no organization column
+     *                                           at all — see notifications.md) MUST leave this null;
+     *                                           passing a wrong/arbitrary organization here would be a
+     *                                           real whitelabel leak, not a cosmetic one. Last
+     *                                           positional parameter, and callers should pass it as a
+     *                                           NAMED argument (`organization: $x`) — inserting it
+     *                                           before `$type` once let a future positional `$type`
+     *                                           argument silently bind into this one instead (caught
+     *                                           in code review before it shipped).
      * @return \App\Models\EmailSend The email send record
      *
      * @throws \Exception If email is suppressed or template not found
@@ -62,7 +85,8 @@ class EmailService
         string $recipient,
         array $data,
         array $metadata = [],
-        string $type = self::TYPE_TRANSACTIONAL
+        string $type = self::TYPE_TRANSACTIONAL,
+        ?Organization $organization = null
     ): EmailSend {
         // Step 1: Check suppression list
         if (EmailSuppression::isSuppressed($recipient)) {
@@ -101,7 +125,7 @@ class EmailService
         // Step 2: Fetch template from database — tenant override if one exists, else the
         // global (NULL-organization) template. See EmailTemplate::resolveActive() docblock
         // for why this cannot be a plain ::where()->first() (VULN-003-class cross-tenant risk).
-        $template = EmailTemplate::resolveActive($templateKey, $language);
+        $template = EmailTemplate::resolveActive($templateKey, $language, $organization);
 
         // Step 3: Try fallback Blade view if template not found
         if (! $template) {
@@ -139,6 +163,20 @@ class EmailService
         // Step 6: Render template
         $rendered = $this->renderTemplate($template, $data);
 
+        // Step 6.5: Wrap the rendered body in the shared branded layout (logo/brand
+        // color header, contact footer) — but ONLY when a specific tenant was named.
+        // $organization === null must NEVER fall back to platform branding — that was
+        // a real whitelabel regression caught in code review: a customer-facing send
+        // with no organization threaded through it (most callers, at the time this
+        // guard was added) got PLATFORM branding ("Registro" header/footer) instead of
+        // being left exactly as it rendered before this feature existed. Never touches
+        // the stored template body, only what is actually sent/persisted for THIS send.
+        // Stored in body_html as the fully-branded document when wrapped, so the admin
+        // "resend"/preview shows exactly what the recipient received.
+        $brandedHtml = $organization !== null
+            ? $this->brandedLayout->wrap($rendered['html'], $organization)
+            : $rendered['html'];
+
         // Step 7: Create the record, or revive the failed one.
         //
         // message_key carries a UNIQUE constraint, so a retry has to reuse the
@@ -148,7 +186,7 @@ class EmailService
             'language' => $language,
             'recipient_email' => $recipient,
             'subject' => $rendered['subject'],
-            'body_html' => $rendered['html'],
+            'body_html' => $brandedHtml,
             'body_text' => $rendered['text'],
             'status' => 'pending',
             'metadata' => $metadata,
@@ -175,7 +213,7 @@ class EmailService
             $this->gateway->send(
                 $recipient,
                 $rendered['subject'],
-                $rendered['html'],
+                $brandedHtml,
                 $rendered['text'],
                 $metadata
             );

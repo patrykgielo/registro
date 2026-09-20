@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Channels\EmailServiceChannel;
 use App\Enums\TemplateKey;
+use App\Models\Organization;
 use App\Models\User;
 use App\Services\Email\EmailService;
 use Illuminate\Bus\Queueable;
@@ -16,8 +17,13 @@ class AdminCreatedUserNotification extends Notification implements ShouldBeUniqu
 {
     use Queueable;
 
-    public function __construct(public User $user)
-    {
+    /**
+     * @param  \App\Models\Organization|null  $organization  See AdminCreatedUser event's docblock.
+     */
+    public function __construct(
+        public User $user,
+        public ?Organization $organization = null
+    ) {
         $this->onQueue('emails');
     }
 
@@ -57,7 +63,8 @@ class AdminCreatedUserNotification extends Notification implements ShouldBeUniqu
                 [
                     'user_id' => $notifiable->id,
                     'notification' => 'AdminCreatedUserNotification',
-                ]
+                ],
+                organization: $this->organization
             );
         } catch (\Exception $e) {
             Log::error('AdminCreatedUserNotification failed', [

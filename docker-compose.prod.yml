@@ -422,6 +422,26 @@ services:
     container_name: ${TENANT_PREFIX:-registro}-horizon
     restart: unless-stopped
     working_dir: /var/www
+    # ClickUp 123k99ct3za: EmailBrandedLayout::wrap() -> SettingsManager::
+    # emailBrandingFor() -> extractFilePath()/validateFilePath() calls
+    # Storage::disk('public')->exists() while rendering a queued notification
+    # -- EmailService::sendFromTemplate() runs entirely inside this container,
+    # not `app`. Without this mount `exists()` is always false (the path
+    # simply isn't there), so validateFilePath() returns null, logo_url comes
+    # back null, and every queued order email silently falls back to a
+    # text-only header -- no error, no log line, nothing to grep for.
+    #
+    # Read-only, not read-write like `app`: grepped every ShouldQueue job in
+    # app/Jobs/** for a `Storage::disk('public')` write (put/putFile/
+    # makeDirectory/delete) -- zero hits. Every upload happens through the
+    # Filament panel in `app`, which already owns the sole read-write mount
+    # (SYNC_PUBLIC_FROM_IMAGE/"sole writer" comment above). This settles the
+    # "not fixed here" note that used to sit on the volumes: block below in
+    # `app`'s favour for horizon specifically: read access is what the bug
+    # needs, and read-only is strictly safer than matching `app`'s rw mode --
+    # same reasoning `nginx`'s own mount already uses for this exact volume.
+    volumes:
+      - storage-app-public:/var/www/storage/app/public:ro
     networks:
       - registro-prod
     # Hardening: same image as `app`, same non-root `laravel` user, same
@@ -507,14 +527,21 @@ volumes:
   storage-app-public:
   storage-app-private:
   storage-framework:
-  # horizon and scheduler intentionally do NOT mount any storage-* volume
-  # (pre-existing asymmetry, not introduced by this rewrite). Not fixed here:
-  # doing so needs a grep of every queued Job class for a storage:: write
-  # first (PDF/CSV export jobs, image processing) to know it's actually safe
-  # to hand a hardened, cap-dropped worker container write access to the same
-  # volume nginx serves read-only -- guessing wrong on a live-prod-adjacent
-  # file is worse than leaving the asymmetry recorded for whoever does that
-  # audit. See app/docs/deployment/tenant-compose-stack.md.
+  # `horizon` mounts storage-app-public read-only (see its own service block
+  # above, ClickUp 123k99ct3za) -- queued notifications resolve the tenant
+  # logo via Storage::disk('public')->exists() and silently drop it without
+  # this mount. `scheduler` deliberately still mounts NOTHING: every
+  # Schedule::job(...) in routes/console.php dispatches onto a queue and
+  # actually runs inside `horizon`, never inline in this container: every
+  # Schedule::command(...) here was grepped for EmailService/notify() usage
+  # and none send branded mail (the one command that does, `email:test`, is
+  # an unscheduled operator tool run in `app`). If a future scheduled command
+  # ever renders branded mail synchronously, re-run that grep before assuming
+  # this still holds -- it is a property of routes/console.php today, not a
+  # structural guarantee. Original write-access question (export/PDF/image
+  # jobs) is separately closed: grepped every app/Jobs/**/ShouldQueue class
+  # for a Storage::disk('public') write -- zero hits; `app` remains the sole
+  # writer. See app/docs/deployment/tenant-compose-stack.md.
   storage-logs:
   mysql_data:
   redis_data:
