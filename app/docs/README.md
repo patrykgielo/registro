@@ -119,7 +119,7 @@ for the conceptual overview these deep-dive.
 | 6. Module System + Security | ✅ Complete | Module gating, permission namespacing, tenant isolation |
 | 7. Public Rental Booking | 🔲 Future | UI for item_rental tenants |
 | 8. Marketplace | 🔲 Future | Root domain tenant listings |
-| 9. Billing | 🔲 Future | Stripe, subscriptions, trials |
+| 9. Billing | ❌ Nie planowane | Brak subskrypcji, planów, triali i Stripe. Rozliczenie umowne: wdrożenie + dostęp (zwykle roczny) + wsparcie; płatności ewidencjonowane ręcznie (`TenantPayment`) |
 | 10. Branding | 🔲 Future | Custom logos, colors, domains |
 
 See `memory/phases-roadmap.md` for details.

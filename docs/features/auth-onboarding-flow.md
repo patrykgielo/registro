@@ -228,6 +228,8 @@ flowchart LR
 
 ## Trial & Subscription Flow
 
+> **Business model note (2026-09-23):** Registro has no trial and no SaaS subscription plans. The client pays a one-off implementation fee, a recurring fee for access (usually annual, optionally monthly) and support/maintenance priced separately; a prospect may get time-limited access to a demo panel. The fields below keep their original SaaS names; see [Onboarding i rejestracja — Model rozliczenia](../business/onboarding-registration.md#model-rozliczenia-i-pola-billingowe) for what each means now.
+
 Fields on `Organization`:
 
 | Column | Type | Notes |

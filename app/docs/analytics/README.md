@@ -13,7 +13,7 @@ Ten katalog zawiera dokumentację systemu analitycznego Registro. Dwa systemy, d
 ## Szybkie linki
 
 - Panel admina: `/admin/statystyki` (KPI finansowe) + `/admin/analityka` (ruch na stronie)
-- Panel platformy: `/platform/statystyki` (SaaS MRR, tenants)
+- Panel platformy: `/platform/statystyki` (tenanci, przychód z opłat za dostęp)
 - Testy: `tests/Feature/Analytics/` (4 klasy, ~50 asercji)
 - GDPR: [`../legal/analytics-gdpr-lia.md`](../legal/analytics-gdpr-lia.md)
 - Tracking plan (history): [`../features/analytics-event-tracking.md`](../features/analytics-event-tracking.md)

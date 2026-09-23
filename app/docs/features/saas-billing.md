@@ -4,6 +4,8 @@
 **Date:** 2026-05-10
 **Status:** Implemented (Phase 11b — billing foundations)
 
+> **Business model update (2026-09-23):** Registro is **not** sold as a SaaS subscription. There are no pricing plans and no trial. The client pays a one-off implementation fee, a recurring fee for access to the service (usually annual, optionally monthly) and support/maintenance priced separately. A prospect may get time-limited access to a demo panel to see how it works. The schema below keeps its original names (`subscription_status`, `monthly_fee`, `trial_ends_at`, "MRR") — read them as: status of the access agreement, access fee expressed per month, a technical date with no trial meaning, and annual access revenue / 12. Aligning the code and Platform panel labels is a separate task. See [Onboarding i rejestracja — Model rozliczenia](../../../docs/business/onboarding-registration.md#model-rozliczenia-i-pola-billingowe).
+
 ---
 
 ## Overview
@@ -106,4 +108,4 @@ Remaining public methods (still in use by `/admin/statystyki`):
 
 - Filament Resource for managing `TenantPayment` — separate phase
 - Adding subscription fields to existing Organization Filament resource — separate phase
-- Payment gateway integration — separate phase
+- Payment gateway / recurring card billing — not planned; access fees are invoiced under an agreement and recorded manually

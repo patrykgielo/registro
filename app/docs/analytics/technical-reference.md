@@ -199,7 +199,7 @@ Funnel uses `COUNT(DISTINCT session_id)` per event — percentages are relative 
 |----------|-------|
 | File | `app/Filament/Platform/Pages/Statistics.php` |
 | Access | Super-admin only (platform panel) |
-| Purpose | SaaS business KPIs — not tenant data |
+| Purpose | Platform business KPIs (tenants, access fees) — not tenant data |
 
 **Components:**
 
@@ -214,6 +214,8 @@ Funnel uses `COUNT(DISTINCT session_id)` per event — percentages are relative 
 | Registrations chart | COUNT(*) GROUP BY DATE(created_at) |
 | All tenants table | All organizations with owner info |
 | Expiring trials table | trial_ends_at within 14 days |
+
+> **Note:** "MRR" and "trial" are legacy SaaS labels. Registro has no trial or subscription plans — clients pay for access (usually annually), so `monthly_fee` holds the access fee expressed per month and the "MRR" card is effectively annual access revenue / 12. Implementation and support fees are not reflected here.
 
 ---
 

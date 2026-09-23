@@ -114,18 +114,35 @@ pierwszej organizacji; `customer` → `appointments.index`.
 Wartość pivotu `organization_user.role` (`owner`/`customer`/`staff`) jest
 niezależna od opisanego wyżej systemu ról Spatie.
 
-## Trial i subskrypcja
+## Model rozliczenia i pola billingowe
 
-| Kolumna | Uwagi |
-|--------|-------|
-| `trial_ends_at` | Ustawiane na `now()->addDays(14)` przy tworzeniu organizacji |
-| `subscription_status` | `trial` \| `active` \| `paused` \| `cancelled` — domyślnie `trial` |
-| `monthly_fee`, `subscribed_at`, `subscription_expires_at` | Nullable, zarządzane ręcznie |
+**Model biznesowy.** Registro nie jest sprzedawane jako abonament SaaS w
+planach cenowych i nie ma triala przechodzącego w subskrypcję. Klient płaci:
 
-**Nie istnieje jeszcze żadne automatyczne egzekwowanie.** Nic nie blokuje
-dostępu po wygaśnięciu triala — zarządzanie subskrypcją odbywa się w
-całości ręcznie przez panel Platform (model `TenantPayment`). Nieaktywne
-organizacje są uzupełniane wstecznie do `subscription_status = 'cancelled'`.
+- jednorazowo za **wdrożenie**,
+- okresowo za **dostęp do usługi** — zwykle rocznie, opcjonalnie miesięcznie,
+- osobno za **wsparcie / utrzymanie**.
+
+Przed decyzją klient może dostać **dostęp do panelu demo na określoną liczbę
+dni**, żeby zobaczyć jak działa panel. Kwoty ustalane są indywidualnie w
+ofercie — repozytorium nie zawiera cennika.
+
+**Stan w kodzie.** Nazwy kolumn pochodzą z wcześniejszego założenia SaaS i
+nie odpowiadają już modelowi biznesowemu:
+
+| Kolumna | Co robi kod | Znaczenie biznesowe |
+|--------|-------------|---------------------|
+| `trial_ends_at` | Ustawiane na `now()->addDays(14)` przy tworzeniu organizacji | Brak triala; pole technicznie istnieje, nie egzekwuje niczego |
+| `subscription_status` | `trial` \| `active` \| `paused` \| `cancelled` — domyślnie `trial` | Status umowy na dostęp (`active` = opłacony dostęp) |
+| `monthly_fee` | Nullable, wpisywane ręcznie | Opłata za dostęp w przeliczeniu na miesiąc (przy rozliczeniu rocznym: kwota roczna / 12) |
+| `subscribed_at`, `subscription_expires_at` | Nullable, zarządzane ręcznie | Początek i koniec opłaconego okresu dostępu |
+
+**Nie istnieje żadne automatyczne egzekwowanie.** Nic nie blokuje dostępu
+po dacie `trial_ends_at` — statusy i płatności (`TenantPayment`) prowadzone
+są ręcznie w panelu Platform. Nieaktywne organizacje są uzupełniane wstecznie
+do `subscription_status = 'cancelled'`. Dostosowanie kodu do modelu
+(usunięcie automatycznego triala, nazewnictwo w panelu Platform) to osobne
+zadanie.
 
 ## Reset i ustawienie hasła
 
