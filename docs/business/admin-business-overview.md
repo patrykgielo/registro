@@ -11,8 +11,8 @@ w [Development → Status Machines](../architecture/status-machines.md).
 ## Panele
 
 Istnieją dwa panele Filament. `/platform` jest dostępny wyłącznie dla
-super-admina i zarządza sprawami przekrojowymi (organizacje, rozliczenia
-SaaS, statystyki całej platformy). `/admin` to panel per-tenant, w którym
+super-admina i zarządza sprawami przekrojowymi (organizacje, ewidencja
+opłat za dostęp, statystyki całej platformy). `/admin` to panel per-tenant, w którym
 odbywają się codzienne operacje biznesowe — dostęp ograniczony do
 uwierzytelnionej organizacji.
 
