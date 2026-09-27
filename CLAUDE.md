@@ -57,23 +57,27 @@ $user->name = "x"  // FORBIDDEN (column doesn't exist!)
 
 | Rodzaj | Katalog |
 |---|---|
+| **Oferta** — co produkt daje klientowi, językiem korzyści, bez kodu (marketing, sprzedaż, prezentacje) | `docs/oferta/` |
 | Techniczna, wdrożeniowa, architektura, ADR | `app/docs/` — żywy indeks w `app/docs/README.md` |
-| **Biznesowa** — ścieżki klienta / pracownika / właściciela | `docs/business/` |
-| Opisy funkcji utrzymywane obok biznesowych | `docs/features/` |
+| Przepływy (trasy, statusy, powiadomienia) — ścieżki klienta/pracownika/admina od strony kodu | `app/docs/flows/` |
+| Wewnętrzne wyceny godzinowe funkcji (workflow `clickup-task-manager`) | `docs/estimations/` |
 | Archiwum, nie dopisywać | `docs/archive/` |
 
-`app/docs/business/` **nie istnieje** — nie twórz go. Dokument biznesowy to zawsze
-para `.md` + `.en.md`, wpis w `docs/business/README.md` (i `README.en.md`) oraz wpis
-w `nav` w `docs-site/mkdocs.yml`. Bez tego ostatniego plik nie jest publikowany przez
-portal i dla czytelnika po prostu nie istnieje — build nie ostrzega.
+`docs/business/` i `app/docs/business/` **nie istnieją** — nie twórz ich (do 2026-09-27 `docs/business/`
+mieszało ofertę z referencją techniczną; rozdzielone na `docs/oferta/` + `app/docs/flows/`).
 
-**`docs/business/` NIE jest rejestrem usterek.** Te dokumenty opisują, jak produkt działa dla
-klienta, właściciela i pracownika — i bywają materiałem, z którego prowadzi się prezentację.
-Wpis „znany błąd, nienaprawiony" zabija taką rozmowę, zanim się zacznie.
+**`docs/oferta/`** — zasady pisania i utrzymania są w [`docs/oferta/README.md`](docs/oferta/README.md)
+(sekcja „Jak utrzymywać"). Najważniejsze: tylko to, co działa na `develop`; status funkcji tylko
+w katalogu funkcji w README, nie na stronach; zero nazw klas, tras, pól bazy; tylko po polsku;
+**nigdy nie wymyślaj cen, pakietów, referencji klientów ani statystyk**. Nowa strona = wpis
+w katalogu funkcji oraz w `nav` w `docs-site/mkdocs.yml` (bez tego portal jej nie publikuje).
+
+**Oferta NIE jest rejestrem usterek.** Wpis „znany błąd, nienaprawiony" zabija rozmowę handlową.
 
 | Rodzaj informacji | Gdzie |
 |---|---|
-| Jak z tego korzystać, co użytkownik zobaczy, jaki krok wykonać | `docs/business/` |
+| Co klient zyskuje, co zobaczy, jaki krok wykona w panelu | `docs/oferta/` |
+| Jak to działa w kodzie: trasy, statusy, zdarzenia | `app/docs/flows/`, `app/docs/features/` |
 | Co jest zepsute, czego brakuje, co trzeba naprawić | **ClickUp** — backlog może tam być nieskończony |
 | Dlaczego kod wygląda tak, a nie inaczej; pułapki dla programisty | `app/docs/`, `.claude/rules/` |
 

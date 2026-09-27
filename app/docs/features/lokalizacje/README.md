@@ -3,7 +3,11 @@
 Wielooddziałowość: sprzęt stoi w konkretnych oddziałach, klient wybiera oddział jak sklep,
 stan magazynowy zdejmuje się z tego oddziału i wraca do niego po zwrocie.
 
-**Status:** 🟡 w toku.
+**Status (sprawdzone w kodzie 2026-09-27):** 🟡 w toku — **fazy 0–6 na `develop`**, fazy 7–9
+nierozpoczęte. Poniższe wpisy per faza to dziennik z chwili dostawy; oznaczenia „jeszcze nie
+zmergowana" zostały poprawione na numer PR. Funkcje wielooddziałowe włączają się same przy
+**2+ aktywnych oddziałach** (`LocationContext::selectionRequired()`); flaga `multi_location_stock`
+z planu nie została zbudowana — patrz [tryb-jednooddzialowy.md](tryb-jednooddzialowy.md).
 **Faza 0 — zmergowana na `develop`** 2026-08-27 ([PR #227](https://github.com/patrykgielo/registro/pull/227)):
 naprawa realnego oversellu w koszyku, usunięcie dwóch martwych kopii matematyki dostępności,
 harness współbieżności.
@@ -13,7 +17,7 @@ Zweryfikowana w przeglądarce, nie tylko testami.
 **Faza 2 — zmergowana na `develop`** 2026-08-28 ([PR #231](https://github.com/patrykgielo/registro/pull/231)): kotwica
 `service_location_stocks`, backfill z `quantity_total`, `quantity_total` jako mirror, panel bez
 regresji dla tenanta jednooddziałowego. Dostępność **nietknięta** — wchodzi w Fazie 4.
-**Fazy 3-9 — nierozpoczęte, ale odblokowane.** Bramka postawiona 2026-08-28 (weryfikacja
+**Fazy 3-9 — w chwili zapisu nierozpoczęte, ale odblokowane** (dziś: 3-6 zmergowane). Bramka postawiona 2026-08-28 (weryfikacja
 testów pół-automatycznych panelu tenanta i frontu) została **zdjęta 2026-08-30**: oba testy
 walkthrough przechodzą i są stałą częścią suite'u.
 **Faza 3 — zmergowana na `develop`** 2026-09-08 (PR #257 kroki 3.1-3.3, PR #259 kroki 3.4-3.8):
@@ -23,8 +27,8 @@ z numerem na protokole. Wdrożona na UAT.
 ?int $locationId = null)`, gałąź `null` bit w bit dzisiejsza), 4.2 (filtr lokalizacji w outer
 WHERE na `order_items`), 4.3 (pojemność z kotwicy `service_location_stocks`, blokowana wewnątrz
 już zdobytego locka na `services`) i 4.8 (`location_id` nullable + indeks na `rentals`/
-`order_items`/`cart_items`, backfill otwartych rezerwacji do oddziału głównego). **Żadne z 9
-wywołań `getAvailableQuantity()` jeszcze nie przekazuje `$locationId`** — to kroki 4.4-4.7,
+`order_items`/`cart_items`, backfill otwartych rezerwacji do oddziału głównego). **W chwili dostawy etapu A żadne z 9
+wywołań `getAvailableQuantity()` nie przekazywało `$locationId`** (od #264 przekazuje 8 z 9, ekran klienta od #269) — to kroki 4.4-4.7,
 świadomie poza zakresem tej dostawy, do zrobienia po review. Do tego czasu zachowanie jest
 bit w bit identyczne jak przed etapem A (dowód: 26 testów charakteryzujących z kroku 0.2 bez
 zmiany + harness współbieżności `tests/Concurrency` zielony bez nowego scenariusza per-oddział).
@@ -40,20 +44,18 @@ trzy teraz przekazują `$item->location_id`. Trzeci wywołujący (endpoint HTTP)
 w pierwszym przebiegu i doprawiony po code review — pełny opis w `kontrakt-dostepnosci.md`
 Zasada 3. Harness `tests/Concurrency` ma dwa nowe scenariusze per-oddział.
 
-**Faza 4 etap C — gałąź `feature/lokalizacje-faza4-kalendarz`** 2026-09-09, jeszcze nie
-zmergowana: kroki 4.6 i 4.7, **Faza 4 zamknięta w całości**.
+**Faza 4 etap C — zmergowana na `develop`** 2026-09-09 (PR #265): kroki 4.6 i 4.7, **Faza 4 zamknięta w całości**.
 `getMonthlyAvailability(..., ?int $locationId = null)` mirroruje `getAvailableQuantity()`'s
 gałąź `null`/dyscyplinę locków (nigdy nie blokuje). `availabilityForServices(Collection
 $services, Carbon $start, Carbon $end): array` — 3 zapytania zbiorcze zawsze, niezależnie od
 liczby usług; `location_id = NULL` na rezerwacji rozwiązane sumowaniem osobnej „grupy NULL"
 per usługa i dołożeniem jej w PHP do każdego realnego oddziału (nie da się jednym
-`GROUP BY`) — **nie wpięte jeszcze do żadnego widoku**, to zadanie Fazy 5.
+`GROUP BY`) — wpięte do widoków w Fazie 5 (PR #269).
 `RentalBookingController` dostał opcjonalny, fail-closed query param `location_id`
 (zwalidowany przeciwko `organization_id` ORAZ `is_active` oddziału) na obu endpointach naraz —
 nie czeka na `LocationContext` (Faza 5.1), bo param jest bezstanowy.
 
-**Faza 5 krok 5.1 — gałąź `feature/lokalizacje-faza5-kontekst`** 2026-09-09, jeszcze nie
-zmergowana: `App\Support\LocationContext` (jedyne źródło prawdy dla `selectionRequired()` —
+**Faza 5 krok 5.1 — zmergowana na `develop`** 2026-09-09 (PR #267): `App\Support\LocationContext` (jedyne źródło prawdy dla `selectionRequired()` —
 `false` dla 0 lub 1 aktywnej lokalizacji, `true` dla 2+, niezależnie od tego, czy coś jest
 aktualnie wybrane) i middleware `App\Http\Middleware\ShareSelectedLocation`, dopisany do
 globalnej grupy `web` w `bootstrap/app.php` zaraz po `CheckMaintenanceMode` (po `ResolveTenant`,
@@ -76,16 +78,15 @@ sesja po zmianie subdomeny" przez carry-over ciasteczka jest więc dziś niemoż
 i tak waliduje defensywnie (błędny tenant nie jest jedynym źródłem nieaktualnego wyboru —
 usunięcie/dezaktywacja lokalizacji na TYM SAMYM hoście wystarczy).
 
-Nic jeszcze nie czyta `LocationContext` poza middleware i testami — żaden widok nie został
-dotknięty (przełącznik w headerze to krok 5.2).
+W chwili dostawy nic nie czytało `LocationContext` poza middleware i testami; dziś czytają go
+header, koszyk, checkout i strona sprzętu.
 
 Weryfikacja: `pint --test` 966 plików / 0 problemów (baseline 962 + 4 nowe pliki); pełny
 `php artisan test` (SQLite) 1899 passed / 5 skipped / 0 failed (baseline 1878 + 21 nowych
 testów, dokładna zgodność). MySQL 8.0 nie uruchamiany osobno dla tego kroku — brak nowych
 migracji ani zapytań wrażliwych na silnik.
 
-**Faza 5 krok 5.2 — gałąź `feature/lokalizacje-faza5-przelacznik`** 2026-09-09, jeszcze nie
-zmergowana: przełącznik oddziału w `components/nav/header.blade.php` (desktop dropdown + lista
+**Faza 5 krok 5.2 — zmergowana na `develop`** 2026-09-09 (PR #268): przełącznik oddziału w `components/nav/header.blade.php` (desktop dropdown + lista
 w mobilnym drawerze), czytający wyłącznie `LocationContext::selectionRequired()` — tenant
 jednooddziałowy dostaje dziś identyczny header, bez śladu bloku w HTML. Nowa trasa `POST
 /lokalizacja/wybierz` (`location.select`, publiczna, bez `auth`) →
@@ -112,8 +113,7 @@ Weryfikacja: `pint --test` 969/969 (bez zmiany — `IntendedDestination.php` ju�
 `php artisan test` (SQLite) 1913 passed / 5 skipped / 0 failed (1910 + 3 nowe testy);
 `npm run build` wykonany.
 
-**Faza 6 krok 6.5 — gałąź `feature/lokalizacje-faza6-adres-odbioru`** 2026-09-19, jeszcze nie
-zmergowana: protokół wydania/zwrotu (PDF) i maile zamówienia pokazują adres oddziału odbioru
+**Faza 6 krok 6.5 — zmergowana na `develop`** 2026-09-19 (PR #278): protokół wydania/zwrotu (PDF) i maile zamówienia pokazują adres oddziału odbioru
 zamiast adresu firmy (ClickUp `86cbahqhb`). Jeden resolver —
 `SettingsManager::pickupDetailsFor(Order $order)` — czyta snapshot zamówienia
 (`pickup_location_name`/`pickup_location_address`, krok 6.3), nigdy żywy wiersz `Location`;
@@ -132,7 +132,7 @@ Weryfikacja: `pint --test` 993/993; `php artisan test` (SQLite) 2047 passed/5 sk
 (2027 + 20 nowych testów); `npm run build` wykonany.
 
 **Poprawki onboardingu/magazynu (ClickUp `123k99cvc53`/`123k99cvcc3`/`123k99cvc54`) — gałąź
-`feature/lokalizacje-onboarding-stan`** 2026-09-19, jeszcze nie zmergowana: trzy błędy znalezione
+`feature/lokalizacje-onboarding-stan`** — zmergowane 2026-09-19 (PR #280): trzy błędy znalezione
 przy czytaniu kodu rc37, wszystkie w torze „nowy tenant → produkt → dostępność", żaden nie
 wymagał migracji (zmierzone na dev: 0/8 organizacji bez lokalizacji, 0/26 usług `item_rental` bez
 wiersza stanu). (1) `registro:tenant-provision` nie zakładał żadnej `Location` —
@@ -227,10 +227,11 @@ przez istniejące zamówienie.
 | [plan-wdrozenia.md](plan-wdrozenia.md) | Co robimy, w jakiej kolejności, jak weryfikujemy |
 | [model-danych.md](model-danych.md) | Jakie tabele, jakie relacje i **dlaczego akurat takie** |
 | [kontrakt-dostepnosci.md](kontrakt-dostepnosci.md) | Jak liczy się dostępność i czego **nie wolno** przy niej ruszać |
-| [tryb-jednooddzialowy.md](tryb-jednooddzialowy.md) | Co widzi klient z jedną siedzibą (czyli dziś: każdy) |
+| [tryb-jednooddzialowy.md](tryb-jednooddzialowy.md) | Co widzi klient firmy z jednym aktywnym oddziałem |
 
-Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją repo w `docs/business/`:
-`customer-journey-locations.md` i `staff-journey-locations.md` (+ wersje `.en.md`).
+Techniczne ścieżki użytkownika: [`app/docs/flows/customer-journey-locations.md`](../../flows/customer-journey-locations.md)
+i [`staff-journey-locations.md`](../../flows/staff-journey-locations.md). Opis dla klienta (język korzyści):
+[`docs/oferta/wiele-oddzialow.md`](../../../../docs/oferta/wiele-oddzialow.md).
 
 ## Status faz
 
@@ -240,9 +241,9 @@ Dokumentacja biznesowa (ścieżki użytkownika) mieszka zgodnie z konwencją rep
 | 1 | Lokalizacja jako encja (adres, geo, zdjęcie, galeria, CMS) | [`86cbahqc9`](https://app.clickup.com/t/86cbahqc9) | ✅ **ukończona** (PR #228/#229/#230) |
 | 2 | Stan magazynowy per oddział (kotwica) | [`86cbahqd9`](https://app.clickup.com/t/86cbahqd9) | ✅ **ukończona** (PR #231) |
 | 3 | Egzemplarze (numery seryjne) | [`86cbahqdx`](https://app.clickup.com/t/86cbahqdx) | ✅ **ukończona** (PR #257/#259) |
-| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | 🟡 **ukończona (4.1-4.8), etap C niezmergowany** (PR #263/#264 zmergowane; etap C na `feature/lokalizacje-faza4-kalendarz`, code review w toku) |
+| 4 | Rdzeń dostępności | [`86cbahqen`](https://app.clickup.com/t/86cbahqen) | ✅ **ukończona** (PR #263/#264/#265) |
 | 5 | Front klienta (przełącznik, dostępność) | [`86cbahqfy`](https://app.clickup.com/t/86cbahqfy) | ✅ **ukończona** (PR #267, #268, #269, #270 — kroki 5.1-5.5 wszystkie na `develop`) |
-| 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | 🟡 kroki 6.1-6.4 zmergowane (etap A + #277), 6.5 na `feature/lokalizacje-faza6-adres-odbioru` |
+| 6 | Koszyk i checkout | [`86cbahqgr`](https://app.clickup.com/t/86cbahqgr) | ✅ **ukończona** (PR #276/#277/#278) |
 | 7 | Przesunięcia między oddziałami | [`86cbahqhc`](https://app.clickup.com/t/86cbahqhc) | ⬜ nierozpoczęta |
 | 8 | Uprawnienia pracowników | [`86cbahqj5`](https://app.clickup.com/t/86cbahqj5) | ⬜ nierozpoczęta |
 | 9 | Statystyki per oddział | [`86cbahqk0`](https://app.clickup.com/t/86cbahqk0) | ⬜ nierozpoczęta |
@@ -270,7 +271,7 @@ Plan powstał z pomiaru kodu (7 równoległych sond), trzech niezależnych waria
 i trzech sędziów oceniających je w soczewkach poprawności, produktu i wdrażalności — nie
 z założeń. Każdy fakt w dokumentach ma dowód `plik:linia`.
 
-## Znane ograniczenia (stan 2026-08-29)
+## Znane ograniczenia (stan 2026-09-27, bez zmian od 2026-08-29)
 
 | Ograniczenie | Skutek | Zgłoszenie |
 |---|---|---|

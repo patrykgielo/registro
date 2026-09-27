@@ -980,15 +980,15 @@ nie przez MCP — limit 50 wywołań na dobę na planie Free.
 | `kontrakt-dostepnosci.md` | niezmiennik zerowej regresji, 9 wywołań, dyscyplina blokad, filtr w outer WHERE |
 | `tryb-jednooddzialowy.md` | co widzi i czego nie widzi tenant z jedną siedzibą |
 
-Dokumentacja **biznesowa** trafia zgodnie z konwencją repo do `docs/business/` (jedyne miejsce,
-gdzie żyją ścieżki użytkownika), jako para `.md` + `.en.md`:
+Ścieżki użytkownika (techniczne) żyją w `app/docs/flows/`:
 `customer-journey-locations` (wybór oddziału, dostępność, „dostępne też w") oraz
-`staff-journey-locations` (wydanie, zwrot, przeniesienie sprzętu).
+`staff-journey-locations` (wydanie, zwrot, przeniesienie sprzętu). Opis dla klienta, językiem
+korzyści, trafia do `docs/oferta/wiele-oddzialow.md` (przeniesione 2026-09-27).
 
 **Uwaga o dwóch drzewach dokumentacji:** repo ma `app/docs/` (żywy indeks, dokumentacja
 techniczna i wdrożeniowa — tak mówi `CLAUDE.md`) oraz `docs/` (starszy hub z `business/`,
 którego README nosi datę grudnia 2025 i ma 31 zwisających linków). Techniczne idzie do
-`app/docs/`, biznesowe do `docs/business/`.
+`app/docs/` (w tym ścieżki użytkownika w `app/docs/flows/`), opis oferty dla klienta do `docs/oferta/`.
 
 `.claude/rules/` — reguła pinująca dwie zasady, na których ten projekt stoi: wymiar lokalizacji
 wchodzi **wyłącznie** przez `getAvailableQuantity()` (nigdy własnym zapytaniem obok), a egzemplarz

@@ -139,5 +139,5 @@ wpisywania czegokolwiek.
 ## Dokumentacja
 
 - Techniczna: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md)
-- Biznesowa: [`docs/business/customer-journey-locations.md`](../business/customer-journey-locations.md),
-  [`staff-journey-locations.md`](../business/staff-journey-locations.md)
+- Biznesowa: [`app/docs/flows/customer-journey-locations.md`](../../app/docs/flows/customer-journey-locations.md),
+  [`staff-journey-locations.md`](../../app/docs/flows/staff-journey-locations.md)

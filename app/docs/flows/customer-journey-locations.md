@@ -1,25 +1,22 @@
 # Podróż klienta — Wybór oddziału
 
-> **Status: CZĘŚCIOWO WDROŻONE** (stan 2026-08-29).
-> **Oddział już istnieje** — jako encja z adresem, godzinami, zdjęciem i galerią, zarządzalny
-> w panelu i **widoczny na stronie** (fazy 0-2, PR #227-#231).
-> **Jeszcze nie istnieje** wybór oddziału przez klienta ani dostępność per punkt — to fazy 5-6,
-> zaplanowane na kolejne etapy.
-> Sekcja „Co klient widzi dziś" opisuje stan faktyczny; reszta dokumentu opisuje stan docelowy.
-> Szczegóły techniczne: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
+> Zakres wdrożenia i plan kolejnych faz: [`app/docs/features/lokalizacje/`](../features/lokalizacje/README.md).
+> Opis dla klienta: [`docs/oferta/wiele-oddzialow.md`](../../../docs/oferta/wiele-oddzialow.md).
 
 **Dla klientów:** jeśli Twoja firma ma kilka oddziałów, klient wybiera oddział raz — jak sklep
 w Castoramie — a katalog, dostępność i odbiór dotyczą już tylko tego punktu. Jeśli masz jedną
 siedzibę, klient nie zobaczy żadnego wyboru i wszystko wygląda tak jak dziś.
 
-Dotyczy tenantów z włączoną flagą `multi_location_stock`. Rozszerza
+**Włącza się sama przy 2+ aktywnych oddziałach** (`LocationContext::selectionRequired()` —
+`activeLocations()->count() > 1`). Flaga `multi_location_stock` opisana w planie **nie istnieje
+w kodzie** — nie szukaj jej. Rozszerza
 [podróż wypożyczenia](customer-journey-rental.md) — nie zastępuje jej.
 
 ## Zasada nadrzędna
 
 **Jedno zamówienie = jeden oddział odbioru.** Klient potrzebujący sprzętu z dwóch punktów składa
-dwa zamówienia. Ta reguła **będzie** wymuszona schematem (`carts.location_id`, Faza 6), a nie
-dyscypliną kodu — nie da się jej wtedy obejść przypadkiem. Kolumna jeszcze nie istnieje.
+dwa zamówienia. Reguła jest wymuszona schematem (`carts.location_id`, migracja
+`2026_09_10_090000`, PR #276), a nie dyscypliną kodu.
 
 ## Pełna ścieżka
 
@@ -55,7 +52,7 @@ flowchart TD
     REVALIDATE -- Tak --> ORDER["Zamówienie złożone\nProtokół wydania z adresem oddziału"]
 ```
 
-## Co klient widzi DZIŚ
+## Karty oddziałów na stronach CMS
 
 Oddziały pojawiają się na stronie jako **karty w bloku „Siatka treści"** na dowolnej stronie CMS.
 Karta pokazuje:
@@ -72,9 +69,8 @@ Karta pokazuje:
 | Telefon (klikalny) i e-mail (klikalny) | pola „Telefon", „E-mail" |
 | „Zobacz na mapie" | współrzędne z pickera, z zapasowym wyszukaniem po adresie |
 
-**Czego nie ma:** oddział nie ma własnej podstrony ani adresu URL — istnieje wyłącznie jako
-karta w siatce. Klient nie wybiera oddziału, katalog i dostępność nie są jeszcze podzielone
-na punkty.
+**Czego nie ma:** oddział nie ma własnej podstrony ani adresu URL (pole `slug` istnieje,
+trasy nie) — istnieje wyłącznie jako karta w siatce.
 
 ### Godziny otwarcia trafiają do Google
 
@@ -102,7 +98,7 @@ Przy każdej takiej skardze sprawdź najpierw blok „Siatka treści", a dopiero
 
 ---
 
-## Co klient zobaczy docelowo (fazy 5-6)
+## Co klient widzi przy 2+ oddziałach
 
 | Etap | Co się zmienia względem dziś |
 |---|---|
@@ -113,10 +109,12 @@ Przy każdej takiej skardze sprawdź najpierw blok „Siatka treści", a dopiero
 | Checkout | Adres odbioru = adres oddziału; walidacja odrzuca oddział spoza firmy |
 | Po zakupie | Protokół wydania i e-maile zawierają adres oddziału |
 
-## Ilość: jedna sztuka na rezerwację
+## Ilość
 
-To **świadoma decyzja, nie ograniczenie techniczne**. Kalendarz istnieje po to, żeby klient za
-każdym razem wybrał zakres dat; potrzebując dwóch sztuk, powtarza przejście.
+Ze strony produktu do koszyka trafia zawsze 1 sztuka; **w koszyku klient zmienia ilość**.
+Przy składaniu zamówienia pozycja o ilości N rozpada się na N wierszy `OrderItem` po jednej
+sztuce (PR #258) — każda sztuka ma własny egzemplarz, numer na protokole i może być
+przedłużana osobno. Walidacja dostępności nadal odejmuje N naraz.
 
 Liczba „dostępne 2 szt." jest informacją **czy w ogóle jest sens**, a nie obietnicą. Rozstrzygnięcie
 zapada dopiero przy składaniu zamówienia — dodanie do koszyka niczego nie rezerwuje, więc w czasie,

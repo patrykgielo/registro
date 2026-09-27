@@ -1,9 +1,15 @@
 # Podróż pracownika — Praca w oddziale
 
-> **Status: PLANOWANE.** Zachowanie zaprojektowane, jeszcze niewdrożone.
-> **Oddział jako encja już istnieje** (fazy 0-2) i pracownik z rolą admina może nim zarządzać
-> w panelu — ale **przypisanie pracownika do oddziału i zawężenie widoku to Faza 8**,
-> zaplanowana na kolejny etap. Opisany niżej podział pracy to stan docelowy. Plan: [`app/docs/features/lokalizacje/`](../../app/docs/features/lokalizacje/README.md).
+> **Co działa, a co jest planem** (sprawdzone w kodzie 2026-09-27):
+> - **Działa:** egzemplarze (`ServiceUnit`) z numerem i oddziałem, wydanie i przyjęcie konkretnej
+>   sztuki z numerem na protokole, ostrzeżenie przy zwrocie innej sztuki, status serwisowy
+>   pojedynczej sztuki, rozbicie pozycji o ilości N na N wierszy zamówienia (fazy 3–6).
+> - **Plan:** przypisanie pracownika do oddziału i zawężony widok (Faza 8 — brak `location_user`),
+>   przesunięcia z księgą ruchów i kontrolą pokrycia (Faza 7 — brak `stock_movements`).
+>   Sekcje „Przypisanie do oddziału", „Codzienna praca" (zawężenie widoku) i „Przeniesienie
+>   sprzętu" opisują ten plan.
+> - Plan faz: [`app/docs/features/lokalizacje/`](../features/lokalizacje/README.md).
+> Opis dla klienta: [`docs/oferta/wiele-oddzialow.md`](../../../docs/oferta/wiele-oddzialow.md).
 
 **Dla właścicieli:** pracownikowi przypisujesz oddział, w którym pracuje. Od tego momentu widzi
 w panelu tylko zamówienia swojego punktu, a gdy klika zwrot — system wie, do którego oddziału
@@ -80,5 +86,9 @@ traci pokrycie **bez jednego komunikatu**.
 
 Ustawienie egzemplarzowi statusu `maintenance` zdejmuje **jedną** sztukę z dostępności oddziału.
 
-Dziś jedynym wyłącznikiem jest `is_active` na **całej** usłudze — wyłączenie jednego uszkodzonego
-młota wyłącza wszystkie młoty tego modelu w całej firmie.
+Działa (`ServiceUnitStatus`, `ServiceUnitObserver`). Wcześniej jedynym wyłącznikiem było
+`is_active` na **całej** usłudze.
+
+Dziś ręczna zmiana oddziału sztuki w zakładce „Egzemplarze" jest możliwa, ale **nie sprawdza
+przyszłych rezerwacji** — dokładnie ten cichy błąd, przed którym chroni planowany krok 2
+przeniesienia. Lista sztuk do wydania nie jest też zawężona do oddziału odbioru zamówienia.

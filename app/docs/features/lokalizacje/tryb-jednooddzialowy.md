@@ -67,7 +67,20 @@ miała już ręcznie wpisaną ilość, MATERIALIZUJE różnicę jako egzemplarze
 opcjonalny — decyzja Fazy 3) — `ServiceUnitObserver::materializePlaceholdersForFirstUnit()`.
 Admin, który miał „5" i dodaje pierwszy egzemplarz, kończy z 1 nazwanym + 4 bezimiennymi, nie z „1".
 
-## Flaga `multi_location_stock`
+## Flaga `multi_location_stock` — zaplanowana, niezbudowana
+
+> **Stan w kodzie (sprawdzone 2026-09-27): flaga nie istnieje.** Nie ma jej w `TenantFeature`,
+> w konfiguracji ani w panelu Platform — występuje wyłącznie w komentarzach. Przełącznik oddziału,
+> wybór oddziału w koszyku/checkoucie, dostępność per oddział i „Dostępne też w" włączają się
+> **same, gdy firma ma 2+ aktywne oddziały**: `LocationContext::selectionRequired()` →
+> `activeLocations()->count() > 1` (Faza 5.1, PR #267).
+>
+> To jest **dokładnie warunek, który ta sekcja odrzuciła** (niżej, zachowane jako zapis decyzji).
+> **Otwarta decyzja właściciela produktu:** zbudować flagę zgodnie z planem albo zatwierdzić
+> obecne zachowanie i usunąć ten zapis. Do tego czasu: dodanie drugiego aktywnego oddziału —
+> także tylko po to, żeby pokazać adres na stronie — uruchamia pełny tryb wielooddziałowy.
+
+Zapis decyzji z planu (2026-08):
 
 | | |
 |---|---|
@@ -86,7 +99,8 @@ dostępności.
 ## Rola kanarka
 
 UAT (`budowlana`, jeden oddział) jest **kanarkiem niezmiennika zerowej regresji**. Po każdej
-fazie musi zachowywać się identycznie jak przed nią, dopóki `multi_location_stock` jest OFF.
+fazie musi zachowywać się identycznie jak przed nią, dopóki ma **jeden aktywny oddział**
+(flaga `multi_location_stock` nie istnieje — patrz wyżej).
 
 Weryfikacja: dostępność, kalendarz i kafelki zwracają te same liczby co przed wdrożeniem fazy —
 pinowane testami charakteryzującymi z Fazy 0, które sprawdzają **konkretne wartości**, nie kształt.

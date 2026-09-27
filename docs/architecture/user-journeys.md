@@ -1,5 +1,9 @@
 # User Journeys — Registro
 
+> **Historyczne (czerwiec 2026), nieutrzymywane.** Treść przeniesiona i poprawiona w
+> [`app/docs/flows/`](../../app/docs/flows/README.md); m.in. publiczny kreator rejestracji firmy
+> opisany niżej już nie istnieje (PR #159).
+
 ## Journey Map Overview
 
 ```mermaid

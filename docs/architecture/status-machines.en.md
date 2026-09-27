@@ -5,8 +5,8 @@ a deprecated repo-root `docs/architecture/status-machines.md` and corrected
 against `app/StateMachines/OrderStatusStateMachine.php` (two missing order
 transitions — see the Order Statuses section below). For the
 customer/business-facing view of these same transitions, see
-[Business → Purchase Process](../business/purchase-process.md) and
-[Business → Cancellation](../business/customer-journey-cancellation.md).
+[Business → Purchase Process](../../app/docs/flows/purchase-process.md) and
+[Business → Cancellation](../../app/docs/flows/customer-journey-cancellation.md).
 
 ---
 
@@ -132,7 +132,7 @@ event is dispatched from `Appointment::booted()` with only the `Appointment`
 argument, but its constructor requires
 `(Appointment $appointment, Carbon $oldDate, Carbon $newDate)` — this throws
 a `TypeError` at runtime. Still present as of 2026-07 (see the "Known bug — reschedule TypeError"
-section on [Business → Customer Journey: Booking](../business/customer-journey-booking.md)).
+section on [Business → Customer Journey: Booking](../../app/docs/flows/customer-journey-booking.md)).
 
 **Cancellation deadline:** `appointment_datetime - cancellationHours()`
 (configurable in admin settings). Past appointments cannot be cancelled by

@@ -1,5 +1,9 @@
 # Registro - Documentation Hub
 
+> **Nieaktualny hub (ostatnia merytoryczna aktualizacja: grudzień 2025).** Żywe miejsca:
+> oferta dla klienta — [`oferta/`](oferta/README.md); dokumentacja techniczna — [`app/docs/`](../app/docs/README.md);
+> ścieżki klienta od strony kodu — [`app/docs/flows/`](../app/docs/flows/README.md).
+
 **Last Updated:** December 20, 2025
 
 Centralna nawigacja po dokumentacji projektu Laravel 12 + Filament 4.2.3.

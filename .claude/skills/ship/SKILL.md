@@ -68,7 +68,7 @@ State: **"No docs needed — [reason]"** instead of skipping the question.
 
 **One question is never skippable, however small the fix:** did anything a CUSTOMER or TENANT
 experiences change — a message they receive or stop receiving, a page they land on, a step that
-appears or disappears? If yes, `app/docs/business/` needs it (both `.md` and `.en.md`) and this
+appears or disappears? If yes, `docs/oferta/` and `app/docs/flows/` need it (see `docs/oferta/README.md`) and this
 stops being a `/ship` job — go to `/implement`. A one-line fix can change what a customer
 receives; size of diff is not size of consequence.
 

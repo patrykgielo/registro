@@ -2,7 +2,14 @@
 
 **Dla klientów:** to kompletna ścieżka od wejścia na stronę do otrzymania
 opłaconego, potwierdzonego zamówienia — strona główna → katalog → strona
-produktu → koszyk → checkout → płatność Przelewy24 → e-mail potwierdzający.
+produktu → koszyk → checkout → płatność Przelewy24 **albo przy odbiorze** → e-mail potwierdzający.
+
+> **Płatność przy odbiorze** (`checkout.settlement_offline_enabled`, domyślnie `true`, PR #206/#219):
+> zamówienie powstaje bez bramki, trzyma sprzęt przez `checkout.offline_reservation_hold_hours`
+> (domyślnie 48 h, zakres 1–168), klient dostaje `OrderAcceptedOfflineNotification`, a obsługa
+> klika „Odnotuj wpłatę” (`OrderService::recordOfflinePayment`). Nieopłacone zwalnia
+> `orders:cleanup-expired` (co 5 min). Metoda P24 znika z checkoutu, gdy serwer nie ma
+> skonfigurowanej bramki. Poniższy lejek opisuje ścieżkę P24.
 Ta strona przedstawia widok „lejka sprzedażowego"; dla głębszych szczegółów
 technicznych walidacji pól B2C/B2B zobacz [Customer Journey — Rental](customer-journey-rental.md),
 a dla anulowania zobacz [Cancellation](customer-journey-cancellation.md).
@@ -58,7 +65,7 @@ flowchart LR
     subgraph FORMULARZ ["GET /koszyk/zamowienie — Jednostronicowy checkout (Alpine.js)"]
         CHECKOUT_PAGE["Formularz checkoutu\nWypełniony z profilu użytkownika"]
         CTYPE{Przełącznik typu klienta}
-        B2C["Osoba fizyczna (B2C)\nImię i nazwisko, PESEL, adres\nOpcjonalnie: faktura + NIP"]
+        B2C["Osoba fizyczna (B2C)\nImię i nazwisko, adres\nPESEL gdy checkout.pesel_required\nOpcjonalnie: faktura + NIP"]
         B2B["Firma (B2B)\nNazwa firmy, NIP, REGON, KRS\nOsoba reprezentująca + opcjonalna osoba odbierająca"]
         CONSENTS["Wymagane zgody:\nRegulamin, RODO, wyłączenie prawa odstąpienia\nWszystkie znaczniki czasu + IP zapisane w zamówieniu"]
         CHECKOUT_PAGE --> CTYPE

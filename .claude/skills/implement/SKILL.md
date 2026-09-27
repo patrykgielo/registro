@@ -103,10 +103,11 @@ State: **"Retry cycles used: [N/3]. Final: [ALL GREEN / escalated to user]"**
 Answer EACH question explicitly:
 
 1. **app/docs/features/** — Did you add a feature or change architecture? → Update relevant doc
-2. **app/docs/business/** — **Did anything a CUSTOMER or TENANT experiences change?** A message
-   they receive (or stop receiving), a page they land on, a step that appears or disappears. If yes,
-   the customer-journey page for that flow must say so — **and both language variants** (`.md` and
-   `.en.md`) or they drift.
+2. **docs/oferta/ + app/docs/flows/** — **Did anything a CUSTOMER or TENANT experiences change?** A message
+   they receive (or stop receiving), a page they land on, a step that appears or disappears. If yes:
+   the mechanics go to the flow page in `app/docs/flows/`, and what the customer now gets goes to
+   `docs/oferta/` — the feature page **and** its status in the catalogue in `docs/oferta/README.md`
+   (rules: its "Jak utrzymywać" section). Polish only; no class names, routes or DB fields there.
 3. **.claude/rules/** — Did you discover a pattern, fix an error, or change a convention? → Update relevant rule
 4. **memory/MEMORY.md** — Is this significant for future conversations? → Update memory
 

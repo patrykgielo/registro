@@ -2,7 +2,7 @@
 
 **Dla klientów:** jeśli Twoja firma wypożycza fizyczne przedmioty (sprzęt,
 pojazdy, ekwipunek), klienci przeglądają katalog, wybierają zakres dat, dodają
-do koszyka i płacą online przez Przelewy24 — z opcjonalną zwrotną kaucją
+do koszyka i płacą online przez Przelewy24 albo przy odbiorze — z opcjonalną zwrotną kaucją
 pobieraną osobiście przy odbiorze, nigdy nie pobieraną online.
 
 Dotyczy rekordów `Service` z `service_type = ServiceType::ItemRental`,
@@ -47,10 +47,12 @@ flowchart TD
     AUTH -- Tak --> ADD_CART["Dodanie do koszyka\nCartService::addItem()\nZapisuje migawkę ceny + deposit_amount"]
     ADD_CART --> CART["/koszyk — Przegląd koszyka"]
     CART --> CHECKOUT["/koszyk/zamowienie — Finalizacja zamówienia\n(pełny opis w Procesie zakupu)"]
-    CHECKOUT --> CUST_DATA["Dane klienta\nB2C: PESEL + adres\nB2B: NIP + REGON + KRS + osoba upoważniona + osoba odbierająca"]
+    CHECKOUT --> CUST_DATA["Dane klienta\nB2C: adres (+ PESEL, gdy checkout.pesel_required)\nB2B: NIP + REGON + KRS + osoba upoważniona + osoba odbierająca"]
     CUST_DATA --> SUMMARY["Podsumowanie zamówienia: total_amount\n+ deposit_amount (poza sumą, bez VAT)"]
     SUMMARY --> PAY{Metoda płatności}
     PAY -- Przelewy24 --> P24["Bramka P24"]
+    PAY -- "Przy odbiorze (offline)" --> OFF["Zamówienie trzyma sprzęt\ncheckout.offline_reservation_hold_hours (48 h)\nadmin: Odnotuj wpłatę"]
+    OFF --> ORDER
     PAY -- Tylko DEV --> FAKE["Fake Pay /dev/fake-pay"]
     P24 --> ORDER["Zamówienie utworzone\nOrderItem blokuje dostępność\ndla wybranego zakresu dat"]
     FAKE --> ORDER
@@ -71,7 +73,7 @@ flowchart TD
 ```
 
 **Typy danych klienta przy finalizacji zamówienia:**
-- **B2C** — PESEL + adres
+- **B2C** — adres; PESEL opcjonalny, wymagany tylko gdy `checkout.pesel_required = true` (domyślnie `false`, PR #213); podany jest zawsze walidowany sumą kontrolną
 - **B2B** — NIP + REGON + opcjonalnie KRS + osoba upoważniona (osoba prawnie upoważniona do podpisu) + opcjonalnie osoba odbierająca
 
 Pełne szczegóły pól B2C/B2B, maszyna stanów zamówienia oraz sekwencja
@@ -150,12 +152,21 @@ legacy `Rental` (statusy blokujące), jak i z bieżących wierszy `OrderItem`
 (`paid`/`confirmed`/`in_progress` blokują bezterminowo; `pending_payment`
 blokuje tylko dopóki `expires_at > now()`).
 
-**Nie istnieją powiadomienia dla klienta przy przejściach statusu wypożyczenia**
-(`confirmed`, `active`, `returned`, `cancelled`) — admin zarządza statusem
-ręcznie, a jakakolwiek komunikacja z klientem dotycząca czasu odbioru/zwrotu
-odbywa się poza systemem. Tylko powiadomienia na poziomie zamówienia dotyczące
-płatności (`OrderPaidNotification` itd. — zobacz [Proces zakupu](purchase-process.md))
-docierają do klienta automatycznie.
+**Powiadomienia klienta dla bieżącego przepływu `Order`** (wyzwalacze:
+`app/Providers/AppServiceProvider.php`): `OrderAcceptedOfflineNotification` (zamówienie
+płatne przy odbiorze), `OrderPaidNotification`, `OrderConfirmedNotification`,
+`OrderHandedOverNotification` (wydanie, PR #176), `OrderReturnedNotification` (zwrot, PR #176),
+`OrderCancelledNotification`, `RentalReturnDueSoonNotification` / `RentalReturnOverdueNotification`
+(dzień przed końcem i po terminie, `ProcessRentalReturnRemindersJob` codziennie 9:00, PR #184),
+`RentalExtensionApproved/RejectedNotification`. Właściciel: `OrderPaidNotification` (wariant
+admin), `RentalExtensionRequestedNotification`. **Brak** e-maila do właściciela przy zamówieniu
+offline w chwili złożenia.
+
+Protokoły wydania i zwrotu (PDF, `OrderProtocolController`, PR #178) — do pobrania przez
+klienta z `/moje-zamowienia` i przez admina z panelu; **nie** są załączane do e-maili.
+
+Legacy model `Rental` (zasób `RentalResource`) nadal nie wysyła powiadomień przy swoich
+przejściach statusu (`confirmed`, `active`, `returned`, `cancelled`) poza `RentalCancelledNotification`.
 
 ## Wypożyczenie vs Rezerwacja — szybkie porównanie
 
@@ -164,7 +175,7 @@ docierają do klienta automatycznie.
 | Model | `Rental` (+ `Order`/`OrderItem` w bieżącym przepływie) | `Appointment` |
 | Co jest rezerwowane | Fizyczny stan magazynowy (ilość) | Slot czasowy pracownika |
 | Granulacja daty | Zakres dat | Pojedyncza data + okno czasowe |
-| Płatność | Przelewy24 / fake-pay przez Order | Brak (tylko potwierdzenie) |
+| Płatność | Przelewy24 lub przy odbiorze, przez Order (fake-pay tylko DEV) | Brak (tylko potwierdzenie) |
 | Moduł | `rentals` | `bookings` |
 | Zasób admina | `RentalResource` / `OrderResource` | `AppointmentResource` |
 

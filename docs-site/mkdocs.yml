@@ -103,18 +103,18 @@ extra_javascript:
 
 nav:
   - Home: README.md
-  - Business:
-      - Overview: business/README.md
-      - Customer Journey — Booking (time_slot): business/customer-journey-booking.md
-      - Customer Journey — Rental (item_rental): business/customer-journey-rental.md
-      - Customer Journey — Inquiry: business/customer-journey-inquiry.md
-      - Cancellation (customer + admin): business/customer-journey-cancellation.md
-      - Customer Journey — Choosing a Branch: business/customer-journey-locations.md
-      - Staff Journey — Working at a Branch: business/staff-journey-locations.md
-      - Guest vs Authenticated: business/guest-vs-authenticated.md
-      - Purchase Process (funnel view): business/purchase-process.md
-      - Onboarding & Registration: business/onboarding-registration.md
-      - Admin Business Overview: business/admin-business-overview.md
+  # Oferta = customer-facing product description (docs/oferta/, Polish only).
+  # The former "Business" section (docs/business/) was split 2026-09-27: its
+  # technical content moved to app/docs/flows/, which -- like the rest of
+  # app/docs/ -- this portal cannot reach (see the docs_dir note below).
+  - Oferta:
+      - Katalog funkcji: oferta/README.md
+      - O Registro: oferta/o-registro.md
+      - Jak wygląda współpraca: oferta/model-wspolpracy.md
+      - Wypożyczalnia online: oferta/wypozyczalnia.md
+      - Rezerwacja terminów: oferta/rezerwacje-terminow.md
+      - Wiele oddziałów: oferta/wiele-oddzialow.md
+      - Panel, strona www i statystyki: oferta/panel-i-strona.md
   - Development:
       - Database Schema: architecture/database-schema.md
       - Status Machines: architecture/status-machines.md

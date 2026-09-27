@@ -6,7 +6,7 @@ czynności, które faktycznie klika administrator lub członek personelu:
 potwierdzenie zamówienia, oznaczenie odbioru przedmiotu, zatwierdzenie/
 anulowanie wizyty, obsługę kaucji zabezpieczającej oraz zarządzanie zwrotami
 dla klientów. Szczegóły techniczne maszyny stanów każdego modelu znajdują się
-w [Development → Status Machines](../architecture/status-machines.md).
+w [Development → Status Machines](../../../docs/architecture/status-machines.md).
 
 ## Panele
 

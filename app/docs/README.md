@@ -1,5 +1,13 @@
 # Registro Documentation
 
+## Gdzie czego szukać
+
+| Potrzebujesz | Katalog |
+|---|---|
+| Co produkt daje klientowi — oferta, marketing, sprzedaż (bez kodu) | [`docs/oferta/`](../../docs/oferta/README.md) |
+| Ścieżki klienta/pracownika/admina od strony kodu (trasy, statusy, powiadomienia) | [`flows/`](flows/README.md) |
+| Funkcje, architektura, wdrożenie, bezpieczeństwo | ten katalog (`app/docs/`) |
+
 ## Architecture Overview
 
 Registro to multi-tenant SaaS dla rezerwacji i wypożyczeń. Każdy tenant (Organization) działa na własnej subdomenie (`slug.registro.app`).
@@ -84,7 +92,7 @@ for the conceptual overview these deep-dive.
 
 | Feature | Plik | Status |
 |---------|------|--------|
-| Onboarding & Registration | `features/onboarding-and-registration.md` | Phase 5 complete |
+| Onboarding & Registration | `flows/onboarding-registration.md` | Operator CLI provisioning (public wizard removed 2026-08-08, PR #159); customer registration on tenant subdomain |
 | Tenant-Stack Provisioning | `features/tenant-stack-provisioning.md` | CLI provisioning + singleton lock for dedicated per-client stacks |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
 | SMS System | `features/sms-system/` | Stable |
@@ -115,7 +123,7 @@ for the conceptual overview these deep-dive.
 | 2. Feature Flags | ✅ Complete | hasFeature(), TenantFeature, conditional visibility |
 | 3. Item Rental Models | ✅ Complete | RentalCategory, Service (item_rental), Rental |
 | 4. Subdomain Resolution | ✅ Complete | ResolveTenant, auth flow, EnsureSuperAdmin |
-| 5. Onboarding + Verticals | ✅ Complete | Industry enum, 3-step wizard, vertical seeders |
+| 5. Onboarding + Verticals | ✅ Complete | Industry enum, vertical seeders (3-step public wizard later removed — CLI provisioning, PR #159) |
 | 6. Module System + Security | ✅ Complete | Module gating, permission namespacing, tenant isolation |
 | 7. Public Rental Booking | 🔲 Future | UI for item_rental tenants |
 | 8. Marketplace | 🔲 Future | Root domain tenant listings |

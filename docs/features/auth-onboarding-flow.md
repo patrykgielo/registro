@@ -1,5 +1,9 @@
 # Authentication & Onboarding Flow
 
+> **Nieaktualne w części o rejestracji firmy.** Publiczny kreator `/register` usunięto 2026-08-08
+> (PR #159) — firmy zakłada operator komendą `registro:tenant-provision`. Aktualny opis:
+> [`app/docs/flows/onboarding-registration.md`](../../app/docs/flows/onboarding-registration.md).
+
 ## Registration Flow
 
 ### Business Registration (root domain only — 3-step wizard)
@@ -228,7 +232,7 @@ flowchart LR
 
 ## Trial & Subscription Flow
 
-> **Business model note (2026-09-23):** Registro has no trial and no SaaS subscription plans. The client pays a one-off implementation fee, a recurring fee for access (usually annual, optionally monthly) and support/maintenance priced separately; a prospect may get time-limited access to a demo panel. The fields below keep their original SaaS names; see [Onboarding i rejestracja — Model rozliczenia](../business/onboarding-registration.md#model-rozliczenia-i-pola-billingowe) for what each means now.
+> **Business model note (2026-09-23):** Registro has no trial and no SaaS subscription plans. The client pays a one-off implementation fee, a recurring fee for access (usually annual, optionally monthly) and support/maintenance priced separately; a prospect may get time-limited access to a demo panel. The fields below keep their original SaaS names; see [Onboarding i rejestracja — Model rozliczenia](../../app/docs/flows/onboarding-registration.md#model-rozliczenia-i-pola-billingowe) for what each means now.
 
 Fields on `Organization`:
 

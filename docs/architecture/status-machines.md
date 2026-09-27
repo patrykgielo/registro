@@ -5,8 +5,8 @@ przestarzałego pliku `docs/architecture/status-machines.md` w katalogu główny
 i skorygowane względem `app/StateMachines/OrderStatusStateMachine.php` (dwa brakujące
 przejścia statusu zamówienia — patrz sekcja Statusy zamówienia poniżej). Widok tych
 samych przejść zorientowany na klienta/biznes znajduje się w
-[Business → Purchase Process](../business/purchase-process.md) oraz
-[Business → Cancellation](../business/customer-journey-cancellation.md).
+[Business → Purchase Process](../../app/docs/flows/purchase-process.md) oraz
+[Business → Cancellation](../../app/docs/flows/customer-journey-cancellation.md).
 
 ---
 
@@ -133,7 +133,7 @@ wysyłane z `Appointment::booted()` tylko z argumentem `Appointment`, ale jego
 konstruktor wymaga `(Appointment $appointment, Carbon $oldDate, Carbon $newDate)`
 — powoduje to `TypeError` w czasie działania. Nadal obecne w 2026-07 (patrz sekcja
 "Known bug — reschedule TypeError" na
-[Business → Customer Journey: Booking](../business/customer-journey-booking.md)).
+[Business → Customer Journey: Booking](../../app/docs/flows/customer-journey-booking.md)).
 
 **Termin graniczny anulowania:** `appointment_datetime - cancellationHours()`
 (konfigurowalne w ustawieniach admina). Wizyty z przeszłości nie mogą zostać
