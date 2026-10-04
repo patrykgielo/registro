@@ -1774,3 +1774,79 @@ momencie naprawy bramki — trzy niezależne zespoły/sesje trafiły w ten sam b
 zrobiła tego kroku z wyprzedzeniem. Jednorazowy `mysql:8.0` + `bash tests/Feature/Database` jako
 rutynowy krok PRZED PR-em na każdej migracji dodającej FK do `locations` (albo do dowolnej innej
 tabeli z istniejącym testem `--path`-rollbacku) jest tańszy niż czekanie na bramkę.
+
+---
+
+## Incydent 2026-09-20 (ClickUp 123k99ct3za): `horizon` nie montował `storage-app-public` — logo
+## tenanta nigdy nie mogło pojawić się w żadnym kolejkowanym mailu
+
+`docker-compose.prod.yml` montował `storage-app-public` na `app` (rw) i `nginx` (ro), ale nie na
+`horizon`/`scheduler` — asymetria wprost udokumentowana komentarzem od Faza-2 stack-per-tenant
+epiki (#157, 2026-08-08): "not fixed here: doing so needs a grep of every queued Job class for a
+storage:: write first ... to know it's actually safe to hand a hardened, cap-dropped worker
+container write access". Komentarz nie stał się nieaktualny błędnie — po prostu nigdy nie
+rozważył dostępu WYŁĄCZNIE do odczytu, bo w 2026-08-08 nic w kolejce nie czytało tego dysku
+w ogóle.
+
+To przestało być nieszkodliwe, gdy `feature/maile-wlasciciel-i-logo` dodał
+`EmailBrandedLayout::wrap()` → `SettingsManager::emailBrandingFor()` →
+`extractFilePath()`/`validateFilePath()`, który woła `Storage::disk('public')->exists($path)`
+przy RENDEROWANIU każdego zamówienia — a `EmailService::sendFromTemplate()` działa CAŁKOWICIE
+wewnątrz `horizon`, nigdy w `app`. Bez wolumenu `exists()` zawsze zwraca `false` (ścieżki po
+prostu nie ma w systemie plików kontenera) — `validateFilePath()` zwraca `null`, `logo_url`
+wychodzi `null`, mail renderuje się z czystym tekstowym nagłówkiem zamiast logo. Zero wyjątku,
+zero linii w logu — dokładnie klasa cichej porażki, przed którą ostrzega nagłówek tego pliku.
+
+**Naprawa:** `horizon` montuje `storage-app-public:/var/www/storage/app/public:ro` — READ-ONLY,
+nie rw jak `app`. To osiedla pytanie z oryginalnego komentarza, nie je omija: zgrepowano każdą
+klasę `ShouldQueue` pod `app/Jobs/**` pod kątem zapisu `Storage::disk('public')` (`put`/
+`putFile`/`makeDirectory`/`delete`) — zero trafień. `OrganizationDataExportService` (jedyny
+kandydat na "image processing/eksport" z komentarza) pisze na dysk `local`, nie `public`. Każdy
+upload idzie przez panel Filament w `app`, jedynym udokumentowanym writerze
+(`SYNC_PUBLIC_FROM_IMAGE`/"sole writer" komentarz przy `app`'s volumes). Read-only jest ściślej
+bezpieczniejsze niż rw `app`-a i dowiedzione jako faktycznie wymuszone (nie no-op) w teście niżej.
+
+**`scheduler` NIE dostał tego mountu — sprawdzone, nie założone.** Każdy `Schedule::job(...)` w
+`routes/console.php` (`ProcessRemindersJob`, `ProcessRentalReturnRemindersJob`,
+`SendAdminDigestJob`, `MarkCartsAbandonedJob`, `CleanupOldEmailLogsJob`, `CleanupOldSmsLogsJob`)
+dispatchuje na kolejkę Redis — realnie wykonuje się w `horizon`, nigdy inline w `scheduler`.
+Każdy `Schedule::command(...)` (rentals/orders/carts/analytics/organizations cleanup) uruchamia
+się faktycznie W `scheduler`, więc zgrepowano wszystkie te klasy komend pod kątem
+`EmailService`/`sendFromTemplate`/`->notify(` — zero trafień. Jedyna komenda, która woła
+`EmailService` bezpośrednio (`email:test`) jest jawnie nie-brandowana (dokumentuje to we
+własnym docblocku) i nie jest zaplanowana — operatorskie narzędzie ad-hoc uruchamiane w `app`.
+Ta konkluzja jest własnością DZISIEJSZEGO `routes/console.php`, nie strukturalną gwarancją —
+nowy `Schedule::command()` renderujący branded mail wymaga ponownego przebiegu tego samego grepu.
+
+**`docker-compose.yml` (lokalny dev) nie miał tej luki** — `horizon` tam montuje `.:/var/www`
+(cały bind mount repo), więc `storage/app/public` był zawsze widoczny lokalnie. Zero zmiany
+potrzebnej w tym pliku.
+
+**Zweryfikowane realnym, jednorazowym wolumenem/kontenerami, nie grepem na YAML** (ten sam wzorzec
+co przypadki 19/30/31 w tym pliku): `tests/shell/cases/37_horizon_storage_public_mount.sh` seeduje
+prawdziwy wolumen Dockera plikiem pod dokładnie tą samą podścieżką co realny upload loga
+(`branding/logos/...`), potem (1) kontener BEZ żadnego mountu (stan `horizon` przed naprawą) —
+plik `MISSING`, dokładny objaw z produkcji; (2) kontener z realnym, wyekstrahowanym z pliku
+compose mountem `horizon` — plik czytelny, bajt w bajt; (3) próba zapisu przez ten sam mount —
+`Read-only file system`, dowodząc że `:ro` faktycznie coś blokuje, nie jest kosmetyczne.
+Dowiedzione czerwono-potem-zielono: `git stash` na `docker-compose.prod.yml` → test łapie
+dokładnie "horizon has no storage-app-public mount at all"; `git stash pop` → PASS.
+
+**Wymaga redeployu na UAT — sama edycja pliku nic nie zmienia w działającym `horizon`.**
+Operator: `docker compose -f docker-compose.prod.yml up -d --force-recreate horizon` (albo pełny
+`apply.sh` przy najbliższym wydaniu) po wypchnięciu nowego obrazu/configu — analogicznie do
+KAŻDEGO innego wpisu w tym pliku o edycji compose nie zmieniającej żywych kontenerów.
+
+**Nie zweryfikowane w tej sesji:** realny `docker compose up -d --force-recreate horizon` na
+UAT (poza zakresem zadania — zero SSH). Zweryfikowany jest mechanizm mountu na jednorazowych
+kontenerach z tym samym obrazem bazowym (`alpine`, nie `ghcr.io/patrykgielo/registro` — ten test
+sprawdza WIDOCZNOŚĆ PLIKU przez mount, nie zachowanie entrypointu aplikacji, więc generyczny obraz
+jest tu wystarczający, w przeciwieństwie do incydentu `stage_volume()` wyżej w tym pliku, gdzie
+entrypoint APLIKACJI był właśnie tym, co się testowało).
+
+**Zasada:** komentarz uzasadniający "nie naprawiam teraz" bywa poprawny w chwili napisania i
+fałszywy później, gdy zmieni się KOD, którego komentarz dotyczył (tu: pierwszy kolejkowany odczyt
+`Storage::disk('public')` powstał miesiąc po komentarzu) — nie sam fakt infrastruktury. Przy
+naprawie: rozstrzygnij, czy PROBLEM wymaga dokładnie tego dostępu, którego komentarz się obawiał
+(rw), czy węższego (ro) — węższy dostęp może rozwiązywać dokładnie to pytanie, przed którym
+komentarz ostrzegał, zamiast je obchodzić.

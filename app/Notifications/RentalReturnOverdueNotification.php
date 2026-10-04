@@ -63,6 +63,8 @@ class RentalReturnOverdueNotification extends Notification implements ShouldQueu
             ? (int) $item->end_date->diffInDays(Carbon::today())
             : 0;
 
+        $order->loadMissing('organization');
+
         try {
             $emailService->sendFromTemplate(
                 TemplateKey::RENTAL_RETURN_OVERDUE->value,
@@ -82,7 +84,8 @@ class RentalReturnOverdueNotification extends Notification implements ShouldQueu
                     'order_item_id' => $item->id,
                     'reminder_type' => 'overdue',
                     'notification' => 'RentalReturnOverdueNotification',
-                ]
+                ],
+                organization: $order->organization
             );
         } catch (\Exception $e) {
             Log::error('RentalReturnOverdueNotification failed', [

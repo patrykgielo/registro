@@ -141,6 +141,20 @@ class PasswordResetEmailTest extends TestCase
      * in the platform's name. appName() resolves through the tenant, which only
      * works because the listener runs inside the request — on a queue worker
      * TenantFeature::currentTenant() is null and this would say "Registro".
+     *
+     * Strengthened in code review (feature/maile-wlasciciel-i-logo, 2026-09-20):
+     * this test previously asserted on `subject` ONLY, and passed unchanged
+     * through a real regression — `EmailService::sendFromTemplate()` briefly
+     * wrapped EVERY send in `EmailBrandedLayout` unconditionally, including this
+     * one, which never passes an `$organization` (see PasswordResetNotification's
+     * own class docblock for why: no organization is safely resolvable from a
+     * password-reset request without one). With `$organization === null`,
+     * `SettingsManager::emailBrandingFor(null)` falls through to the GLOBAL
+     * settings row and `config('app.name')` for the brand name — i.e. exactly
+     * "Registro" — stamped into a prominent header/footer around the tenant's
+     * own subject/body. `subject` was never touched by the wrapper (only
+     * `body_html`/the text that becomes it is), so the old assertion could not
+     * have caught this class of regression regardless of what broke.
      */
     public function test_the_email_carries_the_tenants_name_not_the_platforms(): void
     {
@@ -154,6 +168,12 @@ class PasswordResetEmailTest extends TestCase
 
         $this->assertStringContainsString(self::TENANT_NAME, (string) $send->subject);
         $this->assertStringNotContainsString('Registro', (string) $send->subject);
+        $this->assertStringNotContainsString('Registro', (string) $send->body_html);
+
+        // No $organization is passed for this send (see class docblock) — the
+        // body must be sent bare, exactly as before EmailBrandedLayout existed,
+        // never wrapped in a "platform" shell.
+        $this->assertStringNotContainsString('<!DOCTYPE html>', (string) $send->body_html);
     }
 
     /**

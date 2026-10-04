@@ -76,7 +76,8 @@ class TenantWelcomeNotification extends Notification implements ShouldBeUnique, 
                     'user_id' => $notifiable->id,
                     'organization_id' => $this->organization->id,
                     'notification' => 'TenantWelcomeNotification',
-                ]
+                ],
+                organization: $this->organization
             );
         } catch (Throwable $e) {
             Log::error('TenantWelcomeNotification failed', [

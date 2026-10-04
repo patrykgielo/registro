@@ -88,6 +88,12 @@ class ResendPasswordSetupLinkCommand extends Command
         }
 
         try {
+            // No organization passed deliberately — $user can belong to MULTIPLE
+            // organizations (see the "Organization(s)" plural output below), so
+            // there is no single tenant this CLI path can safely pick to brand the
+            // e-mail for. Unlike the Filament dispatch sites, which run inside one
+            // resolved panel tenant. The e-mail is sent unbranded, exactly as
+            // before EmailBrandedLayout existed — never a wrong tenant's identity.
             AdminCreatedUser::dispatch($user);
 
             return '<fg=green>dispatched</>';

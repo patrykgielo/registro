@@ -116,12 +116,17 @@ class EmailTemplate extends Model
      *
      * Console/queue-worker context: TenantFeature::currentTenant() has no request or
      * Filament tenant to resolve there (see its docblock), so $tenantId is null and only
-     * global templates match. That is a deliberate, accepted limitation, not an oversight —
-     * per-tenant email overrides do not yet apply to queued notification sends.
+     * global templates match. That was a deliberate, accepted limitation for callers that
+     * cannot name their own tenant explicitly (PasswordResetNotification's docblock still
+     * documents it for that case). Pass $organization explicitly — e.g. an order's own
+     * $order->organization, known without any ambient context — to resolve that tenant's
+     * override correctly from a queue worker too (ClickUp 123k99cvc56's branded-layout
+     * change threads the same explicit Organization through EmailService::sendFromTemplate()
+     * for this exact reason).
      */
-    public static function resolveActive(string $key, string $language): ?self
+    public static function resolveActive(string $key, string $language, ?Organization $organization = null): ?self
     {
-        $tenantId = TenantFeature::currentTenant()?->id;
+        $tenantId = $organization?->id ?? TenantFeature::currentTenant()?->id;
 
         return static::query()
             ->withoutGlobalScope('organization')

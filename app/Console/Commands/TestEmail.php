@@ -14,6 +14,10 @@ use Illuminate\Console\Command;
  *
  * Tests the email system by sending test emails from all available templates.
  * Useful for verifying SMTP configuration and template rendering.
+ *
+ * Deliberately sent WITHOUT branding (no `organization` passed to
+ * sendFromTemplate()) — a dev/operator tool with no `--tenant` option, testing
+ * raw template rendering across every key, not one tenant's own email.
  */
 class TestEmail extends Command
 {

@@ -78,28 +78,33 @@ class OrderPaidNotification extends Notification implements ShouldBeUnique, Shou
 
         $customerName = trim($order->customer_first_name.' '.$order->customer_last_name);
 
+        $order->loadMissing(['items', 'organization']);
+
         try {
             if ($this->recipientType === 'admin') {
                 $emailService->sendFromTemplate(
                     TemplateKey::ADMIN_NEW_ORDER->value,
                     $language,
                     $notifiable->email,
-                    [
-                        'customer_name' => $customerName,
-                        'order_number' => $order->order_number,
-                        'total_amount' => number_format((float) $order->total_amount, 2, ',', ' '),
-                        'admin_url' => url('/admin/orders'),
-                        'app_name' => $appName,
-                    ],
+                    array_merge(
+                        [
+                            'customer_name' => $customerName,
+                            'order_number' => $order->order_number,
+                            'total_amount' => number_format((float) $order->total_amount, 2, ',', ' '),
+                            'payment_note' => $language === 'en' ? 'Paid online' : 'Zapłacono online',
+                            'admin_url' => url('/admin/orders'),
+                            'app_name' => $appName,
+                        ],
+                        $this->buildRentalVariables($order)
+                    ),
                     [
                         'order_id' => $order->id,
                         'recipient_type' => 'admin',
                         'notification' => 'OrderPaidNotification',
-                    ]
+                    ],
+                    organization: $order->organization
                 );
             } else {
-                $order->loadMissing(['items', 'organization']);
-
                 $emailService->sendFromTemplate(
                     TemplateKey::ORDER_PAID->value,
                     $language,
@@ -118,7 +123,8 @@ class OrderPaidNotification extends Notification implements ShouldBeUnique, Shou
                         'order_id' => $order->id,
                         'recipient_type' => 'customer',
                         'notification' => 'OrderPaidNotification',
-                    ]
+                    ],
+                    organization: $order->organization
                 );
             }
         } catch (\Exception $e) {

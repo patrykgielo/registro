@@ -58,6 +58,8 @@ class RentalReturnDueSoonNotification extends Notification implements ShouldQueu
         $item = $this->item;
         $customerName = trim($order->customer_first_name.' '.$order->customer_last_name);
 
+        $order->loadMissing('organization');
+
         try {
             $emailService->sendFromTemplate(
                 TemplateKey::RENTAL_RETURN_DUE_SOON->value,
@@ -77,7 +79,8 @@ class RentalReturnDueSoonNotification extends Notification implements ShouldQueu
                     'end_date' => $item->end_date?->toDateString(),
                     'reminder_type' => 'due_soon',
                     'notification' => 'RentalReturnDueSoonNotification',
-                ]
+                ],
+                organization: $order->organization
             );
         } catch (\Exception $e) {
             Log::error('RentalReturnDueSoonNotification failed', [

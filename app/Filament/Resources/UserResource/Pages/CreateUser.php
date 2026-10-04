@@ -54,7 +54,7 @@ class CreateUser extends CreateRecord
                 ]);
 
                 // Dispatch event to send email
-                event(new AdminCreatedUser($this->record));
+                event(new AdminCreatedUser($this->record, TenantFeature::currentTenant()));
 
             } catch (\Exception $e) {
                 \Log::error('Failed to initiate password setup in afterCreate', [

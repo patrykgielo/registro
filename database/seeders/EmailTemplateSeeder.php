@@ -603,14 +603,24 @@ Best regards, The {{app_name}} Team',
             ],
 
             // 19. Admin New Order - Admin/Org Owner Notification (Polish)
+            // Enriched ClickUp 123k99cvc55: also fired for a pay-at-pickup order
+            // (OrderAcceptedOfflineNotification's 'admin' recipient, not just
+            // OrderPaidNotification's) — {{payment_note}} distinguishes the two,
+            // {{items_list_html}}/pickup fields mirror the customer-facing templates.
             [
                 'key' => TemplateKey::ADMIN_NEW_ORDER->value,
                 'language' => 'pl',
                 'subject' => 'Nowe zamówienie #{{order_number}} od {{customer_name}}',
-                'html_body' => '<h1>Nowe zamówienie!</h1><p>Otrzymałeś nowe zamówienie w systemie {{app_name}}.</p><p><strong>Numer zamówienia:</strong> #{{order_number}}<br><strong>Klient:</strong> {{customer_name}}<br><strong>Kwota:</strong> {{total_amount}} zł</p><p>Zaloguj się do panelu administracyjnego, aby potwierdzić zamówienie:</p><p><a href="{{admin_url}}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Panel administracyjny</a></p><p>Pozdrawiamy,<br>System {{app_name}}</p>',
-                'text_body' => 'Nowe zamówienie! Zamówienie nr #{{order_number}} od {{customer_name}}. Kwota: {{total_amount}} zł. Zaloguj się do panelu: {{admin_url}}. System {{app_name}}',
+                'html_body' => '<h1>Nowe zamówienie!</h1><p>Otrzymałeś nowe zamówienie w systemie {{app_name}}.</p><p><strong>Numer zamówienia:</strong> #{{order_number}}<br><strong>Klient:</strong> {{customer_name}}<br><strong>Kwota:</strong> {{total_amount}} zł<br><strong>Płatność:</strong> {{payment_note}}</p>{{items_list_html}}<p><strong>Odbiór:</strong><br>{{pickup_address}}<br>{{pickup_phone}}</p><p>Zaloguj się do panelu administracyjnego, aby potwierdzić zamówienie:</p><p><a href="{{admin_url}}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Panel administracyjny</a></p><p>Pozdrawiamy,<br>System {{app_name}}</p>',
+                'text_body' => 'Nowe zamówienie! Zamówienie nr #{{order_number}} od {{customer_name}}. Kwota: {{total_amount}} zł. Płatność: {{payment_note}}.
+
+{{items_list_text}}
+
+Odbiór: {{pickup_address}}, tel. {{pickup_phone}}
+
+Zaloguj się do panelu: {{admin_url}}. System {{app_name}}',
                 'blade_path' => null,
-                'variables' => ['customer_name', 'order_number', 'total_amount', 'admin_url', 'app_name'],
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'payment_note', 'admin_url', 'app_name', 'items_list_html', 'items_list_text', 'pickup_address', 'pickup_phone'],
                 'active' => true,
             ],
             // 19. Admin New Order - Admin/Org Owner Notification (English)
@@ -618,10 +628,16 @@ Best regards, The {{app_name}} Team',
                 'key' => TemplateKey::ADMIN_NEW_ORDER->value,
                 'language' => 'en',
                 'subject' => 'New Order #{{order_number}} from {{customer_name}}',
-                'html_body' => '<h1>New Order!</h1><p>You have received a new order in {{app_name}}.</p><p><strong>Order number:</strong> #{{order_number}}<br><strong>Customer:</strong> {{customer_name}}<br><strong>Amount:</strong> {{total_amount}} PLN</p><p>Log in to the admin panel to confirm the order:</p><p><a href="{{admin_url}}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Admin Panel</a></p><p>Best regards,<br>{{app_name}} System</p>',
-                'text_body' => 'New Order! Order #{{order_number}} from {{customer_name}}. Amount: {{total_amount}} PLN. Log in to admin panel: {{admin_url}}. {{app_name}} System',
+                'html_body' => '<h1>New Order!</h1><p>You have received a new order in {{app_name}}.</p><p><strong>Order number:</strong> #{{order_number}}<br><strong>Customer:</strong> {{customer_name}}<br><strong>Amount:</strong> {{total_amount}} PLN<br><strong>Payment:</strong> {{payment_note}}</p>{{items_list_html}}<p><strong>Pickup:</strong><br>{{pickup_address}}<br>{{pickup_phone}}</p><p>Log in to the admin panel to confirm the order:</p><p><a href="{{admin_url}}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Admin Panel</a></p><p>Best regards,<br>{{app_name}} System</p>',
+                'text_body' => 'New Order! Order #{{order_number}} from {{customer_name}}. Amount: {{total_amount}} PLN. Payment: {{payment_note}}.
+
+{{items_list_text}}
+
+Pickup: {{pickup_address}}, phone {{pickup_phone}}
+
+Log in to admin panel: {{admin_url}}. {{app_name}} System',
                 'blade_path' => null,
-                'variables' => ['customer_name', 'order_number', 'total_amount', 'admin_url', 'app_name'],
+                'variables' => ['customer_name', 'order_number', 'total_amount', 'payment_note', 'admin_url', 'app_name', 'items_list_html', 'items_list_text', 'pickup_address', 'pickup_phone'],
                 'active' => true,
             ],
 
