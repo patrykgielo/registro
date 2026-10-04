@@ -82,8 +82,6 @@ return [
         'related_articles' => 'Related articles',
         'no_related' => 'No related articles',
         'latest_posts' => 'Latest posts',
-        'no_items' => 'No items',
-        'items_missing' => 'The selected items do not exist or have been removed.',
         'published' => 'Published: :date',
         'no_features' => 'No features',
         'add_features' => 'Add features in the admin panel.',

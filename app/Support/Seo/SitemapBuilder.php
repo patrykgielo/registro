@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Support\Seo;
 
-use App\Enums\ServiceType;
 use App\Models\Category;
 use App\Models\Organization;
 use App\Models\Page;
@@ -76,17 +75,8 @@ class SitemapBuilder
 
     private function addServices(SimpleXMLElement $urlset, Organization $tenant): void
     {
-        // Mirrors ServiceController::index()'s "active" condition:
-        // time_slot must be published, item_rental only needs is_active.
         Service::where('organization_id', $tenant->id)
-            ->active()
-            ->where(function ($query) {
-                $query->where(function ($q) {
-                    $q->where('service_type', ServiceType::TimeSlot->value)->published();
-                })->orWhere(function ($q) {
-                    $q->where('service_type', ServiceType::ItemRental->value);
-                });
-            })
+            ->visibleOnSite()
             ->get()
             ->each(
                 fn (Service $service) => $this->addUrl($urlset, route('service.show', $service->slug), $service->updated_at)

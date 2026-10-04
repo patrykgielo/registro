@@ -157,3 +157,12 @@ $isDark = $backgroundColor === 'dark';
 ```
 
 For services content type, default is now `'dark'`. For other types (posts, portfolio), default is `'white'`.
+
+### content-grid: id picked by hand ≠ visible (ClickUp 123k99cu26t)
+
+A block that stores ids chosen in the admin must filter at **render** with the scope the item's own public route
+already enforces — never `whereIn('id', $ids)` alone. Single definition: `ContentGridResolver::visibleQuery()`
+(per-type table; the picker offers everything of the tenant, not-visible ones marked `NOT_VISIBLE_SUFFIX` — editors prepare pages in advance, and Filament's `in` rule needs stored ids among the options): `app/docs/features/content-grid-visibility.md`.
+Nothing visible → the block renders **nothing** (no heading, no warning box). Never blanket `is_active`: Post / Portfolio
+use `published_at`, Promotion adds a date window, Service depends on `service_type`. A new content type = new arm in
+`visibleQuery()` + a case in `ContentGridVisibilityTest`.

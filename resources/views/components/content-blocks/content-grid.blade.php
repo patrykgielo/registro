@@ -70,55 +70,47 @@
     };
 @endphp
 
+{{-- Nothing visible to render (every picked item deactivated / unpublished / deleted, or none picked):
+     render nothing — a heading over an empty grid, or a warning box, is worse than no block. --}}
+@if($items->isNotEmpty())
 <x-blocks.partials.section-wrapper :data="$data">
     @if($heading || $subheading)
-            <div class="text-center mb-16">
-                @if($heading)
-                    <h2 class="text-5xl md:text-6xl font-light tracking-tight {{ $headingClasses }} mb-4"
-                        style="letter-spacing: -0.02em;">
-                        {{ $heading }}
-                    </h2>
-                @endif
+        <div class="text-center mb-16">
+            @if($heading)
+                <h2 class="text-5xl md:text-6xl font-light tracking-tight {{ $headingClasses }} mb-4"
+                    style="letter-spacing: -0.02em;">
+                    {{ $heading }}
+                </h2>
+            @endif
 
-                @if($subheading)
-                    <p class="text-xl md:text-2xl {{ $subheadingClasses }} max-w-3xl mx-auto font-light">
-                        {{ $subheading }}
-                    </p>
-                @endif
-            </div>
-        @endif
+            @if($subheading)
+                <p class="text-xl md:text-2xl {{ $subheadingClasses }} max-w-3xl mx-auto font-light">
+                    {{ $subheading }}
+                </p>
+            @endif
+        </div>
+    @endif
 
-        @if($items->isEmpty())
-            <div class="max-w-2xl mx-auto {{ $isDark ? 'bg-white/10 border-white/20' : 'bg-yellow-50 border-yellow-200' }} border rounded-2xl p-6">
-                <div class="flex items-start gap-3">
-                    <x-heroicon-s-exclamation-triangle class="w-6 h-6 {{ $isDark ? 'text-[#0AB1EA]' : 'text-yellow-600' }} flex-shrink-0" />
-                    <div>
-                        <p class="font-bold {{ $isDark ? 'text-white' : 'text-yellow-900' }}">{{ __('storefront.cms.no_items') }}</p>
-                        <p class="mt-1 {{ $isDark ? 'text-white/70' : 'text-yellow-800' }}">{{ __('storefront.cms.items_missing') }}</p>
-                    </div>
-                </div>
-            </div>
-        @else
-            <div class="grid {{ $gridClass }} gap-8">
-                @foreach($items as $item)
-                    @if($contentType === 'services')
-                        <x-ios.service-card :service="$item" :variant="$serviceCardVariant" />
-                    @elseif($contentType === 'locations')
-                        {{-- Has no detail route (out of Faza 1 scope) — own card, not x-cms.card --}}
-                        <x-ios.location-card :location="$item" :dark="$isDark" />
-                    @else
-                        {{-- CMS Content Card for posts, promotions, portfolio --}}
-                        @php
-                            $itemUrl = ($item->slug ?? false) ? route(match($contentType) {
-                                'posts' => 'post.show',
-                                'promotions' => 'promotion.show',
-                                'portfolio' => 'portfolio.show',
-                                default => 'home'
-                            }, $item->slug) : '#';
-                        @endphp
-                        <x-cms.card :item="$item" :url="$itemUrl" :dark="$isDark" />
-                    @endif
-                @endforeach
-            </div>
-        @endif
+    <div class="grid {{ $gridClass }} gap-8">
+        @foreach($items as $item)
+            @if($contentType === 'services')
+                <x-ios.service-card :service="$item" :variant="$serviceCardVariant" />
+            @elseif($contentType === 'locations')
+                {{-- Has no detail route (out of Faza 1 scope) — own card, not x-cms.card --}}
+                <x-ios.location-card :location="$item" :dark="$isDark" />
+            @else
+                {{-- CMS Content Card for posts, promotions, portfolio --}}
+                @php
+                    $itemUrl = ($item->slug ?? false) ? route(match($contentType) {
+                        'posts' => 'post.show',
+                        'promotions' => 'promotion.show',
+                        'portfolio' => 'portfolio.show',
+                        default => 'home'
+                    }, $item->slug) : '#';
+                @endphp
+                <x-cms.card :item="$item" :url="$itemUrl" :dark="$isDark" />
+            @endif
+        @endforeach
+    </div>
 </x-blocks.partials.section-wrapper>
+@endif

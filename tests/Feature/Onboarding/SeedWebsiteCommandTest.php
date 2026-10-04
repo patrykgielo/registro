@@ -140,6 +140,25 @@ class SeedWebsiteCommandTest extends TestCase
         $this->assertContains('hero', $blockTypes);
     }
 
+    public function test_homepage_grid_picks_only_services_the_site_will_actually_show(): void
+    {
+        $org = Organization::factory()->equipmentRental()->create();
+
+        $shown = Service::factory()->itemRental()->create(['organization_id' => $org->id, 'is_active' => true]);
+        // Active but never published: ServiceController 404s it and the grid filters it at render.
+        $unpublished = Service::factory()->create(['organization_id' => $org->id, 'is_active' => true, 'published_at' => null]);
+
+        $this->artisan('onboarding:seed-website', ['organization' => (string) $org->id])
+            ->assertExitCode(0);
+
+        $grid = collect(Page::withoutGlobalScope('organization')
+            ->where('organization_id', $org->id)->where('slug', 'strona-glowna')->firstOrFail()->content)
+            ->firstWhere('type', 'content_grid');
+
+        $this->assertSame([$shown->id], $grid['data']['content_items']);
+        $this->assertNotContains($unpublished->id, $grid['data']['content_items']);
+    }
+
     public function test_refuses_when_pages_already_exist(): void
     {
         $org = Organization::factory()->equipmentRental()->create();
