@@ -13,16 +13,16 @@ $contact = $settings->group('contact');
 // (2026_08_13_140000) for what was removed and why. Null here, not
 // omitted, so the @if guards below can tell "not configured" from "empty
 // string on purpose".
-$pageTitle = $config['page_title'] ?? $prelaunchDefaults['page_title'] ?? 'Wkrótce startujemy - Registro';
-$mainHeading = $config['main_heading'] ?? $prelaunchDefaults['heading'] ?? 'Wkrótce Ruszamy!';
+$pageTitle = $config['page_title'] ?? $prelaunchDefaults['page_title'] ?? __('errors.prelaunch.title');
+$mainHeading = $config['main_heading'] ?? $prelaunchDefaults['heading'] ?? __('errors.prelaunch.heading');
 $tagline = $config['tagline'] ?? $prelaunchDefaults['tagline'] ?? null;
-$launchDateLabel = $config['launch_date_label'] ?? $prelaunchDefaults['date_label'] ?? 'Data startu';
+$launchDateLabel = $config['launch_date_label'] ?? $prelaunchDefaults['date_label'] ?? __('errors.prelaunch.date_label');
 $launchDate = ! empty($config['launch_date']) ? \Carbon\Carbon::parse($config['launch_date'])->format('d.m.Y') : null;
 $descriptionPart1 = $config['description_part1'] ?? $prelaunchDefaults['description_1'] ?? null;
 $descriptionPart2 = $config['description_part2'] ?? $prelaunchDefaults['description_2'] ?? null;
-$contactHeading = $config['contact_heading'] ?? $prelaunchDefaults['contact_heading'] ?? 'Masz pytania?';
-$copyrightText = $config['copyright_text'] ?? $prelaunchDefaults['copyright_text'] ?? 'Registro. Wszelkie prawa zastrzeżone.';
-$htmlLang = $config['html_lang'] ?? 'pl';
+$contactHeading = $config['contact_heading'] ?? $prelaunchDefaults['contact_heading'] ?? __('errors.prelaunch.contact_heading');
+$copyrightText = $config['copyright_text'] ?? $prelaunchDefaults['copyright_text'] ?? __('errors.prelaunch.copyright');
+$htmlLang = $config['html_lang'] ?? str_replace('_', '-', app()->getLocale());
 
 // Images: FileUpload storage path or fallback to defaults
 $backgroundImage = !empty($config['background_image']) ? Storage::url($config['background_image']) : '/images/maintenance-background.png';

@@ -17,7 +17,7 @@
             {{-- Header --}}
             <div class="flex items-center justify-between mb-6">
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white">
-                    Eksport danych osobowych
+                    {{ __('profile.export.title') }}
                 </h3>
                 <button @click="open = false" class="text-gray-400 hover:text-gray-600">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -34,20 +34,20 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                         <div class="text-sm text-cyan-800 dark:text-cyan-200">
-                            <p class="font-medium mb-1">Prawo do przenoszenia danych (art. 20 RODO)</p>
-                            <p>Masz prawo otrzymać swoje dane osobowe w ustrukturyzowanym, powszechnie używanym formacie.</p>
+                            <p class="font-medium mb-1">{{ __('profile.export.right_title') }}</p>
+                            <p>{{ __('profile.export.right_text') }}</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="text-sm text-gray-600 dark:text-gray-300 space-y-2">
-                    <p><strong>Eksportowane dane obejmują:</strong></p>
+                    <p><strong>{{ __('profile.export.includes') }}</strong></p>
                     <ul class="list-disc list-inside space-y-1 ml-2">
-                        <li>Dane osobowe (imię, nazwisko, email, telefon)</li>
-                        <li>Zapisane adresy</li>
-                        <li>Zarejestrowane pojazdy</li>
-                        <li>Historia rezerwacji</li>
-                        <li>Historia zgód marketingowych</li>
+                        <li>{{ __('profile.export.item_personal') }}</li>
+                        <li>{{ __('profile.export.item_addresses') }}</li>
+                        <li>{{ __('profile.export.item_vehicles') }}</li>
+                        <li>{{ __('profile.export.item_bookings') }}</li>
+                        <li>{{ __('profile.export.item_consents') }}</li>
                     </ul>
                 </div>
 
@@ -57,7 +57,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                         </svg>
                         <div class="text-sm text-amber-800 dark:text-amber-200">
-                            <p>Możesz pobrać swoje dane <strong>raz na 24 godziny</strong>.</p>
+                            <p>{!! __('profile.export.limit', ['once' => '<strong>'.e(__('profile.export.once_per_day')).'</strong>']) !!}</p>
                         </div>
                     </div>
                 </div>
@@ -67,14 +67,14 @@
             <div class="flex gap-3">
                 <button @click="open = false"
                         class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    Anuluj
+                    {{ __('Anuluj') }}
                 </button>
                 <a href="{{ route('profile.data.export') }}"
                    class="flex-1 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-center transition-colors flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                     </svg>
-                    Pobierz JSON
+                    {{ __('profile.export.download') }}
                 </a>
             </div>
         </div>

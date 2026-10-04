@@ -27,9 +27,9 @@
 <x-layout.container class="pt-6 pb-2">
     <nav class="text-sm text-text-muted" aria-label="Breadcrumb">
         <ol class="flex items-center gap-2">
-            <li><a href="{{ route('home') }}" class="hover:text-text-primary transition-colors">Strona główna</a></li>
+            <li><a href="{{ route('home') }}" class="hover:text-text-primary transition-colors">{{ __('common.home') }}</a></li>
             <li><x-heroicon-m-chevron-right class="h-4 w-4" /></li>
-            <li><a href="{{ route('services.index') }}" class="hover:text-text-primary transition-colors">Usługi</a></li>
+            <li><a href="{{ route('services.index') }}" class="hover:text-text-primary transition-colors">{{ __('services.show.breadcrumb_services') }}</a></li>
             <li><x-heroicon-m-chevron-right class="h-4 w-4" /></li>
             <li class="text-text-primary font-medium truncate">{{ $service->name }}</li>
         </ol>
@@ -76,9 +76,9 @@
                              mismatch here is exactly the "two different numbers for the
                              same equipment" bug the ticket names. --}}
                         @if($availableQuantity !== null && $availableQuantity > 0)
-                            <x-ui.badge variant="success" dot>{{ $availableQuantity }} szt. dostępnych</x-ui.badge>
+                            <x-ui.badge variant="success" dot>{{ __('services.show.pcs_available', ['count' => $availableQuantity]) }}</x-ui.badge>
                         @elseif($availableQuantity !== null)
-                            <x-ui.badge variant="error" dot>Obecnie niedostępne</x-ui.badge>
+                            <x-ui.badge variant="error" dot>{{ __('services.show.unavailable') }}</x-ui.badge>
                         @endif
                     </div>
 
@@ -112,7 +112,7 @@
                 @endphp
                 @if(!empty($filteredSpecs))
                     <div>
-                        <h2 class="text-lg font-semibold text-text-primary mb-4">Specyfikacja techniczna</h2>
+                        <h2 class="text-lg font-semibold text-text-primary mb-4">{{ __('services.show.specs') }}</h2>
                         <div class="rounded-xl border border-border overflow-hidden">
                             @foreach($filteredSpecs as $index => $spec)
                                 @php
@@ -158,7 +158,7 @@
                 {{-- Related Products --}}
                 @if($relatedServices->count() > 0)
                     <div>
-                        <h2 class="text-lg font-semibold text-text-primary mb-4">Podobne produkty</h2>
+                        <h2 class="text-lg font-semibold text-text-primary mb-4">{{ __('services.show.related_products') }}</h2>
                         <x-layout.grid cols="2" gap="4">
                             @foreach($relatedServices as $related)
                                 <x-ui.card hover href="{{ route('service.show', $related) }}" class="group">
@@ -169,7 +169,7 @@
                                     @endif
                                     <h3 class="font-semibold text-text-primary group-hover:text-brand transition-colors text-sm">{{ $related->name }}</h3>
                                     @if($related->price_per_day)
-                                        <p class="text-sm text-text-muted mt-1">od {{ number_format($related->price_per_day, 0, ',', ' ') }} zł/dzień</p>
+                                        <p class="text-sm text-text-muted mt-1">{{ __('services.show.from_per_day', ['price' => number_format($related->price_per_day, 0, ',', ' ')]) }}</p>
                                     @endif
                                 </x-ui.card>
                             @endforeach
@@ -212,41 +212,41 @@
 
                         {{-- Tiered Pricing Grid --}}
                         <div>
-                            <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Cennik</h3>
+                            <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">{{ __('services.show.pricing') }}</h3>
                             <div class="grid grid-cols-2 gap-2">
                                 {{-- Per day --}}
                                 @if($service->price_per_day)
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
-                                        <div class="text-xl font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} zł</div>
-                                        <div class="text-xs text-text-muted mt-0.5">za dzień</div>
-                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-xl font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} {{ __('common.currency') }}</div>
+                                        <div class="text-xs text-text-muted mt-0.5">{{ __('services.show.per_day') }}</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day), 2, ',', ' ') }} {{ __('common.currency') }} {{ __('services.show.net') }})</div>
                                     </div>
                                 @endif
 
                                 {{-- Per day long (tiered) --}}
                                 @if($service->price_per_day_long && $service->price_threshold_days)
                                     <div class="rounded-lg bg-success/5 border border-success/20 p-3 text-center">
-                                        <div class="text-xl font-bold text-success">{{ number_format($service->price_per_day_long, 0, ',', ' ') }} zł</div>
-                                        <div class="text-xs text-success/70 mt-0.5">od {{ $service->price_threshold_days }}+ dni</div>
-                                        <div class="text-xs text-success/60 mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day_long), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-xl font-bold text-success">{{ number_format($service->price_per_day_long, 0, ',', ' ') }} {{ __('common.currency') }}</div>
+                                        <div class="text-xs text-success/70 mt-0.5">{{ __('services.show.from_days', ['days' => $service->price_threshold_days]) }}</div>
+                                        <div class="text-xs text-success/60 mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_day_long), 2, ',', ' ') }} {{ __('common.currency') }} {{ __('services.show.net') }})</div>
                                     </div>
                                 @endif
 
                                 {{-- Per hour --}}
                                 @if($service->price_per_hour)
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
-                                        <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_hour, 0, ',', ' ') }} zł</div>
-                                        <div class="text-xs text-text-muted mt-0.5">za godzinę</div>
-                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_hour), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_hour, 0, ',', ' ') }} {{ __('common.currency') }}</div>
+                                        <div class="text-xs text-text-muted mt-0.5">{{ __('services.show.per_hour') }}</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_hour), 2, ',', ' ') }} {{ __('common.currency') }} {{ __('services.show.net') }})</div>
                                     </div>
                                 @endif
 
                                 {{-- Per week --}}
                                 @if($service->price_per_week)
                                     <div class="rounded-lg bg-surface-sunken p-3 text-center">
-                                        <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_week, 0, ',', ' ') }} zł</div>
-                                        <div class="text-xs text-text-muted mt-0.5">za tydzień</div>
-                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_week), 2, ',', ' ') }} zł netto)</div>
+                                        <div class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_week, 0, ',', ' ') }} {{ __('common.currency') }}</div>
+                                        <div class="text-xs text-text-muted mt-0.5">{{ __('services.show.per_week') }}</div>
+                                        <div class="text-xs text-text-muted mt-0.5">({{ number_format(app(\App\Support\Settings\SettingsManager::class)->nettoPrice((float) $service->price_per_week), 2, ',', ' ') }} {{ __('common.currency') }} {{ __('services.show.net') }})</div>
                                     </div>
                                 @endif
                             </div>
@@ -255,8 +255,8 @@
                         {{-- Deposit --}}
                         @if($service->deposit_amount)
                             <div class="flex items-center justify-between py-3 border-t border-border">
-                                <span class="text-sm text-text-secondary">Kaucja zwrotna</span>
-                                <span class="text-sm font-semibold text-text-primary">{{ number_format($service->deposit_amount, 0, ',', ' ') }} zł</span>
+                                <span class="text-sm text-text-secondary">{{ __('services.show.deposit') }}</span>
+                                <span class="text-sm font-semibold text-text-primary">{{ number_format($service->deposit_amount, 0, ',', ' ') }} {{ __('common.currency') }}</span>
                             </div>
                         @endif
 
@@ -264,18 +264,18 @@
                         <div x-show="rentalDays > 0" x-transition class="rounded-lg bg-surface-sunken p-4 space-y-1.5 text-sm">
                             <div class="flex justify-between">
                                 <span class="text-text-secondary">
-                                    <span x-text="rentalDays"></span> <span x-text="rentalDays === 1 ? 'dzień' : 'dni'"></span>
-                                    &times; <span x-text="formatPrice(unitPrice)"></span> zł
+                                    <span x-text="rentalDays"></span> <span x-text="rentalDays === 1 ? @js(__('services.show.day')) : @js(__('services.show.days'))"></span>
+                                    &times; <span x-text="formatPrice(unitPrice)"></span> {{ __('common.currency') }}
                                 </span>
-                                <span class="font-medium text-text-primary" x-text="formatPrice(totalPrice) + ' zł'"></span>
+                                <span class="font-medium text-text-primary" x-text="formatPrice(totalPrice) + ' ' + @js(__('common.currency'))"></span>
                             </div>
                             <template x-if="isDiscounted">
-                                <div class="text-xs text-success">Rabat długoterminowy aktywny</div>
+                                <div class="text-xs text-success">{{ __('services.show.long_discount') }}</div>
                             </template>
                             @if($service->deposit_amount)
                             <div class="flex justify-between text-text-secondary">
-                                <span>Kaucja zwrotna</span>
-                                <span>+ {{ number_format($service->deposit_amount, 2, ',', ' ') }} zł</span>
+                                <span>{{ __('services.show.deposit') }}</span>
+                                <span>+ {{ number_format($service->deposit_amount, 2, ',', ' ') }} {{ __('common.currency') }}</span>
                             </div>
                             @endif
                         </div>
@@ -284,7 +284,7 @@
                         @if($service->price_on_request)
                         {{-- Price-on-request: inquiry CTA instead of cart --}}
                         <div class="space-y-3">
-                            <p class="text-sm text-text-muted text-center">Cena ustalana indywidualnie</p>
+                            <p class="text-sm text-text-muted text-center">{{ __('services.show.price_individual') }}</p>
                             <button
                                 type="button"
                                 x-data
@@ -292,11 +292,11 @@
                                 class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 cursor-pointer"
                                 aria-haspopup="dialog"
                             >
-                                Zapytaj o cenę
+                                {{ __('services.show.ask_price') }}
                             </button>
                             @if($contactPhone)
                                 <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
-                                    Lub zadzwoń: {{ $contactPhone }}
+                                    {{ __('services.show.or_call', ['phone' => $contactPhone]) }}
                                 </x-ui.button>
                             @endif
                         </div>
@@ -318,21 +318,21 @@
                                         <svg class="w-5 h-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
                                         </svg>
-                                        Dodaj do koszyka
+                                        {{ __('services.show.add_to_cart') }}
                                     </button>
                                 </form>
-                                <p x-show="!canBook" class="text-xs text-text-muted text-center">Wybierz daty w kalendarzu poniżej</p>
+                                <p x-show="!canBook" class="text-xs text-text-muted text-center">{{ __('services.show.pick_dates') }}</p>
                             @else
                                 <a
                                     href="{{ route('login') }}"
                                     class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 cursor-pointer"
                                 >
-                                    Zaloguj się, aby zarezerwować
+                                    {{ __('services.show.login_to_book') }}
                                 </a>
                             @endauth
                             @if($contactPhone)
                                 <x-ui.button variant="secondary" href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full">
-                                    Lub zadzwoń: {{ $contactPhone }}
+                                    {{ __('services.show.or_call', ['phone' => $contactPhone]) }}
                                 </x-ui.button>
                             @endif
                         </div>
@@ -344,12 +344,12 @@
                         @if($availableQuantity !== null && $availableQuantity > 0)
                             <div class="flex items-center gap-2 text-sm text-success pt-2 border-t border-border">
                                 <span class="h-2 w-2 rounded-full bg-success"></span>
-                                Dostępny ({{ $availableQuantity }} szt.)
+                                {{ __('services.show.available_qty', ['count' => $availableQuantity]) }}
                             </div>
                         @elseif($availableQuantity !== null)
                             <div class="flex items-center gap-2 text-sm text-error pt-2 border-t border-border">
                                 <span class="h-2 w-2 rounded-full bg-error"></span>
-                                Obecnie niedostępne
+                                {{ __('services.show.unavailable') }}
                             </div>
                         @endif
 
@@ -362,8 +362,8 @@
                              uses, with redirect_to = THIS product page, so the
                              customer lands back here already on the new branch. --}}
                         @if(!empty($availableElsewhere))
-                            <div class="pt-2 border-t border-border" role="region" aria-label="Dostępność w innych oddziałach">
-                                <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">Dostępne też w</h3>
+                            <div class="pt-2 border-t border-border" role="region" aria-label="{{ __('services.show.other_branches_label') }}">
+                                <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">{{ __('services.show.available_also_in') }}</h3>
                                 <ul class="space-y-1">
                                     @foreach($availableElsewhere as $row)
                                         <li>
@@ -376,13 +376,13 @@
                                                     class="flex w-full min-h-11 items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-sm text-left text-text-secondary
                                                            hover:text-text-primary hover:bg-surface-sunken transition-colors duration-150 ease-out cursor-pointer
                                                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
-                                                    aria-label="Przełącz na oddział {{ $row['location']->name }}, dostępne {{ $row['quantity'] }} szt."
+                                                    aria-label="{{ __('services.show.switch_branch', ['name' => $row['location']->name, 'count' => $row['quantity']]) }}"
                                                 >
                                                     <span class="flex items-center gap-1.5 min-w-0">
                                                         <x-heroicon-m-map-pin class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
                                                         <span class="truncate">{{ $row['location']->name }}</span>
                                                     </span>
-                                                    <span class="text-text-primary font-medium shrink-0">{{ $row['quantity'] }} szt.</span>
+                                                    <span class="text-text-primary font-medium shrink-0">{{ $row['quantity'] }} {{ __('common.pcs') }}</span>
                                                 </button>
                                             </form>
                                         </li>
@@ -395,16 +395,16 @@
                         <div
                             class="border-t border-border pt-5 -mx-6 px-6"
                             role="region"
-                            aria-label="Kalendarz dostępności"
+                            aria-label="{{ __('services.show.calendar_label') }}"
                         >
                         {{-- Header: month nav --}}
                         <div class="flex items-center justify-between pb-3">
-                            <div role="group" aria-label="Nawigacja kalendarza" class="flex items-center gap-1">
+                            <div role="group" aria-label="{{ __('services.show.calendar_nav') }}" class="flex items-center gap-1">
                                 <button
                                     @click="prevMonth()"
                                     :disabled="isPrevDisabled"
                                     :aria-disabled="isPrevDisabled"
-                                    aria-label="Poprzedni miesiąc"
+                                    aria-label="{{ __('services.show.prev_month') }}"
                                     class="flex items-center justify-center w-9 h-9 rounded-lg text-text-muted
                                            hover:text-text-primary hover:bg-surface-sunken
                                            disabled:opacity-30 disabled:cursor-not-allowed
@@ -424,7 +424,7 @@
 
                                 <button
                                     @click="nextMonth()"
-                                    aria-label="Następny miesiąc"
+                                    aria-label="{{ __('services.show.next_month') }}"
                                     class="flex items-center justify-center w-9 h-9 rounded-lg text-text-muted
                                            hover:text-text-primary hover:bg-surface-sunken
                                            transition-colors duration-150 ease-out
@@ -440,25 +440,25 @@
                             {{-- Day-of-week headers (Mon–Sun, Polish, Monday-first) --}}
                             <div class="grid grid-cols-7 mb-1" role="row" aria-hidden="true">
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Poniedziałek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Pn</abbr>
+                                    <abbr title="{{ __('services.show.weekday.mon') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.mon') }}</abbr>
                                 </div>
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Wtorek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Wt</abbr>
+                                    <abbr title="{{ __('services.show.weekday.tue') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.tue') }}</abbr>
                                 </div>
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Środa" class="text-xs uppercase tracking-wide text-text-muted no-underline">Śr</abbr>
+                                    <abbr title="{{ __('services.show.weekday.wed') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.wed') }}</abbr>
                                 </div>
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Czwartek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Cz</abbr>
+                                    <abbr title="{{ __('services.show.weekday.thu') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.thu') }}</abbr>
                                 </div>
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Piątek" class="text-xs uppercase tracking-wide text-text-muted no-underline">Pt</abbr>
+                                    <abbr title="{{ __('services.show.weekday.fri') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.fri') }}</abbr>
                                 </div>
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Sobota" class="text-xs uppercase tracking-wide text-text-muted no-underline">Sb</abbr>
+                                    <abbr title="{{ __('services.show.weekday.sat') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.sat') }}</abbr>
                                 </div>
                                 <div class="flex items-center justify-center h-7">
-                                    <abbr title="Niedziela" class="text-xs uppercase tracking-wide text-text-muted no-underline">Nd</abbr>
+                                    <abbr title="{{ __('services.show.weekday.sun') }}" class="text-xs uppercase tracking-wide text-text-muted no-underline">{{ __('services.show.weekday_short.sun') }}</abbr>
                                 </div>
                             </div>
 
@@ -467,7 +467,7 @@
                                 x-show="loading"
                                 role="status"
                                 :aria-busy="loading"
-                                aria-label="Ładowanie kalendarza"
+                                aria-label="{{ __('services.show.calendar_loading') }}"
                                 class="grid grid-cols-7 gap-1"
                             >
                                 <template x-for="n in 42" :key="n">
@@ -513,15 +513,15 @@
                             <div class="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border">
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
                                     <span class="w-3 h-3 rounded-full bg-success/60 shrink-0" aria-hidden="true"></span>
-                                    Dostępne
+                                    {{ __('services.show.legend_available') }}
                                 </span>
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
                                     <span class="w-3 h-3 rounded-full bg-warning/60 shrink-0" aria-hidden="true"></span>
-                                    Ograniczone
+                                    {{ __('services.show.legend_limited') }}
                                 </span>
                                 <span class="flex items-center gap-1.5 text-xs text-text-muted">
                                     <span class="w-3 h-3 rounded-full bg-border-strong shrink-0" aria-hidden="true"></span>
-                                    Niedostępne
+                                    {{ __('services.show.legend_unavailable') }}
                                 </span>
                             </div>
                         </div>
@@ -529,14 +529,14 @@
                         <div x-show="selectedStart && selectedEnd && !rangeChecking && rangeAvailableQty !== null" x-transition class="mt-4 text-sm" aria-live="polite">
                             <p x-show="rangeAvailableQty > 0" class="text-success flex items-center gap-1.5">
                                 <span class="h-2 w-2 rounded-full bg-success shrink-0"></span>
-                                Dostępnych: <span x-text="rangeAvailableQty"></span> szt.
+                                {!! __('services.show.range_available', ['count' => '<span x-text="rangeAvailableQty"></span>']) !!}
                             </p>
                             <p x-show="rangeAvailableQty === 0" class="text-error flex items-center gap-1.5">
                                 <span class="h-2 w-2 rounded-full bg-error shrink-0"></span>
-                                Brak dostępności w wybranym terminie
+                                {{ __('services.show.range_unavailable') }}
                             </p>
                         </div>
-                        <div x-show="rangeChecking" class="mt-4 text-sm text-text-muted">Sprawdzam dostępność...</div>
+                        <div x-show="rangeChecking" class="mt-4 text-sm text-text-muted">{{ __('services.show.checking') }}</div>
                         </div>
                         @endif {{-- !price_on_request --}}
                         {{-- ─── /Availability Calendar ─── --}}
@@ -585,11 +585,11 @@
                         if (d.success) {
                             this.success = true;
                         } else {
-                            this.error = d.message ?? 'Wystąpił błąd. Spróbuj ponownie.';
+                            this.error = d.message ?? @js(__('services.show.error_generic'));
                         }
                     })
                     .catch(() => {
-                        this.error = 'Wystąpił błąd. Spróbuj ponownie.';
+                        this.error = @js(__('services.show.error_generic'));
                     })
                     .finally(() => {
                         this.loading = false;
@@ -602,7 +602,7 @@
             x-cloak
             role="dialog"
             aria-modal="true"
-            aria-label="Zapytaj o cenę"
+            aria-label="{{ __('services.show.ask_price') }}"
             class="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center px-4"
             x-transition:enter="transition ease-out duration-200"
             x-transition:enter-start="opacity-0"
@@ -632,13 +632,13 @@
                 {{-- Header --}}
                 <div class="flex items-center justify-between border-b border-border px-6 py-4">
                     <h2 class="text-base font-semibold text-text-primary" id="inquiry-modal-title">
-                        Zapytaj o cenę
+                        {{ __('services.show.ask_price') }}
                     </h2>
                     <button
                         @click="open = false"
                         type="button"
                         class="flex items-center justify-center min-h-9 min-w-9 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                        aria-label="Zamknij okno"
+                        aria-label="{{ __('services.show.close_dialog') }}"
                     >
                         <x-heroicon-m-x-mark class="h-5 w-5" />
                     </button>
@@ -647,7 +647,7 @@
                 <div class="px-6 py-5">
                     {{-- Service name context --}}
                     <p class="text-sm text-text-muted mb-5">
-                        Zapytanie o: <span class="font-medium text-text-secondary">{{ $service->name }}</span>
+                        {!! __('services.show.inquiry_about', ['name' => '<span class="font-medium text-text-secondary">'.e($service->name).'</span>']) !!}
                     </p>
 
                     {{-- Success state --}}
@@ -658,7 +658,7 @@
                         role="status"
                         aria-live="polite"
                     >
-                        Dziękujemy! Skontaktujemy się z Tobą wkrótce.
+                        {{ __('services.show.inquiry_thanks') }}
                     </div>
 
                     {{-- Form --}}
@@ -671,7 +671,7 @@
                     >
                         <div>
                             <label for="inquiry-name" class="mb-1.5 block text-sm font-medium text-text-primary">
-                                Imię i nazwisko <span class="text-error" aria-hidden="true">*</span>
+                                {{ __('services.show.full_name') }} <span class="text-error" aria-hidden="true">*</span>
                             </label>
                             <input
                                 id="inquiry-name"
@@ -682,13 +682,13 @@
                                 maxlength="100"
                                 autocomplete="name"
                                 class="w-full min-h-11 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow"
-                                placeholder="Jan Kowalski"
+                                placeholder="{{ __('services.show.full_name_placeholder') }}"
                             >
                         </div>
 
                         <div>
                             <label for="inquiry-email" class="mb-1.5 block text-sm font-medium text-text-primary">
-                                Email <span class="text-error" aria-hidden="true">*</span>
+                                {{ __('services.show.email') }} <span class="text-error" aria-hidden="true">*</span>
                             </label>
                             <input
                                 id="inquiry-email"
@@ -699,13 +699,13 @@
                                 maxlength="255"
                                 autocomplete="email"
                                 class="w-full min-h-11 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow"
-                                placeholder="jan@przyklad.pl"
+                                placeholder="{{ __('services.show.email_placeholder') }}"
                             >
                         </div>
 
                         <div>
                             <label for="inquiry-phone" class="mb-1.5 block text-sm font-medium text-text-primary">
-                                Telefon
+                                {{ __('services.show.phone') }}
                             </label>
                             <input
                                 id="inquiry-phone"
@@ -720,7 +720,7 @@
 
                         <div>
                             <label for="inquiry-message" class="mb-1.5 block text-sm font-medium text-text-primary">
-                                Wiadomość
+                                {{ __('services.show.message') }}
                             </label>
                             <textarea
                                 id="inquiry-message"
@@ -728,7 +728,7 @@
                                 rows="3"
                                 maxlength="1000"
                                 class="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 transition-shadow resize-none"
-                                placeholder="Opisz swoje zapytanie..."
+                                placeholder="{{ __('services.show.message_placeholder') }}"
                             ></textarea>
                         </div>
 
@@ -747,13 +747,13 @@
                             :aria-busy="loading"
                             class="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 text-base px-6 py-3 gap-2 w-full min-h-11 bg-brand text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                            <span x-show="!loading">Wyślij zapytanie</span>
+                            <span x-show="!loading">{{ __('services.show.send_inquiry') }}</span>
                             <span x-show="loading" x-cloak class="flex items-center gap-2" aria-hidden="true">
                                 <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Wysyłanie...
+                                {{ __('services.show.sending') }}
                             </span>
                         </button>
                     </form>
@@ -805,23 +805,23 @@
 
                 @if($service->price)
                     <div class="text-3xl font-bold text-text-primary mb-8">
-                        {{ $service->price_from ? 'od ' : '' }}{{ number_format($service->price_from ?? $service->price, 0, ',', ' ') }} zł
+                        {{ $service->price_from ? __('common.from').' ' : '' }}{{ number_format($service->price_from ?? $service->price, 0, ',', ' ') }} {{ __('common.currency') }}
                     </div>
                 @endif
 
                 @auth
                     @if($bookingEnabled)
                         <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" size="lg" icon-right="arrow-right" class="w-full sm:w-auto">
-                            Zarezerwuj termin
+                            {{ __('services.show.book_appointment') }}
                         </x-ui.button>
                     @elseif($contactPhone)
                         <x-ui.button href="tel:{{ $contactPhone }}" size="lg" icon="phone" class="w-full sm:w-auto">
-                            Zadzwoń: {{ $contactPhone }}
+                            {{ __('services.show.call', ['phone' => $contactPhone]) }}
                         </x-ui.button>
                     @endif
                 @else
                     <x-ui.button href="{{ route('customer.register') }}" size="lg" icon-right="arrow-right" class="w-full sm:w-auto">
-                        Zarejestruj się, aby zarezerwować
+                        {{ __('services.show.register_to_book') }}
                     </x-ui.button>
                 @endauth
             </div>
@@ -846,7 +846,7 @@
                 <x-content-blocks.text-block :data="$block['data']" />
             @elseif($blockType === 'service_features')
                 <x-content-blocks.service-features
-                    :heading="$block['data']['heading'] ?? 'Co zawiera usługa'"
+                    :heading="$block['data']['heading'] ?? __('services.show.default_features_heading')"
                     :layout="$block['data']['layout'] ?? 'simple'"
                     :service="$service"
                 />
@@ -884,7 +884,7 @@
                         @endif
                         @if(!empty($block['data']['button_url']))
                             <x-ui.button href="{{ $block['data']['button_url'] }}" icon-right="arrow-right">
-                                {{ $block['data']['button_text'] ?? 'Dowiedz się więcej' }}
+                                {{ $block['data']['button_text'] ?? __('services.show.learn_more') }}
                             </x-ui.button>
                         @endif
                     </x-ui.card>
@@ -896,7 +896,7 @@
     {{-- Related Services --}}
     @if($relatedServices->count() > 0)
         <x-layout.section>
-            <h2 class="text-2xl font-bold text-text-primary mb-8 text-center">Powiązane usługi</h2>
+            <h2 class="text-2xl font-bold text-text-primary mb-8 text-center">{{ __('services.show.related_services') }}</h2>
             <x-layout.grid cols="3" gap="8">
                 @foreach($relatedServices as $related)
                     <x-ui.card hover href="{{ route('service.show', $related) }}" class="group">
@@ -907,7 +907,7 @@
                         @endif
                         <h3 class="font-semibold text-text-primary group-hover:text-brand transition-colors">{{ $related->name }}</h3>
                         @if($related->price)
-                            <p class="text-sm text-text-muted mt-1">od {{ number_format($related->price, 0, ',', ' ') }} zł</p>
+                            <p class="text-sm text-text-muted mt-1">{{ __('common.from') }} {{ number_format($related->price, 0, ',', ' ') }} {{ __('common.currency') }}</p>
                         @endif
                     </x-ui.card>
                 @endforeach
@@ -1024,7 +1024,7 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
         // ── Computed: heading label ────────────────────────────────
         get headingLabel() {
             const d = new Date(this.year, this.month - 1, 1);
-            const raw = d.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+            const raw = d.toLocaleDateString(@js(str_replace('_', '-', app()->getLocale())), { month: 'long', year: 'numeric' });
             // Capitalise first letter (toLocaleDateString returns lowercase in pl)
             return raw.charAt(0).toUpperCase() + raw.slice(1);
         },
@@ -1086,11 +1086,10 @@ function availabilityCalendar({ apiUrl, today, currentYear, currentMonth, priceP
                 }
 
                 // Aria
-                const polishMonths = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
-                const statusLabel = status === 'available' ? 'dostępny'
-                    : status === 'partial' ? `ograniczona dostępność, ${qty} szt.`
-                    : 'niedostępny';
-                const ariaLabel = `${d} ${polishMonths[this.month - 1]} ${this.year}, ${statusLabel}`;
+                const statusLabel = status === 'available' ? @js(__('services.show.cell_available'))
+                    : status === 'partial' ? @js(__('services.show.cell_partial')).replace(':count', qty)
+                    : @js(__('services.show.cell_unavailable'));
+                const ariaLabel = `${new Date(this.year, this.month - 1, d).toLocaleDateString(@js(str_replace('_', '-', app()->getLocale())), { day: 'numeric', month: 'long', year: 'numeric' })}, ${statusLabel}`;
 
                 cells.push({
                     day:          d,

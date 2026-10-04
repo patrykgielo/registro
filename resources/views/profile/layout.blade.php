@@ -123,7 +123,7 @@
 @push('scripts')
 <script>
 function confirmLogout() {
-    if (confirm('Czy na pewno chcesz się wylogować?')) {
+    if (confirm(@js(__('profile.logout_confirm')))) {
         document.getElementById('logout-form').submit();
     }
 }

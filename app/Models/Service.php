@@ -352,26 +352,26 @@ class Service extends Model
             return null;
         }
 
-        $days = floor($totalMinutes / 1440);
+        $days = (int) floor($totalMinutes / 1440);
         $remainingAfterDays = $totalMinutes % 1440;
-        $hours = floor($remainingAfterDays / 60);
+        $hours = (int) floor($remainingAfterDays / 60);
         $minutes = $remainingAfterDays % 60;
 
         $parts = [];
 
         if ($days > 0) {
-            $parts[] = $days.' '.($days === 1 ? 'dzień' : 'dni');
+            $parts[] = trans_choice('common.days', $days);
         }
 
         if ($hours > 0) {
-            $parts[] = $hours.' '.($hours === 1 ? 'godz' : 'godz');
+            $parts[] = __('services.duration.hours', ['count' => $hours]);
         }
 
         if ($minutes > 0) {
-            $parts[] = $minutes.' min';
+            $parts[] = __('services.duration.minutes', ['count' => $minutes]);
         }
 
-        return ! empty($parts) ? implode(', ', $parts) : '0 min';
+        return ! empty($parts) ? implode(', ', $parts) : __('services.duration.minutes', ['count' => 0]);
     }
 
     /**
@@ -391,14 +391,14 @@ class Service extends Model
             return null;
         }
 
-        $price = number_format((float) $this->price_per_day, 2, ',', ' ').' zł/dzień';
+        $price = __('services.price.per_day', ['amount' => number_format((float) $this->price_per_day, 2, ',', ' ')]);
 
         if ($this->price_per_hour) {
-            $price .= ' | '.number_format((float) $this->price_per_hour, 2, ',', ' ').' zł/godz';
+            $price .= ' | '.__('services.price.per_hour', ['amount' => number_format((float) $this->price_per_hour, 2, ',', ' ')]);
         }
 
         if ($this->price_per_week) {
-            $price .= ' | '.number_format((float) $this->price_per_week, 2, ',', ' ').' zł/tydz';
+            $price .= ' | '.__('services.price.per_week', ['amount' => number_format((float) $this->price_per_week, 2, ',', ' ')]);
         }
 
         return $price;

@@ -276,13 +276,13 @@ class ServiceController extends Controller
                 [
                     '@type' => 'ListItem',
                     'position' => 1,
-                    'name' => 'Strona główna',
+                    'name' => __('common.home'),
                     'item' => route('home'),
                 ],
                 [
                     '@type' => 'ListItem',
                     'position' => 2,
-                    'name' => 'Usługi',
+                    'name' => __('services.show.breadcrumb_services'),
                     'item' => route('services.index'),
                 ],
                 [

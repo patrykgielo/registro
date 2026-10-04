@@ -1,5 +1,5 @@
 @props([
-    'heading' => 'Co zawiera usługa',
+    'heading' => __('services.show.default_features_heading'),
     'layout' => 'simple',
     'service' => null,
 ])

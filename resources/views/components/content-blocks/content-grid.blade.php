@@ -93,8 +93,8 @@
                 <div class="flex items-start gap-3">
                     <x-heroicon-s-exclamation-triangle class="w-6 h-6 {{ $isDark ? 'text-[#0AB1EA]' : 'text-yellow-600' }} flex-shrink-0" />
                     <div>
-                        <p class="font-bold {{ $isDark ? 'text-white' : 'text-yellow-900' }}">Brak elementów</p>
-                        <p class="mt-1 {{ $isDark ? 'text-white/70' : 'text-yellow-800' }}">Wybrane elementy nie istnieją lub zostały usunięte.</p>
+                        <p class="font-bold {{ $isDark ? 'text-white' : 'text-yellow-900' }}">{{ __('storefront.cms.no_items') }}</p>
+                        <p class="mt-1 {{ $isDark ? 'text-white/70' : 'text-yellow-800' }}">{{ __('storefront.cms.items_missing') }}</p>
                     </div>
                 </div>
             </div>

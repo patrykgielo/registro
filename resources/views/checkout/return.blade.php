@@ -21,7 +21,7 @@
 <x-layout.section spacing="sm" class="bg-surface-sunken">
     <x-layout.container>
         <h1 class="text-3xl font-bold text-text-primary tracking-tight">
-            Status płatności
+            {{ __('checkout.return.title') }}
         </h1>
     </x-layout.container>
 </x-layout.section>
@@ -44,13 +44,13 @@
                         <x-heroicon-o-exclamation-circle class="h-8 w-8 text-error" aria-hidden="true" />
                     </div>
                     <h2 class="text-xl font-semibold text-text-primary mb-2">
-                        Nie znaleziono zamówienia
+                        {{ __('checkout.return.not_found_title') }}
                     </h2>
                     <p class="text-text-secondary mb-8">
-                        Nie znaleziono zamówienia. Skontaktuj się z obsługą.
+                        {{ __('checkout.return.not_found_text') }}
                     </p>
                     <x-ui.button href="{{ route('cart.show') }}" icon="shopping-cart">
-                        Wróć do koszyka
+                        {{ __('checkout.back_to_cart') }}
                     </x-ui.button>
                 </div>
 
@@ -67,18 +67,16 @@
                         <x-heroicon-o-check-circle class="h-8 w-8 text-success" aria-hidden="true" />
                     </div>
                     <h2 class="text-xl font-semibold text-text-primary mb-2">
-                        Dziękujemy za zamówienie!
+                        {{ __('checkout.return.thanks') }}
                     </h2>
                     <p class="text-text-secondary mb-2">
-                        Zamówienie
-                        <span class="font-semibold text-text-primary">#{{ $order->order_number }}</span>
-                        zostało opłacone.
+                        {!! __('checkout.return.paid', ['number' => '<span class="font-semibold text-text-primary">#'.e($order->order_number).'</span>']) !!}
                     </p>
                     <p class="text-sm text-text-muted mb-8">
-                        Potwierdzenie zostało wysłane na podany adres e-mail.
+                        {{ __('checkout.return.email_sent') }}
                     </p>
                     <x-ui.button href="{{ route('orders.show', $order) }}" icon-right="arrow-right">
-                        Szczegóły zamówienia
+                        {{ __('checkout.return.order_details') }}
                     </x-ui.button>
                 </div>
 
@@ -95,24 +93,21 @@
                         <x-heroicon-o-check-circle class="h-8 w-8 text-success" aria-hidden="true" />
                     </div>
                     <h2 class="text-xl font-semibold text-text-primary mb-2">
-                        Zamówienie przyjęte!
+                        {{ __('checkout.return.accepted_title') }}
                     </h2>
                     <p class="text-text-secondary mb-2">
-                        Zamówienie
-                        <span class="font-semibold text-text-primary">#{{ $order->order_number }}</span>
-                        zostało zarezerwowane. Zapłacisz przy odbiorze sprzętu.
+                        {!! __('checkout.return.reserved', ['number' => '<span class="font-semibold text-text-primary">#'.e($order->order_number).'</span>']) !!}
                     </p>
                     @if($order->expires_at)
                         <p class="text-sm text-text-muted mb-2">
-                            Rezerwacja jest ważna do
-                            <time datetime="{{ $order->expires_at->toIso8601String() }}" class="font-medium tabular-nums">{{ $order->expires_at->format('d.m.Y H:i') }}</time>.
+                            {!! __('checkout.return.reservation_valid', ['date' => '<time datetime="'.e($order->expires_at->toIso8601String()).'" class="font-medium tabular-nums">'.e($order->expires_at->format('d.m.Y H:i')).'</time>']) !!}
                         </p>
                     @endif
                     <p class="text-sm text-text-muted mb-8">
-                        Potwierdzenie zostało wysłane na podany adres e-mail.
+                        {{ __('checkout.return.email_sent') }}
                     </p>
                     <x-ui.button href="{{ route('orders.show', $order) }}" icon-right="arrow-right">
-                        Szczegóły zamówienia
+                        {{ __('checkout.return.order_details') }}
                     </x-ui.button>
                 </div>
 
@@ -122,7 +117,7 @@
                 <div
                     role="status"
                     aria-live="polite"
-                    aria-label="Płatność jest przetwarzana. Strona odświeży się automatycznie."
+                    aria-label="{{ __('checkout.return.processing_label') }}"
                     class="text-center py-12"
                 >
                     <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-warning/10 mb-6"
@@ -136,16 +131,16 @@
                         </svg>
                     </div>
                     <h2 class="text-xl font-semibold text-text-primary mb-2">
-                        Przetwarzamy płatność
+                        {{ __('checkout.return.processing_title') }}
                     </h2>
                     <p class="text-text-secondary mb-2">
-                        Płatność jest przetwarzana. Odśwież stronę za chwilę.
+                        {{ __('checkout.return.processing_text') }}
                     </p>
                     <p class="text-sm text-text-muted mb-8">
-                        Strona odświeży się automatycznie za kilka sekund.
+                        {{ __('checkout.return.refresh_notice') }}
                     </p>
                     <x-ui.button href="{{ route('orders.index') }}" variant="secondary">
-                        Moje zamówienia
+                        {{ __('checkout.return.my_orders') }}
                     </x-ui.button>
                 </div>
 
@@ -162,13 +157,13 @@
                         <x-heroicon-o-x-circle class="h-8 w-8 text-error" aria-hidden="true" />
                     </div>
                     <h2 class="text-xl font-semibold text-text-primary mb-2">
-                        Płatność anulowana
+                        {{ __('checkout.return.cancelled_title') }}
                     </h2>
                     <p class="text-text-secondary mb-8">
-                        Płatność anulowana. Spróbuj ponownie.
+                        {{ __('checkout.return.cancelled_text') }}
                     </p>
                     <x-ui.button href="{{ route('cart.show') }}" icon="shopping-cart">
-                        Wróć do koszyka
+                        {{ __('checkout.back_to_cart') }}
                     </x-ui.button>
                 </div>
 
@@ -185,13 +180,13 @@
                         <x-heroicon-o-information-circle class="h-8 w-8 text-text-muted" aria-hidden="true" />
                     </div>
                     <h2 class="text-xl font-semibold text-text-primary mb-2">
-                        Sprawdź status zamówienia
+                        {{ __('checkout.return.other_title') }}
                     </h2>
                     <p class="text-text-secondary mb-8">
-                        Sprawdź status zamówienia na stronie Moje zamówienia.
+                        {{ __('checkout.return.other_text') }}
                     </p>
                     <x-ui.button href="{{ route('orders.index') }}" icon-right="arrow-right">
-                        Moje zamówienia
+                        {{ __('checkout.return.my_orders') }}
                     </x-ui.button>
                 </div>
 

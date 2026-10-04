@@ -13,7 +13,7 @@
                     href="{{ route('home') }}"
                     class="hover:text-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded"
                 >
-                    Strona główna
+                    {{ __('common.home') }}
                 </a>
             </li>
             <li aria-hidden="true"><x-heroicon-m-chevron-right class="h-4 w-4 shrink-0" /></li>
@@ -22,7 +22,7 @@
                     href="{{ route('rental.index') }}"
                     class="hover:text-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded"
                 >
-                    Wypożyczalnia
+                    {{ __('rentals.title') }}
                 </a>
             </li>
             <li aria-hidden="true"><x-heroicon-m-chevron-right class="h-4 w-4 shrink-0" /></li>
@@ -45,12 +45,12 @@
              ───────────────────────────────────────────────────────────────── --}}
         <aside
             class="hidden lg:block lg:w-56 xl:w-64 shrink-0 sticky top-20"
-            aria-label="Kategorie wypożyczalni"
+            aria-label="{{ __('rentals.categories_label') }}"
         >
             <div class="rounded-xl border border-border bg-surface-raised shadow-xs overflow-hidden">
                 <div class="px-4 py-3 border-b border-border">
                     <p class="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Kategorie
+                        {{ __('rentals.categories') }}
                     </p>
                 </div>
                 <nav>
@@ -95,7 +95,7 @@
         {{-- ─────────────────────────────────────────────────────────────────
              Mobile: horizontal category pills (visible below lg)
              ───────────────────────────────────────────────────────────────── --}}
-        <div class="lg:hidden -mx-4 sm:-mx-6 mb-6 w-screen px-4 sm:px-6" aria-label="Kategorie wypożyczalni">
+        <div class="lg:hidden -mx-4 sm:-mx-6 mb-6 w-screen px-4 sm:px-6" aria-label="{{ __('rentals.categories_label') }}">
             <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide" role="list">
                 @foreach($allCategories as $cat)
                     @php $isActive = $cat->id === $category->id; @endphp
@@ -172,17 +172,17 @@
                         aria-hidden="true"
                     />
                     <h3 class="text-lg font-semibold text-text-primary mb-2">
-                        Brak dostępnych pozycji
+                        {{ __('rentals.category.empty_title') }}
                     </h3>
                     <p class="text-text-secondary text-sm mb-6">
-                        Brak dostępnych pozycji w kategorii „{{ $category->name }}".
+                        {{ __('rentals.category.empty_text', ['category' => $category->name]) }}
                     </p>
                     <x-ui.button
                         variant="secondary"
                         href="{{ route('rental.index') }}"
                         icon="arrow-left"
                     >
-                        Wróć do wypożyczalni
+                        {{ __('rentals.category.back') }}
                     </x-ui.button>
                 </div>
             @endif

@@ -7,11 +7,11 @@
     <x-layout.container>
         <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold text-text-primary tracking-tight">
-                Twój koszyk
+                {{ __('cart.title') }}
             </h1>
             @if($cart->items->count() > 0)
                 <span class="inline-flex items-center justify-center h-7 min-w-[1.75rem] px-2 rounded-full bg-brand text-text-inverse text-sm font-semibold tabular-nums"
-                      aria-label="{{ $cart->items->count() }} {{ $cart->items->count() === 1 ? 'pozycja' : ($cart->items->count() <= 4 ? 'pozycje' : 'pozycji') }}">
+                      aria-label="{{ trans_choice('common.positions', $cart->items->count()) }}">
                     {{ $cart->items->count() }}
                 </span>
             @endif
@@ -26,7 +26,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
 
             {{-- ── Cart items list ── --}}
-            <div class="lg:col-span-2 space-y-4" role="list" aria-label="Pozycje w koszyku">
+            <div class="lg:col-span-2 space-y-4" role="list" aria-label="{{ __('cart.items_list') }}">
 
                 @foreach($cart->items as $item)
                     <article
@@ -65,7 +65,7 @@
                                         <dl class="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-secondary">
                                             <div class="flex items-center gap-1.5">
                                                 <x-heroicon-m-calendar-days class="h-4 w-4 text-text-muted shrink-0" aria-hidden="true" />
-                                                <dt class="sr-only">Okres wynajmu</dt>
+                                                <dt class="sr-only">{{ __('cart.rental_period') }}</dt>
                                                 <dd>
                                                     <time datetime="{{ $item->start_date }}">{{ \Carbon\Carbon::parse($item->start_date)->format('d.m.Y') }}</time>
                                                     <span aria-hidden="true"> – </span>
@@ -74,16 +74,16 @@
                                             </div>
                                             <div class="flex items-center gap-1.5">
                                                 <x-heroicon-m-clock class="h-4 w-4 text-text-muted shrink-0" aria-hidden="true" />
-                                                <dt class="sr-only">Liczba dni</dt>
-                                                <dd>{{ $item->rental_days }} {{ $item->rental_days === 1 ? 'dzień' : ($item->rental_days <= 4 ? 'dni' : 'dni') }}</dd>
+                                                <dt class="sr-only">{{ __('cart.days_label') }}</dt>
+                                                <dd>{{ trans_choice('common.days', $item->rental_days) }}</dd>
                                             </div>
                                         </dl>
 
                                         {{-- Unit price --}}
                                         <p class="mt-1.5 text-sm text-text-muted">
-                                            {{ number_format($item->unit_price, 2, ',', ' ') }}&nbsp;zł/dzień
+                                            {{ number_format($item->unit_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency_per_day') }}
                                             @if($item->rental_days > 1)
-                                                <span aria-hidden="true"> × {{ $item->rental_days }} dni</span>
+                                                <span aria-hidden="true"> × {{ trans_choice('common.days', $item->rental_days) }}</span>
                                             @endif
                                         </p>
                                     </div>
@@ -91,7 +91,7 @@
                                     {{-- Total price (top-right) --}}
                                     <div class="shrink-0 text-right">
                                         <span class="text-lg font-bold text-text-primary tabular-nums">
-                                            {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;zł
+                                            {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                         </span>
                                     </div>
                                 </div>
@@ -104,7 +104,7 @@
                                         action="{{ route('cart.update', $item) }}"
                                         method="POST"
                                         class="flex items-center gap-2"
-                                        aria-label="Zmień ilość: {{ $item->service->name }}"
+                                        aria-label="{{ __('cart.change_quantity', ['name' => $item->service->name]) }}"
                                     >
                                         @csrf
                                         @method('PATCH')
@@ -112,7 +112,7 @@
                                             for="quantity-{{ $item->id }}"
                                             class="text-sm text-text-secondary"
                                         >
-                                            Ilość:
+                                            {{ __('cart.quantity') }}
                                         </label>
                                         <input
                                             type="number"
@@ -124,7 +124,7 @@
                                             class="w-16 h-9 px-2 text-sm text-center rounded-lg border border-border bg-surface-raised text-text-primary
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50
                                                    transition-colors duration-200"
-                                            aria-label="Ilość sztuk: {{ $item->service->name }}"
+                                            aria-label="{{ __('cart.quantity_pieces', ['name' => $item->service->name]) }}"
                                         >
                                         <button
                                             type="submit"
@@ -132,9 +132,9 @@
                                                    hover:bg-surface-sunken hover:border-border-strong hover:text-text-primary
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2
                                                    transition-all duration-200 cursor-pointer"
-                                            aria-label="Zaktualizuj ilość: {{ $item->service->name }}"
+                                            aria-label="{{ __('cart.update_quantity', ['name' => $item->service->name]) }}"
                                         >
-                                            Aktualizuj
+                                            {{ __('cart.update') }}
                                         </button>
 
                                         {{-- Tooltip: availability hint --}}
@@ -152,7 +152,7 @@
                                                        hover:text-text-secondary
                                                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-1
                                                        transition-colors duration-200 cursor-pointer"
-                                                aria-label="Informacja o dostępności ilości"
+                                                aria-label="{{ __('cart.availability_info') }}"
                                                 :aria-expanded="open"
                                                 :aria-describedby="open ? 'qty-hint-{{ $item->id }}' : undefined"
                                             >
@@ -175,7 +175,7 @@
                                                        border border-border rounded-lg shadow-sm
                                                        pointer-events-none"
                                             >
-                                                Dotyczy tego samego terminu. Brak możliwości zwiększenia = brak dostępności w wybranym terminie.
+                                                {{ __('cart.availability_hint') }}
                                                 {{-- Arrow --}}
                                                 <span
                                                     class="absolute top-full left-1/2 -translate-x-1/2 -mt-px
@@ -190,7 +190,7 @@
                                     <form
                                         action="{{ route('cart.remove', $item) }}"
                                         method="POST"
-                                        aria-label="Usuń z koszyka: {{ $item->service->name }}"
+                                        aria-label="{{ __('cart.remove_from_cart', ['name' => $item->service->name]) }}"
                                     >
                                         @csrf
                                         @method('DELETE')
@@ -200,10 +200,10 @@
                                                    text-error hover:bg-error/5 hover:text-error
                                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/50 focus-visible:ring-offset-2
                                                    transition-all duration-200 cursor-pointer"
-                                            aria-label="Usuń {{ $item->service->name }} z koszyka"
+                                            aria-label="{{ __('cart.remove_item', ['name' => $item->service->name]) }}"
                                         >
                                             <x-heroicon-m-trash class="h-4 w-4 shrink-0" aria-hidden="true" />
-                                            Usuń
+                                            {{ __('cart.remove') }}
                                         </button>
                                     </form>
 
@@ -216,10 +216,10 @@
             </div>
 
             {{-- ── Order summary sidebar ── --}}
-            <aside aria-label="Podsumowanie zamówienia">
+            <aside aria-label="{{ __('cart.order_summary') }}">
                 <x-ui.card class="sticky top-6">
                     <h2 class="text-base font-semibold text-text-primary mb-4">
-                        Podsumowanie
+                        {{ __('cart.summary') }}
                     </h2>
 
                     <dl class="space-y-2 text-sm">
@@ -232,7 +232,7 @@
                                     @endif
                                 </dt>
                                 <dd class="shrink-0 font-medium text-text-primary tabular-nums">
-                                    {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;zł
+                                    {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                 </dd>
                             </div>
                         @endforeach
@@ -240,12 +240,12 @@
 
                     <div class="mt-4 pt-4 border-t border-border">
                         <div class="flex justify-between items-baseline gap-3">
-                            <span class="text-sm font-medium text-text-secondary">Razem</span>
+                            <span class="text-sm font-medium text-text-secondary">{{ __('cart.total') }}</span>
                             <span class="text-xl font-bold text-text-primary tabular-nums">
-                                {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł
+                                {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                             </span>
                         </div>
-                        <p class="mt-1 text-xs text-text-muted">Ceny brutto (w tym VAT {{ app(\App\Support\Settings\SettingsManager::class)->vatRate() }}%)</p>
+                        <p class="mt-1 text-xs text-text-muted">{{ __('cart.prices_gross', ['vat' => app(\App\Support\Settings\SettingsManager::class)->vatRate()]) }}</p>
                     </div>
 
                     <div class="mt-6">
@@ -255,7 +255,7 @@
                             icon-right="arrow-right"
                             class="w-full justify-center"
                         >
-                            Do kasy
+                            {{ __('cart.checkout') }}
                         </x-ui.button>
                     </div>
 
@@ -265,7 +265,7 @@
                             class="text-sm text-text-muted hover:text-brand transition-colors duration-200
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 rounded"
                         >
-                            Kontynuuj zakupy
+                            {{ __('cart.continue_shopping') }}
                         </a>
                     </div>
                 </x-ui.card>
@@ -281,13 +281,13 @@
                 <x-heroicon-o-shopping-cart class="h-8 w-8 text-text-muted" aria-hidden="true" />
             </div>
             <h2 class="text-xl font-semibold text-text-primary mb-2">
-                Koszyk jest pusty
+                {{ __('cart.empty_title') }}
             </h2>
             <p class="text-text-secondary mb-8">
-                Nie masz jeszcze żadnych produktów w koszyku. Przeglądaj nasze usługi i dodaj coś do koszyka.
+                {{ __('cart.empty_text') }}
             </p>
             <x-ui.button href="{{ route('services.index') }}" icon="arrow-left">
-                Przeglądaj usługi
+                {{ __('cart.browse') }}
             </x-ui.button>
         </div>
 

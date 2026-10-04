@@ -8,11 +8,10 @@
 <x-layout.section spacing="lg" class="bg-surface-sunken">
     <div class="max-w-3xl mx-auto text-center">
         <h1 class="text-4xl md:text-5xl font-bold text-text-primary tracking-tight mb-4">
-            Wypożyczalnia
+            {{ __('rentals.index.title') }}
         </h1>
         <p class="text-lg md:text-xl text-text-secondary">
-            Przeglądaj sprzęt dostępny do wypożyczenia. Wybierz kategorię lub sprawdź
-            najnowsze pozycje w naszej ofercie.
+            {{ __('rentals.index.intro') }}
         </p>
     </div>
 </x-layout.section>
@@ -24,7 +23,7 @@
     @if($categories->isNotEmpty())
         <div class="mb-8">
             <h2 class="text-2xl font-bold text-text-primary tracking-tight">
-                Kategorie
+                {{ __('rentals.categories') }}
             </h2>
         </div>
 
@@ -36,7 +35,7 @@
                     class="group flex flex-col gap-4"
                     data-animate
                     data-animate-delay="{{ $loop->index * 60 }}"
-                    aria-label="{{ $category->name }}{{ $category->services_count > 0 ? ', ' . $category->services_count . ' ' . ($category->services_count === 1 ? 'pozycja' : ($category->services_count < 5 ? 'pozycje' : 'pozycji')) : '' }}"
+                    aria-label="{{ $category->name }}{{ $category->services_count > 0 ? ', ' . trans_choice('common.positions', $category->services_count) : '' }}"
                 >
                     {{-- Icon --}}
                     <div
@@ -61,17 +60,16 @@
                         </h3>
                         <p class="text-sm text-text-muted mt-0.5">
                             @if($category->services_count > 0)
-                                {{ $category->services_count }}
-                                {{ $category->services_count === 1 ? 'pozycja' : ($category->services_count < 5 ? 'pozycje' : 'pozycji') }}
+                                {{ trans_choice('common.positions', $category->services_count) }}
                             @else
-                                Brak pozycji
+                                {{ __('rentals.no_items') }}
                             @endif
                         </p>
                     </div>
 
                     {{-- Przeglądaj cue --}}
                     <div class="flex items-center gap-1.5 text-sm font-medium text-brand mt-auto">
-                        <span>Przeglądaj</span>
+                        <span>{{ __('rentals.browse') }}</span>
                         <x-heroicon-m-arrow-right
                             class="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
                             aria-hidden="true"
@@ -84,9 +82,9 @@
         {{-- Empty state --}}
         <div class="max-w-md mx-auto text-center py-16">
             <x-heroicon-o-archive-box class="h-16 w-16 text-text-muted mx-auto mb-4" aria-hidden="true" />
-            <h3 class="text-xl font-semibold text-text-primary mb-2">Brak dostępnych kategorii</h3>
+            <h3 class="text-xl font-semibold text-text-primary mb-2">{{ __('rentals.index.empty_title') }}</h3>
             <p class="text-text-secondary">
-                Wkrótce pojawią się nowe pozycje. Sprawdź ponownie później.
+                {{ __('rentals.index.empty_text') }}
             </p>
         </div>
     @endif
@@ -99,9 +97,9 @@
     <x-layout.section class="bg-surface-sunken">
         <div class="mb-8">
             <h2 class="text-2xl font-bold text-text-primary tracking-tight">
-                Najnowsze w ofercie
+                {{ __('rentals.index.latest') }}
             </h2>
-            <p class="text-text-secondary mt-1">Ostatnio dodane pozycje do wypożyczenia</p>
+            <p class="text-text-secondary mt-1">{{ __('rentals.index.latest_sub') }}</p>
         </div>
 
         <x-layout.grid cols="3" gap="8">

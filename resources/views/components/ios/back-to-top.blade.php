@@ -15,7 +15,7 @@
     <button
         @click="window.scrollTo({ top: 0, behavior: 'smooth' })"
         type="button"
-        aria-label="Przewiń do góry"
+        aria-label="{{ __('storefront.back_to_top') }}"
         class="
             w-6 h-6 md:w-12 md:h-12
             flex items-center justify-center

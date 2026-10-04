@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Działalność zakończona</title>
+    <title>{{ __('errors.business_closed.title') }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -136,39 +136,38 @@
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
                     clip-rule="evenodd"/>
             </svg>
-            Działalność zakończona
+            {{ __('errors.business_closed.badge') }}
         </div>
 
         <h1 id="page-heading">
-            Ta strona nie jest już dostępna
+            {{ __('errors.business_closed.heading') }}
         </h1>
 
         @if(!empty($organizationName))
-            <p class="org-name" aria-label="Nazwa firmy: {{ $organizationName }}">
+            <p class="org-name" aria-label="{{ __('errors.company_name_label', ['name' => $organizationName]) }}">
                 {{ $organizationName }}
             </p>
             <br>
         @endif
 
         <p>
-            Firma zakończyła działalność i ta strona nie jest już dostępna.
-            Jeśli szukasz innego dostawcy usług, możesz skorzystać z naszej platformy.
+            {{ __('errors.business_closed.body') }}
         </p>
 
         <hr class="divider">
 
-        <a href="{{ config('app.url') }}" class="back-link" aria-label="Przejdź do strony głównej platformy">
+        <a href="{{ config('app.url') }}" class="back-link" aria-label="{{ __('errors.platform_home_label') }}">
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
-            Przejdź do strony głównej
+            {{ __('errors.platform_home') }}
         </a>
 
     </main>
 
     <footer class="footer" role="contentinfo">
-        &copy; {{ date('Y') }} {{ config('app.name') }}. Wszelkie prawa zastrzeżone.
+        {!! __('errors.rights', ['year' => date('Y'), 'app' => e(config('app.name'))]) !!}
     </footer>
 
 </body>

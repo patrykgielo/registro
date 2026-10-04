@@ -52,7 +52,7 @@
     {{-- Skip Link (WCAG 2.2 AA) --}}
     <a href="#main-content"
        class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[999] focus:px-4 focus:py-2 focus:bg-brand focus:text-text-inverse focus:rounded-lg">
-        Przejdź do treści głównej
+        {{ __('storefront.skip_link') }}
     </a>
 
     @php
@@ -91,7 +91,7 @@
                      errors below. See CartController/CheckoutController and
                      app/docs/features/cart-order-system.md. --}}
                 @if ($errors->availability->any())
-                    <x-ui.alert variant="warning" title="Dostępność sprzętu" dismissible>
+                    <x-ui.alert variant="warning" :title="__('storefront.availability_alert')" dismissible>
                         <ul class="list-disc list-inside mt-1 space-y-1">
                             @foreach ($errors->availability->all() as $message)
                                 <li>{{ $message }}</li>
@@ -100,7 +100,7 @@
                     </x-ui.alert>
                 @endif
                 @if ($errors->any())
-                    <x-ui.alert variant="error" title="Wystąpiły błędy" dismissible>
+                    <x-ui.alert variant="error" :title="__('storefront.errors_alert')" dismissible>
                         <ul class="list-disc list-inside mt-1">
                             @foreach ($errors->all() as $error)
                                 <li>{{ $error }}</li>

@@ -15,7 +15,7 @@ class CheckBookingEnabled
     {
         if (! app(SettingsManager::class)->isBookingEnabled()) {
             return redirect()->route('home')
-                ->with('info', 'Rezerwacja online jest tymczasowo niedostępna. Skontaktuj się z nami telefonicznie.');
+                ->with('info', __('flash.booking_disabled'));
         }
 
         return $next($request);

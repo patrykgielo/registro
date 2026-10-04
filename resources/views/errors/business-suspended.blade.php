@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Konto tymczasowo zawieszone</title>
+    <title>{{ __('errors.business_suspended.title') }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -136,39 +136,38 @@
                     d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
                     clip-rule="evenodd"/>
             </svg>
-            Tymczasowo niedostępne
+            {{ __('errors.business_suspended.badge') }}
         </div>
 
         <h1 id="page-heading">
-            Konto tymczasowo zawieszone
+            {{ __('errors.business_suspended.heading') }}
         </h1>
 
         @if(!empty($organizationName))
-            <p class="org-name" aria-label="Nazwa firmy: {{ $organizationName }}">
+            <p class="org-name" aria-label="{{ __('errors.company_name_label', ['name' => $organizationName]) }}">
                 {{ $organizationName }}
             </p>
             <br>
         @endif
 
         <p>
-            Działalność tej firmy jest tymczasowo niedostępna.
-            Prosimy spróbować ponownie później lub skontaktować się bezpośrednio z usługodawcą.
+            {{ __('errors.business_suspended.body') }}
         </p>
 
         <hr class="divider">
 
-        <a href="{{ config('app.url') }}" class="back-link" aria-label="Przejdź do strony głównej platformy">
+        <a href="{{ config('app.url') }}" class="back-link" aria-label="{{ __('errors.platform_home_label') }}">
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
-            Przejdź do strony głównej
+            {{ __('errors.platform_home') }}
         </a>
 
     </main>
 
     <footer class="footer" role="contentinfo">
-        &copy; {{ date('Y') }} {{ config('app.name') }}. Wszelkie prawa zastrzeżone.
+        {!! __('errors.rights', ['year' => date('Y'), 'app' => e(config('app.name'))]) !!}
     </footer>
 
 </body>

@@ -31,14 +31,14 @@
                     @if($__footerPhone)
                     <a href="tel:{{ $__footerPhone }}"
                        class="w-9 h-9 rounded-full bg-white/10 hover:bg-[#0AB1EA] text-white hover:text-white flex items-center justify-center transition-all duration-200 ios-spring"
-                       aria-label="Zadzwoń do nas">
+                       aria-label="{{ __('storefront.footer.call_us') }}">
                         <x-heroicon-s-phone class="w-4 h-4" />
                     </a>
                     @endif
                     @if($__footerEmail)
                     <a href="mailto:{{ $__footerEmail }}"
                        class="w-9 h-9 rounded-full bg-white/10 hover:bg-[#0AB1EA] text-white hover:text-white flex items-center justify-center transition-all duration-200 ios-spring"
-                       aria-label="Napisz do nas">
+                       aria-label="{{ __('storefront.footer.write_to_us') }}">
                         <x-heroicon-s-envelope class="w-4 h-4" />
                     </a>
                     @endif
@@ -50,18 +50,18 @@
             <div class="flex flex-col sm:flex-row gap-8 md:justify-end md:text-right">
                 {{-- Quick Access --}}
                 <div>
-                    <h3 class="font-semibold text-dark-primary mb-4">Szybki dostęp</h3>
+                    <h3 class="font-semibold text-dark-primary mb-4">{{ __('storefront.footer.quick_access') }}</h3>
                     <ul class="space-y-2">
                         <li>
                             <a href="{{ auth()->check() ? route('profile.personal') : route('login') }}"
                                class="text-base text-dark-muted hover:text-[#0AB1EA] transition-colors duration-200">
-                                Moje konto
+                                {{ __('storefront.nav.my_account') }}
                             </a>
                         </li>
                         <li>
                             <a href="{{ auth()->check() ? route('appointments.index') : route('login') }}"
                                class="text-base text-dark-muted hover:text-[#0AB1EA] transition-colors duration-200">
-                                Moje zamówienia
+                                {{ __('storefront.nav.my_orders') }}
                             </a>
                         </li>
                     </ul>
@@ -88,7 +88,7 @@
         {{-- Bottom Bar --}}
         <div class="pt-8 border-t border-white/10">
             <p class="text-center text-sm text-dark-muted">
-                &copy; {{ date('Y') }} Registro. Wszelkie prawa zastrzeżone.
+                {!! __('storefront.footer.rights', ['year' => date('Y'), 'brand' => 'Registro']) !!}
             </p>
         </div>
     </div>

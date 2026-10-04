@@ -24,17 +24,17 @@
     @if($type === 'promotion')
         <div class="flex items-center justify-between mb-4">
             <span class="inline-block px-4 py-2 bg-green-100 text-green-800 text-sm font-bold rounded-full">
-                🎉 PROMOCJA
+                🎉 {{ __('storefront.cms.promo_badge') }}
             </span>
 
             @if($model->valid_from || $model->valid_until)
                 <span class="text-sm text-gray-600">
                     @if($model->valid_from && $model->valid_until)
-                        Ważna: {{ $model->valid_from->format('d.m.Y') }} - {{ $model->valid_until->format('d.m.Y') }}
+                        {{ __('storefront.cms.valid_range', ['from' => $model->valid_from->format('d.m.Y'), 'until' => $model->valid_until->format('d.m.Y')]) }}
                     @elseif($model->valid_from)
-                        Ważna od: {{ $model->valid_from->format('d.m.Y') }}
+                        {{ __('storefront.cms.valid_from', ['date' => $model->valid_from->format('d.m.Y')]) }}
                     @elseif($model->valid_until)
-                        Ważna do: {{ $model->valid_until->format('d.m.Y') }}
+                        {{ __('storefront.cms.valid_until', ['date' => $model->valid_until->format('d.m.Y')]) }}
                     @endif
                 </span>
             @endif

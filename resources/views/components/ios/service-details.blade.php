@@ -11,13 +11,13 @@
         $duration = $service->duration_display ?? ($service->duration_minutes ? $service->duration_minutes . ' min' : null);
         $price = $service->price;
         $priceFrom = $service->price_from;
-        $areaServed = $service->area_served ?? 'Poznań';
+        $areaServed = $service->area_served ?? __('storefront.details.default_area');
     }
 
     // Format price display
     $priceDisplay = $priceFrom
-        ? number_format($priceFrom, 0, ',', ' ') . ' zł'
-        : ($price ? number_format($price, 0, ',', ' ') . ' zł' : 'Wycena indywidualna');
+        ? number_format($priceFrom, 0, ',', ' ') . ' ' . __('common.currency')
+        : ($price ? number_format($price, 0, ',', ' ') . ' ' . __('common.currency') : __('storefront.details.custom_quote'));
 @endphp
 
 <div class="container mx-auto px-4 md:px-6 -mt-16 relative z-10">
@@ -29,8 +29,8 @@
                     <x-heroicon-o-clock class="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                    <p class="text-sm text-gray-500 mb-1">Czas trwania</p>
-                    <p class="text-lg font-semibold text-gray-900">{{ $duration ?? 'Elastyczny' }}</p>
+                    <p class="text-sm text-gray-500 mb-1">{{ __('storefront.details.duration') }}</p>
+                    <p class="text-lg font-semibold text-gray-900">{{ $duration ?? __('storefront.details.flexible') }}</p>
                 </div>
             </div>
         </div>
@@ -42,7 +42,7 @@
                     <x-heroicon-o-currency-dollar class="w-6 h-6 text-green-600" />
                 </div>
                 <div>
-                    <p class="text-sm text-gray-500 mb-1">Cena</p>
+                    <p class="text-sm text-gray-500 mb-1">{{ __('storefront.details.price') }}</p>
                     <p class="text-lg font-semibold text-gray-900">{{ $priceDisplay }}</p>
                 </div>
             </div>
@@ -55,7 +55,7 @@
                     <x-heroicon-o-map-pin class="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
-                    <p class="text-sm text-gray-500 mb-1">Obszar obsługi</p>
+                    <p class="text-sm text-gray-500 mb-1">{{ __('storefront.details.area') }}</p>
                     <p class="text-lg font-semibold text-gray-900">{{ $areaServed }}</p>
                 </div>
             </div>
