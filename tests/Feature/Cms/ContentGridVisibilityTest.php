@@ -15,6 +15,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Support\ContentGridResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -275,6 +276,42 @@ class ContentGridVisibilityTest extends TestCase
     }
 
     /**
+     * Stored block data is untrusted at render. A legacy / hand-edited row must not turn a public
+     * page into a 500.
+     */
+    public function test_malformed_stored_block_data_renders_nothing_instead_of_failing(): void
+    {
+        foreach (['not-a-list', 5, true, ['x' => ['nested']]] as $broken) {
+            $this->pageWithGrid('locations', [], 'Siatka testowa');
+            $page = Page::where('slug', 'strona-testowa')->firstOrFail();
+            $content = $page->content;
+            $content[0]['data']['content_items'] = $broken;
+            $page->update(['content' => $content]);
+
+            $html = $this->render();
+            $this->assertStringNotContainsString('Siatka testowa', $html, 'content_items='.json_encode($broken));
+            $page->forceDelete();
+        }
+
+        $this->assertCount(0, ContentGridResolver::resolveItems(['array'], [1]), 'non-string content_type');
+        $this->assertCount(0, ContentGridResolver::resolveItems('locations', null));
+    }
+
+    public function test_an_oversized_id_list_is_capped_not_passed_to_the_database(): void
+    {
+        $first = Location::factory()->create(['organization_id' => $this->org->id, 'name' => 'Oddzial W Limicie']);
+        $beyond = Location::factory()->create(['organization_id' => $this->org->id, 'name' => 'Oddzial Za Limitem']);
+
+        $ids = [$first->id, ...range(900000, 900000 + ContentGridResolver::MAX_ITEMS - 2), $beyond->id];
+        $this->assertGreaterThan(ContentGridResolver::MAX_ITEMS, count($ids));
+
+        $this->assertSame([$first->id], ContentGridResolver::resolveItems('locations', $ids)->pluck('id')->all());
+
+        // Far beyond any database's bound-parameter limit (MySQL: 65,535): must not throw.
+        $this->assertCount(0, ContentGridResolver::resolveItems('locations', range(1_000_000, 1_070_000)));
+    }
+
+    /**
      * Contract: everything the renderer shows is offered unmarked; whatever is not visible yet is
      * offered too (preparing a page in advance) but marked; permanently gone rows — another
      * tenant's, a deleted one — are not offered at all.
@@ -324,6 +361,66 @@ class ContentGridVisibilityTest extends TestCase
             $this->assertArrayNotHasKey($deletedId, $options, "{$type}: a deleted row must never be offered");
             $this->assertCount(1 + count($notVisible), $options, "{$type}: nothing else may be offered");
         }
+    }
+
+    /**
+     * Filament calls the options closure several times per request (render, `in` validation,
+     * chip labels) per block, so its cost is multiplied. One query per type, narrow columns,
+     * no per-row placeholder list — a tenant with thousands of rows must not hit MySQL's
+     * 65,535-placeholder cap.
+     */
+    public function test_the_picker_costs_exactly_one_query_per_type(): void
+    {
+        $this->actingAsTenantContext();
+
+        Service::factory()->itemRental()->create(['organization_id' => $this->org->id, 'name' => 'S1', 'slug' => 's1']);
+        Service::factory()->itemRental()->create(['organization_id' => $this->org->id, 'name' => 'S2', 'slug' => 's2', 'is_active' => false]);
+        Post::create(['organization_id' => $this->org->id, 'title' => 'P1', 'slug' => 'p1', 'body' => 'x', 'published_at' => now()->subDay()]);
+        Post::create(['organization_id' => $this->org->id, 'title' => 'P2', 'slug' => 'p2', 'body' => 'x', 'published_at' => null]);
+        Promotion::create(['organization_id' => $this->org->id, 'title' => 'R1', 'slug' => 'r1', 'body' => 'x', 'active' => true]);
+        PortfolioItem::create(['organization_id' => $this->org->id, 'title' => 'F1', 'slug' => 'f1', 'body' => 'x', 'published_at' => now()->addDay()]);
+        Location::factory()->create(['organization_id' => $this->org->id]);
+
+        foreach (['services', 'posts', 'promotions', 'portfolio', 'locations'] as $type) {
+            $queries = [];
+            DB::listen(function ($query) use (&$queries) {
+                $queries[] = $query->sql;
+            });
+
+            ContentGridResolver::optionsForType($type);
+
+            $this->assertCount(1, $queries, "{$type}: optionsForType() must be one query, got:\n".implode("\n", $queries));
+            $this->assertStringNotContainsString(' not in (', strtolower($queries[0]), "{$type}: no per-row placeholder list");
+            $this->assertStringNotContainsString('select *', strtolower($queries[0]), "{$type}: select only the label/visibility columns");
+            $this->assertStringNotContainsString('"body"', $queries[0], "{$type}: big columns must not be selected");
+            $this->assertStringNotContainsString('"content"', $queries[0], "{$type}: big columns must not be selected");
+
+            DB::flushQueryLog();
+            $this->flushDbListeners();
+        }
+    }
+
+    private function flushDbListeners(): void
+    {
+        // Illuminate\Database\Connection has no public "forget listeners"; the dispatcher does.
+        DB::getEventDispatcher()->forget(\Illuminate\Database\Events\QueryExecuted::class);
+    }
+
+    public function test_each_picker_group_is_sorted_by_label_visible_first(): void
+    {
+        $this->actingAsTenantContext();
+        $post = fn (string $t, $at) => Post::create(['organization_id' => $this->org->id, 'title' => $t, 'slug' => str($t)->slug()->toString(), 'body' => 'x', 'published_at' => $at]);
+        $post('Zebra', now()->subDay());
+        $post('Alfa', now()->subDay());
+        $post('Pozniej B', now()->addDay());
+        $post('Pozniej A', null);
+
+        $this->assertSame([
+            'Alfa',
+            'Zebra',
+            'Pozniej A'.ContentGridResolver::NOT_VISIBLE_SUFFIX,
+            'Pozniej B'.ContentGridResolver::NOT_VISIBLE_SUFFIX,
+        ], array_values(ContentGridResolver::optionsForType('posts')));
     }
 
     public function test_a_marked_item_picked_in_advance_stays_off_the_public_page_until_it_becomes_visible(): void

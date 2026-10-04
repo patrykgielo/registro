@@ -87,18 +87,19 @@ etc.) that `home` doesn't support at all.
 
 `BuilderBlocks.php` references `content_type === 'rental_items'` for the "styl kart" field's
 visibility, but `ContentGridResolver::CONTENT_TYPES` has no `rental_items` entry — using it
-produces an empty grid with a "Brak elementów" warning. Product presentation on the homepage uses
+resolves to nothing, so the block renders nothing (`resolveItems()` returns an empty collection for an
+unknown type). Product presentation on the homepage uses
 `content_type: 'services'` with real `Service` IDs resolved at seed time
-(`is_active = true`, ordered by `sort_order`) — `RentalCategory` cannot be displayed by any block
+(`Service::visibleOnSite()` — active and, for time_slot, published; ordered by `sort_order`) — `RentalCategory` cannot be displayed by any block
 in the resolver's registry at all; there is no way to present it except linking to
 `/wypozyczalnia`.
 
 ### 4. Empty catalogue: the block is omitted, not seeded empty
 
-If the tenant has zero active services, the `content_grid` block is **not added** to `content`
-at all (rather than added with `content_items: []`). An empty `content_grid` renders a visible
-yellow "Brak elementów" warning box to every public visitor — exactly the kind of broken-looking
-placeholder this command exists to eliminate.
+If the tenant has zero visible services, the `content_grid` block is **not added** to `content`
+at all (rather than added with `content_items: []`). Since 2026-10-04 a `content_grid` with nothing
+visible renders nothing (no heading, no warning box), so the reason is simply that there is no point
+storing an empty block — it is also not seeded when the only services are active-but-unpublished.
 
 ### 5. `--force` purge order: setting before pages — defense-in-depth, not a live necessity here
 

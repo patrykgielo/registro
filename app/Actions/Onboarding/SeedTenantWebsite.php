@@ -194,9 +194,11 @@ class SeedTenantWebsite
      */
     private function activeServiceIds(Organization $org): array
     {
+        // visibleOnSite(), not a bare is_active: the grid filters at render with the same scope,
+        // so an active-but-unpublished time_slot service seeded here would never show.
         return Service::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)
-            ->where('is_active', true)
+            ->visibleOnSite()
             ->orderBy('sort_order')
             ->pluck('id')
             ->all();
@@ -232,8 +234,8 @@ class SeedTenantWebsite
         $serviceIds = $this->activeServiceIds($org);
 
         // Deliberately omitted (not left with empty content_items) when the tenant has
-        // no active products yet — an empty content_grid renders a visible "Brak
-        // elementów" warning box to every public visitor.
+        // nothing visible yet — a content_grid with no visible items renders nothing, so
+        // there is no point storing it.
         if ($serviceIds !== []) {
             $blocks[] = $this->contentGridBlock($serviceIds);
         }

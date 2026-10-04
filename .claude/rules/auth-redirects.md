@@ -138,3 +138,10 @@ Strażnik: `AdminPanelLoginResponseTest::test_admin_panel_login_response_contrac
 Do NOT switch a panel to Filament's `->passwordReset()`: it instantiates its own `ResetPassword` notification and skips
 `User::sendPasswordResetNotification()`, so the mail leaves `EmailService` (no `email_sends`, template, branding, i18n).
 Details and guard test: `app/docs/features/password-reset-flow.md`.
+
+## `password.email` answers the same for everyone
+
+`ForgotPasswordController` overrides both response methods: existing, unknown and "throttled" addresses get the same
+status, `Location` and `status` key (`passwords.link_requested`). The stock trait was an account-existence oracle for
+the whole platform (`users.email` is global). Never re-add `passwords.user` / `throttled` to that endpoint's output.
+Residual: synchronous send = timing difference. `PasswordResetEnumerationTest`.

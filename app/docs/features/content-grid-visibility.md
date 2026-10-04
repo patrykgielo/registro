@@ -48,6 +48,31 @@ Promotion ma i `active`, i okno dat, a usługa zależy od typu.
   usług i oddziałów. Pozostałość: id **usuniętego** wiersza, który został w bloku, nadal blokuje zapis
   (nie ma go w opcjach i nie ma chipa) — usuń i zapisz blok od nowa.
 
+- **Dane bloku są nieufne przy renderze.** `resolveItems()` przyjmuje `mixed`: nie-tablica w `content_items`
+  albo nie-string w `content_type` daje pusty wynik (blok nie renderuje nic), nie 500 na publicznej stronie.
+  Elementy nienumeryczne są odrzucane, duplikaty usuwane, a lista **ucięta do `MAX_ITEMS` = 100**: siatka
+  ponad 100 kart nie jest realnym układem, a limit trzyma zapytanie (`whereIn` + 2 bindingi CASE na id) daleko
+  poniżej limitu 65 535 parametrów MySQL. Ucięcie dotyczy tylko renderu — zapisane dane bloku zostają.
+- **Koszt listy wyboru:** Filament woła closure opcji kilka razy na żądanie na blok (render, reguła `in`,
+  etykiety chipów), więc `optionsForType()` to **jedno zapytanie na typ** z wąskim `select` (etykieta + kolumny
+  widoczności, bez `body`/`content`/JSON), podział widoczne / niewidoczne w PHP (`isVisible()` — bliźniak
+  `visibleQuery()`, parytet pinuje test kontraktu na granicach dat) i sortowanie po etykiecie w SQL (kolacja
+  MySQL daje poprawny porządek polskich liter). Było 3 zapytania (`pluck` + dwa `get()` z pełną hydracją
+  i `whereNotIn` z placeholderem na każdy widoczny wiersz).
+- Przyjęta kolejność w liście: najpierw widoczne, potem niewidoczne, w każdej grupie alfabetycznie. Dla
+  oddziałów oznacza to sortowanie po nazwie zamiast po `sort_order`.
+
+## Effect on existing pages (po wdrożeniu — to NIE jest regresja)
+
+Od wdrożenia (rc39) każda siatka wskazująca na usługę **aktywną, ale nieopublikowaną** (`is_active = true`,
+`service_type = time_slot`, `published_at` puste lub w przyszłości) **przestanie ją renderować**. Jeśli to była
+jedyna wybrana pozycja, cały blok zniknie ze strony (nie renderuje nic). To zamierzone: strona szczegółów takiej
+usługi zwraca dziś 404 (`ServiceController::show`), więc karta prowadziła w ślepy zaułek. To samo dotyczy
+wyłączonych oddziałów, nieopublikowanych / zaplanowanych wpisów i realizacji oraz promocji spoza okna dat —
+wcześniej renderowały się mimo to. Jeśli właściciel zgłosi „zniknęła sekcja", sprawdź najpierw widoczność
+wybranych pozycji (w liście wyboru mają dopisek „niewidoczny na stronie"). Seeder strony głównej
+(`SeedTenantWebsite`) wybiera teraz `Service::visibleOnSite()`, więc świeżo zasiany blok nie trafia w tę pułapkę.
+
 ## Testy
 
 `tests/Feature/Cms/ContentGridVisibilityTest.php` — GET strony CMS na hoście tenanta, per typ, wraz z

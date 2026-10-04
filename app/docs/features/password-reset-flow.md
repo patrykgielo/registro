@@ -35,11 +35,31 @@ Skutek: mail poza `EmailService` (brak `email_sends`, supresji, ponawiania), poz
 `password-reset` edytowalnym przez tenanta, poza brandingiem i naszymi tłumaczeniami — dokładnie to,
 co `PasswordResetEmailTest` zamyka od 2026-08. Link do istniejącego przepływu jest mniejszą zmianą.
 
+## Odpowiedź jest zawsze taka sama (wyliczanie kont)
+
+`POST /password/email` odpowiada **identycznie** dla istniejącego adresu, nieistniejącego i „throttled"
+(`ForgotPasswordController` nadpisuje `sendResetLinkResponse` i `sendResetLinkFailedResponse`): ten sam
+kod HTTP (302 / 200 dla JSON), ten sam klucz sesji `status` = `passwords.link_requested` („Jeśli konto o tym
+adresie istnieje, wysłaliśmy na nie link…" / „If an account exists for that address, we have emailed…"),
+brak błędów walidacji. Stock `laravel/ui` rozróżniał te trzy przypadki; `users.email` jest globalnie unikalny
+i `User` nie ma zakresu tenanta, więc z dowolnego hosta (a teraz także z `/admin/login` i `/platform/login`,
+które tu linkują) dało się sprawdzić istnienie **dowolnego** konta, w tym admina i super-admina. „Throttled"
+też jest złożone w jedną odpowiedź: cooldown brokera (60 s na konto) odpala tylko dla adresu, który istnieje,
+więc drugie żądanie zdradziłoby konto. Limit per IP na trasie (`throttle:3,1,password-email`) bez zmian.
+
+- **Koszt UX (świadomy):** kto pomyli się w adresie, dostaje „jeśli konto istnieje…" zamiast „nie ma takiego
+  użytkownika".
+- **Pozostałość:** mail jest wysyłany synchronicznie w żądaniu, więc dla istniejącego adresu odpowiedź trwa
+  wyraźnie dłużej niż dla nieznanego — różnica czasowa zostaje. Zamknięcie jej wymaga kolejkowania wysyłki
+  (lub stałego opóźnienia) i jest poza zakresem tej zmiany.
+
 ## Testy
 
 `tests/Feature/Auth/AdminPasswordResetEntryTest.php` — prawdziwy `ResolveTenant`, prawdziwe hosty:
 link na loginie admina (host tenanta) i platformy (root), pełny przebieg admina (login → formularz → mail
 w `email_sends` → tokenizowany URL → nowe hasło → `/admin`, 200) i super-admina (→ `/platform`).
+Brak wyliczania kont: `PasswordResetEnumerationTest` (istniejący, powtórzony = throttled i nieznany dają ten sam
+status, `Location`, klucz sesji i brak błędów; wariant JSON; wysyłka tylko do realnych kont).
 Link w mailu: `PasswordResetEmailTest`; miejsce docelowe: `PasswordResetRedirectTest`.
 
 Znane, zastane: własna wersja szablonu `password-reset` tenanta nie obowiązuje wysyłkom z kolejki
