@@ -50,5 +50,15 @@ return [
         'resource_plural' => 'Service areas',
         'waitlist_label' => 'Waitlist entry',
         'waitlist_plural' => 'Waitlist',
+
+        'map' => [
+            'search_label' => 'Search for an address or place',
+            'search_hint' => 'Start typing a place name or address to see suggestions',
+            'radius_label' => 'Service area radius',
+            'radius_hint' => 'Enter the radius in kilometres (1-200 km) and click "Update" or press Enter',
+            'update_radius' => 'Update range',
+            'latitude' => 'Latitude',
+            'longitude' => 'Longitude',
+        ],
     ],
 ];

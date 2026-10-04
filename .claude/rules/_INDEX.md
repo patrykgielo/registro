@@ -9,7 +9,7 @@ Budżet **12 000 znaków łącznie**, mierzy `cc-doctor`. Ponad nim reguły konk
 niżej są stosowane rzadziej, **bez żadnego sygnału**. Nowa reguła zawsze-ładowana = wytnij tyle
 samo gdzie indziej albo zawęź `paths`.
 
-## TIER 2 — ładowane automatycznie po `paths` (27 plików, `ls .claude/rules/` dla pełnej listy)
+## TIER 2 — ładowane automatycznie po `paths` (28 plików, `ls .claude/rules/` dla pełnej listy)
 
 Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigger.
 
@@ -35,4 +35,5 @@ Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigg
 - `events-listeners.md` → `app/Events/**`
 - `console-commands.md` → `app/Console/Commands/**`
 - `polish-tax-ids.md` → `app/Rules/Valid*` — NIP/PESEL/REGON
+- `localisation.md` → `lang/**`, `app/Http/Requests/**`, `app/Rules/**`, `resources/views/**` — pl+en w komplecie; test parytetu i pokrycia kluczy (`tests/Feature/Localisation/`)
 - `release-documentation.md` → `docs/releases/**`

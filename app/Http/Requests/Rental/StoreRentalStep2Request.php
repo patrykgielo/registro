@@ -35,11 +35,4 @@ class StoreRentalStep2Request extends FormRequest
 
         return $rules;
     }
-
-    public function messages(): array
-    {
-        return [
-            'phone.regex' => 'Podaj prawidłowy numer telefonu.',
-        ];
-    }
 }

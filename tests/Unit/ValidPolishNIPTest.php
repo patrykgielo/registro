@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Rules\ValidPolishNIP;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ValidPolishNIPTest extends TestCase
 {

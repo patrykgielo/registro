@@ -74,6 +74,9 @@
 ## Tenant-Scoped Storage URL (2026-08-29, branch fix/tenant-scoped-storage-url)
 - [project_tenant_scoped_storage_url.md](project_tenant_scoped_storage_url.md) — `config/filesystems.php`'s public disk URL was frozen at `APP_URL` at config-load; `ResolveTenant::forceTenantOriginUrls()` now also sets it per-request (both branches) alongside the existing `URL::forceRootUrl()`. Fixed a FilePond preview hang (CORS, `fetch()` vs plain `<img>`) on shared-stack tenant subdomains; confirmed safe for php-fpm (no Octane), queue/CLI, and `/platform` (never runs `ResolveTenant`)
 
+## Localisation pl+en (2026-10-04, branch feature/tlumaczenia-pl-en)
+- [project_localisation_pl_en.md](project_localisation_pl_en.md) — lang layout, `pl.json` identity entries are load-bearing (pl->en fallback), parity/coverage tests in `tests/Feature/Localisation/`
+
 ## Testing
 - Tests run in Docker only (PHP 8.3, local=8.2)
 - .env.testing MUST exist → DB_CONNECTION=sqlite, DB_DATABASE=:memory:

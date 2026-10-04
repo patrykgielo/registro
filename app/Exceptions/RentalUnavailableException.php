@@ -101,10 +101,15 @@ class RentalUnavailableException extends RuntimeException
         $period = self::formatPeriod($item['start_date'], $item['end_date']);
 
         if ($item['available'] <= 0) {
-            return "„{$item['service_name']}”: brak dostępności w terminie {$period}. Wybierz inny termin lub inny sprzęt.";
+            return __('„:service”: brak dostępności w terminie :period. Wybierz inny termin lub inny sprzęt.', ['service' => $item['service_name'], 'period' => $period]);
         }
 
-        return "„{$item['service_name']}”: dostępnych {$item['available']} szt. w terminie {$period} (wybrano {$item['requested']}). Zmniejsz ilość lub wybierz inny termin.";
+        return __('„:service”: dostępnych :available szt. w terminie :period (wybrano :requested). Zmniejsz ilość lub wybierz inny termin.', [
+            'service' => $item['service_name'],
+            'available' => $item['available'],
+            'period' => $period,
+            'requested' => $item['requested'],
+        ]);
     }
 
     private static function formatPeriod(string $start, string $end): string

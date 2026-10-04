@@ -56,12 +56,12 @@ class SetPasswordController extends Controller
         $user = User::where('password_setup_token', $request->token)->first();
 
         if (! $user || $user->password_setup_expires_at?->isPast()) {
-            return back()->withErrors(['token' => 'Link wygasł lub jest nieprawidłowy.']);
+            return back()->withErrors(['token' => __('Link wygasł lub jest nieprawidłowy.')]);
         }
 
         $user->completePasswordSetup($request->token, $request->password);
 
         return redirect()->route('login')
-            ->with('status', 'Hasło ustawione pomyślnie. Możesz się teraz zalogować.');
+            ->with('status', __('Hasło ustawione pomyślnie. Możesz się teraz zalogować.'));
     }
 }
