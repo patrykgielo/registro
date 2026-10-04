@@ -625,3 +625,10 @@ i asertuj to, o co naprawdę chodzi.
 z FK, mając późniejszą nazwę pliku, zawsze spada przed rodzicem. Tego **nie** trzeba
 zabezpieczać w migracjach — ale `migrate:rollback --path` wycelowany w pojedynczą migrację
 rodzica na MySQL padnie. Używaj `--step`.
+
+## Two requests in one test: `forgetScopedInstances()`
+
+php-fpm builds a fresh container per request; the test app is reused. A `scoped` binding (`LocationContext`, which the
+header reads) therefore serves the FIRST request's data again on the second — a deactivated branch kept showing in the
+header while the page under test was right. Call `$this->app->forgetScopedInstances()` before each extra `$this->get()`
+that follows a data change.

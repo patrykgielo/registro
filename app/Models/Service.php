@@ -213,6 +213,22 @@ class Service extends Model
     }
 
     /**
+     * Scope: what the public site may show. Single definition shared by the
+     * services listing, the sitemap and the "Siatka treści" block:
+     * is_active AND (time_slot only once published | item_rental needs nothing more).
+     */
+    public function scopeVisibleOnSite($query)
+    {
+        return $query->active()->where(function ($visible) {
+            $visible->where(function ($q) {
+                $q->bookable()->published();
+            })->orWhere(function ($q) {
+                $q->rentable();
+            });
+        });
+    }
+
+    /**
      * Scope: Services that are rentable items (service_type = item_rental)
      */
     public function scopeRentable($query)

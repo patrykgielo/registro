@@ -21,6 +21,7 @@ use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
 use Filament\Widgets;
+use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -168,6 +169,12 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
                 \App\Http\Middleware\AdminMaintenanceCheck::class, // Block non-super-admin during maintenance
             ])
+
+            // Login screen -> existing /password/reset flow (resources/views/filament/auth/forgot-password-link.blade.php)
+            ->renderHook(
+                PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
+                fn (): View => view('filament.auth.forgot-password-link'),
+            )
 
             // 🎨 CUSTOM CSS + JS - Filament dark mode utilities, ApexCharts Alpine components
             ->renderHook(

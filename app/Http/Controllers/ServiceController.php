@@ -22,16 +22,7 @@ class ServiceController extends Controller
      */
     public function index()
     {
-        $services = Service::active()
-            ->where(function ($query) {
-                // time_slot: must be published
-                // item_rental: only needs is_active (no published_at workflow)
-                $query->where(function ($q) {
-                    $q->bookable()->published();
-                })->orWhere(function ($q) {
-                    $q->rentable();
-                });
-            })
+        $services = Service::visibleOnSite()
             ->ordered()
             ->paginate(24);
 

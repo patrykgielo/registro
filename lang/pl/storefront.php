@@ -82,8 +82,6 @@ return [
         'related_articles' => 'Powiązane artykuły',
         'no_related' => 'Brak powiązanych artykułów',
         'latest_posts' => 'Najnowsze wpisy',
-        'no_items' => 'Brak elementów',
-        'items_missing' => 'Wybrane elementy nie istnieją lub zostały usunięte.',
         'published' => 'Opublikowano: :date',
         'no_features' => 'Brak funkcji',
         'add_features' => 'Dodaj funkcje w panelu administracyjnym.',

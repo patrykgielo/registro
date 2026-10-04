@@ -87,6 +87,8 @@ for the conceptual overview these deep-dive.
 | Onboarding & Registration | `features/onboarding-and-registration.md` | Phase 5 complete |
 | Tenant-Stack Provisioning | `features/tenant-stack-provisioning.md` | CLI provisioning + singleton lock for dedicated per-client stacks |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
+| Content-grid visibility | `features/content-grid-visibility.md` | Block "Siatka treści": what the public sees per type, picker = renderer |
+| Password reset flow | `features/password-reset-flow.md` | Entry from the `/admin` and `/platform` login screens; why not Filament's `passwordReset()` |
 | SMS System | `features/sms-system/` | Stable |
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
 | Order Handover/Return Protocols | `features/order-protocols.md` | Download-only PDFs, generated on demand |

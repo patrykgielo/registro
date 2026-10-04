@@ -109,3 +109,4 @@
 
 ## Security Dependency Updates (2026-08-16, PR #200, branch feature/security-dependency-updates)
 - [project_security_dependency_updates_2026-08-16.md](project_security_dependency_updates_2026-08-16.md) — composer audit 35→0, 11 packages, no composer.json changes. Reusable verification pattern: dompdf via git-stash-on-lock-only + real PDF pdftotext diff; guzzle/commonmark risk via grepping actual usage against the specific CVE, not assuming exposure
+- [project_content_grid_visibility_and_admin_reset.md](project_content_grid_visibility_and_admin_reset.md) — 2026-10-04: content_grid render filter (picker=renderer), Filament Select `in`-rule trap, panel login reset link
