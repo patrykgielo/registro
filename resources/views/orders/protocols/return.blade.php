@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="UTF-8">
-    <title>Protokół zwrotu — {{ $order->order_number }}</title>
+    <title>{{ __('orders.protocol.return.title', ['number' => $order->order_number]) }}</title>
     <style>
         body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #1a1a1a; margin: 0; padding: 24px; }
         h1 { font-size: 18px; color: #1e3a5f; margin: 0 0 4px; }
@@ -26,42 +26,42 @@
 </head>
 <body>
 
-<h1>Protokół zwrotu sprzętu</h1>
+<h1>{{ __('orders.protocol.return.heading') }}</h1>
 <div class="meta">
-    Numer zamówienia: <strong>{{ $order->order_number }}</strong>
+    {!! __('orders.protocol.order_number', ['number' => '<strong>'.e($order->order_number).'</strong>']) !!}
     &nbsp;|&nbsp;
-    Dokument sporządzono: {{ $generatedAt }}
+    {{ __('orders.protocol.generated_at', ['date' => $generatedAt]) }}
 </div>
 
 <table class="parties">
     <tr>
         <td>
-            <div class="label">Wynajmujący</div>
+            <div class="label">{{ __('orders.protocol.lessor') }}</div>
             <strong>{{ $org?->name ?? '—' }}</strong><br>
             @if($pickup['address'])
                 {{ $pickup['address'] }}<br>
             @endif
             @if($pickup['phone'])
-                Tel.: {{ $pickup['phone'] }}<br>
+                {{ __('orders.protocol.phone_short', ['phone' => $pickup['phone']]) }}<br>
             @endif
             @if($pickup['email'])
-                E-mail: {{ $pickup['email'] }}
+                {{ __('orders.protocol.email_short', ['email' => $pickup['email']]) }}
             @endif
         </td>
         <td>
-            <div class="label">Najemca</div>
+            <div class="label">{{ __('orders.protocol.renter') }}</div>
             <strong>{{ trim($order->customer_first_name.' '.$order->customer_last_name) }}</strong><br>
             @if($order->customer_type === 'business' && $order->invoice_company_name)
                 {{ $order->invoice_company_name }}
-                @if($order->invoice_nip) (NIP: {{ $order->invoice_nip }}) @endif
+                @if($order->invoice_nip) {{ __('orders.protocol.nip', ['nip' => $order->invoice_nip]) }} @endif
                 <br>
             @endif
             @if($order->customer_street)
                 {{ $order->customer_street }} {{ $order->customer_building }}{{ $order->customer_apartment ? '/'.$order->customer_apartment : '' }}<br>
                 {{ trim(($order->customer_postal_code ?? '').' '.($order->customer_city ?? '')) }}<br>
             @endif
-            Tel.: {{ $order->customer_phone ?? '—' }}<br>
-            E-mail: {{ $order->customer_email }}
+            {{ __('orders.protocol.phone_short', ['phone' => $order->customer_phone ?? '—']) }}<br>
+            {{ __('orders.protocol.email_short', ['email' => $order->customer_email]) }}
         </td>
     </tr>
 </table>
@@ -73,7 +73,7 @@ plan-wdrozenia.md), so there is only ever one branch snapshot per order. --}}
 <table class="parties" style="margin-top: 4px;">
     <tr>
         <td style="width:100%;">
-            <div class="label">Punkt zwrotu sprzętu</div>
+            <div class="label">{{ __('orders.protocol.return.pickup_point') }}</div>
             <strong>{{ $branch['name'] }}</strong>
             @if($branch['address'])
                 <br>{{ $branch['address'] }}
@@ -83,14 +83,14 @@ plan-wdrozenia.md), so there is only ever one branch snapshot per order. --}}
 </table>
 @endif
 
-<h2>Zwracany sprzęt</h2>
+<h2>{{ __('orders.protocol.return.items_heading') }}</h2>
 <table class="items">
     <thead>
         <tr>
-            <th>Nazwa</th>
-            <th>Okres wynajmu</th>
-            <th class="text-right">Ilość</th>
-            <th class="text-right">Wartość</th>
+            <th>{{ __('orders.protocol.col_name') }}</th>
+            <th>{{ __('orders.protocol.col_period') }}</th>
+            <th class="text-right">{{ __('orders.protocol.col_quantity') }}</th>
+            <th class="text-right">{{ __('orders.protocol.col_value') }}</th>
         </tr>
     </thead>
     <tbody>
@@ -121,10 +121,10 @@ plan-wdrozenia.md), so there is only ever one branch snapshot per order. --}}
                         immutable state_histories row, is the honest record
                         of what staff actually verified at the counter. --}}
                         <br><span style="font-size: 9px; color: #6b7280;">
-                            Wydano: {{ $mismatch['handed_out_label'] ?? '—' }} · Zwrócono: {{ $mismatch['returned_label'] ?? '—' }}
+                            {{ __('orders.protocol.return.unit_mismatch', ['out' => $mismatch['handed_out_label'] ?? '—', 'in' => $mismatch['returned_label'] ?? '—']) }}
                         </span>
                     @elseif($item->service_unit_identifier_snapshot)
-                        <br><span style="font-size: 9px; color: #6b7280;">Nr egz.: {{ $item->service_unit_identifier_snapshot }}</span>
+                        <br><span style="font-size: 9px; color: #6b7280;">{{ __('orders.protocol.unit_no', ['number' => $item->service_unit_identifier_snapshot]) }}</span>
                     @endif
                 @endif
             </td>
@@ -136,7 +136,7 @@ plan-wdrozenia.md), so there is only ever one branch snapshot per order. --}}
                 @endif
             </td>
             <td class="text-right">{{ $item->quantity }}</td>
-            <td class="text-right">{{ number_format((float) $item->total_price, 2, ',', ' ') }} zł</td>
+            <td class="text-right">{{ number_format((float) $item->total_price, 2, ',', ' ') }} {{ __('common.currency') }}</td>
         </tr>
         @endforeach
     </tbody>
@@ -151,49 +151,47 @@ plan-wdrozenia.md), so there is only ever one branch snapshot per order. --}}
         // once it has been. All 5 non-"not_required" statuses handled
         // explicitly (deposit_amount > 0 already rules out not_required).
         $depositStatusLine = match ($order->deposit_status) {
-            'pending' => 'nie została pobrana — do rozliczenia z Najemcą.',
-            'collected' => 'pobrana; rozliczenie zwrotu kaucji w toku.',
-            'returned' => 'zwrócona Najemcy.',
-            'partial_return' => 'zwrócona częściowo.',
-            'forfeited' => 'zatrzymana przez Wynajmującego.',
+            'pending' => __('orders.protocol.return.deposit.pending'),
+            'collected' => __('orders.protocol.return.deposit.collected'),
+            'returned' => __('orders.protocol.return.deposit.returned'),
+            'partial_return' => __('orders.protocol.return.deposit.partial_return'),
+            'forfeited' => __('orders.protocol.return.deposit.forfeited'),
             default => 'status: '.$order->deposit_status.'.',
         };
     @endphp
-<h2>Kaucja</h2>
+<h2>{{ __('orders.protocol.deposit_heading') }}</h2>
 <p>
-    Kwota kaucji: <strong>{{ number_format((float) $order->deposit_amount, 2, ',', ' ') }} zł</strong>
+    {!! __('orders.protocol.deposit_amount', ['amount' => '<strong>'.e(number_format((float) $order->deposit_amount, 2, ',', ' ').' '.__('common.currency')).'</strong>']) !!}
     — {{ $depositStatusLine }}
 </p>
 <p style="font-size: 9px; color: #6b7280;">
-    Stan kaucji podany wyżej odzwierciedla dane w chwili sporządzenia tego dokumentu.
+    {{ __('orders.protocol.deposit_note') }}
 </p>
 @endif
 
 <div class="statement">
-    Najemca zwraca, a Wynajmujący potwierdza przyjęcie wymienionego wyżej sprzętu.
-    Poniższe pole zawiera stan sprzętu stwierdzony przy odbiorze zwrotu (uszkodzenia,
-    braki, uwagi) — pozostawić puste, jeśli sprzęt zwrócono bez zastrzeżeń.
+    {{ __('orders.protocol.return.statement') }}
 </div>
 
 <div class="notes-box">
-    <div class="label">Stan sprzętu przy zwrocie / uwagi</div>
+    <div class="label">{{ __('orders.protocol.return.condition') }}</div>
 </div>
 
 <table class="signatures">
     <tr>
         <td>
             <div class="line"></div>
-            Podpis Wynajmującego
+            {{ __('orders.protocol.sign_lessor') }}
         </td>
         <td>
             <div class="line"></div>
-            Podpis Najemcy
+            {{ __('orders.protocol.sign_renter') }}
         </td>
     </tr>
 </table>
 
 <div class="footer">
-    Dokument wygenerowany automatycznie przez system Registro na podstawie danych zamówienia {{ $order->order_number }}.
+    {{ __('orders.protocol.footer', ['number' => $order->order_number]) }}
 </div>
 
 </body>

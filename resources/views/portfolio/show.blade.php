@@ -60,7 +60,7 @@
 
         @if($portfolioItem->gallery && count($portfolioItem->gallery) > 0)
             <div class="mb-8">
-                <h2 class="text-2xl font-bold text-gray-900 mb-4">Galeria zdjęć</h2>
+                <h2 class="text-2xl font-bold text-gray-900 mb-4">{{ __('storefront.portfolio.gallery') }}</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     @foreach($portfolioItem->gallery as $image)
                         <img src="{{ Storage::url($image) }}"
@@ -117,7 +117,7 @@
                         @if(!empty($block['data']['button_url']))
                             <a href="{{ $block['data']['button_url'] }}"
                                class="inline-block px-6 py-3 rounded-lg font-semibold @if($block['data']['style'] === 'primary') bg-blue-600 text-white hover:bg-blue-700 @elseif($block['data']['style'] === 'accent') bg-green-600 text-white hover:bg-green-700 @else bg-gray-600 text-white hover:bg-gray-700 @endif">
-                                {{ $block['data']['button_text'] ?? 'Dowiedz się więcej' }}
+                                {{ $block['data']['button_text'] ?? __('services.show.learn_more') }}
                             </a>
                         @endif
                     </div>
@@ -172,11 +172,11 @@
         <footer class="mt-8 pt-6 border-t border-gray-200">
             <div class="flex items-center justify-between">
                 <p class="text-sm text-gray-600">
-                    Opublikowano: {{ $portfolioItem->published_at?->format('d.m.Y') }}
+                    {{ __('storefront.portfolio.published', ['date' => $portfolioItem->published_at?->format('d.m.Y')]) }}
                 </p>
                 @if($portfolioItem->category)
                     <p class="text-sm text-gray-600">
-                        Kategoria:
+                        {{ __('storefront.portfolio.category_label') }}
                         <a href="{{ route('portfolio.category', $portfolioItem->category) }}"
                            class="font-semibold text-purple-800 hover:text-purple-600 rounded transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
                             {{ $portfolioItem->category->name }}
@@ -187,12 +187,12 @@
         </footer>
 
         <div class="mt-8 p-6 bg-blue-50 rounded-lg">
-            <h3 class="text-xl font-bold text-gray-900 mb-4">Chcesz podobny efekt?</h3>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">{{ __('storefront.portfolio.cta_title') }}</h3>
             <p class="text-gray-700 mb-4">
-                Skontaktuj się z nami i umów wizytę. Nasi specjaliści pomogą Ci uzyskać wymarzone rezultaty!
+                {{ __('storefront.portfolio.cta_text') }}
             </p>
             <a href="{{ route('home') }}" class="inline-block px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">
-                Umów wizytę
+                {{ __('storefront.portfolio.cta_button') }}
             </a>
         </div>
     </article>
@@ -202,7 +202,7 @@
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
-            Powrót do strony głównej
+            {{ __('storefront.back_to_home') }}
         </a>
     </div>
 </div>

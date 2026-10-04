@@ -16,7 +16,7 @@
     {{-- Related Posts Widget (for Posts) --}}
     @if($type === 'post' && $model->category && $relatedPosts)
         <div class="bg-white rounded-lg shadow-lg p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-4">Powiązane artykuły</h3>
+            <h3 class="text-lg font-bold text-gray-900 mb-4">{{ __('storefront.cms.related_articles') }}</h3>
 
             @if($relatedPosts->count() > 0)
                 <ul class="space-y-3">
@@ -32,7 +32,7 @@
                     @endforeach
                 </ul>
             @else
-                <p class="text-gray-600 text-sm">Brak powiązanych artykułów</p>
+                <p class="text-gray-600 text-sm">{{ __('storefront.cms.no_related') }}</p>
             @endif
         </div>
     @endif
@@ -50,7 +50,7 @@
     {{-- Recent Posts (for Pages/Promotions) --}}
     @if(in_array($type, ['page', 'promotion']) && $recentPosts)
         <div class="bg-white rounded-lg shadow-lg p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-4">Najnowsze wpisy</h3>
+            <h3 class="text-lg font-bold text-gray-900 mb-4">{{ __('storefront.cms.latest_posts') }}</h3>
 
             @if($recentPosts->count() > 0)
                 <ul class="space-y-3">

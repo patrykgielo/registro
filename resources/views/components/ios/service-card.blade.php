@@ -121,7 +121,7 @@
     @if($isPopular)
     <div class="service-card__badge absolute top-4 right-4 z-10 bg-warning text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
         <x-heroicon-s-star class="service-card__badge-icon w-3 h-3" />
-        <span class="service-card__badge-text">Najpopularniejsze</span>
+        <span class="service-card__badge-text">{{ __('storefront.card.popular') }}</span>
     </div>
     @endif
 
@@ -157,7 +157,7 @@
         @if($isRental && ($service?->price_on_request))
         <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
             <x-heroicon-m-chat-bubble-left-ellipsis class="service-card__duration-icon w-4 h-4 {{ $durationIconClasses }}" />
-            <span class="service-card__duration-text font-medium">Cena do potwierdzenia</span>
+            <span class="service-card__duration-text font-medium">{{ __('services.price_on_request') }}</span>
         </div>
         @elseif($isRental && $rentalPrice)
         <div class="service-card__duration flex items-center gap-1.5 text-xs mb-4 {{ $durationClasses }} px-3 py-1.5 rounded-lg w-fit">
@@ -185,9 +185,9 @@
                  service-card-dark), so it's the one that must tell the
                  badge which token set to use; see badge.blade.php. --}}
             @if($quantityAvailable > 0)
-                <x-ui.badge variant="success" dot :dark="$isDark">Dostępne: {{ $quantityAvailable }} szt.</x-ui.badge>
+                <x-ui.badge variant="success" dot :dark="$isDark">{{ __('services.index.available_qty', ['count' => $quantityAvailable]) }}</x-ui.badge>
             @else
-                <x-ui.badge variant="error" dot :dark="$isDark">Obecnie niedostępne</x-ui.badge>
+                <x-ui.badge variant="error" dot :dark="$isDark">{{ __('services.index.unavailable') }}</x-ui.badge>
             @endif
         </div>
         @endif
@@ -208,7 +208,7 @@
         @if($price && !($service?->price_on_request))
         <div class="service-card__price flex items-baseline gap-1 mb-4">
             <span class="service-card__price-value text-3xl font-bold {{ $priceValueClasses }}">{{ number_format($price, 0, ',', ' ') }}</span>
-            <span class="service-card__price-currency text-sm {{ $priceLabelClasses }} font-medium">zł</span>
+            <span class="service-card__price-currency text-sm {{ $priceLabelClasses }} font-medium">{{ __('common.currency') }}</span>
         </div>
         @endif
 
@@ -219,7 +219,7 @@
             class="service-card__cta flex items-center justify-center gap-2 w-full {{ $ctaClasses }} font-bold text-sm py-3.5 px-4 rounded-lg hover:shadow-lg transition-all duration-200 ios-spring"
             @click.stop
         >
-            <span class="service-card__cta-text">Zobacz Szczegóły</span>
+            <span class="service-card__cta-text">{{ __('storefront.card.details') }}</span>
             <x-heroicon-m-arrow-right class="service-card__cta-icon w-4 h-4" />
         </a>
         @endif

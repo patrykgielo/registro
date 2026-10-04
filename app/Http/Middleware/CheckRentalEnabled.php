@@ -15,7 +15,7 @@ class CheckRentalEnabled
     {
         if (! app(SettingsManager::class)->isRentalEnabled()) {
             return redirect()->route('home')
-                ->with('info', 'Wypożyczalnia jest tymczasowo niedostępna. Skontaktuj się z nami telefonicznie.');
+                ->with('info', __('flash.rental_disabled'));
         }
 
         return $next($request);

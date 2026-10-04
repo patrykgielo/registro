@@ -67,7 +67,7 @@
                           @if($block['data']['style'] === 'primary') bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-400
                           @elseif($block['data']['style'] === 'accent') bg-green-600 text-white hover:bg-green-700 focus:ring-green-400
                           @else bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-400 @endif">
-                    {{ $block['data']['button_text'] ?? 'Dowiedz się więcej' }}
+                    {{ $block['data']['button_text'] ?? __('services.show.learn_more') }}
                 </a>
             @endif
         </div>

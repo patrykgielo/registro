@@ -20,15 +20,17 @@
 <x-layout.section spacing="default">
     <x-layout.container class="max-w-2xl">
         <h1 class="text-2xl font-bold text-text-primary tracking-tight mb-2">
-            Zmienić oddział odbioru?
+            {{ __('cart.location_change.title') }}
         </h1>
         <p class="text-text-secondary mb-6">
-            Masz pozycje w koszyku {{ $currentLocation ? 'z odbiorem w oddziale „'.$currentLocation->name.'"' : '' }}.
-            Przełączenie na oddział <strong>{{ $newLocation->name }}</strong> zmieni miejsce odbioru
-            całego zamówienia — sprawdziliśmy dostępność Twoich pozycji w nowym oddziale poniżej.
+            @if($currentLocation)
+                {!! __('cart.location_change.intro_with_current', ['current' => e($currentLocation->name), 'new' => '<strong>'.e($newLocation->name).'</strong>']) !!}
+            @else
+                {!! __('cart.location_change.intro', ['new' => '<strong>'.e($newLocation->name).'</strong>']) !!}
+            @endif
         </p>
 
-        <div class="rounded-xl border border-border bg-surface-raised divide-y divide-border mb-6" role="list" aria-label="Wpływ zmiany oddziału na koszyk">
+        <div class="rounded-xl border border-border bg-surface-raised divide-y divide-border mb-6" role="list" aria-label="{{ __('cart.location_change.impact') }}">
             @foreach($preview as $decision)
                 @php
                     $item = $decision['item'];
@@ -44,15 +46,15 @@
                     <div class="shrink-0 text-right">
                         @if($decision['kept'] === 0)
                             <span class="text-sm font-medium text-error">
-                                Niedostępne w tym oddziale — pozycja zostanie usunięta
+                                {{ __('cart.location_change.removed') }}
                             </span>
                         @elseif($unavailable)
                             <span class="text-sm font-medium text-warning">
-                                Ilość zmniejszona: {{ $decision['requested'] }} → {{ $decision['kept'] }}
+                                {{ __('cart.location_change.reduced', ['from' => $decision['requested'], 'to' => $decision['kept']]) }}
                             </span>
                         @else
                             <span class="text-sm text-text-secondary">
-                                {{ $decision['requested'] }} szt. — dostępne
+                                {{ __('cart.location_change.available', ['count' => $decision['requested']]) }}
                             </span>
                         @endif
                     </div>
@@ -67,12 +69,12 @@
                 <input type="hidden" name="redirect_to" value="{{ $redirectTo }}">
                 <input type="hidden" name="confirmed" value="1">
                 <x-ui.button type="submit">
-                    Potwierdź zmianę oddziału
+                    {{ __('cart.location_change.confirm') }}
                 </x-ui.button>
             </form>
 
             <x-ui.button variant="ghost" href="{{ $redirectTo }}">
-                Anuluj
+                {{ __('cart.location_change.cancel') }}
             </x-ui.button>
         </div>
     </x-layout.container>

@@ -1,6 +1,6 @@
 <x-ios.auth-card
-    title="Zapomniałeś hasła?"
-    subtitle="Wprowadź adres e-mail, a my wyślemy link resetujący"
+    :title="__('account.login.forgot')"
+    :subtitle="__('account.forgot.subtitle')"
 >
     {{-- Success Alert --}}
     @if (session('status'))
@@ -19,11 +19,11 @@
         <x-ios.input
             type="email"
             name="email"
-            label="Adres e-mail"
-            placeholder="twoj@email.pl"
+            :label="__('account.passwords.email_label')"
+            placeholder="{{ __('account.login.email_placeholder') }}"
             :value="old('email')"
             icon="envelope"
-            helpText="Wprowadź adres e-mail powiązany z Twoim kontem"
+            :helpText="__('account.forgot.email_help')"
             required
             autofocus
             autocomplete="email"
@@ -33,7 +33,7 @@
         <x-ios.button
             type="submit"
             variant="primary"
-            label="Wyślij link resetujący"
+            :label="__('account.forgot.submit')"
             icon="paper-airplane"
             iconPosition="right"
             fullWidth
@@ -44,7 +44,7 @@
             <x-ios.button
                 variant="ghost"
                 href="{{ route('login') }}"
-                label="Pamiętasz hasło? Zaloguj się"
+                :label="__('account.forgot.back_to_login')"
                 icon="arrow-left"
                 iconPosition="left"
             />

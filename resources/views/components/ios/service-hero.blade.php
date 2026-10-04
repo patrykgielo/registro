@@ -55,13 +55,13 @@
                 @if($bookingEnabled)
                     <a href="{{ route('booking.create', $service) }}"
                        class="inline-block bg-white text-gray-900 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition-all duration-300 ios-spring hover:scale-105 active:scale-95 shadow-2xl">
-                        Zarezerwuj Termin
+                        {{ __('storefront.hero.book') }}
                         <x-heroicon-m-arrow-right class="w-5 h-5 inline ml-2" />
                     </a>
                 @else
                     <a href="tel:{{ $contactPhone }}"
                        class="inline-block bg-white text-gray-900 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition-all duration-300 ios-spring hover:scale-105 active:scale-95 shadow-2xl">
-                        Skontaktuj się z nami
+                        {{ __('storefront.hero.contact') }}
                         <x-heroicon-m-phone class="w-5 h-5 inline ml-2" />
                     </a>
                 @endif

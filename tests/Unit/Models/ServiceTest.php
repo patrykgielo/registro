@@ -8,6 +8,7 @@ use App\Models\RentalCategory;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class ServiceTest extends TestCase
@@ -130,6 +131,46 @@ class ServiceTest extends TestCase
         $service->refresh();
 
         $this->assertEquals(ServiceType::ItemRental, $service->service_type);
+    }
+
+    /**
+     * @return array<string, array{0: int, 1: string}>
+     */
+    public static function polishDurations(): array
+    {
+        // Days carry a no-break space so a line break cannot split "3 / dni"; hours and minutes keep the plain space they always had.
+        return [
+            '1440 min is one day, singular (it printed "1 dni" while $days was a float)' => [1440, "1\u{00A0}dzień"],
+            '1500 min is a day and an hour' => [1500, "1\u{00A0}dzień, 1 godz"],
+            '2880 min is two days, 2-4 form' => [2880, "2\u{00A0}dni"],
+            '34560 min is 24 days, the form follows the last digit' => [34560, "24\u{00A0}dni"],
+            '0 min' => [0, '0 min'],
+        ];
+    }
+
+    #[DataProvider('polishDurations')]
+    public function test_formatted_duration_in_polish(int $minutes, string $expected): void
+    {
+        app()->setLocale('pl');
+        $service = new Service;
+        $service->duration_minutes = $minutes;
+
+        $this->assertSame($expected, $service->formatted_duration);
+    }
+
+    public function test_formatted_duration_in_english(): void
+    {
+        app()->setLocale('en');
+        $service = new Service;
+
+        $service->duration_minutes = 1440;
+        $this->assertSame("1\u{00A0}day", $service->formatted_duration);
+
+        $service->duration_minutes = 2910;
+        $this->assertSame("2\u{00A0}days, 30 min", $service->formatted_duration);
+
+        $service->duration_minutes = 90;
+        $this->assertSame('1 h, 30 min', $service->formatted_duration);
     }
 
     public function test_formatted_duration_returns_null_when_duration_is_null(): void

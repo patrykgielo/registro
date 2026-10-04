@@ -1,12 +1,12 @@
 <x-ios.auth-card
-    title="Zweryfikuj adres e-mail"
-    subtitle="Link weryfikacyjny został wysłany na Twój adres"
+    :title="__('account.verify.title')"
+    :subtitle="__('account.verify.subtitle')"
 >
     {{-- Success Alert (resent) --}}
     @if (session('resent'))
         <x-ios.alert
             type="success"
-            message="Link wysłany ponownie! Sprawdź swoją skrzynkę e-mail."
+            :message="__('account.verify.resent')"
             dismissible
             class="mb-6"
         />
@@ -18,8 +18,7 @@
         class="mb-6"
     >
         <p class="mb-0">
-            Sprawdź swoją skrzynkę e-mail i kliknij link weryfikacyjny.
-            Nie dostałeś wiadomości? Wyślij link ponownie, klikając poniższy przycisk.
+            {{ __('account.verify.instructions') }}
         </p>
     </x-ios.alert>
 
@@ -30,7 +29,7 @@
         <x-ios.button
             type="submit"
             variant="primary"
-            label="Wyślij link ponownie"
+            :label="__('account.verify.resend')"
             icon="paper-airplane"
             iconPosition="right"
             fullWidth

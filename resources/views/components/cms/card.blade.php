@@ -31,7 +31,7 @@
         @if($item->slug ?? false)
             <a href="{{ $url }}"
                class="inline-flex items-center gap-2 font-semibold text-sm {{ $dark ? 'text-[#0AB1EA] hover:text-[#0AB1EA]/80' : 'text-primary-600 hover:text-primary-700' }} transition-colors">
-                Zobacz szczegóły
+                {{ __('storefront.cms.view_details') }}
                 <x-heroicon-m-arrow-right class="w-4 h-4" />
             </a>
         @endif

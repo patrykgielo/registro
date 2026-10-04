@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Trwa konserwacja - {{ config('app.name') }}</title>
+    <title>{{ __('errors.maintenance.title', ['app' => config('app.name')]) }}</title>
     @vite(['resources/css/app.css'])
     <style>
         @keyframes pulse-slow {
@@ -51,7 +51,7 @@ $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation
 
                 <!-- Heading -->
                 <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-white text-center mb-4">
-                    Trwa konserwacja systemu
+                    {{ __('errors.maintenance.heading') }}
                 </h1>
 
                 <!-- Type Badge -->
@@ -71,8 +71,8 @@ $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation
                     </p>
                 @else
                     <p class="text-base text-white/90 text-center mb-6 leading-relaxed">
-                        Przepraszamy za niedogodności. Aktualnie wykonujemy prace konserwacyjne w celu poprawy jakości naszych usług.
-                        Postaramy się wrócić tak szybko, jak to możliwe.
+                        {{ __('errors.maintenance.default_message') }}
+                        {{ __('errors.maintenance.default_message_2') }}
                     </p>
                 @endif
 
@@ -83,14 +83,14 @@ $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            <span class="font-semibold">Szacowany czas: {{ $config['estimated_duration'] }}</span>
+                            <span class="font-semibold">{{ __('errors.maintenance.estimated', ['duration' => $config['estimated_duration']]) }}</span>
                         </div>
                     </div>
                 @endif
 
                 <!-- Contact Info -->
                 <div class="border-t border-white/20 pt-6 mb-6">
-                    <p class="text-sm text-white/70 text-center mb-4">W razie pilnych spraw, skontaktuj się z nami:</p>
+                    <p class="text-sm text-white/70 text-center mb-4">{{ __('errors.maintenance.urgent') }}</p>
                     <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
                         @if(!empty($contact['email']))
                             <a href="mailto:{{ $contact['email'] }}" class="flex items-center px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white transition-all duration-200">
@@ -114,7 +114,7 @@ $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation
 
                 <!-- Retry Info -->
                 <div class="text-center mb-4">
-                    <p class="text-xs text-white/60">Strona automatycznie spróbuje ponownie za {{ $retry_after }} sekund</p>
+                    <p class="text-xs text-white/60">{{ trans_choice('errors.maintenance.retry', $retry_after) }}</p>
                 </div>
 
                 <!-- Retry Button -->
@@ -123,7 +123,7 @@ $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                         </svg>
-                        Odśwież stronę
+                        {{ __('errors.maintenance.refresh') }}
                     </button>
                 </div>
 
@@ -134,7 +134,7 @@ $contact = app(\App\Support\Settings\SettingsManager::class)->contactInformation
         <!-- Footer -->
         <div class="absolute bottom-0 left-0 right-0 z-10 p-6 text-center">
             <p class="text-sm text-white/60">
-                &copy; {{ date('Y') }} {{ config('app.name') }}. Wszelkie prawa zastrzeżone.
+                {!! __('errors.rights', ['year' => date('Y'), 'app' => e(config('app.name'))]) !!}
             </p>
         </div>
 

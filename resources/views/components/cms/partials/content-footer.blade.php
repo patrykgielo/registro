@@ -14,7 +14,7 @@
     {{-- Publication Date (Pages) --}}
     @if($type === 'page' && $model->published_at)
         <p class="text-sm text-gray-600 mb-4">
-            Opublikowano: {{ $model->published_at->format('d.m.Y H:i') }}
+            {{ __('storefront.cms.published', ['date' => $model->published_at->format('d.m.Y H:i')]) }}
         </p>
     @endif
 
@@ -22,11 +22,11 @@
     @if($type === 'promotion' && !$minimal)
         <div class="bg-green-50 -mx-8 -mb-8 p-8 rounded-b-lg">
             <p class="text-lg font-semibold text-green-800 mb-4">
-                Skorzystaj z tej promocji już dziś!
+                {{ __('storefront.cms.promo_cta') }}
             </p>
             <a href="{{ route('home') }}"
                class="inline-block px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors">
-                Umów wizytę
+                {{ __('storefront.cms.book_visit') }}
             </a>
         </div>
     @endif

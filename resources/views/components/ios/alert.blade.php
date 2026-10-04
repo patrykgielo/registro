@@ -72,7 +72,7 @@ $classes = $baseClasses . ' ' . $config['container'];
             type="button"
             class="flex-shrink-0 ml-auto rounded-full p-1.5 hover:bg-black/5 active:scale-95 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 {{ $config['iconColor'] }}"
             style="transition-timing-function: cubic-bezier(0.36, 0.66, 0.04, 1);"
-            aria-label="Zamknij">
+            aria-label="{{ __('common.close') }}">
             <x-heroicon-o-x-mark class="w-4 h-4" />
         </button>
     @endif

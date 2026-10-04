@@ -43,7 +43,7 @@
                     <h3 class="text-lg font-semibold mb-4">{{ $brandName }}</h3>
                     @unless($isTenantDomain)
                         <p class="text-dark-text-muted text-sm leading-relaxed max-w-md">
-                            Profesjonalna platforma do zarządzania rezerwacjami i wypożyczeniami.
+                            {{ __('storefront.footer.tagline') }}
                         </p>
                     @endunless
                 </div>
@@ -51,7 +51,7 @@
                 {{-- Navigation --}}
                 @if($hasFooterNav)
                 <div>
-                    <h4 class="text-sm font-semibold uppercase tracking-wider text-dark-text-muted mb-4">Nawigacja</h4>
+                    <h4 class="text-sm font-semibold uppercase tracking-wider text-dark-text-muted mb-4">{{ __('storefront.footer.navigation') }}</h4>
                     <nav class="space-y-3">
                         <x-navigation.menu-items location="footer" />
                     </nav>
@@ -61,7 +61,7 @@
                 {{-- Contact --}}
                 @if($hasContact)
                 <div>
-                    <h4 class="text-sm font-semibold uppercase tracking-wider text-dark-text-muted mb-4">Kontakt</h4>
+                    <h4 class="text-sm font-semibold uppercase tracking-wider text-dark-text-muted mb-4">{{ __('storefront.footer.contact') }}</h4>
                     <div class="space-y-3 text-sm">
                         @if($phone)
                             <a href="tel:{{ $phone }}" class="flex items-center gap-2 text-dark-text-muted hover:text-dark-text transition-colors">
@@ -90,11 +90,11 @@
         {{-- Bottom bar --}}
         <div class="border-t border-white/10 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
             <p class="text-sm text-dark-text-muted">
-                &copy; {{ date('Y') }} {{ $brandName }}. Wszelkie prawa zastrzeżone.
+                {!! __('storefront.footer.rights', ['year' => date('Y'), 'brand' => e($brandName)]) !!}
             </p>
             <div class="flex items-center gap-6 text-sm">
-                <a href="#" class="text-dark-text-muted hover:text-dark-text transition-colors">Polityka prywatności</a>
-                <a href="#" class="text-dark-text-muted hover:text-dark-text transition-colors">Regulamin</a>
+                <a href="#" class="text-dark-text-muted hover:text-dark-text transition-colors">{{ __('storefront.footer.privacy') }}</a>
+                <a href="#" class="text-dark-text-muted hover:text-dark-text transition-colors">{{ __('storefront.footer.terms') }}</a>
             </div>
         </div>
     </x-layout.container>
