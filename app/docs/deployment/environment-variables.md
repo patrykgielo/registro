@@ -247,9 +247,9 @@ later edit) — fixed 2026-08-27 (`fix/location-slug-unique-per-tenant`). **If a
 `.env`/`.env.production` on a VPS was provisioned from `.env.production.example` before that date,
 it likely still has `APP_FALLBACK_LOCALE=pl` and needs the same one-line fix applied by hand.**
 
-A proper `lang/pl/validation.php` (translating Laravel's ~90 default validation messages into
-Polish) would be the complete fix for a fully-Polish UI, but is a separate, larger piece of work —
-not implemented as part of this hotfix.
+`lang/pl/validation.php` (and `lang/en/validation.php`, plus `auth`/`passwords`/`pagination`) now exist, so the
+raw-key failure above can no longer happen in either language; the fallback must still be `en`. Contract:
+`guides/localisation.md`.
 
 ### Logging
 

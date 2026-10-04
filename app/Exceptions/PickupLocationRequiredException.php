@@ -30,8 +30,8 @@ use RuntimeException;
  */
 class PickupLocationRequiredException extends RuntimeException
 {
-    public static function make(string $message = 'Wybierz oddział odbioru, aby złożyć zamówienie.'): static
+    public static function make(?string $message = null): static
     {
-        return new static($message);
+        return new static($message ?? __('Wybierz oddział odbioru, aby złożyć zamówienie.'));
     }
 }

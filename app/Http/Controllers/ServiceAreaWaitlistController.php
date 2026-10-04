@@ -48,7 +48,7 @@ class ServiceAreaWaitlistController extends Controller
         if ($validationResult['valid']) {
             return response()->json([
                 'success' => false,
-                'message' => __('booking.service_area.already_available'),
+                'message' => __('service_area.waitlist.already_available'),
             ], 400);
         }
 
@@ -69,7 +69,7 @@ class ServiceAreaWaitlistController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => __('booking.service_area.waitlist_success'),
+                'message' => __('service_area.waitlist.success'),
             ], 201);
 
         } catch (\Illuminate\Database\QueryException $e) {
@@ -77,7 +77,7 @@ class ServiceAreaWaitlistController extends Controller
             if ($e->getCode() === '23000') {
                 return response()->json([
                     'success' => false,
-                    'message' => __('booking.service_area.waitlist_duplicate'),
+                    'message' => __('service_area.waitlist.duplicate'),
                 ], 409);
             }
 

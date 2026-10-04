@@ -30,7 +30,7 @@ class ValidPolishPESEL implements ValidationRule
 
         // Must be exactly 11 digits
         if (strlen($pesel) !== 11) {
-            $fail('PESEL musi składać się z 11 cyfr.');
+            $fail(__('rules.pesel.length'));
 
             return;
         }
@@ -46,7 +46,7 @@ class ValidPolishPESEL implements ValidationRule
         $controlDigit = (10 - ($sum % 10)) % 10;
 
         if ($controlDigit !== (int) $pesel[10]) {
-            $fail('Nieprawidłowy numer PESEL (błąd sumy kontrolnej).');
+            $fail(__('rules.pesel.checksum'));
         }
     }
 }

@@ -27,14 +27,14 @@ class ValidPolishNIP implements ValidationRule
 
         // Must be exactly 10 digits
         if (strlen($nip) !== 10) {
-            $fail('NIP musi składać się z 10 cyfr.');
+            $fail(__('rules.nip.length'));
 
             return;
         }
 
         // Check if all characters are digits (defensive)
         if (! ctype_digit($nip)) {
-            $fail('NIP może zawierać tylko cyfry.');
+            $fail(__('rules.nip.digits'));
 
             return;
         }
@@ -51,13 +51,13 @@ class ValidPolishNIP implements ValidationRule
 
         // CRITICAL: Checksum of 10 is INVALID (no digit "10" exists)
         if ($checksum === 10) {
-            $fail('Nieprawidłowy numer NIP (błąd sumy kontrolnej).');
+            $fail(__('rules.nip.checksum'));
 
             return;
         }
 
         if ($checksum !== (int) $nip[9]) {
-            $fail('Nieprawidłowy numer NIP (błąd sumy kontrolnej).');
+            $fail(__('rules.nip.checksum'));
         }
     }
 }
