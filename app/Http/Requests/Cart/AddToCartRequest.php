@@ -25,17 +25,4 @@ class AddToCartRequest extends FormRequest
             'quantity' => ['required', 'integer', 'min:1'],
         ];
     }
-
-    /**
-     * @return array<string, string>
-     */
-    public function messages(): array
-    {
-        return [
-            'service_id.exists' => 'Wybrana usługa nie istnieje.',
-            'start_date.after_or_equal' => 'Data rozpoczęcia musi być dzisiejsza lub przyszła.',
-            'end_date.after_or_equal' => 'Data zakończenia musi być równa lub późniejsza niż data rozpoczęcia.',
-            'quantity.min' => 'Ilość musi wynosić co najmniej 1.',
-        ];
-    }
 }

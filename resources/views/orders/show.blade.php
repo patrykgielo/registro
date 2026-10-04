@@ -2,17 +2,17 @@
 
 @php
     $statusConfig = [
-        'pending_payment' => ['bg-warning/10',    'text-warning',   'ring-warning/20',   'Oczekuje na płatność'],
-        'paid'            => ['bg-success/10',    'text-success',   'ring-success/20',   'Opłacone'],
-        'confirmed'       => ['bg-success/10',    'text-success',   'ring-success/20',   'Potwierdzone'],
-        'in_progress'     => ['bg-info/10',       'text-info',      'ring-info/20',      'Sprzęt u klienta'],
-        'completed'       => ['bg-surface-sunken', 'text-text-muted', 'ring-border',     'Zakończone'],
-        'cancelled'       => ['bg-error/10',      'text-error',     'ring-error/20',     'Anulowane'],
-        'refunded'        => ['bg-brand-subtle',  'text-brand',     'ring-brand/20',     'Zwrócone'],
+        'pending_payment' => ['bg-warning/10',    'text-warning',   'ring-warning/20',   __('orders.status.pending_payment')],
+        'paid'            => ['bg-success/10',    'text-success',   'ring-success/20',   __('orders.status.paid')],
+        'confirmed'       => ['bg-success/10',    'text-success',   'ring-success/20',   __('orders.status.confirmed')],
+        'in_progress'     => ['bg-info/10',       'text-info',      'ring-info/20',      __('orders.status.in_progress')],
+        'completed'       => ['bg-surface-sunken', 'text-text-muted', 'ring-border',     __('orders.status.completed')],
+        'cancelled'       => ['bg-error/10',      'text-error',     'ring-error/20',     __('orders.status.cancelled')],
+        'refunded'        => ['bg-brand-subtle',  'text-brand',     'ring-brand/20',     __('orders.status.refunded')],
     ];
 
     [$statusBg, $statusText, $statusRing, $statusLabel] =
-        $statusConfig[$order->status] ?? ['bg-surface-sunken', 'text-text-muted', 'ring-border', 'Nieznany'];
+        $statusConfig[$order->status] ?? ['bg-surface-sunken', 'text-text-muted', 'ring-border', __('orders.status.unknown')];
 @endphp
 
 @section('content')
@@ -27,19 +27,19 @@
                        hover:text-text-primary hover:bg-surface-raised border border-transparent hover:border-border
                        transition-all duration-200 ease-out
                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2"
-                aria-label="Wróć do moich zamówień"
+                aria-label="{{ __('orders.back_to_orders') }}"
             >
                 <x-heroicon-m-arrow-left class="h-4 w-4" aria-hidden="true" />
             </a>
             <div class="flex flex-wrap items-center gap-3 min-w-0">
                 <h1 class="text-3xl font-bold text-text-primary tracking-tight">
-                    Zamówienie <span class="tabular-nums">#{{ $order->order_number }}</span>
+                    {!! __('orders.show.title', ['number' => '<span class="tabular-nums">#'.e($order->order_number).'</span>']) !!}
                 </h1>
                 <span
                     class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
                            {{ $statusBg }} {{ $statusText }} {{ $statusRing }}"
                     role="status"
-                    aria-label="Status: {{ $statusLabel }}"
+                    aria-label="{{ __('orders.show.status_aria', ['status' => $statusLabel]) }}"
                 >
                     {{ $statusLabel }}
                 </span>
@@ -51,14 +51,14 @@
             </time>
             @if($order->paid_at)
                 &middot;
-                Opłacono
+                {{ __('orders.show.paid_at') }}
                 <time datetime="{{ $order->paid_at->toIso8601String() }}">
                     {{ $order->paid_at->format('d.m.Y H:i') }}
                 </time>
             @endif
             @if($order->cancelled_at)
                 &middot;
-                Anulowano
+                {{ __('orders.show.cancelled_at') }}
                 <time datetime="{{ $order->cancelled_at->toIso8601String() }}">
                     {{ $order->cancelled_at->format('d.m.Y H:i') }}
                 </time>
@@ -79,33 +79,33 @@
                 <section aria-labelledby="items-heading">
                     <x-ui.card>
                         <h2 id="items-heading" class="text-base font-semibold text-text-primary mb-5">
-                            Pozycje zamówienia
+                            {{ __('orders.show.items_heading') }}
                         </h2>
 
                         {{-- Desktop table --}}
                         <div class="hidden sm:block overflow-x-auto -mx-1">
-                            <table class="w-full text-sm" aria-label="Pozycje zamówienia">
+                            <table class="w-full text-sm" aria-label="{{ __('orders.show.items_label') }}">
                                 <thead>
                                     <tr class="border-b border-border">
                                         <th scope="col"
                                             class="pb-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wider px-1">
-                                            Usługa
+                                            {{ __('orders.show.col_service') }}
                                         </th>
                                         <th scope="col"
                                             class="pb-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wider px-1">
-                                            Okres
+                                            {{ __('orders.show.col_period') }}
                                         </th>
                                         <th scope="col"
                                             class="pb-3 text-right text-xs font-semibold text-text-muted uppercase tracking-wider px-1">
-                                            Ilość
+                                            {{ __('orders.show.col_quantity') }}
                                         </th>
                                         <th scope="col"
                                             class="pb-3 text-right text-xs font-semibold text-text-muted uppercase tracking-wider px-1">
-                                            Cena jedn.
+                                            {{ __('orders.show.col_unit_price') }}
                                         </th>
                                         <th scope="col"
                                             class="pb-3 text-right text-xs font-semibold text-text-muted uppercase tracking-wider px-1">
-                                            Łącznie
+                                            {{ __('orders.show.col_line_total') }}
                                         </th>
                                     </tr>
                                 </thead>
@@ -122,7 +122,7 @@
                                                             <x-heroicon-m-calendar-days
                                                                 class="h-3.5 w-3.5 text-text-muted shrink-0"
                                                                 aria-hidden="true" />
-                                                            <dt class="sr-only">Okres wynajmu</dt>
+                                                            <dt class="sr-only">{{ __('cart.rental_period') }}</dt>
                                                             <dd class="text-xs tabular-nums">
                                                                 <time datetime="{{ \Carbon\Carbon::parse($item->start_date)->toDateString() }}">
                                                                     {{ \Carbon\Carbon::parse($item->start_date)->format('d.m.Y') }}
@@ -138,9 +138,9 @@
                                                                 <x-heroicon-m-clock
                                                                     class="h-3.5 w-3.5 text-text-muted shrink-0"
                                                                     aria-hidden="true" />
-                                                                <dt class="sr-only">Liczba dni</dt>
+                                                                <dt class="sr-only">{{ __('cart.days_label') }}</dt>
                                                                 <dd class="text-xs text-text-muted">
-                                                                    {{ $item->rental_days }}&nbsp;{{ $item->rental_days === 1 ? 'dzień' : 'dni' }}
+                                                                    {{ trans_choice('common.days', $item->rental_days) }}
                                                                 </dd>
                                                             </div>
                                                         @endif
@@ -153,10 +153,10 @@
                                                 {{ $item->quantity }}
                                             </td>
                                             <td class="py-3.5 px-1 text-right text-text-secondary tabular-nums">
-                                                {{ number_format($item->unit_price, 2, ',', ' ') }}&nbsp;zł
+                                                {{ number_format($item->unit_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                             </td>
                                             <td class="py-3.5 px-1 text-right font-semibold text-text-primary tabular-nums">
-                                                {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;zł
+                                                {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                             </td>
                                         </tr>
                                     @endforeach
@@ -165,7 +165,7 @@
                         </div>
 
                         {{-- Mobile: item cards --}}
-                        <div class="sm:hidden space-y-3" role="list" aria-label="Pozycje zamówienia">
+                        <div class="sm:hidden space-y-3" role="list" aria-label="{{ __('orders.show.items_label') }}">
                             @foreach($order->items as $item)
                                 <article class="rounded-lg border border-border p-3.5" role="listitem">
                                     <div class="flex items-start justify-between gap-3 mb-2">
@@ -173,7 +173,7 @@
                                             {{ $item->service_name }}
                                         </p>
                                         <span class="shrink-0 text-sm font-bold text-text-primary tabular-nums">
-                                            {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;zł
+                                            {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                         </span>
                                     </div>
 
@@ -181,7 +181,7 @@
                                         @if($item->start_date && $item->end_date)
                                             <div class="flex items-center gap-1">
                                                 <x-heroicon-m-calendar-days class="h-3.5 w-3.5 text-text-muted shrink-0" aria-hidden="true" />
-                                                <dt class="sr-only">Okres</dt>
+                                                <dt class="sr-only">{{ __('orders.show.col_period') }}</dt>
                                                 <dd class="tabular-nums">
                                                     <time datetime="{{ \Carbon\Carbon::parse($item->start_date)->toDateString() }}">
                                                         {{ \Carbon\Carbon::parse($item->start_date)->format('d.m.Y') }}
@@ -194,12 +194,12 @@
                                             </div>
                                         @endif
                                         <div class="flex items-center gap-1">
-                                            <dt class="text-text-muted">Ilość:</dt>
-                                            <dd class="tabular-nums">{{ $item->quantity }} szt.</dd>
+                                            <dt class="text-text-muted">{{ __('orders.show.quantity_colon') }}</dt>
+                                            <dd class="tabular-nums">{{ $item->quantity }} {{ __('common.pcs') }}</dd>
                                         </div>
                                         <div class="flex items-center gap-1">
-                                            <dt class="text-text-muted">Cena:</dt>
-                                            <dd class="tabular-nums">{{ number_format($item->unit_price, 2, ',', ' ') }}&nbsp;zł/szt.</dd>
+                                            <dt class="text-text-muted">{{ __('orders.show.price_colon') }}</dt>
+                                            <dd class="tabular-nums">{{ number_format($item->unit_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency_per_piece') }}</dd>
                                         </div>
                                     </dl>
                                 </article>
@@ -213,7 +213,7 @@
                     <section aria-labelledby="extension-heading">
                         <x-ui.card>
                             <h2 id="extension-heading" class="text-base font-semibold text-text-primary mb-5">
-                                Przedłuż wypożyczenie
+                                {{ __('orders.extension.heading') }}
                             </h2>
 
                             @if(session('success'))
@@ -263,7 +263,7 @@
                                         <p class="text-sm font-medium text-text-primary mb-2">
                                             {{ $item->service_name }}
                                             <span class="text-text-muted font-normal ml-1">
-                                                (do {{ $item->end_date->format('d.m.Y') }})
+                                                {{ __('orders.extension.until', ['date' => $item->end_date->format('d.m.Y')]) }}
                                             </span>
                                         </p>
 
@@ -271,14 +271,14 @@
                                             <div class="rounded-lg bg-warning/10 text-warning ring-1 ring-warning/20 px-4 py-3 text-sm flex items-start gap-2">
                                                 <x-heroicon-m-clock class="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
                                                 <span>
-                                                    Wniosek o przedłużenie do <strong>{{ $pendingRequest->requested_end_date->format('d.m.Y') }}</strong> oczekuje na zatwierdzenie.
+                                                    {!! __('orders.extension.pending', ['date' => '<strong>'.e($pendingRequest->requested_end_date->format('d.m.Y')).'</strong>']) !!}
                                                 </span>
                                             </div>
                                         @else
                                             @if($approvedRequest)
                                                 <div class="rounded-lg bg-success/10 text-success ring-1 ring-success/20 px-4 py-3 text-sm flex items-start gap-2 mb-3">
                                                     <x-heroicon-m-check-circle class="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
-                                                    <span>Ostatnie przedłużenie do {{ $approvedRequest->requested_end_date->format('d.m.Y') }} zostało zatwierdzone.</span>
+                                                    <span>{{ __('orders.extension.approved', ['date' => $approvedRequest->requested_end_date->format('d.m.Y')]) }}</span>
                                                 </div>
                                             @endif
 
@@ -291,7 +291,7 @@
                                                 <div class="flex flex-col sm:flex-row gap-3">
                                                     <div class="flex-1">
                                                         <label for="new_end_date_{{ $item->id }}" class="sr-only">
-                                                            Nowa data końca wypożyczenia
+                                                            {{ __('orders.extension.new_end_date') }}
                                                         </label>
                                                         <input
                                                             id="new_end_date_{{ $item->id }}"
@@ -321,7 +321,7 @@
                                                                transition-all duration-150 ease-out"
                                                     >
                                                         <x-heroicon-m-arrow-path-rounded-square class="h-4 w-4 shrink-0" aria-hidden="true" />
-                                                        Złóż wniosek
+                                                        {{ __('orders.extension.submit') }}
                                                     </button>
                                                 </div>
 
@@ -331,34 +331,35 @@
                                                         <p class="text-success flex items-center gap-1.5">
                                                             <x-heroicon-m-check-circle class="h-4 w-4 shrink-0" aria-hidden="true" />
                                                             <span>
-                                                                Dostępne &bull;
-                                                                <span x-text="availability.additional_days"></span> dni &bull;
-                                                                +<span x-text="parseFloat(availability.estimated_amount).toFixed(2).replace('.', ',')"></span>&nbsp;zł
+                                                                {!! __('orders.extension.available', [
+                                                                    'days' => '<span x-text="availability.additional_days"></span>',
+                                                                    'amount' => '+<span x-text="parseFloat(availability.estimated_amount).toFixed(2).replace(\'.\', \',\')"></span>&nbsp;'.e(__('common.currency')),
+                                                                ]) !!}
                                                             </span>
                                                         </p>
                                                     </template>
                                                     <template x-if="availability && !availability.can_extend">
                                                         <p class="text-error flex items-center gap-1.5">
                                                             <x-heroicon-m-x-circle class="h-4 w-4 shrink-0" aria-hidden="true" />
-                                                            Sprzęt niedostępny w wybranym terminie
+                                                            {{ __('orders.extension.unavailable') }}
                                                         </p>
                                                     </template>
                                                 </div>
 
                                                 <div x-show="loading" class="mt-2 text-xs text-text-muted" x-cloak>
-                                                    Sprawdzam dostępność…
+                                                    {{ __('orders.extension.checking') }}
                                                 </div>
 
                                                 <div class="mt-3">
                                                     <label for="customer_notes_{{ $item->id }}" class="text-xs text-text-muted">
-                                                        Notatka (opcjonalna)
+                                                        {{ __('orders.extension.note') }}
                                                     </label>
                                                     <textarea
                                                         id="customer_notes_{{ $item->id }}"
                                                         name="customer_notes"
                                                         rows="2"
                                                         maxlength="500"
-                                                        placeholder="Powód przedłużenia (opcjonalnie)…"
+                                                        placeholder="{{ __('orders.extension.note_placeholder') }}"
                                                         class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary
                                                                placeholder:text-text-muted
                                                                focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand
@@ -378,13 +379,13 @@
                 <section aria-labelledby="contact-heading">
                     <x-ui.card>
                         <h2 id="contact-heading" class="text-base font-semibold text-text-primary mb-5">
-                            Dane kontaktowe
+                            {{ __('orders.contact_heading') }}
                         </h2>
 
                         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                             <div>
                                 <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                    Imię i nazwisko
+                                    {{ __('orders.full_name') }}
                                 </dt>
                                 <dd class="text-text-primary font-medium">
                                     {{ $order->customer_first_name }} {{ $order->customer_last_name }}
@@ -392,7 +393,7 @@
                             </div>
                             <div>
                                 <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                    Adres e-mail
+                                    {{ __('orders.email') }}
                                 </dt>
                                 <dd>
                                     <a
@@ -408,7 +409,7 @@
                             @if($order->customer_phone)
                                 <div>
                                     <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                        Telefon
+                                        {{ __('orders.phone') }}
                                     </dt>
                                     <dd>
                                         <a
@@ -450,7 +451,7 @@
                 <section aria-labelledby="pickup-heading">
                     <x-ui.card>
                         <h2 id="pickup-heading" class="text-base font-semibold text-text-primary mb-5">
-                            Miejsce odbioru sprzętu
+                            {{ __('orders.pickup_heading') }}
                         </h2>
                         @if($pickupLocationName)
                             <p class="text-sm font-medium text-text-primary -mt-3 mb-4">
@@ -461,7 +462,7 @@
                             @if($pickupAddress || $pickupCity)
                             <div>
                                 <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                    Adres
+                                    {{ __('orders.address') }}
                                 </dt>
                                 <dd class="text-text-primary">
                                     @if($pickupAddress)
@@ -476,7 +477,7 @@
                             @if($pickupPhone)
                             <div>
                                 <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                    Telefon
+                                    {{ __('orders.phone') }}
                                 </dt>
                                 <dd>
                                     <a
@@ -500,14 +501,14 @@
                     <section aria-labelledby="invoice-heading">
                         <x-ui.card>
                             <h2 id="invoice-heading" class="text-base font-semibold text-text-primary mb-5">
-                                Dane do faktury
+                                {{ __('orders.invoice_heading') }}
                             </h2>
 
                             <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                                 @if($order->invoice_company_name)
                                     <div class="sm:col-span-2">
                                         <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                            Nazwa firmy
+                                            {{ __('orders.company_name') }}
                                         </dt>
                                         <dd class="text-text-primary font-medium">
                                             {{ $order->invoice_company_name }}
@@ -547,7 +548,7 @@
                                 @if($order->invoice_street && $order->invoice_street_number)
                                     <div class="sm:col-span-2">
                                         <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                            Ulica
+                                            {{ __('orders.street') }}
                                         </dt>
                                         <dd class="text-text-primary">
                                             {{ $order->invoice_street }} {{ $order->invoice_street_number }}
@@ -557,7 +558,7 @@
                                 @if($order->invoice_postal_code && $order->invoice_city)
                                     <div class="sm:col-span-2">
                                         <dt class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">
-                                            Miejscowość
+                                            {{ __('orders.city') }}
                                         </dt>
                                         <dd class="text-text-primary">
                                             {{ $order->invoice_postal_code }} {{ $order->invoice_city }}
@@ -572,10 +573,10 @@
             </div>
 
             {{-- ── Right column: order summary ── --}}
-            <aside aria-label="Podsumowanie zamówienia">
+            <aside aria-label="{{ __('orders.summary_label') }}">
                 <x-ui.card class="sticky top-6">
                     <h2 class="text-base font-semibold text-text-primary mb-4">
-                        Podsumowanie
+                        {{ __('orders.summary') }}
                     </h2>
 
                     <dl class="space-y-2 text-sm">
@@ -588,7 +589,7 @@
                                     @endif
                                 </dt>
                                 <dd class="shrink-0 font-medium text-text-primary tabular-nums">
-                                    {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;zł
+                                    {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                 </dd>
                             </div>
                         @endforeach
@@ -596,18 +597,18 @@
 
                     <div class="mt-4 pt-4 border-t border-border">
                         <div class="flex justify-between items-baseline gap-3">
-                            <span class="text-sm font-medium text-text-secondary">Razem</span>
+                            <span class="text-sm font-medium text-text-secondary">{{ __('orders.total') }}</span>
                             <span class="text-xl font-bold text-text-primary tabular-nums">
-                                {{ number_format($order->total_amount, 2, ',', ' ') }}&nbsp;zł
+                                {{ number_format($order->total_amount, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                             </span>
                         </div>
-                        <p class="mt-1 text-xs text-text-muted">Ceny brutto</p>
+                        <p class="mt-1 text-xs text-text-muted">{{ __('orders.prices_gross') }}</p>
                     </div>
 
                     {{-- Status info line --}}
                     <div class="mt-5 pt-4 border-t border-border">
                         <div class="flex items-center justify-between gap-2 text-sm">
-                            <span class="text-text-secondary">Status</span>
+                            <span class="text-text-secondary">{{ __('orders.status_label') }}</span>
                             <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
                                          {{ $statusBg }} {{ $statusText }} {{ $statusRing }}">
                                 {{ $statusLabel }}
@@ -615,7 +616,7 @@
                         </div>
                         @if($order->paid_at)
                             <div class="flex items-center justify-between gap-2 text-sm mt-2.5">
-                                <span class="text-text-secondary">Opłacono</span>
+                                <span class="text-text-secondary">{{ __('orders.show.paid_at') }}</span>
                                 <time
                                     datetime="{{ $order->paid_at->toIso8601String() }}"
                                     class="text-text-muted tabular-nums text-xs"
@@ -628,11 +629,9 @@
                         @if($order->status === 'pending_payment' && $order->settlement_method === 'offline')
                             <div class="mt-3 rounded-lg bg-info/10 ring-1 ring-inset ring-info/20 px-3 py-2.5">
                                 <p class="text-xs text-info leading-relaxed">
-                                    Płatność przy odbiorze.
+                                    {{ __('orders.offline_notice') }}
                                     @if($order->expires_at)
-                                        Rezerwacja jest ważna do
-                                        <time datetime="{{ $order->expires_at->toIso8601String() }}" class="font-medium tabular-nums">{{ $order->expires_at->format('d.m.Y H:i') }}</time>
-                                        — po tym czasie zamówienie zostanie automatycznie anulowane.
+                                        {!! __('orders.offline_reservation', ['date' => '<time datetime="'.e($order->expires_at->toIso8601String()).'" class="font-medium tabular-nums">'.e($order->expires_at->format('d.m.Y H:i')).'</time>']) !!}
                                     @endif
                                 </p>
                             </div>
@@ -644,11 +643,11 @@
                         $depositAmount = $order->deposit_amount ?? null;
                         $depositStatus = $order->deposit_status ?? null;
                         $depositBadgeConfig = [
-                            'pending'        => ['bg-warning/10',      'text-warning',    'ring-warning/20',  'Oczekuje'],
-                            'collected'      => ['bg-info/10',         'text-info',       'ring-info/20',     'Pobrana'],
-                            'returned'       => ['bg-success/10',      'text-success',    'ring-success/20',  'Zwrócona'],
-                            'partial_return' => ['bg-info/10',         'text-info',       'ring-info/20',     'Częściowy zwrot'],
-                            'forfeited'      => ['bg-error/10',        'text-error',      'ring-error/20',    'Przepadła'],
+                            'pending'        => ['bg-warning/10',      'text-warning',    'ring-warning/20',  __('orders.deposit.pending')],
+                            'collected'      => ['bg-info/10',         'text-info',       'ring-info/20',     __('orders.deposit.collected')],
+                            'returned'       => ['bg-success/10',      'text-success',    'ring-success/20',  __('orders.deposit.returned')],
+                            'partial_return' => ['bg-info/10',         'text-info',       'ring-info/20',     __('orders.deposit.partial_return')],
+                            'forfeited'      => ['bg-error/10',        'text-error',      'ring-error/20',    __('orders.deposit.forfeited')],
                         ];
                         [$depositBg, $depositText, $depositRing, $depositLabel] =
                             $depositBadgeConfig[$depositStatus ?? ''] ?? ['bg-surface-sunken', 'text-text-muted', 'ring-border', $depositStatus];
@@ -656,11 +655,11 @@
                     @if($depositAmount > 0)
                         <div class="border-t border-border mt-5 pt-4">
                             <h3 class="text-sm font-semibold text-text-primary mb-3">
-                                Kaucja
+                                {{ __('orders.deposit_heading') }}
                             </h3>
                             <div class="flex items-center justify-between gap-2">
                                 <span class="text-sm font-medium text-text-secondary tabular-nums">
-                                    {{ number_format($depositAmount, 2, ',', ' ') }}&nbsp;zł
+                                    {{ number_format($depositAmount, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                 </span>
                                 @if($depositStatus && $depositStatus !== 'not_required')
                                     <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
@@ -670,7 +669,7 @@
                                 @endif
                             </div>
                             <p class="mt-2 text-xs text-text-muted leading-relaxed">
-                                Kaucja pobierana przy odbiorze sprzętu. Zwracana po oddaniu w stanie nienaruszonym.
+                                {{ __('orders.deposit_note') }}
                             </p>
                         </div>
                     @endif
@@ -701,7 +700,7 @@
                                            transition-all duration-200 ease-out"
                                 >
                                     <x-heroicon-m-document-arrow-down class="h-4 w-4 shrink-0" aria-hidden="true" />
-                                    Protokół wydania (PDF)
+                                    {{ __('orders.handover_pdf') }}
                                 </a>
                             @endif
                             @if($canDownloadReturn)
@@ -714,7 +713,7 @@
                                            transition-all duration-200 ease-out"
                                 >
                                     <x-heroicon-m-document-arrow-down class="h-4 w-4 shrink-0" aria-hidden="true" />
-                                    Protokół zwrotu (PDF)
+                                    {{ __('orders.return_pdf') }}
                                 </a>
                             @endif
                         </div>
@@ -726,7 +725,7 @@
                             <form
                                 method="POST"
                                 action="{{ route('orders.cancel', $order) }}"
-                                onsubmit="return confirm('Czy na pewno chcesz anulować to zamówienie?')"
+                                onsubmit="return confirm(@js(__('orders.cancel_confirm')))"
                             >
                                 @csrf
                                 <button
@@ -738,7 +737,7 @@
                                            transition-all duration-200 ease-out"
                                 >
                                     <x-heroicon-m-x-circle class="h-4 w-4 shrink-0" aria-hidden="true" />
-                                    Anuluj zamówienie
+                                    {{ __('orders.cancel') }}
                                 </button>
                             </form>
                         </div>
@@ -758,7 +757,7 @@
                        transition-colors duration-200"
             >
                 <x-heroicon-m-arrow-left class="h-4 w-4 shrink-0" aria-hidden="true" />
-                Wróć do moich zamówień
+                {{ __('orders.back_to_orders') }}
             </a>
         </div>
 

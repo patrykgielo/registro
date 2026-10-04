@@ -47,13 +47,14 @@ class ContentGridResolverTest extends TestCase
 
     public function test_options_for_services_type(): void
     {
-        Service::factory()->create(['name' => 'Test Service', 'is_active' => true]);
-        Service::factory()->create(['name' => 'Inactive Service', 'is_active' => false]);
+        Service::factory()->create(['name' => 'Test Service', 'is_active' => true, 'published_at' => now()->subDay()]);
+        Service::factory()->create(['name' => 'Inactive Service', 'is_active' => false, 'published_at' => now()->subDay()]);
 
         $options = ContentGridResolver::optionsForType('services');
 
-        $this->assertCount(1, $options);
+        $this->assertCount(2, $options);
         $this->assertContains('Test Service', $options);
+        $this->assertContains('Inactive Service'.ContentGridResolver::NOT_VISIBLE_SUFFIX, $options);
     }
 
     public function test_options_for_unknown_type_returns_empty(): void
@@ -65,9 +66,9 @@ class ContentGridResolverTest extends TestCase
 
     public function test_resolve_items_preserves_order(): void
     {
-        $s1 = Service::factory()->create(['name' => 'First', 'is_active' => true]);
-        $s2 = Service::factory()->create(['name' => 'Second', 'is_active' => true]);
-        $s3 = Service::factory()->create(['name' => 'Third', 'is_active' => true]);
+        $s1 = Service::factory()->create(['name' => 'First', 'is_active' => true, 'published_at' => now()->subDay()]);
+        $s2 = Service::factory()->create(['name' => 'Second', 'is_active' => true, 'published_at' => now()->subDay()]);
+        $s3 = Service::factory()->create(['name' => 'Third', 'is_active' => true, 'published_at' => now()->subDay()]);
 
         $items = ContentGridResolver::resolveItems('services', [$s3->id, $s1->id, $s2->id]);
 
@@ -103,15 +104,16 @@ class ContentGridResolverTest extends TestCase
         $this->assertArrayHasKey('locations', ContentGridResolver::availableContentTypes(null));
     }
 
-    public function test_options_for_locations_type_excludes_inactive_and_labels_with_city(): void
+    public function test_options_for_locations_type_marks_inactive_and_labels_with_city(): void
     {
         Location::factory()->create(['name' => 'Magazyn Główny', 'city' => 'Warszawa', 'is_active' => true]);
         Location::factory()->inactive()->create(['name' => 'Zamknięty Oddział', 'city' => 'Łódź']);
 
         $options = ContentGridResolver::optionsForType('locations');
 
-        $this->assertCount(1, $options);
+        $this->assertCount(2, $options);
         $this->assertContains('Magazyn Główny (Warszawa)', $options);
+        $this->assertContains('Zamknięty Oddział (Łódź)'.ContentGridResolver::NOT_VISIBLE_SUFFIX, $options);
     }
 
     public function test_options_for_locations_type_is_scoped_to_current_tenant(): void

@@ -71,7 +71,8 @@ class RentalCancelledNotification extends Notification implements ShouldBeUnique
                 [
                     'rental_id' => $rental->id,
                     'notification' => 'RentalCancelledNotification',
-                ]
+                ],
+                organization: $rental->organization
             );
         } catch (\Exception $e) {
             Log::error('RentalCancelledNotification failed', [

@@ -144,49 +144,4 @@ class SubmitCheckoutRequest extends FormRequest
             'invoice_requested' => ['nullable', 'boolean'],
         ];
     }
-
-    /**
-     * @return array<string, string>
-     */
-    public function messages(): array
-    {
-        return [
-            'customer_type.required' => 'Proszę wybrać typ klienta.',
-            'customer_type.in' => 'Nieprawidłowy typ klienta.',
-            'settlement_method.required' => 'Proszę wybrać sposób rozliczenia.',
-            'settlement_method.in' => 'Wybrany sposób rozliczenia jest niedostępny.',
-            'pickup_location_id.required' => 'Wybierz oddział odbioru, aby złożyć zamówienie.',
-            'pickup_location_id.exists' => 'Wybrany oddział odbioru jest niedostępny.',
-            'customer_email.required' => 'Adres email jest wymagany.',
-            'customer_email.email' => 'Podaj prawidłowy adres email.',
-            'customer_phone.required' => 'Numer telefonu jest wymagany.',
-            'terms_accepted.required' => 'Akceptacja regulaminu jest wymagana.',
-            'terms_accepted.accepted' => 'Musisz zaakceptować regulamin.',
-            'rodo_accepted.required' => 'Akceptacja polityki prywatności (RODO) jest wymagana.',
-            'rodo_accepted.accepted' => 'Musisz zapoznać się z polityką prywatności.',
-            'withdrawal_exclusion_accepted.required' => 'Potwierdzenie wyłączenia prawa odstąpienia jest wymagane.',
-            'withdrawal_exclusion_accepted.accepted' => 'Musisz przyjąć do wiadomości wyłączenie prawa odstąpienia od umowy.',
-
-            // Natural person
-            'customer_first_name.required_if' => 'Imię jest wymagane dla osoby fizycznej.',
-            'customer_last_name.required_if' => 'Nazwisko jest wymagane dla osoby fizycznej.',
-            'customer_pesel.required' => 'PESEL jest wymagany dla osoby fizycznej.',
-            'customer_street.required_if' => 'Ulica jest wymagana.',
-            'customer_building.required_if' => 'Numer budynku jest wymagany.',
-            'customer_city.required_if' => 'Miasto jest wymagane.',
-            'customer_postal_code.required_if' => 'Kod pocztowy jest wymagany.',
-
-            // Business
-            'invoice_company_name.required_if' => 'Nazwa firmy jest wymagana.',
-            'invoice_nip.required_if' => 'NIP jest wymagany dla firmy.',
-            'company_regon.required_if' => 'REGON jest wymagany dla firmy.',
-            'company_contact_name.required_if' => 'Imię i nazwisko osoby podpisującej umowę jest wymagane.',
-            'signatory_id_number.required_if' => 'PESEL lub numer dowodu osoby podpisującej jest wymagany.',
-            'pickup_person_id_number.required_with' => 'Podaj numer dowodu osoby odbierającej sprzęt.',
-            'invoice_street.required_if' => 'Adres siedziby firmy (ulica) jest wymagany.',
-            'invoice_street_number.required_if' => 'Numer budynku siedziby firmy jest wymagany.',
-            'invoice_postal_code.required_if' => 'Kod pocztowy siedziby firmy jest wymagany.',
-            'invoice_city.required_if' => 'Miasto siedziby firmy jest wymagane.',
-        ];
-    }
 }

@@ -290,7 +290,8 @@ class ProcessRemindersJob implements ShouldBeUnique, ShouldQueue
                         'appointment_id' => $appointment->id,
                         'reminder_config_id' => $config->id,
                         'reminder_type' => $config->trigger_type,
-                    ]
+                    ],
+                    organization: $appointment->organization
                 );
 
                 $log->markAsSent($result['email_send_id'] ?? null);

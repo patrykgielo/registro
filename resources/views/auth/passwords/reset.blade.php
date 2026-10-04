@@ -1,6 +1,6 @@
 <x-ios.auth-card
-    title="Zresetuj hasło"
-    subtitle="Wprowadź nowe hasło dla swojego konta"
+    :title="__('account.reset.title')"
+    :subtitle="__('account.reset.subtitle')"
 >
     <form method="POST" action="{{ route('password.update') }}" class="space-y-6">
         @csrf
@@ -11,11 +11,11 @@
         <x-ios.input
             type="email"
             name="email"
-            label="Adres e-mail"
+            :label="__('account.passwords.email_label')"
             placeholder="{{ $email ?? old('email') }}"
             :value="$email ?? old('email')"
             icon="envelope"
-            helpText="Twój adres e-mail"
+            :helpText="__('account.passwords.your_email')"
             disabled
             readonly
             required
@@ -26,10 +26,10 @@
         <x-ios.input
             type="password"
             name="password"
-            label="Nowe hasło"
-            placeholder="Minimum 8 znaków"
+            :label="__('account.passwords.new_password')"
+            :placeholder="__('account.passwords.min_chars')"
             icon="lock-closed"
-            helpText="Minimum 8 znaków"
+            :helpText="__('account.passwords.min_chars')"
             required
             autofocus
             autocomplete="new-password"
@@ -39,8 +39,8 @@
         <x-ios.input
             type="password"
             name="password_confirmation"
-            label="Potwierdź nowe hasło"
-            placeholder="Wprowadź hasło ponownie"
+            :label="__('account.passwords.confirm_new_password')"
+            :placeholder="__('account.passwords.reenter_placeholder')"
             icon="lock-closed"
             required
             autocomplete="new-password"
@@ -50,7 +50,7 @@
         <x-ios.button
             type="submit"
             variant="primary"
-            label="Zresetuj hasło"
+            :label="__('account.reset.submit')"
             icon="check-circle"
             iconPosition="right"
             fullWidth

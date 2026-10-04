@@ -87,7 +87,7 @@ class RentalExtensionController extends Controller
 
             return redirect()
                 ->route('orders.show', $order)
-                ->with('success', 'Wniosek o przedłużenie został złożony. Poczekaj na potwierdzenie od wypożyczalni.');
+                ->with('success', __('Wniosek o przedłużenie został złożony. Poczekaj na potwierdzenie od wypożyczalni.'));
         } catch (RentalUnavailableException $e) {
             return back()->withErrors(['new_end_date' => $e->getMessage()]);
         }

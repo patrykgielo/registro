@@ -6,24 +6,24 @@
 <x-layout.section spacing="lg" class="bg-surface-sunken">
     <div class="max-w-3xl mx-auto text-center">
         <h1 class="text-4xl md:text-5xl font-bold text-text-primary tracking-tight mb-4">
-            Nasze usługi
+            {{ __('services.index.title') }}
         </h1>
         <p class="text-lg md:text-xl text-text-secondary mb-8">
-            Profesjonalne usługi dopasowane do Twoich potrzeb
+            {{ __('services.index.subtitle') }}
         </p>
 
         @auth
             @if($bookingEnabled)
                 <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" size="lg" icon-right="arrow-right">
-                    Zarezerwuj termin
+                    {{ __('services.index.book') }}
                 </x-ui.button>
             @endif
         @else
             <div class="flex flex-col sm:flex-row gap-3 justify-center">
                 @if($registrationEnabled)
-                    <x-ui.button href="{{ route('customer.register') }}" size="lg">Rozpocznij</x-ui.button>
+                    <x-ui.button href="{{ route('customer.register') }}" size="lg">{{ __('services.index.get_started') }}</x-ui.button>
                 @endif
-                <x-ui.button variant="secondary" href="{{ route('login') }}" size="lg">Zaloguj się</x-ui.button>
+                <x-ui.button variant="secondary" href="{{ route('login') }}" size="lg">{{ __('services.index.login') }}</x-ui.button>
             </div>
         @endauth
     </div>
@@ -57,11 +57,11 @@
 
                     <div class="flex items-center justify-between mt-auto pt-4 border-t border-border">
                         @if($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_on_request)
-                            <span class="text-sm font-medium text-text-muted italic">Cena do potwierdzenia</span>
+                            <span class="text-sm font-medium text-text-muted italic">{{ __('services.price_on_request') }}</span>
                         @elseif($service->service_type === \App\Enums\ServiceType::ItemRental && $service->price_per_day)
-                            <span class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} zł<span class="text-sm font-normal text-text-muted">/dzień</span></span>
+                            <span class="text-lg font-bold text-text-primary">{{ number_format($service->price_per_day, 0, ',', ' ') }} {{ __('common.currency') }}<span class="text-sm font-normal text-text-muted">{{ __('common.per_day') }}</span></span>
                         @elseif($service->price)
-                            <span class="text-lg font-bold text-text-primary">{{ $service->price_from ? 'od ' : '' }}{{ number_format($service->price_from ?? $service->price, 0, ',', ' ') }} zł</span>
+                            <span class="text-lg font-bold text-text-primary">{{ $service->price_from ? __('common.from').' ' : '' }}{{ number_format($service->price_from ?? $service->price, 0, ',', ' ') }} {{ __('common.currency') }}</span>
                         @endif
 
                         @if($service->duration_minutes && $service->service_type !== \App\Enums\ServiceType::ItemRental)
@@ -78,9 +78,9 @@
                         @if($service->service_type === \App\Enums\ServiceType::ItemRental && isset($locationAvailability[$service->id]))
                             @php($availableQty = $locationAvailability[$service->id])
                             @if($availableQty > 0)
-                                <x-ui.badge variant="success" dot>Dostępne: {{ $availableQty }} szt.</x-ui.badge>
+                                <x-ui.badge variant="success" dot>{{ __('services.index.available_qty', ['count' => $availableQty]) }}</x-ui.badge>
                             @else
-                                <x-ui.badge variant="error" dot>Obecnie niedostępne</x-ui.badge>
+                                <x-ui.badge variant="error" dot>{{ __('services.index.unavailable') }}</x-ui.badge>
                             @endif
                         @endif
                     </div>
@@ -90,8 +90,8 @@
     @else
         <div class="max-w-md mx-auto text-center py-16">
             <x-heroicon-o-cube class="h-16 w-16 text-text-muted mx-auto mb-4" />
-            <h3 class="text-xl font-semibold text-text-primary mb-2">Brak dostępnych usług</h3>
-            <p class="text-text-secondary">Wkrótce pojawią się nowe usługi. Sprawdź ponownie później.</p>
+            <h3 class="text-xl font-semibold text-text-primary mb-2">{{ __('services.index.empty_title') }}</h3>
+            <p class="text-text-secondary">{{ __('services.index.empty_text') }}</p>
         </div>
     @endif
 
@@ -105,26 +105,26 @@
 {{-- CTA --}}
 <x-layout.section dark>
     <div class="max-w-2xl mx-auto text-center">
-        <h2 class="text-3xl font-bold text-dark-text mb-4">Gotowy, aby zacząć?</h2>
+        <h2 class="text-3xl font-bold text-dark-text mb-4">{{ __('services.index.cta_title') }}</h2>
         <p class="text-dark-text-muted text-lg mb-8">
             @if($bookingEnabled)
-                Zarezerwuj termin online w kilka kliknięć
+                {{ __('services.index.cta_book') }}
             @else
-                Skontaktuj się z nami i umów wizytę
+                {{ __('services.index.cta_contact') }}
             @endif
         </p>
         @auth
             @if($bookingEnabled)
                 <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" size="lg" icon-right="arrow-right" class="bg-surface-raised text-text-primary hover:bg-surface">
-                    Zarezerwuj teraz
+                    {{ __('services.index.book_now') }}
                 </x-ui.button>
             @endif
         @else
             <div class="flex flex-col sm:flex-row gap-3 justify-center">
                 @if($registrationEnabled)
-                    <x-ui.button href="{{ route('customer.register') }}" size="lg" class="bg-surface-raised text-text-primary hover:bg-surface">Załóż konto</x-ui.button>
+                    <x-ui.button href="{{ route('customer.register') }}" size="lg" class="bg-surface-raised text-text-primary hover:bg-surface">{{ __('services.index.sign_up') }}</x-ui.button>
                 @endif
-                <x-ui.button variant="ghost" href="{{ route('login') }}" size="lg" class="text-dark-text hover:text-dark-text">Mam już konto</x-ui.button>
+                <x-ui.button variant="ghost" href="{{ route('login') }}" size="lg" class="text-dark-text hover:text-dark-text">{{ __('services.index.have_account') }}</x-ui.button>
             </div>
         @endauth
     </div>

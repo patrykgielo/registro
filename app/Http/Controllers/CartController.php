@@ -63,7 +63,7 @@ class CartController extends Controller
             return redirect()->back()->withErrors($e->messages(), 'availability');
         }
 
-        return redirect()->back()->with('success', 'Dodano do koszyka.');
+        return redirect()->back()->with('success', __('flash.cart.added'));
     }
 
     /**

@@ -89,7 +89,7 @@
                     href="{{ $blockData['button_url'] }}"
                     class="inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all hover:scale-105 active:scale-95 shadow-md @if($blockData['style'] ?? 'default' === 'primary') bg-blue-600 text-white hover:bg-blue-700 @elseif($blockData['style'] ?? 'default' === 'accent') bg-green-600 text-white hover:bg-green-700 @else bg-gray-600 text-white hover:bg-gray-700 @endif"
                 >
-                    {{ $blockData['button_text'] ?? 'Dowiedz się więcej' }}
+                    {{ $blockData['button_text'] ?? __('services.show.learn_more') }}
                     <x-heroicon-o-arrow-right class="w-4 h-4" />
                 </a>
             @endif

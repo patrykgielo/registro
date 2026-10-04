@@ -8,6 +8,7 @@ use App\Enums\TemplateKey;
 use App\Filament\Resources\EmailTemplateResource\Pages;
 use App\Models\EmailTemplate;
 use App\Services\Email\EmailService;
+use App\Support\TenantFeature;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -205,7 +206,8 @@ class EmailTemplateResource extends BaseResource
                                 language: $record->language,
                                 recipient: $data['email'],
                                 data: self::getExampleData($record),
-                                metadata: []
+                                metadata: [],
+                                organization: TenantFeature::currentTenant()
                             );
 
                             if ($result) {

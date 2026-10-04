@@ -21,12 +21,4 @@ class StoreRentalStep1Request extends FormRequest
             'quantity' => ['required', 'integer', 'min:1', 'max:100'],
         ];
     }
-
-    public function messages(): array
-    {
-        return [
-            'start_date.after_or_equal' => 'Data rozpoczęcia musi być dzisiejsza lub przyszła.',
-            'end_date.after_or_equal' => 'Data zakończenia musi być równa lub późniejsza niż data rozpoczęcia.',
-        ];
-    }
 }

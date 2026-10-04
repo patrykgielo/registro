@@ -1,11 +1,11 @@
 <x-ios.auth-card
-    title="Potwierdź hasło"
-    subtitle="Ze względów bezpieczeństwa potwierdź swoje hasło"
+    :title="__('account.confirm.title')"
+    :subtitle="__('account.confirm.subtitle')"
 >
     {{-- Warning Alert --}}
     <x-ios.alert
         type="warning"
-        message="Ta akcja wymaga potwierdzenia hasła"
+        :message="__('account.confirm.alert')"
         class="mb-6"
     />
 
@@ -16,8 +16,8 @@
         <x-ios.input
             type="password"
             name="password"
-            label="Hasło"
-            placeholder="Wprowadź swoje hasło"
+            :label="__('account.fields.password')"
+            :placeholder="__('account.confirm.password_placeholder')"
             icon="lock-closed"
             required
             autofocus
@@ -28,7 +28,7 @@
         <x-ios.button
             type="submit"
             variant="primary"
-            label="Potwierdź"
+            :label="__('account.confirm.submit')"
             icon="shield-check"
             iconPosition="right"
             fullWidth
@@ -40,7 +40,7 @@
                 <x-ios.button
                     variant="ghost"
                     href="{{ route('password.request') }}"
-                    label="Zapomniałeś hasła?"
+                    :label="__('account.login.forgot')"
                     icon="question-mark-circle"
                     iconPosition="left"
                 />

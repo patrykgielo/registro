@@ -45,7 +45,7 @@ class CheckoutController extends Controller
 
         if ($cart->items->isEmpty()) {
             return redirect()->route('cart.show')
-                ->withErrors(['general' => 'Twój koszyk jest pusty.']);
+                ->withErrors(['general' => __('Twój koszyk jest pusty.')]);
         }
 
         if ($cart->checkout_started_at === null) {
@@ -152,7 +152,7 @@ class CheckoutController extends Controller
         } catch (\Throwable $e) {
             Log::error('Checkout failed: could not convert cart to order', ['exception' => $e, 'user_id' => auth()->id()]);
 
-            return redirect()->back()->withErrors(['general' => 'Nie udało się przetworzyć płatności. Spróbuj ponownie.']);
+            return redirect()->back()->withErrors(['general' => __('Nie udało się przetworzyć płatności. Spróbuj ponownie.')]);
         }
 
         // Marks this attempt as a real order creation for the "checkout-submit"
@@ -237,10 +237,10 @@ class CheckoutController extends Controller
     private function registrationFailureMessage(\Throwable $e): string
     {
         if ($e instanceof PaymentGatewayNotConfiguredException) {
-            return 'Płatności online są chwilowo niedostępne. Prosimy o kontakt z wypożyczalnią — Twoje zamówienie nie zostało złożone i nic nie zostało pobrane.';
+            return __('Płatności online są chwilowo niedostępne. Prosimy o kontakt z wypożyczalnią — Twoje zamówienie nie zostało złożone i nic nie zostało pobrane.');
         }
 
-        return 'Nie udało się przetworzyć płatności. Spróbuj ponownie.';
+        return __('Nie udało się przetworzyć płatności. Spróbuj ponownie.');
     }
 
     /**

@@ -65,16 +65,16 @@
                                     type="button"
                                     class="flex items-center gap-2 min-h-11 px-3 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                                     aria-haspopup="true"
-                                    aria-label="{{ $__selectedLocation ? 'Wybrany oddział: '.$__selectedLocation->name.'. Zmień oddział' : 'Wybierz oddział' }}"
+                                    aria-label="{{ $__selectedLocation ? __('storefront.nav.selected_branch', ['name' => $__selectedLocation->name]) : __('storefront.nav.choose_branch') }}"
                                 >
                                     <x-heroicon-m-map-pin class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
-                                    <span class="max-w-[140px] truncate">{{ $__selectedLocation->name ?? 'Wybierz oddział' }}</span>
+                                    <span class="max-w-[140px] truncate">{{ $__selectedLocation->name ?? __('storefront.nav.choose_branch') }}</span>
                                     <x-heroicon-m-chevron-up-down class="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
                                 </button>
                             </x-slot:trigger>
 
                             <div class="px-4 pt-1 pb-2 text-xs font-medium uppercase tracking-wide text-text-muted" role="presentation">
-                                Oddziały
+                                {{ __('storefront.nav.branches') }}
                             </div>
                             {{-- Faza 5.2 code review (2026-09-09): no cap on locations per
                                  tenant, so an unbounded list here would run off-screen with no
@@ -124,7 +124,7 @@
                         <a
                             href="{{ route('cart.show') }}"
                             class="relative flex items-center justify-center min-h-11 min-w-11 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                            aria-label="{{ $cartCount > 0 ? 'Twój koszyk (' . $cartCount . ' ' . ($cartCount === 1 ? 'pozycja' : ($cartCount < 5 ? 'pozycje' : 'pozycji')) . ')' : 'Twój koszyk' }}"
+                            aria-label="{{ $cartCount > 0 ? __('storefront.nav.cart_with_count', ['items' => trans_choice('common.positions', $cartCount)]) : __('storefront.nav.your_cart') }}"
                         >
                             <x-heroicon-m-shopping-cart class="h-5 w-5" />
                             @if($cartCount > 0)
@@ -146,48 +146,48 @@
                             </x-slot:trigger>
 
                             <a href="{{ route('profile.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
-                                <x-heroicon-m-user class="h-4 w-4" /> Moje konto
+                                <x-heroicon-m-user class="h-4 w-4" /> {{ __('storefront.nav.my_account') }}
                             </a>
                             @if($bookingEnabled)
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
-                                <x-heroicon-m-calendar class="h-4 w-4" /> Moje rezerwacje
+                                <x-heroicon-m-calendar class="h-4 w-4" /> {{ __('storefront.nav.my_bookings') }}
                             </a>
                             @endif
                             @if($rentalEnabled)
                             <a href="{{ route('orders.index') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
-                                <x-heroicon-m-shopping-bag class="h-4 w-4" /> Moje zamówienia
+                                <x-heroicon-m-shopping-bag class="h-4 w-4" /> {{ __('storefront.nav.my_orders') }}
                             </a>
                             @endif
                             @if(Auth::user()->hasAnyRole(['admin', 'super-admin', 'staff']))
                                 <a href="/admin" class="flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors" role="menuitem">
-                                    <x-heroicon-m-cog-6-tooth class="h-4 w-4" /> Panel admina
+                                    <x-heroicon-m-cog-6-tooth class="h-4 w-4" /> {{ __('storefront.nav.admin_panel') }}
                                 </a>
                             @endif
                             <x-ui.separator class="my-1" />
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
                                 <button type="submit" class="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-error hover:bg-error/5 transition-colors" role="menuitem">
-                                    <x-heroicon-m-arrow-right-on-rectangle class="h-4 w-4" /> Wyloguj
+                                    <x-heroicon-m-arrow-right-on-rectangle class="h-4 w-4" /> {{ __('storefront.nav.logout') }}
                                 </button>
                             </form>
                         </x-interactive.dropdown>
 
                         @if($bookingEnabled)
                             <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" icon-right="arrow-right">
-                                Zarezerwuj
+                                {{ __('storefront.nav.book') }}
                             </x-ui.button>
                         @endif
                     @else
-                        <x-ui.button variant="ghost" href="{{ route('login') }}">Zaloguj</x-ui.button>
+                        <x-ui.button variant="ghost" href="{{ route('login') }}">{{ __('storefront.nav.login') }}</x-ui.button>
                         @if($isTenantDomain)
                             @if($registrationEnabled)
-                                <x-ui.button href="{{ route('customer.register') }}">Zarejestruj się</x-ui.button>
+                                <x-ui.button href="{{ route('customer.register') }}">{{ __('storefront.nav.sign_up') }}</x-ui.button>
                             @endif
                         @else
                             {{-- No tenant resolved: there is no public self-serve
                                  sign-up anymore (see routes/web.php), so this is a
                                  sales contact point, not a registration link. --}}
-                            <x-ui.button href="mailto:{{ $contactEmail }}">Kontakt</x-ui.button>
+                            <x-ui.button href="mailto:{{ $contactEmail }}">{{ __('storefront.nav.contact') }}</x-ui.button>
                         @endif
                     @endauth
                 </div>
@@ -196,7 +196,7 @@
                 <button
                     @click="mobileOpen = true"
                     class="md:hidden flex items-center justify-center min-h-11 min-w-11 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
-                    aria-label="Otwórz menu"
+                    aria-label="{{ __('storefront.nav.open_menu') }}"
                 >
                     <x-heroicon-m-bars-3 class="h-6 w-6" />
                 </button>
@@ -239,7 +239,7 @@
             class="fixed inset-y-0 right-0 z-[var(--z-modal)] w-full max-w-sm bg-surface-raised shadow-xl"
             role="dialog"
             aria-modal="true"
-            aria-label="Menu nawigacji"
+            aria-label="{{ __('storefront.nav.menu_label') }}"
             x-cloak
         >
             <div class="flex h-full flex-col">
@@ -265,7 +265,7 @@
 
                     @if($__locationSwitcherVisible)
                         <div class="mb-6 pb-6 border-b border-border">
-                            <p class="px-3 mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">Oddział</p>
+                            <p class="px-3 mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">{{ __('storefront.nav.branch') }}</p>
                             {{-- Faza 5.2 code review (2026-09-09): same unbounded-list risk as
                                  the desktop dropdown — bounded height + its own scroll keeps the
                                  rest of the drawer (main nav, account, logout) reachable without
@@ -302,21 +302,21 @@
                         @auth
                             <x-ui.separator class="my-4" />
                             <a href="{{ route('profile.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                <x-heroicon-m-user class="h-5 w-5" /> Moje konto
+                                <x-heroicon-m-user class="h-5 w-5" /> {{ __('storefront.nav.my_account') }}
                             </a>
                             @if($bookingEnabled)
                             <a href="{{ route('appointments.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                <x-heroicon-m-calendar class="h-5 w-5" /> Moje rezerwacje
+                                <x-heroicon-m-calendar class="h-5 w-5" /> {{ __('storefront.nav.my_bookings') }}
                             </a>
                             @endif
                             @if($rentalEnabled)
                             <a href="{{ route('orders.index') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                <x-heroicon-m-shopping-bag class="h-5 w-5" /> Moje zamówienia
+                                <x-heroicon-m-shopping-bag class="h-5 w-5" /> {{ __('storefront.nav.my_orders') }}
                             </a>
                             <a
                                 href="{{ route('cart.show') }}"
                                 class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                                aria-label="{{ isset($cartCount) && $cartCount > 0 ? 'Twój koszyk (' . $cartCount . ' ' . ($cartCount === 1 ? 'pozycja' : ($cartCount < 5 ? 'pozycje' : 'pozycji')) . ')' : 'Twój koszyk' }}"
+                                aria-label="{{ isset($cartCount) && $cartCount > 0 ? __('storefront.nav.cart_with_count', ['items' => trans_choice('common.positions', $cartCount)]) : __('storefront.nav.your_cart') }}"
                             >
                                 <span class="relative flex-shrink-0">
                                     <x-heroicon-m-shopping-cart class="h-5 w-5" />
@@ -327,23 +327,23 @@
                                         >{{ $cartCount > 99 ? '99+' : $cartCount }}</span>
                                     @endif
                                 </span>
-                                Koszyk
+                                {{ __('storefront.nav.cart') }}
                             </a>
                             @endif
                         @else
                             <x-ui.separator class="my-4" />
                             <a href="{{ route('login') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                <x-heroicon-m-arrow-right-on-rectangle class="h-5 w-5" /> Zaloguj się
+                                <x-heroicon-m-arrow-right-on-rectangle class="h-5 w-5" /> {{ __('storefront.nav.sign_in') }}
                             </a>
                             @if($isTenantDomain)
                                 @if($registrationEnabled)
                                     <a href="{{ route('customer.register') }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                        <x-heroicon-m-user-plus class="h-5 w-5" /> Zarejestruj się
+                                        <x-heroicon-m-user-plus class="h-5 w-5" /> {{ __('storefront.nav.sign_up') }}
                                     </a>
                                 @endif
                             @else
                                 <a href="mailto:{{ $contactEmail }}" class="flex items-center gap-3 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-sunken rounded-lg transition-colors">
-                                    <x-heroicon-m-envelope class="h-5 w-5" /> Kontakt
+                                    <x-heroicon-m-envelope class="h-5 w-5" /> {{ __('storefront.nav.contact') }}
                                 </a>
                             @endif
                         @endauth
@@ -353,7 +353,7 @@
                         <div class="mt-6">
                             @if($bookingEnabled)
                                 <x-ui.button href="{{ route('booking.step', ['step' => 1]) }}" class="w-full" icon-right="arrow-right">
-                                    Zarezerwuj
+                                    {{ __('storefront.nav.book') }}
                                 </x-ui.button>
                             @endif
                         </div>
@@ -365,7 +365,7 @@
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
                             <button type="submit" class="flex items-center gap-2 text-sm text-error hover:text-error/80 transition-colors">
-                                <x-heroicon-m-arrow-right-on-rectangle class="h-4 w-4" /> Wyloguj
+                                <x-heroicon-m-arrow-right-on-rectangle class="h-4 w-4" /> {{ __('storefront.nav.logout') }}
                             </button>
                         </form>
                     </div>

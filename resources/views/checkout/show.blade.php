@@ -12,12 +12,12 @@
                        hover:text-text-primary hover:bg-surface-raised border border-transparent hover:border-border
                        transition-all duration-200 ease-out
                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2"
-                aria-label="Wróć do koszyka"
+                aria-label="{{ __('checkout.back_to_cart') }}"
             >
                 <x-heroicon-m-arrow-left class="h-4 w-4" aria-hidden="true" />
             </a>
             <h1 class="text-3xl font-bold text-text-primary tracking-tight">
-                Finalizacja zamówienia
+                {{ __('checkout.title') }}
             </h1>
         </div>
     </x-layout.container>
@@ -87,9 +87,9 @@
             get consentErrors() {
                 if (!this.consentSubmitAttempted) return {};
                 const errors = {};
-                if (!this.termsAccepted) errors.terms = 'Akceptacja regulaminu jest wymagana.';
-                if (!this.rodoAccepted) errors.rodo = 'Zgoda na przetwarzanie danych jest wymagana.';
-                if (!this.withdrawalExclusionAccepted) errors.withdrawal = 'Potwierdzenie przyjęcia do wiadomości jest wymagane.';
+                if (!this.termsAccepted) errors.terms = @js(__('checkout.consent.terms_required'));
+                if (!this.rodoAccepted) errors.rodo = @js(__('checkout.consent.rodo_required'));
+                if (!this.withdrawalExclusionAccepted) errors.withdrawal = @js(__('checkout.consent.withdrawal_required'));
                 return errors;
             },
 
@@ -109,7 +109,7 @@
             }
         }"
         @submit="submitForm($event)"
-        aria-label="Formularz zamówienia"
+        aria-label="{{ __('checkout.form_label') }}"
     >
         @csrf
         <input type="hidden" name="customer_type" :value="customerType">
@@ -124,7 +124,7 @@
                 <section aria-labelledby="customer-type-heading">
                     <x-ui.card>
                         <h2 id="customer-type-heading" class="text-base font-semibold text-text-primary mb-4">
-                            Typ klienta
+                            {{ __('checkout.customer_type') }}
                         </h2>
 
                         {{-- Segmented control --}}
@@ -145,7 +145,7 @@
                                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-1
                                        cursor-pointer select-none min-h-[36px]"
                             >
-                                Osoba fizyczna
+                                {{ __('checkout.natural_person') }}
                             </button>
                             <button
                                 type="button"
@@ -159,7 +159,7 @@
                                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-1
                                        cursor-pointer select-none min-h-[36px]"
                             >
-                                Firma
+                                {{ __('checkout.company') }}
                             </button>
                         </div>
                     </x-ui.card>
@@ -178,7 +178,7 @@
                 >
                     <x-ui.card>
                         <h2 id="personal-data-heading" class="text-base font-semibold text-text-primary mb-6">
-                            Dane osobowe
+                            {{ __('checkout.personal_data') }}
                         </h2>
 
                         <div class="space-y-5">
@@ -189,7 +189,7 @@
                                 {{-- Imię --}}
                                 <div class="space-y-1.5">
                                     <label for="customer_first_name" class="block text-sm font-medium text-text-primary">
-                                        Imię
+                                        {{ __('checkout.first_name') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -209,7 +209,7 @@
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_first_name'),
                                             'border-border hover:border-border-strong' => !$errors->has('customer_first_name'),
                                         ])
-                                        placeholder="Jan"
+                                        placeholder="{{ __('checkout.first_name_placeholder') }}"
                                     >
                                     @error('customer_first_name')
                                         <p id="customer_first_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -219,7 +219,7 @@
                                 {{-- Nazwisko --}}
                                 <div class="space-y-1.5">
                                     <label for="customer_last_name" class="block text-sm font-medium text-text-primary">
-                                        Nazwisko
+                                        {{ __('checkout.last_name') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -238,7 +238,7 @@
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_last_name'),
                                             'border-border hover:border-border-strong' => !$errors->has('customer_last_name'),
                                         ])
-                                        placeholder="Kowalski"
+                                        placeholder="{{ __('checkout.last_name_placeholder') }}"
                                     >
                                     @error('customer_last_name')
                                         <p id="customer_last_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -253,7 +253,7 @@
                                 {{-- Email --}}
                                 <div class="space-y-1.5">
                                     <label for="customer_email" class="block text-sm font-medium text-text-primary">
-                                        Adres e-mail
+                                        {{ __('checkout.email') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -272,13 +272,13 @@
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_email'),
                                             'border-border hover:border-border-strong' => !$errors->has('customer_email'),
                                         ])
-                                        placeholder="jan@kowalski.pl"
+                                        placeholder="{{ __('checkout.email_placeholder') }}"
                                     >
                                     @error('customer_email')
                                         <p id="customer_email-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
                                     @else
                                         <p id="customer_email-hint" class="text-xs text-text-muted mt-1">
-                                            Potwierdzenie zamówienia zostanie wysłane na ten adres.
+                                            {{ __('checkout.email_hint') }}
                                         </p>
                                     @enderror
                                 </div>
@@ -286,7 +286,7 @@
                                 {{-- Telefon --}}
                                 <div class="space-y-1.5">
                                     <label for="customer_phone" class="block text-sm font-medium text-text-primary">
-                                        Telefon
+                                        {{ __('checkout.phone') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -322,7 +322,7 @@
                                     @if($peselRequired)
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     @else
-                                        <span class="text-text-muted font-normal">(opcjonalnie)</span>
+                                        <span class="text-text-muted font-normal">{{ __('checkout.optional') }}</span>
                                     @endif
                                 </label>
                                 <input
@@ -351,9 +351,9 @@
                                 @enderror
                                 <p id="customer_pesel-hint" class="text-xs text-text-muted mt-1 leading-relaxed">
                                     @if($peselRequired)
-                                        Wymagany do zawarcia umowy najmu.
+                                        {{ __('checkout.pesel_required_hint') }}
                                     @else
-                                        Opcjonalny — podaj tylko jeśli chcesz go dołączyć do umowy najmu. Nie jest drukowany na protokole wydania/zwrotu sprzętu.
+                                        {{ __('checkout.pesel_optional_hint') }}
                                     @endif
                                 </p>
                             </div>
@@ -361,7 +361,7 @@
                             {{-- Subheading: Adres --}}
                             <div class="pt-2">
                                 <h3 class="text-sm font-semibold text-text-primary mb-4 pb-3 border-b border-border">
-                                    Adres do umowy
+                                    {{ __('checkout.contract_address') }}
                                 </h3>
 
                                 <div class="space-y-5">
@@ -371,7 +371,7 @@
 
                                         <div class="sm:col-span-1 space-y-1.5">
                                             <label for="customer_street" class="block text-sm font-medium text-text-primary">
-                                                Ulica
+                                                {{ __('checkout.street') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -390,7 +390,7 @@
                                                     'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_street'),
                                                     'border-border hover:border-border-strong' => !$errors->has('customer_street'),
                                                 ])
-                                                placeholder="ul. Przykładowa"
+                                                placeholder="{{ __('checkout.street_placeholder') }}"
                                             >
                                             @error('customer_street')
                                                 <p id="customer_street-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -399,7 +399,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="customer_building" class="block text-sm font-medium text-text-primary">
-                                                Nr domu
+                                                {{ __('checkout.building') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -426,8 +426,8 @@
 
                                         <div class="space-y-1.5">
                                             <label for="customer_apartment" class="block text-sm font-medium text-text-primary">
-                                                Nr mieszkania
-                                                <span class="text-text-muted text-xs font-normal ml-1">(opcjonalne)</span>
+                                                {{ __('checkout.apartment') }}
+                                                <span class="text-text-muted text-xs font-normal ml-1">{{ __('checkout.optional_f') }}</span>
                                             </label>
                                             <input
                                                 type="text"
@@ -455,7 +455,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="customer_postal_code" class="block text-sm font-medium text-text-primary">
-                                                Kod pocztowy
+                                                {{ __('checkout.postal_code') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -485,7 +485,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="customer_city" class="block text-sm font-medium text-text-primary">
-                                                Miasto
+                                                {{ __('checkout.city') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -504,7 +504,7 @@
                                                     'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_city'),
                                                     'border-border hover:border-border-strong' => !$errors->has('customer_city'),
                                                 ])
-                                                placeholder="Warszawa"
+                                                placeholder="{{ __('checkout.city_placeholder') }}"
                                             >
                                             @error('customer_city')
                                                 <p id="customer_city-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -556,10 +556,10 @@
                                     class="text-sm font-medium text-text-primary cursor-pointer select-none"
                                     id="invoice-np-heading"
                                 >
-                                    Chcę fakturę VAT <span class="font-normal text-text-muted">(JDG / działalność)</span>
+                                    {{ __('checkout.want_invoice') }} <span class="font-normal text-text-muted">{{ __('checkout.invoice_sole_trader') }}</span>
                                 </label>
                                 <p class="text-xs text-text-muted mt-0.5">
-                                    Podaj NIP, aby otrzymać fakturę
+                                    {{ __('checkout.invoice_nip_hint') }}
                                 </p>
                             </div>
                         </div>
@@ -575,7 +575,7 @@
                             x-transition:leave-start="opacity-100 translate-y-0"
                             x-transition:leave-end="opacity-0 -translate-y-2"
                             role="group"
-                            aria-label="NIP do faktury"
+                            aria-label="{{ __('checkout.invoice_nip_group') }}"
                         >
                             <div class="mt-5 pt-5 border-t border-border">
                                 <div class="space-y-1.5">
@@ -624,7 +624,7 @@
                 >
                     <x-ui.card>
                         <h2 id="business-data-heading" class="text-base font-semibold text-text-primary mb-6">
-                            Dane firmy
+                            {{ __('checkout.company_data') }}
                         </h2>
 
                         <div class="space-y-5">
@@ -632,7 +632,7 @@
                             {{-- Nazwa firmy (full width) --}}
                             <div class="space-y-1.5">
                                 <label for="invoice_company_name" class="block text-sm font-medium text-text-primary">
-                                    Nazwa firmy
+                                    {{ __('checkout.company_name') }}
                                     <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                 </label>
                                 <input
@@ -651,7 +651,7 @@
                                         'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_company_name'),
                                         'border-border hover:border-border-strong' => !$errors->has('invoice_company_name'),
                                     ])
-                                    placeholder="Acme Sp. z o.o."
+                                    placeholder="{{ __('checkout.company_name_placeholder') }}"
                                 >
                                 @error('invoice_company_name')
                                     <p id="invoice_company_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -724,8 +724,8 @@
                             {{-- KRS / CEIDG (optional, full width) --}}
                             <div class="space-y-1.5">
                                 <label for="company_krs" class="block text-sm font-medium text-text-primary">
-                                    KRS / nr CEIDG
-                                    <span class="text-text-muted text-xs font-normal ml-1">(opcjonalne)</span>
+                                    {{ __('checkout.krs_ceidg') }}
+                                    <span class="text-text-muted text-xs font-normal ml-1">{{ __('checkout.optional_f') }}</span>
                                 </label>
                                 <input
                                     type="text"
@@ -753,7 +753,7 @@
 
                                 <div class="space-y-1.5">
                                     <label for="business_customer_email" class="block text-sm font-medium text-text-primary">
-                                        Adres e-mail
+                                        {{ __('checkout.email') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -772,20 +772,20 @@
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('customer_email'),
                                             'border-border hover:border-border-strong' => !$errors->has('customer_email'),
                                         ])
-                                        placeholder="biuro@firma.pl"
+                                        placeholder="{{ __('checkout.company_email_placeholder') }}"
                                     >
                                     @error('customer_email')
                                         <p id="customer_email_b-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
                                     @else
                                         <p id="customer_email_b-hint" class="text-xs text-text-muted mt-1">
-                                            Potwierdzenie zamówienia zostanie wysłane na ten adres.
+                                            {{ __('checkout.email_hint') }}
                                         </p>
                                     @enderror
                                 </div>
 
                                 <div class="space-y-1.5">
                                     <label for="business_customer_phone" class="block text-sm font-medium text-text-primary">
-                                        Telefon
+                                        {{ __('checkout.phone') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -816,7 +816,7 @@
                             {{-- Subheading: Adres siedziby --}}
                             <div class="pt-2">
                                 <h3 class="text-sm font-semibold text-text-primary mb-4 pb-3 border-b border-border">
-                                    Adres siedziby
+                                    {{ __('checkout.company_address') }}
                                 </h3>
 
                                 <div class="space-y-5">
@@ -826,7 +826,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="invoice_street" class="block text-sm font-medium text-text-primary">
-                                                Ulica
+                                                {{ __('checkout.street') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -845,7 +845,7 @@
                                                     'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_street'),
                                                     'border-border hover:border-border-strong' => !$errors->has('invoice_street'),
                                                 ])
-                                                placeholder="ul. Przykładowa"
+                                                placeholder="{{ __('checkout.street_placeholder') }}"
                                             >
                                             @error('invoice_street')
                                                 <p id="invoice_street-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -854,7 +854,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="invoice_street_number" class="block text-sm font-medium text-text-primary">
-                                                Nr domu
+                                                {{ __('checkout.building') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -886,7 +886,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="invoice_postal_code" class="block text-sm font-medium text-text-primary">
-                                                Kod pocztowy
+                                                {{ __('checkout.postal_code') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -916,7 +916,7 @@
 
                                         <div class="space-y-1.5">
                                             <label for="invoice_city" class="block text-sm font-medium text-text-primary">
-                                                Miasto
+                                                {{ __('checkout.city') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -935,7 +935,7 @@
                                                     'border-error focus:border-error focus:ring-error/20' => $errors->has('invoice_city'),
                                                     'border-border hover:border-border-strong' => !$errors->has('invoice_city'),
                                                 ])
-                                                placeholder="Warszawa"
+                                                placeholder="{{ __('checkout.city_placeholder') }}"
                                             >
                                             @error('invoice_city')
                                                 <p id="invoice_city-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -950,12 +950,12 @@
                             {{-- Subheading: Osoba upoważniona --}}
                             <div class="pt-2">
                                 <h3 class="text-sm font-semibold text-text-primary mb-4 pb-3 border-b border-border">
-                                    Osoba upoważniona do podpisania umowy
+                                    {{ __('checkout.signatory_heading') }}
                                 </h3>
 
                                 <div class="space-y-1.5">
                                     <label for="company_contact_name" class="block text-sm font-medium text-text-primary">
-                                        Imię i nazwisko
+                                        {{ __('checkout.full_name') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -974,7 +974,7 @@
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('company_contact_name'),
                                             'border-border hover:border-border-strong' => !$errors->has('company_contact_name'),
                                         ])
-                                        placeholder="Jan Kowalski"
+                                        placeholder="{{ __('checkout.full_name_placeholder') }}"
                                     >
                                     @error('company_contact_name')
                                         <p id="company_contact_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -984,7 +984,7 @@
                                 {{-- PESEL lub numer dowodu osoby podpisującej --}}
                                 <div class="mt-4 space-y-1.5">
                                     <label for="signatory_id_number" class="block text-sm font-medium text-text-primary">
-                                        PESEL lub numer dowodu osobistego
+                                        {{ __('checkout.id_number_label') }}
                                         <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                     </label>
                                     <input
@@ -1004,10 +1004,10 @@
                                             'border-error focus:border-error focus:ring-error/20' => $errors->has('signatory_id_number'),
                                             'border-border hover:border-border-strong' => !$errors->has('signatory_id_number'),
                                         ])
-                                        placeholder="np. ABC123456 lub 12345678901"
+                                        placeholder="{{ __('checkout.id_number_placeholder_long') }}"
                                     >
                                     <p id="signatory_id_number-hint" class="text-xs text-text-muted mt-1 leading-relaxed">
-                                        Wymagane do zawarcia umowy najmu i ewentualnego dochodzenia roszczeń.
+                                        {{ __('checkout.signatory_hint') }}
                                     </p>
                                     @error('signatory_id_number')
                                         <p id="signatory_id_number-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -1033,9 +1033,9 @@
                                         >
                                     </div>
                                     <label for="different_pickup_person" class="text-sm font-medium text-text-primary cursor-pointer select-none">
-                                        Sprzęt odbierze inna osoba niż podpisująca umowę
+                                        {{ __('checkout.other_pickup_person') }}
                                         <span class="block text-xs font-normal text-text-muted mt-0.5">
-                                            Np. pracownik lub kierowca — podaj jej dane do protokołu wydania
+                                            {{ __('checkout.other_pickup_person_hint') }}
                                         </span>
                                     </label>
                                 </div>
@@ -1050,14 +1050,14 @@
                                     x-transition:leave-start="opacity-100 translate-y-0"
                                     x-transition:leave-end="opacity-0 -translate-y-2"
                                     role="group"
-                                    aria-label="Dane osoby odbierającej sprzęt"
+                                    aria-label="{{ __('checkout.pickup_person_group') }}"
                                 >
                                     <div class="mt-5 pt-5 border-t border-border space-y-4">
 
                                         {{-- Imię i nazwisko osoby odbierającej --}}
                                         <div class="space-y-1.5">
                                             <label for="pickup_person_name" class="block text-sm font-medium text-text-primary">
-                                                Imię i nazwisko osoby odbierającej
+                                                {{ __('checkout.pickup_person_name') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -1076,7 +1076,7 @@
                                                     'border-error focus:border-error focus:ring-error/20' => $errors->has('pickup_person_name'),
                                                     'border-border hover:border-border-strong' => !$errors->has('pickup_person_name'),
                                                 ])
-                                                placeholder="Jan Kowalski"
+                                                placeholder="{{ __('checkout.full_name_placeholder') }}"
                                             >
                                             @error('pickup_person_name')
                                                 <p id="pickup_person_name-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -1086,7 +1086,7 @@
                                         {{-- Numer dowodu osoby odbierającej --}}
                                         <div class="space-y-1.5">
                                             <label for="pickup_person_id_number" class="block text-sm font-medium text-text-primary">
-                                                Numer dowodu osobistego
+                                                {{ __('checkout.id_card_number') }}
                                                 <span class="text-error ml-0.5" aria-hidden="true">*</span>
                                             </label>
                                             <input
@@ -1106,7 +1106,7 @@
                                                     'border-error focus:border-error focus:ring-error/20' => $errors->has('pickup_person_id_number'),
                                                     'border-border hover:border-border-strong' => !$errors->has('pickup_person_id_number'),
                                                 ])
-                                                placeholder="np. ABC123456"
+                                                placeholder="{{ __('checkout.id_number_placeholder') }}"
                                             >
                                             @error('pickup_person_id_number')
                                                 <p id="pickup_person_id_number-error" role="alert" class="text-sm text-error mt-1">{{ $message }}</p>
@@ -1127,7 +1127,7 @@
                         <div class="flex items-center gap-2.5 mb-5">
                             <x-heroicon-m-shield-check class="h-5 w-5 text-text-muted shrink-0" aria-hidden="true" />
                             <h2 id="consents-heading" class="text-base font-semibold text-text-primary">
-                                Zgody i oświadczenia
+                                {{ __('checkout.consents_heading') }}
                             </h2>
                         </div>
 
@@ -1257,7 +1257,7 @@
 
                 {{-- ─── SECTION 5: Zapisz do profilu ─── --}}
                 @auth
-                    <section aria-label="Zapisz dane do profilu">
+                    <section aria-label="{{ __('checkout.save_profile_section') }}">
                         <x-ui.card :padding="true">
                             <label class="flex items-start gap-3 cursor-pointer group">
                                 <div class="flex items-center h-5 mt-0.5 shrink-0">
@@ -1275,10 +1275,10 @@
                                 </div>
                                 <div>
                                     <span class="text-sm font-medium text-text-primary group-hover:text-text-primary transition-colors duration-150 cursor-pointer select-none">
-                                        Zapisz dane do profilu na przyszłość
+                                        {{ __('checkout.save_profile') }}
                                     </span>
                                     <p class="text-xs text-text-muted mt-0.5">
-                                        Dane zostaną zapisane i automatycznie uzupełnione przy następnym zamówieniu.
+                                        {{ __('checkout.save_profile_hint') }}
                                     </p>
                                 </div>
                             </label>
@@ -1289,15 +1289,15 @@
             </div>
 
             {{-- ── Right column: order summary + CTA ── --}}
-            <aside aria-label="Podsumowanie i płatność">
+            <aside aria-label="{{ __('checkout.summary_label') }}">
                 <x-ui.card class="sticky top-6">
 
                     <h2 class="text-base font-semibold text-text-primary mb-4">
-                        Twoje zamówienie
+                        {{ __('checkout.your_order') }}
                     </h2>
 
                     {{-- Items list --}}
-                    <ul class="space-y-3 text-sm" aria-label="Pozycje zamówienia">
+                    <ul class="space-y-3 text-sm" aria-label="{{ __('checkout.order_items') }}">
                         @foreach($cart->items as $item)
                             <li class="flex gap-3">
                                 {{-- Thumbnail --}}
@@ -1325,14 +1325,14 @@
                                         <span aria-hidden="true"> – </span>
                                         <time datetime="{{ $item->end_date }}">{{ \Carbon\Carbon::parse($item->end_date)->format('d.m.Y') }}</time>
                                         @if($item->quantity > 1)
-                                            &nbsp;&middot;&nbsp;{{ $item->quantity }}&thinsp;szt.
+                                            &nbsp;&middot;&nbsp;{{ $item->quantity }}&thinsp;{{ __('common.pcs') }}
                                         @endif
                                     </p>
                                 </div>
 
                                 {{-- Price --}}
                                 <div class="shrink-0 font-medium text-text-primary tabular-nums">
-                                    {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;zł
+                                    {{ number_format($item->total_price, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                 </div>
                             </li>
                         @endforeach
@@ -1341,21 +1341,21 @@
                     {{-- Separator + rental total --}}
                     <div class="mt-4 pt-4 border-t border-border">
                         <div class="flex justify-between items-baseline gap-3">
-                            <span class="text-sm font-medium text-text-secondary">Razem za wynajem</span>
+                            <span class="text-sm font-medium text-text-secondary">{{ __('checkout.rental_total') }}</span>
                             <span class="text-xl font-bold text-text-primary tabular-nums">
-                                {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł
+                                {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                             </span>
                         </div>
-                        <p class="mt-1 text-xs text-text-muted">Ceny brutto, w tym VAT {{ app(\App\Support\Settings\SettingsManager::class)->vatRate() }}%</p>
+                        <p class="mt-1 text-xs text-text-muted">{{ __('checkout.prices_gross', ['vat' => app(\App\Support\Settings\SettingsManager::class)->vatRate()]) }}</p>
                     </div>
 
                     {{-- Kaucja (conditionally shown) — $depositTotal computed once in CheckoutController::show() --}}
                     @if($depositTotal > 0)
                         <div class="mt-4 pt-4 border-t border-border">
                             <div class="flex justify-between items-baseline gap-3">
-                                <span class="text-sm text-text-secondary">Kaucja zwrotna <span class="text-text-muted">(przy odbiorze)</span></span>
+                                <span class="text-sm text-text-secondary">{{ __('checkout.refundable_deposit') }} <span class="text-text-muted">{{ __('checkout.at_pickup') }}</span></span>
                                 <span class="text-sm font-semibold text-text-primary tabular-nums">
-                                    {{ number_format($depositTotal, 2, ',', ' ') }}&nbsp;zł
+                                    {{ number_format($depositTotal, 2, ',', ' ') }}&nbsp;{{ __('common.currency') }}
                                 </span>
                             </div>
                             <p class="mt-1.5 text-xs text-text-muted leading-relaxed [&_a]:text-brand [&_a]:underline [&_a]:underline-offset-2">
@@ -1368,7 +1368,7 @@
                     @if(count($availableSettlementMethods) > 1)
                         <fieldset class="mt-4 pt-4 border-t border-border">
                             <legend class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2.5">
-                                Sposób rozliczenia
+                                {{ __('checkout.settlement_method') }}
                             </legend>
                             <div class="space-y-2">
                                 <label class="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer transition-colors duration-150
@@ -1377,8 +1377,8 @@
                                     <input type="radio" name="settlement_method_choice" value="online" x-model="settlementMethod"
                                            class="mt-0.5 h-4 w-4 shrink-0 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50">
                                     <span class="text-sm">
-                                        <span class="block font-medium text-text-primary">Płatność online (Przelewy24)</span>
-                                        <span class="block text-text-muted text-xs mt-0.5">Karta, BLIK lub przelew — od razu po złożeniu zamówienia.</span>
+                                        <span class="block font-medium text-text-primary">{{ __('checkout.pay_online') }}</span>
+                                        <span class="block text-text-muted text-xs mt-0.5">{{ __('checkout.pay_online_hint') }}</span>
                                     </span>
                                 </label>
                                 <label class="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer transition-colors duration-150
@@ -1387,8 +1387,8 @@
                                     <input type="radio" name="settlement_method_choice" value="offline" x-model="settlementMethod"
                                            class="mt-0.5 h-4 w-4 shrink-0 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50">
                                     <span class="text-sm">
-                                        <span class="block font-medium text-text-primary">Płatność przy odbiorze</span>
-                                        <span class="block text-text-muted text-xs mt-0.5">Gotówka lub przelew przy odbiorze sprzętu. Rezerwacja ważna {{ $offlineReservationHoldHours }}&nbsp;h.</span>
+                                        <span class="block font-medium text-text-primary">{{ __('checkout.pay_offline') }}</span>
+                                        <span class="block text-text-muted text-xs mt-0.5">{{ __('checkout.pay_offline_hint', ['hours' => $offlineReservationHoldHours]) }}</span>
                                     </span>
                                 </label>
                             </div>
@@ -1398,34 +1398,34 @@
                     {{-- Co się dzieje dalej? --}}
                     <div class="mt-4 pt-4 border-t border-border">
                         <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2.5">
-                            Co się dzieje dalej?
+                            {{ __('checkout.what_next') }}
                         </h3>
                         <ol class="space-y-2 text-xs text-text-muted" role="list" x-show="settlementMethod !== 'offline'">
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">1</span>
-                                <span>Opłacasz zamówienie — otrzymasz e-mail z potwierdzeniem i szczegółami odbioru.</span>
+                                <span>{{ __('checkout.next_online_1') }}</span>
                             </li>
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">2</span>
-                                <span>Administrator potwierdza dostępność sprzętu i kontaktuje się z Tobą w razie pytań.</span>
+                                <span>{{ __('checkout.next_online_2') }}</span>
                             </li>
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">3</span>
-                                <span>Odbierasz sprzęt osobiście w umówionym terminie — miej przy sobie dokument tożsamości.</span>
+                                <span>{{ __('checkout.next_online_3') }}</span>
                             </li>
                         </ol>
                         <ol class="space-y-2 text-xs text-text-muted" role="list" x-show="settlementMethod === 'offline'" x-cloak>
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">1</span>
-                                <span>Rezerwujemy sprzęt dla Ciebie na {{ $offlineReservationHoldHours }}&nbsp;h — otrzymasz e-mail z potwierdzeniem rezerwacji.</span>
+                                <span>{{ __('checkout.next_offline_1', ['hours' => $offlineReservationHoldHours]) }}</span>
                             </li>
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">2</span>
-                                <span>Odbierasz sprzęt osobiście w umówionym terminie i płacisz gotówką lub przelewem — miej przy sobie dokument tożsamości.</span>
+                                <span>{{ __('checkout.next_offline_2') }}</span>
                             </li>
                             <li class="flex items-start gap-2">
                                 <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-brand/10 text-brand font-semibold flex items-center justify-center text-[10px]" aria-hidden="true">3</span>
-                                <span>Jeśli nie odbierzesz sprzętu w tym czasie, rezerwacja zostanie automatycznie anulowana.</span>
+                                <span>{{ __('checkout.next_offline_3') }}</span>
                             </li>
                         </ol>
                     </div>
@@ -1456,12 +1456,12 @@
                             >
                                 <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-.5 14.5V13H8l5-7.5V11h3.5L12 16.5z"/>
                             </svg>
-                            <span x-show="settlementMethod !== 'offline'">Zamawiam i płacę {{ number_format($cart->items->sum('total_price'), 2, ',', ' ') }}&nbsp;zł</span>
-                            <span x-show="settlementMethod === 'offline'" x-cloak>Rezerwuję — zapłacę przy odbiorze</span>
+                            <span x-show="settlementMethod !== 'offline'">{{ __('checkout.pay_and_order', ['amount' => __('common.money', ['amount' => number_format($cart->items->sum('total_price'), 2, ',', ' ')])]) }}</span>
+                            <span x-show="settlementMethod === 'offline'" x-cloak>{{ __('checkout.reserve') }}</span>
                         </button>
                         <p id="payment-notice" class="mt-3 text-xs text-text-muted text-center">
-                            <span x-show="settlementMethod !== 'offline'">Zostaniesz przekierowany do bezpiecznej bramki płatności.</span>
-                            <span x-show="settlementMethod === 'offline'" x-cloak>Sprzęt zostanie zarezerwowany, płatność nastąpi przy odbiorze.</span>
+                            <span x-show="settlementMethod !== 'offline'">{{ __('checkout.redirect_notice') }}</span>
+                            <span x-show="settlementMethod === 'offline'" x-cloak>{{ __('checkout.reserve_notice') }}</span>
                         </p>
                     </div>
 
@@ -1472,7 +1472,7 @@
                             class="text-sm text-text-muted hover:text-brand transition-colors duration-200
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 rounded"
                         >
-                            Wróć do koszyka
+                            {{ __('checkout.back_to_cart') }}
                         </a>
                     </div>
 
@@ -1496,7 +1496,7 @@
                                    bg-amber-50 text-amber-800 font-medium text-sm
                                    hover:bg-amber-100 transition-colors duration-200 cursor-pointer"
                         >
-                            &#9889; [DEV] Zapłać testowo — pomiń Przelewy24
+                            &#9889; [DEV] {{ __('checkout.dev_pay') }}
                         </button>
                     </form>
                 </div>

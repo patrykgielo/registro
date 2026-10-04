@@ -40,7 +40,7 @@ class ValidPolishREGON implements ValidationRule
         } elseif ($length === 14) {
             $this->validate14($regon, $fail);
         } else {
-            $fail('REGON musi składać się z 9 lub 14 cyfr.');
+            $fail(__('rules.regon.length'));
         }
     }
 
@@ -60,7 +60,7 @@ class ValidPolishREGON implements ValidationRule
         $controlDigit = ($sum % 11) % 10;
 
         if ($controlDigit !== (int) $regon[8]) {
-            $fail('Nieprawidłowy numer REGON (błąd sumy kontrolnej).');
+            $fail(__('rules.regon.checksum'));
         }
     }
 
@@ -80,7 +80,7 @@ class ValidPolishREGON implements ValidationRule
         $controlDigit = ($sum % 11) % 10;
 
         if ($controlDigit !== (int) $regon[13]) {
-            $fail('Nieprawidłowy numer REGON (błąd sumy kontrolnej).');
+            $fail(__('rules.regon.checksum'));
         }
     }
 }

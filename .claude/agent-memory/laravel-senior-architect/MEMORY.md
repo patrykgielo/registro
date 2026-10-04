@@ -74,6 +74,9 @@
 ## Tenant-Scoped Storage URL (2026-08-29, branch fix/tenant-scoped-storage-url)
 - [project_tenant_scoped_storage_url.md](project_tenant_scoped_storage_url.md) — `config/filesystems.php`'s public disk URL was frozen at `APP_URL` at config-load; `ResolveTenant::forceTenantOriginUrls()` now also sets it per-request (both branches) alongside the existing `URL::forceRootUrl()`. Fixed a FilePond preview hang (CORS, `fetch()` vs plain `<img>`) on shared-stack tenant subdomains; confirmed safe for php-fpm (no Octane), queue/CLI, and `/platform` (never runs `ResolveTenant`)
 
+## Localisation pl+en (2026-10-04, branch feature/tlumaczenia-pl-en)
+- [project_localisation_pl_en.md](project_localisation_pl_en.md) — lang layout, `pl.json` identity entries are load-bearing (pl->en fallback), parity/coverage tests in `tests/Feature/Localisation/`
+
 ## Testing
 - Tests run in Docker only (PHP 8.3, local=8.2)
 - .env.testing MUST exist → DB_CONNECTION=sqlite, DB_DATABASE=:memory:
@@ -106,3 +109,4 @@
 
 ## Security Dependency Updates (2026-08-16, PR #200, branch feature/security-dependency-updates)
 - [project_security_dependency_updates_2026-08-16.md](project_security_dependency_updates_2026-08-16.md) — composer audit 35→0, 11 packages, no composer.json changes. Reusable verification pattern: dompdf via git-stash-on-lock-only + real PDF pdftotext diff; guzzle/commonmark risk via grepping actual usage against the specific CVE, not assuming exposure
+- [project_content_grid_visibility_and_admin_reset.md](project_content_grid_visibility_and_admin_reset.md) — 2026-10-04: content_grid render filter (picker=renderer), Filament Select `in`-rule trap, panel login reset link

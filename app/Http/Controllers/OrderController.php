@@ -62,6 +62,6 @@ class OrderController extends Controller
 
         return redirect()
             ->route('orders.show', $order)
-            ->with('success', 'Zamówienie zostało anulowane.');
+            ->with('success', __('flash.order.cancelled'));
     }
 }

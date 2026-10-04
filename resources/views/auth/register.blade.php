@@ -1,6 +1,6 @@
 <x-ios.auth-card
-    title="Dołącz do nas"
-    subtitle="Stwórz konto i rozpocznij przygodę"
+    :title="__('account.register.title')"
+    :subtitle="__('account.register.subtitle')"
 >
     <form method="POST" action="{{ route('customer.register') }}" class="space-y-6">
         @csrf
@@ -9,8 +9,8 @@
         <x-ios.input
             type="text"
             name="first_name"
-            label="Imię"
-            placeholder="Jan"
+            :label="__('account.fields.first_name')"
+            placeholder="{{ __('account.register.first_name_placeholder') }}"
             icon="user"
             :value="old('first_name')"
             required
@@ -22,8 +22,8 @@
         <x-ios.input
             type="text"
             name="last_name"
-            label="Nazwisko"
-            placeholder="Kowalski"
+            :label="__('account.fields.last_name')"
+            placeholder="{{ __('account.register.last_name_placeholder') }}"
             icon="user"
             :value="old('last_name')"
             required
@@ -34,7 +34,7 @@
         <x-ios.input
             type="email"
             name="email"
-            label="Adres email"
+            :label="__('account.fields.email')"
             placeholder="jan.kowalski@example.com"
             icon="email"
             :value="old('email')"
@@ -46,20 +46,20 @@
         <x-ios.input
             type="password"
             name="password"
-            label="Hasło"
-            placeholder="Minimum 8 znaków"
+            :label="__('account.fields.password')"
+            :placeholder="__('account.register.password_placeholder')"
             icon="password"
             required
             autocomplete="new-password"
-            help-text="Użyj co najmniej 8 znaków, w tym wielkich liter, cyfr i znaków specjalnych"
+            :help-text="__('account.register.password_help')"
         />
 
         {{-- Password Confirmation Input --}}
         <x-ios.input
             type="password"
             name="password_confirmation"
-            label="Potwierdź hasło"
-            placeholder="Powtórz hasło"
+            :label="__('account.fields.password_confirmation')"
+            :placeholder="__('account.register.password_confirmation_placeholder')"
             icon="password"
             required
             autocomplete="new-password"
@@ -78,14 +78,13 @@
                     >
                 </div>
                 <label for="terms" class="ml-3 text-sm text-gray-700">
-                    Akceptuję
-                    <a href="{{ route('page.show', 'regulamin') }}" target="_blank" class="text-brand font-semibold hover:text-brand/80 transition-colors ios-spring underline">
-                        Regulamin
-                    </a>
-                    oraz
-                    <a href="{{ route('page.show', 'polityka-prywatnosci') }}" target="_blank" class="text-brand font-semibold hover:text-brand/80 transition-colors ios-spring underline">
-                        Politykę Prywatności
-                    </a>
+                    @php
+                        $linkClass = 'text-brand font-semibold hover:text-brand/80 transition-colors ios-spring underline';
+                    @endphp
+                    {!! __('account.register.terms', [
+                        'terms' => '<a href="'.e(route('page.show', 'regulamin')).'" target="_blank" class="'.$linkClass.'">'.e(__('account.register.terms_link')).'</a>',
+                        'privacy' => '<a href="'.e(route('page.show', 'polityka-prywatnosci')).'" target="_blank" class="'.$linkClass.'">'.e(__('account.register.privacy_link')).'</a>',
+                    ]) !!}
                 </label>
             </div>
         </div>
@@ -94,7 +93,7 @@
         <button type="submit"
                 class="w-full bg-brand text-white font-semibold py-4 rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ios-spring focus:outline-none focus:ring-4 focus:ring-brand/30">
             <span class="flex items-center justify-center gap-2">
-                Zarejestruj się
+                {{ __('account.register.submit') }}
                 <x-heroicon-m-arrow-right class="w-5 h-5" />
             </span>
         </button>
@@ -104,10 +103,10 @@
     {{-- Solid text-white, not /90: see auth-card.blade.php's subtitle comment. --}}
     <x-slot:footer>
         <p class="text-sm text-white">
-            Masz już konto?
+            {{ __('account.register.have_account') }}
             <a href="{{ route('login') }}"
                class="font-semibold text-white hover:text-white/80 transition-colors ios-spring underline decoration-2 underline-offset-4">
-                Zaloguj się
+                {{ __('account.login.submit') }}
             </a>
         </p>
     </x-slot:footer>

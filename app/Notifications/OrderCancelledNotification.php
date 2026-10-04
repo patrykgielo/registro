@@ -71,6 +71,8 @@ class OrderCancelledNotification extends Notification implements ShouldBeUnique,
         $order = $this->order;
         $customerName = trim($order->customer_first_name.' '.$order->customer_last_name);
 
+        $order->loadMissing('organization');
+
         try {
             $emailService->sendFromTemplate(
                 TemplateKey::ORDER_CANCELLED->value,
@@ -86,7 +88,8 @@ class OrderCancelledNotification extends Notification implements ShouldBeUnique,
                 [
                     'order_id' => $order->id,
                     'notification' => 'OrderCancelledNotification',
-                ]
+                ],
+                organization: $order->organization
             );
         } catch (\Exception $e) {
             Log::error('OrderCancelledNotification failed', [

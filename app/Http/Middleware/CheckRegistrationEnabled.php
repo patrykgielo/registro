@@ -35,7 +35,7 @@ class CheckRegistrationEnabled
 
         if (! app(SettingsManager::class)->isRegistrationEnabledFor($tenant)) {
             return redirect()->route('login')
-                ->with('info', 'Rejestracja jest tymczasowo niedostępna.');
+                ->with('info', __('flash.registration_disabled'));
         }
 
         return $next($request);

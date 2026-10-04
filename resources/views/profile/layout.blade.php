@@ -9,11 +9,11 @@
             <nav class="lg:hidden bg-white rounded-lg shadow-md mb-4">
                 <ul class="divide-y divide-gray-200">
                     @foreach([
-                        ['route' => 'profile.personal', 'icon' => 'user', 'label' => 'Dane osobowe'],
-                        ['route' => 'profile.vehicle', 'icon' => 'car', 'label' => 'Pojazd'],
-                        ['route' => 'profile.address', 'icon' => 'map-pin', 'label' => 'Adres'],
-                        ['route' => 'profile.notifications', 'icon' => 'bell', 'label' => 'Powiadomienia'],
-                        ['route' => 'profile.security', 'icon' => 'shield', 'label' => 'Bezpieczeństwo'],
+                        ['route' => 'profile.personal', 'icon' => 'user', 'label' => __('Dane osobowe')],
+                        ['route' => 'profile.vehicle', 'icon' => 'car', 'label' => __('Pojazd')],
+                        ['route' => 'profile.address', 'icon' => 'map-pin', 'label' => __('Adres')],
+                        ['route' => 'profile.notifications', 'icon' => 'bell', 'label' => __('Powiadomienia')],
+                        ['route' => 'profile.security', 'icon' => 'shield', 'label' => __('Bezpieczeństwo')],
                     ] as $item)
                         <li>
                             <a href="{{ route($item['route']) }}"
@@ -22,7 +22,7 @@
                                          ? 'bg-primary-50 text-primary-700 font-medium'
                                          : 'text-gray-700 hover:bg-gray-50' }}">
                                 @include('profile.partials.icons.' . $item['icon'], ['class' => 'w-5 h-5 mr-3'])
-                                <span class="flex-1">{{ __($item['label']) }}</span>
+                                <span class="flex-1">{{ $item['label'] }}</span>
                                 @if(request()->routeIs($item['route']))
                                     <svg class="w-5 h-5 text-primary-700" fill="currentColor" viewBox="0 0 20 20">
                                         <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
@@ -51,11 +51,11 @@
                 <h2 class="text-lg font-semibold text-gray-800 mb-4">{{ __('Moje konto') }}</h2>
                 <ul class="space-y-1">
                     @foreach([
-                        ['route' => 'profile.personal', 'icon' => 'user', 'label' => 'Dane osobowe'],
-                        ['route' => 'profile.vehicle', 'icon' => 'car', 'label' => 'Mój pojazd'],
-                        ['route' => 'profile.address', 'icon' => 'map-pin', 'label' => 'Mój adres'],
-                        ['route' => 'profile.notifications', 'icon' => 'bell', 'label' => 'Powiadomienia'],
-                        ['route' => 'profile.security', 'icon' => 'shield', 'label' => 'Bezpieczeństwo'],
+                        ['route' => 'profile.personal', 'icon' => 'user', 'label' => __('Dane osobowe')],
+                        ['route' => 'profile.vehicle', 'icon' => 'car', 'label' => __('Mój pojazd')],
+                        ['route' => 'profile.address', 'icon' => 'map-pin', 'label' => __('Mój adres')],
+                        ['route' => 'profile.notifications', 'icon' => 'bell', 'label' => __('Powiadomienia')],
+                        ['route' => 'profile.security', 'icon' => 'shield', 'label' => __('Bezpieczeństwo')],
                     ] as $item)
                         <li>
                             <a href="{{ route($item['route']) }}"
@@ -64,7 +64,7 @@
                                          ? 'bg-primary-50 text-primary-700 font-medium'
                                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                                 @include('profile.partials.icons.' . $item['icon'], ['class' => 'w-5 h-5'])
-                                <span class="ml-3">{{ __($item['label']) }}</span>
+                                <span class="ml-3">{{ $item['label'] }}</span>
                             </a>
                         </li>
                     @endforeach
@@ -123,7 +123,7 @@
 @push('scripts')
 <script>
 function confirmLogout() {
-    if (confirm('Czy na pewno chcesz się wylogować?')) {
+    if (confirm(@js(__('profile.logout_confirm')))) {
         document.getElementById('logout-form').submit();
     }
 }

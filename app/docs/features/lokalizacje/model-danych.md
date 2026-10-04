@@ -120,12 +120,13 @@ To jedyna droga, którą dane oddziału trafiają na stronę publiczną.
 | `slug` | **nie** | brak dedykowanej trasy pojedynczego oddziału |
 | `is_active`, `sort_order`, `primary_slot` | **nie** | sterują doborem i kolejnością, nie treścią |
 
-**`is_active` NIE filtruje renderu — to pułapka.** `ContentGridResolver::resolveItems()`
-robi `whereIn('id', $ids)` na ręcznie wybranej liście z bloku, bez warunku aktywności;
-`is_active` zawęża wyłącznie listę wyboru w panelu (`optionsForType()`). Wyłączenie
-oddziału **nie zdejmuje go ze strony**, dopóki ktoś nie usunie go z bloku „Siatka treści".
-Razem z brakiem trybu „wszystkie" daje to parę symetrycznych zaskoczeń: dodanie oddziału
-go nie pokazuje, a wyłączenie nie ukrywa.
+**`is_active` zdejmuje oddział ze strony — przy renderze (od 2026-10-04, ClickUp `123k99cu26t`).**
+`ContentGridResolver::resolveItems()` przepuszcza wybrane identyfikatory przez `Location::active()`
+(lista wyboru nadal oferuje wyłączone oddziały, ale z dopiskiem „niewidoczny na stronie"). Wyłączony oddział znika z bloku „Siatka
+treści" natychmiast, a identyfikator zostaje w danych bloku — ponowne włączenie przywraca
+kartę bez ponownego wybierania. Zasady dla wszystkich typów: `content-grid-visibility.md`.
+Do 2026-10-04 `resolveItems()` nie miał żadnego filtra i wyłączony oddział dalej się
+renderował.
 
 `code`, `email`, `description` i `gallery` **były zbierane w panelu od kroku 1.1 i nie docierały
 nigdzie** aż do 2026-08-29 — właściciel je wypełniał, a klient ich nie widział. Przy dokładaniu

@@ -73,7 +73,7 @@ class OrderHandedOverNotification extends Notification implements ShouldBeUnique
         $order = $this->order;
         $customerName = trim($order->customer_first_name.' '.$order->customer_last_name);
 
-        $order->loadMissing('items');
+        $order->loadMissing(['items', 'organization']);
 
         try {
             $emailService->sendFromTemplate(
@@ -92,7 +92,8 @@ class OrderHandedOverNotification extends Notification implements ShouldBeUnique
                 [
                     'order_id' => $order->id,
                     'notification' => 'OrderHandedOverNotification',
-                ]
+                ],
+                organization: $order->organization
             );
         } catch (\Exception $e) {
             Log::error('OrderHandedOverNotification failed', [

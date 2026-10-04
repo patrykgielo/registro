@@ -1003,4 +1003,53 @@ class SettingsManager
     {
         return (bool) $this->get('design.use_color_in_emails', true);
     }
+
+    /**
+     * Email-branding fields for an EXPLICITLY given organization — mirrors
+     * contactDetailsFor()'s "single accessor, raw fields" shape and the same
+     * reason: EmailBrandedLayout wraps a DB-templated body inside
+     * EmailService::sendFromTemplate(), which runs in a Horizon queue worker
+     * with no ambient tenant to resolve headerLogo()/brandColor()/get() against
+     * (see architecture-models.md → "Kolejka nie ma kontekstu żądania"). The
+     * notification already has its own Order, so it resolves the organization
+     * itself and passes it down explicitly — same pattern as pickupDetailsFor().
+     *
+     * `logo_url` is null both when the tenant has no logo AND when
+     * `design.use_logo_in_emails` is off — callers must fall back to a text
+     * brand name, never a bundled asset (frontend-quality.md's logo-fallback
+     * rule applies here too). `brand_color` is null when
+     * `design.use_color_in_emails` is off — callers choose their own neutral
+     * default rather than this method inventing one.
+     *
+     * @return array{logo_url: ?string, brand_color: ?string, brand_name: string}
+     */
+    public function emailBrandingFor(?Organization $organization): array
+    {
+        $logoUrl = null;
+
+        if ((bool) $this->getForOrganization('design.use_logo_in_emails', $organization, true)) {
+            $path = $this->extractFilePath($this->getForOrganization('appearance.header_logo', $organization));
+            $logoUrl = $path ? Storage::disk('public')->url($path) : null;
+        }
+
+        $brandColor = null;
+
+        if ((bool) $this->getForOrganization('design.use_color_in_emails', $organization, true)) {
+            $color = $this->getForOrganization('design.brand_color', $organization, '#6366f1');
+            $brandColor = (is_string($color) && preg_match('/^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/', $color))
+                ? $color
+                : '#6366f1';
+        }
+
+        $override = $this->getForOrganization('design.brand_name_override', $organization);
+        $brandName = (! empty($override) && is_string($override))
+            ? $override
+            : ($organization?->name ?: config('app.name', 'Registro'));
+
+        return [
+            'logo_url' => $logoUrl,
+            'brand_color' => $brandColor,
+            'brand_name' => $brandName,
+        ];
+    }
 }

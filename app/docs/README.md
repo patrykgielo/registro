@@ -87,6 +87,8 @@ for the conceptual overview these deep-dive.
 | Onboarding & Registration | `features/onboarding-and-registration.md` | Phase 5 complete |
 | Tenant-Stack Provisioning | `features/tenant-stack-provisioning.md` | CLI provisioning + singleton lock for dedicated per-client stacks |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
+| Content-grid visibility | `features/content-grid-visibility.md` | Block "Siatka treści": what the public sees per type, picker = renderer |
+| Password reset flow | `features/password-reset-flow.md` | Entry from the `/admin` and `/platform` login screens; why not Filament's `passwordReset()` |
 | SMS System | `features/sms-system/` | Stable |
 | SEO Meta Tags | `features/seo-meta-tags.md` | Phase A complete (Post/Portfolio/Page/Service) |
 | Order Handover/Return Protocols | `features/order-protocols.md` | Download-only PDFs, generated on demand |
@@ -104,6 +106,7 @@ for the conceptual overview these deep-dive.
 | Filament v4 Components | `guides/filament-v4-component-architecture.md` |
 | Filament v4 Widgets | `guides/filament-v4-widgets-guide.md` |
 | CMS Layouts | `guides/cms-layouts.md` |
+| Localisation (pl + en) | `guides/localisation.md` |
 
 ---
 
@@ -119,7 +122,7 @@ for the conceptual overview these deep-dive.
 | 6. Module System + Security | ✅ Complete | Module gating, permission namespacing, tenant isolation |
 | 7. Public Rental Booking | 🔲 Future | UI for item_rental tenants |
 | 8. Marketplace | 🔲 Future | Root domain tenant listings |
-| 9. Billing | 🔲 Future | Stripe, subscriptions, trials |
+| 9. Billing | ❌ Nie planowane | Brak subskrypcji, planów, triali i Stripe. Rozliczenie umowne: wdrożenie + dostęp (zwykle roczny) + wsparcie; płatności ewidencjonowane ręcznie (`TenantPayment`) |
 | 10. Branding | 🔲 Future | Custom logos, colors, domains |
 
 See `memory/phases-roadmap.md` for details.

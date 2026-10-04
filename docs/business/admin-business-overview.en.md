@@ -10,7 +10,7 @@ model's status machine, see [Development → Status Machines](../architecture/st
 ## Panels
 
 Two Filament panels exist. `/platform` is super-admin only and manages
-cross-tenant concerns (organizations, SaaS billing, platform-wide
+cross-tenant concerns (organizations, access-fee records, platform-wide
 statistics). `/admin` is the per-tenant panel where day-to-day business
 operations happen — access scoped to the authenticated organization.
 

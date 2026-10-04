@@ -131,7 +131,7 @@
     @if($location->photo)
         <div class="overflow-hidden">
             <img src="{{ Storage::url($location->photo) }}"
-                 alt="{{ __('Siedziba :name', ['name' => $location->name]) }}"
+                 alt="{{ __('Oddział :name', ['name' => $location->name]) }}"
                  class="cms-card-image"
                  loading="lazy">
         </div>
@@ -228,7 +228,7 @@
             @if($emailHref)
                 <a href="{{ $emailHref }}"
                    class="inline-flex items-center gap-1.5 min-h-11 {{ $linkClasses }} transition-colors"
-                   aria-label="{{ __('Napisz e-mail: :email', ['email' => $location->email]) }}">
+                   aria-label="{{ __('Napisz email: :email', ['email' => $location->email]) }}">
                     <x-heroicon-o-envelope class="w-4 h-4 flex-shrink-0" />
                     {{ $location->email }}
                 </a>

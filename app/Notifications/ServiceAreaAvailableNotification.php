@@ -19,6 +19,15 @@ use Illuminate\Support\Facades\Log;
  *
  * Sent to a waitlist entry's email address when the admin marks
  * their requested location as now covered by a service area.
+ *
+ * Deliberately sent WITHOUT branding (no `organization` passed to
+ * sendFromTemplate()): `service_area_waitlist` has no `organization_id`
+ * column at all — a pre-existing gap (2026_03_08_000003_add_organization_id_to_existing_tables.php
+ * targets the table name `service_area_waitlists`, plural; the real table,
+ * created by 2025_12_13_162443_create_service_area_waitlist_table.php, is
+ * singular — `Schema::hasTable()` silently skipped it, so it never got the
+ * column). Found while auditing branding call sites for
+ * ClickUp 123k99cvc56; not fixed here (separate, unrelated ticket).
  */
 class ServiceAreaAvailableNotification extends Notification implements ShouldBeUnique, ShouldQueue
 {

@@ -14,6 +14,7 @@ use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
 use Filament\View\PanelsRenderHook;
 use Filament\Widgets;
+use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -71,6 +72,12 @@ class PlatformPanelProvider extends PanelProvider
                 Authenticate::class,
                 EnsureSuperAdmin::class,
             ])
+
+            // Login screen -> existing /password/reset flow (resources/views/filament/auth/forgot-password-link.blade.php)
+            ->renderHook(
+                PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
+                fn (): View => view('filament.auth.forgot-password-link'),
+            )
 
             ->renderHook(
                 PanelsRenderHook::HEAD_END,

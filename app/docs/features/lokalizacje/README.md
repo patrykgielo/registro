@@ -275,9 +275,7 @@ z założeń. Każdy fakt w dokumentach ma dowód `plik:linia`.
 | Ograniczenie | Skutek | Zgłoszenie |
 |---|---|---|
 | Blok „Siatka treści" nie ma trybu „wszystkie" | Dodany oddział **nie pojawia się** na stronie, dopóki ktoś ręcznie nie dopisze go do bloku. Nic o tym nie informuje | [`123k99ct3xt`](https://app.clickup.com/t/123k99ct3xt) |
-| `is_active` nie filtruje renderu | Wyłączenie oddziału **nie zdejmuje go ze strony** — `ContentGridResolver::resolveItems()` robi `whereIn('id', $ids)` bez filtra; `is_active` zawęża tylko listę wyboru w panelu | — |
 | Brak trasy pojedynczego oddziału | Oddział istnieje wyłącznie jako karta w siatce; `slug` jest w schemacie, ale nic go nie konsumuje | — |
 
-Obie pierwsze pozycje wyglądają dla właściciela identycznie: „wypełniłem wszystko,
-a na stronie tego nie ma". Przy diagnozie sprawdź blok CMS **zanim** zaczniesz szukać
-w kodzie lokalizacji.
+Pierwsza pozycja wygląda dla właściciela tak: „wypełniłem wszystko, a na stronie tego nie ma".
+Przy diagnozie sprawdź blok CMS **zanim** zaczniesz szukać w kodzie lokalizacji.

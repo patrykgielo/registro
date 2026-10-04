@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Moje Konto')
+@section('title', __('profile.index.title'))
 
 @section('content')
 <div class="bg-gray-50 min-h-screen pb-24 md:pb-8">
@@ -19,7 +19,7 @@
         {{-- Section 1: Account Data --}}
         <section class="mb-6">
             <h2 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Dane konta
+                {{ __('profile.index.account_data') }}
             </h2>
             <ul class="bg-white divide-y divide-gray-200 md:rounded-lg shadow-sm">
                 {{-- Personal Info --}}
@@ -27,7 +27,7 @@
                     <a href="{{ route('profile.personal') }}"
                        class="flex items-center justify-between px-4 py-4 active:bg-gray-100 transition-colors min-h-[44px]">
                         <div class="flex-1 min-w-0">
-                            <div class="text-base font-medium text-gray-900">Dane osobowe</div>
+                            <div class="text-base font-medium text-gray-900">{{ __('Dane osobowe') }}</div>
                             <div class="text-sm text-gray-500 truncate mt-0.5">
                                 {{ Auth::user()->name }}
                             </div>
@@ -42,12 +42,12 @@
                     <a href="{{ route('profile.vehicle') }}"
                        class="flex items-center justify-between px-4 py-4 active:bg-gray-100 transition-colors min-h-[44px]">
                         <div class="flex-1 min-w-0">
-                            <div class="text-base font-medium text-gray-900">Pojazd</div>
+                            <div class="text-base font-medium text-gray-900">{{ __('Pojazd') }}</div>
                             <div class="text-sm text-gray-500 truncate mt-0.5">
                                 @if($vehicle)
                                     {{ $vehicle->car_brand->name ?? '' }} {{ $vehicle->car_model->name ?? '' }} {{ $vehicle->year ?? '' }}
                                 @else
-                                    Nie dodano pojazdu
+                                    {{ __('profile.index.no_vehicle') }}
                                 @endif
                             </div>
                         </div>
@@ -61,12 +61,12 @@
                     <a href="{{ route('profile.address') }}"
                        class="flex items-center justify-between px-4 py-4 active:bg-gray-100 transition-colors min-h-[44px]">
                         <div class="flex-1 min-w-0">
-                            <div class="text-base font-medium text-gray-900">Adres</div>
+                            <div class="text-base font-medium text-gray-900">{{ __('Adres') }}</div>
                             <div class="text-sm text-gray-500 truncate mt-0.5">
                                 @if($address)
                                     {{ $address->street }}, {{ $address->city }}
                                 @else
-                                    Nie dodano adresu
+                                    {{ __('profile.index.no_address') }}
                                 @endif
                             </div>
                         </div>
@@ -79,7 +79,7 @@
         {{-- Section 2: Preferences --}}
         <section class="mb-6">
             <h2 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Preferencje
+                {{ __('profile.index.preferences') }}
             </h2>
             <ul class="bg-white divide-y divide-gray-200 md:rounded-lg shadow-sm">
                 {{-- Notifications --}}
@@ -87,14 +87,14 @@
                     <a href="{{ route('profile.notifications') }}"
                        class="flex items-center justify-between px-4 py-4 active:bg-gray-100 transition-colors min-h-[44px]">
                         <div class="flex-1 min-w-0">
-                            <div class="text-base font-medium text-gray-900">Powiadomienia</div>
+                            <div class="text-base font-medium text-gray-900">{{ __('Powiadomienia') }}</div>
                             <div class="text-sm text-gray-500 truncate mt-0.5">
                                 @php
                                     $enabled = [];
                                     if(Auth::user()->email_notifications_enabled) $enabled[] = 'Email';
                                     if(Auth::user()->sms_notifications_enabled) $enabled[] = 'SMS';
                                 @endphp
-                                {{ implode(', ', $enabled) ?: 'Wyłączone' }}
+                                {{ implode(', ', $enabled) ?: __('profile.index.notifications_off') }}
                             </div>
                         </div>
                         @include('profile.partials.icons.chevron-right')
@@ -106,7 +106,7 @@
         {{-- Section 3: Security & Privacy --}}
         <section class="mb-6">
             <h2 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Bezpieczeństwo i prywatność
+                {{ __('profile.index.security_privacy') }}
             </h2>
             <ul class="bg-white divide-y divide-gray-200 md:rounded-lg shadow-sm">
                 {{-- Security Page Link --}}
@@ -114,9 +114,9 @@
                     <a href="{{ route('profile.security') }}"
                        class="flex items-center justify-between px-4 py-4 active:bg-gray-100 transition-colors min-h-[44px]">
                         <div class="flex-1 min-w-0">
-                            <div class="text-base font-medium text-gray-900">Bezpieczeństwo</div>
+                            <div class="text-base font-medium text-gray-900">{{ __('Bezpieczeństwo') }}</div>
                             <div class="text-sm text-gray-500 truncate mt-0.5">
-                                Hasło, email, usuwanie konta
+                                {{ __('profile.index.security_hint') }}
                             </div>
                         </div>
                         @include('profile.partials.icons.chevron-right')
@@ -134,7 +134,7 @@
                     <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                     </svg>
-                    <span class="font-medium">Wyloguj się</span>
+                    <span class="font-medium">{{ __('Wyloguj się') }}</span>
                 </button>
             </div>
         </section>
@@ -150,7 +150,7 @@
 @push('scripts')
 <script>
 function confirmLogout() {
-    if (confirm('Czy na pewno chcesz się wylogować?')) {
+    if (confirm(@js(__('profile.logout_confirm')))) {
         document.getElementById('logout-form').submit();
     }
 }

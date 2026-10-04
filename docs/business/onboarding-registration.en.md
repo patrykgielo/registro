@@ -112,18 +112,34 @@ on root domain → their first org's subdomain `/admin`; `customer` →
 The `organization_user.role` pivot value (`owner`/`customer`/`staff`) is
 separate from the Spatie role system above.
 
-## Trial & subscription
+## Billing model & billing fields
 
-| Column | Notes |
-|--------|-------|
-| `trial_ends_at` | Set to `now()->addDays(14)` on org creation |
-| `subscription_status` | `trial` \| `active` \| `paused` \| `cancelled` — default `trial` |
-| `monthly_fee`, `subscribed_at`, `subscription_expires_at` | Nullable, managed manually |
+**Business model.** Registro is not sold as a tiered SaaS subscription and
+there is no trial that converts into a subscription. The client pays:
 
-**No automated enforcement exists yet.** Nothing blocks access after trial
-expiry — subscription management is entirely manual via the Platform panel
-(`TenantPayment` model). Inactive orgs are backfilled to
-`subscription_status = 'cancelled'`.
+- a one-off **implementation** fee,
+- a recurring fee for **access to the service** — usually annual, optionally monthly,
+- **support / maintenance**, priced separately.
+
+Before deciding, a prospect may get **access to a demo panel for a set
+number of days** to see how the panel works. Amounts are agreed per offer —
+the repository contains no price list.
+
+**What the code does.** The column names come from an earlier SaaS
+assumption and no longer match the business model:
+
+| Column | What the code does | Business meaning |
+|--------|--------------------|------------------|
+| `trial_ends_at` | Set to `now()->addDays(14)` on org creation | No trial; the field exists technically and enforces nothing |
+| `subscription_status` | `trial` \| `active` \| `paused` \| `cancelled` — default `trial` | Status of the access agreement (`active` = paid access) |
+| `monthly_fee` | Nullable, entered manually | Access fee expressed per month (annual billing: annual amount / 12) |
+| `subscribed_at`, `subscription_expires_at` | Nullable, managed manually | Start and end of the paid access period |
+
+**No automated enforcement exists.** Nothing blocks access after
+`trial_ends_at` — statuses and payments (`TenantPayment`) are kept manually
+in the Platform panel. Inactive orgs are backfilled to
+`subscription_status = 'cancelled'`. Aligning the code with the model
+(dropping the automatic trial, Platform panel wording) is a separate task.
 
 ## Password reset & setup
 

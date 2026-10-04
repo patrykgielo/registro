@@ -35,7 +35,7 @@ class ServiceInquiryController extends Controller
                 'sender_email' => $data['email'],
             ]);
 
-            return response()->json(['success' => false, 'message' => 'Nie można wysłać zapytania. Skontaktuj się bezpośrednio.'], 503);
+            return response()->json(['success' => false, 'message' => __('Nie można wysłać zapytania. Skontaktuj się bezpośrednio.')], 503);
         }
 
         Notification::route('mail', $recipient)

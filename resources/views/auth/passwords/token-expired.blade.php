@@ -1,20 +1,20 @@
 <x-ios.auth-card
-    title="Link wygasł"
-    subtitle="Link do ustawienia hasła jest już nieważny"
+    :title="__('account.expired.title')"
+    :subtitle="__('account.expired.subtitle')"
 >
     {{-- Expired Link Alert --}}
     <x-ios.alert
         type="error"
-        title="Link do ustawienia hasła wygasł"
+        :title="__('account.expired.alert_title')"
         class="mb-6"
     >
         <p class="mb-3">
-            Link, którego użyłeś, wygasł lub jest nieprawidłowy. Linki do ustawienia hasła są ważne przez {{ \App\Models\User::PASSWORD_SETUP_TTL_HOURS }} godziny ze względów bezpieczeństwa.
+            {{ __('account.expired.body', ['hours' => trans_choice('account.expired.hours', \App\Models\User::PASSWORD_SETUP_TTL_HOURS)]) }}
         </p>
         <hr class="my-3 border-red-200">
         <p class="mb-0">
-            <strong>Co teraz?</strong><br>
-            Skontaktuj się z administratorem, który utworzył Twoje konto, aby otrzymać nowy link do ustawienia hasła.
+            <strong>{{ __('account.expired.what_now') }}</strong><br>
+            {{ __('account.expired.contact_admin') }}
         </p>
     </x-ios.alert>
 
@@ -22,7 +22,7 @@
     <x-ios.button
         variant="secondary"
         href="{{ route('login') }}"
-        label="Powrót do logowania"
+        :label="__('account.expired.back')"
         icon="arrow-left"
         iconPosition="left"
         fullWidth

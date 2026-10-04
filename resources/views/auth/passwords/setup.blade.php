@@ -1,11 +1,11 @@
 <x-ios.auth-card
-    title="Witaj w Registro!"
-    subtitle="Ustaw hasło aby aktywować swoje konto"
+    :title="__('account.setup.title')"
+    :subtitle="__('account.setup.subtitle')"
 >
     {{-- Info Alert --}}
     <x-ios.alert
         type="info"
-        message="Administrator utworzył dla Ciebie konto. Aby się zalogować, ustaw swoje hasło."
+        :message="__('account.setup.info')"
         class="mb-6"
     />
 
@@ -13,7 +13,7 @@
     @error('token')
         <x-ios.alert
             type="error"
-            title="Błąd"
+            :title="__('account.setup.error_title')"
             :message="$message"
             dismissible
             class="mb-6"
@@ -29,11 +29,11 @@
         <x-ios.input
             type="email"
             name="email"
-            label="Adres e-mail"
+            :label="__('account.passwords.email_label')"
             placeholder="{{ $email }}"
             :value="$email"
             icon="envelope"
-            helpText="Twój adres e-mail"
+            :helpText="__('account.passwords.your_email')"
             disabled
             readonly
         />
@@ -42,10 +42,10 @@
         <x-ios.input
             type="password"
             name="password"
-            label="Nowe hasło"
-            placeholder="Minimum 8 znaków"
+            :label="__('account.passwords.new_password')"
+            :placeholder="__('account.passwords.min_chars')"
             icon="password"
-            helpText="Minimum 8 znaków"
+            :helpText="__('account.passwords.min_chars')"
             required
             autofocus
             autocomplete="new-password"
@@ -55,8 +55,8 @@
         <x-ios.input
             type="password"
             name="password_confirmation"
-            label="Potwierdź hasło"
-            placeholder="Wprowadź hasło ponownie"
+            :label="__('account.fields.password_confirmation')"
+            :placeholder="__('account.passwords.reenter_placeholder')"
             icon="password"
             required
             autocomplete="new-password"
@@ -66,7 +66,7 @@
         <x-ios.button
             type="submit"
             variant="primary"
-            label="Ustaw hasło i zaloguj się"
+            :label="__('account.setup.submit')"
             icon="arrow-right"
             iconPosition="right"
             fullWidth
