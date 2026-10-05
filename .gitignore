@@ -175,3 +175,12 @@ docker-compose.tenant-network.override.yml
 # snapshots with timestamps, regenerated on demand. Never a source of truth in
 # git: the whole point is that they reflect a live installation, not a file.
 .claude/.architecture-facts/
+
+# Zdalny dostęp do TEJ maszyny deweloperskiej — instrukcja, skrypt i zrzut
+# konfiguracji serwera. Nie są śledzone, ale do 2026-10-05 nie były też
+# ignorowane, więc jedno `git add -A` wrzuciłoby je do publicznego repozytorium.
+# Zawierają topologię sieci, reguły zapory i konfigurację dostępu — nic z tego
+# nie ma prawa trafić do historii gita, także w commicie, który ktoś potem cofnie.
+REMOTE_ACCESS_SETUP.md
+setup-remote-access.sh
+backup-cc-vps.txt
