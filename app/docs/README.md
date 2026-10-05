@@ -107,6 +107,7 @@ for the conceptual overview these deep-dive.
 | Filament v4 Widgets | `guides/filament-v4-widgets-guide.md` |
 | CMS Layouts | `guides/cms-layouts.md` |
 | Localisation (pl + en) | `guides/localisation.md` |
+| Druga maszyna i Remote Control | `guides/druga-maszyna-i-remote-control.md` |
 
 ---
 
