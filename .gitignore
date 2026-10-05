@@ -177,10 +177,14 @@ docker-compose.tenant-network.override.yml
 .claude/.architecture-facts/
 
 # Zdalny dostęp do TEJ maszyny deweloperskiej — instrukcja, skrypt i zrzut
-# konfiguracji serwera. Nie są śledzone, ale do 2026-10-05 nie były też
-# ignorowane, więc jedno `git add -A` wrzuciłoby je do publicznego repozytorium.
-# Zawierają topologię sieci, reguły zapory i konfigurację dostępu — nic z tego
-# nie ma prawa trafić do historii gita, także w commicie, który ktoś potem cofnie.
+# konfiguracji serwera. Zawierają topologię sieci, reguły zapory i konfigurację
+# dostępu; nic z tego nie ma prawa trafić do historii gita, także w commicie,
+# który ktoś potem cofnie.
+#
+# Do 2026-10-05 chroniło je WYŁĄCZNIE `.git/info/exclude` (linie 23-25) tego
+# klonu. To plik lokalny: nie jest w repozytorium, więc nie jedzie na inną
+# maszynę ani do świeżego klona. Wpis tutaj sprawia, że ochrona podróżuje
+# z repozytorium — i to jest jedyna rzecz, którą ta zmiana poprawia.
 REMOTE_ACCESS_SETUP.md
 setup-remote-access.sh
 backup-cc-vps.txt
