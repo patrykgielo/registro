@@ -591,7 +591,7 @@ ze `Storage::forgetDisk()`) i powtórz test na niezmienionym drzewie.
 
 ## Asercje, które psuje MySQL, a SQLite przepuszcza
 
-Dwie klasy, obie kosztowały po jednym nieudanym wdrożeniu (rc26, rc27):
+Pierwsze dwie klasy kosztowały po jednym nieudanym wdrożeniu (rc26, rc27); trzecia i czwarta wyszły na bramce rc40 (run 42406133949):
 
 **1. Kolejność kluczy w kolumnie `json`.** MySQL **normalizuje i przestawia** klucze obiektu
 JSON przy zapisie; SQLite trzyma tekst dosłownie. `assertSame()` na zdekodowanej tablicy
@@ -606,8 +606,9 @@ z diffem, w którym **wszystkie wartości są identyczne**, a różni się wył�
 
 Kolejność kluczy w obiekcie JSON **nie niesie znaczenia** i aplikacja czyta po kluczu.
 Porównuj po rekurencyjnym `ksort()` obu stron (`assertSpecsMatch()` w
-`NormalizeServiceSpecsMetadataShapeMigrationTest`), nie przez `assertSame()` na surowym
-kształcie. To dotyczy także asercji „bajt w bajt" na surowym stringu `metadata` — na MySQL
+`NormalizeServiceSpecsMetadataShapeMigrationTest`; w testach katalogu wspólny
+`assertSameJsonData()` w `Tests\Feature\Catalog\CatalogTestHelpers`), nie przez `assertSame()`
+na surowym kształcie. To dotyczy także asercji „bajt w bajt" na surowym stringu `metadata` — na MySQL
 taka asercja nie sprawdza tego, co deklaruje.
 
 **2. `migrate:rollback --path` widzi wyłącznie OSTATNI batch.** Jeśli wcześniej w teście
@@ -625,6 +626,18 @@ i asertuj to, o co naprawdę chodzi.
 z FK, mając późniejszą nazwę pliku, zawsze spada przed rodzicem. Tego **nie** trzeba
 zabezpieczać w migracjach — ale `migrate:rollback --path` wycelowany w pojedynczą migrację
 rodzica na MySQL padnie. Używaj `--step`.
+
+**3. `select ... from sqlite_master` nie istnieje na MySQL** (rc40). Listę tabel bierz z
+`Schema::getTableListing(schemaQualified: false)` (driver sam wie, skąd ją czytać).
+
+**4. DDL w teście pod `RefreshDatabase` robi niejawny COMMIT** (rc40; `ALTER TABLE ... AUTO_INCREMENT`
+w `catalog:import-revert --reset-auto-increment`). Zmierzone: organizacja, lokalizacja, user i
+paczka tego testu zostały w bazie dla wszystkich kolejnych. Na MySQL podmień sam `executeAlter()`
+seamem. `bindRevert()` to prywatny seam jednej klasy,
+`tests/Feature/Catalog/CatalogImportRevertPostCommitTest.php` (anonimowa podklasa
+`RevertCatalogImport`), nie wspólny helper; zapisz w stubie wywołania `[$table, $to]` i je
+zasertuj, bo sam komunikat „cofnięty" pojawia się też, gdy ALTER nigdy nie poszedł.
+Prawdziwy ALTER zostaw w `CatalogImportAutoIncrementMysqlTest` (`DatabaseTruncation`, baza `catalog_test_*`; poza CI, odpalany ręcznie na jednorazowym MySQL).
 
 ## Two requests in one test: `forgetScopedInstances()`
 

@@ -27,6 +27,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -62,9 +63,9 @@ class CatalogImportRevertTest extends TestCase
     // ------------------------------------------------------------------ helpers
 
     /**
-     * EVERY table (via sqlite_master) except the ledger itself and audit_logs — the two places
-     * an import/revert legitimately writes to. Anything else that differs after import+revert is
-     * a side effect nobody asked for. Rows are sorted by their JSON so tables without an id
+     * EVERY table (via Schema::getTableListing(), engine-neutral) except the ledger itself and
+     * audit_logs — the two places an import/revert legitimately writes to. Anything else that
+     * differs after import+revert is a side effect nobody asked for. Rows are sorted by their JSON so tables without an id
      * (pivots) compare too.
      *
      * @return array<string, array<int, array<string, mixed>>>
@@ -73,8 +74,10 @@ class CatalogImportRevertTest extends TestCase
     {
         $out = [];
 
-        $tables = collect(DB::select("select name from sqlite_master where type = 'table' order by name"))
-            ->pluck('name')
+        // Schema::getTableListing() asks the driver itself (sqlite_master on SQLite, information_schema
+        // on MySQL) -- a hand-written `select ... from sqlite_master` does not exist on MySQL.
+        $tables = collect(Schema::getTableListing(schemaQualified: false))
+            ->sort()
             ->reject(fn (string $t) => str_starts_with($t, 'sqlite_') || str_starts_with($t, 'catalog_import_') || $t === 'audit_logs');
 
         foreach ($tables as $t) {
@@ -625,6 +628,13 @@ class CatalogImportRevertTest extends TestCase
 
     public function test_reset_auto_increment_is_never_attempted_on_sqlite_and_says_why(): void
     {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped(
+                'SQLite-only by definition: on MySQL the reset IS attempted -- and its ALTER implicitly COMMITs, '
+                .'which RefreshDatabase cannot wrap. The MySQL behaviour is covered by CatalogImportAutoIncrementMysqlTest.'
+            );
+        }
+
         $batch = $this->runImport();
         $statements = [];
         DB::listen(function ($q) use (&$statements): void {

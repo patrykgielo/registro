@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Shared fixtures for the catalog:import test suite. Everything runs on SQLite, with
+ * Shared fixtures for the catalog:import test suite. Runs on SQLite and MySQL 8.0 alike, with
  * Storage::fake('public'), Http::fake() and a fake DNS resolver — no network, no real disk.
  */
 trait CatalogTestHelpers
@@ -44,6 +44,33 @@ trait CatalogTestHelpers
         });
 
         return $this;
+    }
+
+    /**
+     * MySQL's native json type normalizes object key order on write (shorter keys first); SQLite
+     * keeps the text verbatim. assertSame() on decoded associative arrays is therefore
+     * order-sensitive in a way that has nothing to do with what these tests assert -- key order
+     * inside a JSON object carries no meaning and the app always reads by key. Both sides are sorted
+     * recursively, so the DATA is compared, not the storage engine (precedent: PR #246). Lists keep
+     * their order: ksort() leaves 0..n-1 integer keys where they are.
+     *
+     * @param  array<mixed>  $expected
+     * @param  array<mixed>  $actual
+     */
+    protected function assertSameJsonData(array $expected, array $actual, string $message = ''): void
+    {
+        $sort = function (array $value) use (&$sort): array {
+            foreach ($value as $k => $v) {
+                if (is_array($v)) {
+                    $value[$k] = $sort($v);
+                }
+            }
+            ksort($value);
+
+            return $value;
+        };
+
+        $this->assertSame($sort($expected), $sort($actual), $message);
     }
 
     protected function png(int $w = 64, int $h = 64, int $shade = 120): string

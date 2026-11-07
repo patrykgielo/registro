@@ -277,10 +277,34 @@ class CatalogImportRevertPostCommitTest extends TestCase
         $this->cli(['batch' => (string) $batch->id, '--force' => true, '--no-interaction' => true]);
         Cache::put("sitemap:{$this->org->id}", 'stale');
 
+        $isSqlite = DB::connection()->getDriverName() === 'sqlite';
+        $lowestId = (int) $batch->items()->where('entity_type', 'service')->min('entity_id');
+        $alters = [];
+
+        if (! $isSqlite) {
+            // On MySQL the planner's decision runs for real, but the DDL itself is replaced: `ALTER TABLE
+            // ... AUTO_INCREMENT` implicitly COMMITs, which RefreshDatabase's wrapping transaction cannot
+            // undo -- measured: the organization, location, user and batch of this test stayed in the
+            // database for every later test. The real ALTER is covered where it can run safely, by
+            // CatalogImportAutoIncrementMysqlTest (DatabaseTruncation, throwaway database).
+            $this->bindRevert([
+                'executeAlter' => function (string $table, int $to) use (&$alters): void {
+                    $alters[] = [$table, $to];
+                },
+                'readCounter' => fn () => $lowestId,
+            ]);
+        }
+
         [$code, $out] = $this->cli(['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true]);
 
         $this->assertSame(0, $code, $out);
-        $this->assertStringContainsString('AUTO_INCREMENT pominięty', $out); // sqlite: never attempted
+        if ($isSqlite) {
+            $this->assertStringContainsString('AUTO_INCREMENT pominięty', $out); // never attempted on SQLite
+        } else {
+            // the output alone would also read "cofnięty" if the ALTER were never issued (readCounter is stubbed)
+            $this->assertContains(['services', $lowestId], $alters, 'executeAlter() was called for services with the lowest id of the batch');
+            $this->assertStringContainsString("AUTO_INCREMENT cofnięty: services — licznik = {$lowestId}", $out);
+        }
         $this->assertNull(Cache::get("sitemap:{$this->org->id}"));
     }
 

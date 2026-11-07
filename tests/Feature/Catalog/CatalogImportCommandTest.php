@@ -92,7 +92,7 @@ class CatalogImportCommandTest extends TestCase
         Storage::disk('public')->assertExists($a->content[0]['data']['image']);
 
         // metadata: specs stay a list, image_sources recorded per stored path
-        $this->assertSame([['label' => 'Moc', 'value' => 800, 'unit' => 'W']], $a->metadata['specs']);
+        $this->assertSameJsonData([['label' => 'Moc', 'value' => 800, 'unit' => 'W']], $a->metadata['specs']);
         $this->assertSame($a->content[0]['data']['image'], $a->metadata['image_sources'][0]['path']);
         $this->assertSame('Jan Kowalski', $a->metadata['image_sources'][0]['credit']);
         $this->assertSame('CC BY-SA 4.0', $a->metadata['image_sources'][0]['license']);
@@ -157,8 +157,8 @@ class CatalogImportCommandTest extends TestCase
             ->assertHasNoFormErrors();
 
         $after = $service->fresh();
-        $this->assertSame($before, $after->only(['content', 'features', 'body', 'featured_image', 'quantity_total']));
-        $this->assertSame([['label' => 'Moc', 'value' => 800, 'unit' => 'W']], $after->metadata['specs']);
+        $this->assertSameJsonData($before, $after->only(['content', 'features', 'body', 'featured_image', 'quantity_total']));
+        $this->assertSameJsonData([['label' => 'Moc', 'value' => 800, 'unit' => 'W']], $after->metadata['specs']);
         // Known, documented: the admin form only binds metadata.specs, so a save drops
         // metadata.image_sources — the same data stays in the ledger (file items' snapshot).
         $this->assertArrayNotHasKey('image_sources', $after->metadata ?? []);
