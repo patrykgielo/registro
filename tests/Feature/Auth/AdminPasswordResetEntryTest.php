@@ -130,7 +130,12 @@ class AdminPasswordResetEntryTest extends TestCase
         $this->get(self::TENANT.'/admin')->assertOk();
     }
 
-    public function test_the_whole_reset_for_a_super_admin_ends_in_the_platform_panel(): void
+    /**
+     * A reset proves control of the mailbox, not of the account, so a super-admin is NOT signed in
+     * by it: they land on the platform login and sign in with the new password
+     * (SuperAdminPasswordResetTest has the audit/event/replay detail).
+     */
+    public function test_the_whole_reset_for_a_super_admin_ends_at_the_platform_login_not_in_the_panel(): void
     {
         $superAdmin = User::factory()->create();
         $superAdmin->assignRole('super-admin');
@@ -146,9 +151,10 @@ class AdminPasswordResetEntryTest extends TestCase
             'email' => $superAdmin->email,
             'password' => self::NEW_PASSWORD,
             'password_confirmation' => self::NEW_PASSWORD,
-        ])->assertRedirect('/platform');
+        ])->assertRedirect(self::ROOT.'/platform/login');
 
         $this->assertTrue(Hash::check(self::NEW_PASSWORD, $superAdmin->fresh()->password));
-        $this->get(self::ROOT.'/platform')->assertOk();
+        $this->assertGuest();
+        $this->get(self::ROOT.'/platform')->assertRedirect(self::ROOT.'/platform/login');
     }
 }

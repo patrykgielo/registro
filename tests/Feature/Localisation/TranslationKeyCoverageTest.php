@@ -48,7 +48,7 @@ class TranslationKeyCoverageTest extends TestCase
     private const DYNAMIC_ALLOWED = [
         // Password broker status — resolves passwords.{reset,sent,throttled,token,user}, whose
         // key set is pinned by TranslationParityTest::test_auth_passwords_and_pagination_*.
-        'app/Http/Controllers/Auth/ResetPasswordController.php:43',
+        'app/Http/Controllers/Auth/ResetPasswordController.php:87',
     ];
 
     // A leading backslash is allowed on purpose: \__(), \trans(), \Lang::get() and a fully
