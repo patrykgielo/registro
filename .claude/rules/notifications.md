@@ -383,10 +383,10 @@ pierwszym callerze, który faktycznie poda `$type`). Wszystkie 20+ miejsc wywoł
 w klasie/joba:**
 - `PasswordResetNotification` — brak bezpiecznego sposobu ustalenia tenanta bez ambientu
   (patrz jej własny docblock).
-- `ServiceAreaAvailableNotification` — `service_area_waitlist` NIE MA kolumny
-  `organization_id` (pre-existing bug: migracja celowała w `service_area_waitlists`, l.mn.,
-  zamiast prawdziwej nazwy tabeli w l.poj. — `Schema::hasTable()` cicho pominął całą
-  operację; nienaprawione, osobny ticket).
+- `ServiceAreaAvailableNotification` — wciąż bez brandingu, choć `service_area_waitlist` MA
+  już `organization_id` (od 2026-11-07; wcześniej brakowało go przez literówkę
+  `service_area_waitlists` w migracji). Przełączenie na `$this->waitlist->organization` zmienia
+  wygląd maila (i `UnbrandedSendsAreByteIdenticalTest`) — osobne zadanie.
 - `NewTenantRegisteredNotification` — odbiorcą jest operator PLATFORMY, nie tenant;
   branding cudzym logo byłby odwrotnością intencji.
 - `SendAdminDigestJob` — agregat WSZYSTKICH tenantów naraz, brak jednej organizacji.

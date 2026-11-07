@@ -13,12 +13,14 @@ use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
- * ServiceAreaWaitlist has no organization_id / BelongsToOrganization — a single
- * submission can be "outside area" for several nearby tenants at once, so it
- * deliberately has no single tenant owner (see
- * app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md).
+ * Authorization of ServiceAreaWaitlistResource (super-admin only). History: the
+ * model used to have no organization_id, so this gate was the only thing keeping
+ * one tenant from reading every other tenant's sign-ups (see
+ * app/docs/security/vulnerabilities/VULN-003-root-domain-tenant-bypass.md). The
+ * rows are tenant-owned now (BelongsToOrganization — tenant scoping is pinned in
+ * ServiceAreaWaitlistTenantIsolationTest); the gate is kept as is.
  *
- * Before this fix, ServiceAreaWaitlistResource was gated only by the
+ * Before the gate, ServiceAreaWaitlistResource was gated only by the
  * `service_area` $module flag — any tenant admin who enabled that module could
  * browse EVERY tenant's waitlist submissions (name, email, phone, address,
  * GPS coordinates). Fixed by restricting canViewAny/canView/canEdit/canDelete
@@ -39,7 +41,11 @@ class ServiceAreaWaitlistResourceTest extends TestCase
 
     private function makeWaitlistEntry(): ServiceAreaWaitlist
     {
-        return ServiceAreaWaitlist::create([
+        // Tenant-owned row (organization_id NOT NULL). Built with an explicit owner and no
+        // ambient tenant, so these authorization assertions stay independent of scoping —
+        // the scoping itself is pinned in ServiceAreaWaitlistTenantIsolationTest.
+        return ServiceAreaWaitlist::withoutGlobalScopes()->forceCreate([
+            'organization_id' => Organization::factory()->create()->id,
             'email' => 'jan.kowalski@gmail.com',
             'name' => 'Jan Kowalski',
             'phone' => '+48123456789',

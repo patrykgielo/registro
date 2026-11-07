@@ -206,6 +206,13 @@ introduced by it. The cache key compounded the blast radius by sharing state acr
    pre-existing design question (does a waitlist entry even belong to one tenant, given a
    location might be "outside area" for several nearby tenants?), not this vulnerability class.
    Flagged as a follow-up, not fixed here (avoiding scope creep into a model redesign).
+   **Fixed 2026-11-07 (`feature/fix-waitlist-tenant-scope`):** the "several tenants at once"
+   worry does not hold — a submission is always made on ONE tenant's subdomain and checked
+   against that tenant's areas, so it has exactly one owner. Root cause of the missing column:
+   `2026_03_08_000003` listed `service_area_waitlists` (plural), the guard skipped the typo
+   silently. Now: `organization_id` (`2026_11_07_110000` + backfill `…110001`),
+   `BelongsToOrganization`, and the route runs `ResolveTenant` + `RequireTenant` (it had neither,
+   so the "outside the area?" check also ran unscoped).
 
 ### Zapobieganie
 

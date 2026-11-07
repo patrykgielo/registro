@@ -20,14 +20,18 @@ use Illuminate\Support\Facades\Log;
  * Sent to a waitlist entry's email address when the admin marks
  * their requested location as now covered by a service area.
  *
- * Deliberately sent WITHOUT branding (no `organization` passed to
- * sendFromTemplate()): `service_area_waitlist` has no `organization_id`
- * column at all — a pre-existing gap (2026_03_08_000003_add_organization_id_to_existing_tables.php
- * targets the table name `service_area_waitlists`, plural; the real table,
- * created by 2025_12_13_162443_create_service_area_waitlist_table.php, is
- * singular — `Schema::hasTable()` silently skipped it, so it never got the
- * column). Found while auditing branding call sites for
- * ClickUp 123k99cvc56; not fixed here (separate, unrelated ticket).
+ * Still sent WITHOUT branding (no `organization` passed to sendFromTemplate())
+ * and with the platform-level `app_name`. History: `service_area_waitlist` had
+ * no `organization_id` at all (2026_03_08_000003_add_organization_id_to_existing_tables.php
+ * targeted the table name `service_area_waitlists`, plural; the real table is
+ * singular — `Schema::hasTable()` silently skipped it). The column exists now
+ * (2026_11_07_110000), so `$this->waitlist->organization` COULD feed both the
+ * branding and `app_name` — a deliberate follow-up, not done with the isolation
+ * fix because it changes the email's appearance (and
+ * UnbrandedSendsAreByteIdenticalTest pins the current output).
+ *
+ * Queue-safe as is: the worker runs in console, where BelongsToOrganization's
+ * scope is off, and the payload reads only this entry's own columns.
  */
 class ServiceAreaAvailableNotification extends Notification implements ShouldBeUnique, ShouldQueue
 {

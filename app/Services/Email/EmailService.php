@@ -66,8 +66,9 @@ class EmailService
      *                                           bare rendered body, unwrapped, exactly like before
      *                                           this parameter existed" (see EmailBrandedLayout call
      *                                           below). Genuinely tenant-less sends (platform-operator
-     *                                           digests, a waitlist entry with no organization column
-     *                                           at all — see notifications.md) MUST leave this null;
+     *                                           digests; ServiceAreaAvailableNotification, which has
+     *                                           not been switched to its waitlist entry's
+     *                                           organization yet — see notifications.md) MUST leave this null;
      *                                           passing a wrong/arbitrary organization here would be a
      *                                           real whitelabel leak, not a cosmetic one. Last
      *                                           positional parameter, and callers should pass it as a

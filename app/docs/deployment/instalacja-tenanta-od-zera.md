@@ -1656,6 +1656,60 @@ ktoś wcześniej ręcznie wyniósł `tenant-backups/<slug>/` poza tę maszynę (
 tym repo — nic tego dziś nie automatyzuje). Domknięcie: zdalny `RESTIC_REPOSITORY` i hasło poza
 maszyną, dla każdego tenanta, zanim S8 stanie się czymś więcej niż teorią.
 
+## 9.8 — `service_area_waitlist`: wspólna baza demo (UAT) i wyciąganie z niej tenanta
+
+Kontekst: każdy tenant ma własną bazę, także gdy kilku dzieli jeden serwer. Jedyna wspólna baza
+wieloorganizacyjna to serwer demo UAT. Tabela `service_area_waitlist` (zapisy z formularza „poza
+strefą obsługi": imię, email, telefon, adres, GPS) dostała `organization_id` dopiero migracjami
+`2026_11_07_110000` / `2026_11_07_110001`; wcześniej wszyscy tenanci współdzielili jedną listę.
+
+**(a) Wspólna baza wieloorganizacyjna (UAT): stare wiersze zostają bez właściciela.** Backfill
+przypisuje wiersze tylko wtedy, gdy w `organizations` jest dokładnie jedna organizacja. Przy 2+
+(UAT) wiersze sprzed migracji zostają z `organization_id = NULL`: nie pasują do żadnego tenanta,
+więc żaden ich nie widzi (celowo), a kolumna zostaje nullable. W logu aplikacji jest wpis
+`service_area_waitlist: organization_id could not be derived ...`. Sprawdzenie i decyzja, ręcznie:
+```sql
+-- co jest bez właściciela
+SELECT id, email, requested_address, nearest_area_city, created_at
+FROM service_area_waitlist WHERE organization_id IS NULL ORDER BY id;
+
+-- przypisz wskazane wiersze do organizacji (ID z tabeli organizations); wiersz, który
+-- dubluje (email, współrzędne) już istniejący u tej organizacji, złamie unique — usuń go
+UPDATE service_area_waitlist SET organization_id = <ORG_ID> WHERE id IN (<ID>, <ID>);
+
+-- albo usuń wszystkie sieroty (dane osobowe, brak podstawy, żeby je trzymać bez właściciela)
+DELETE FROM service_area_waitlist WHERE organization_id IS NULL;
+```
+Migracja backfillu jest już oznaczona jako wykonana, więc **NOT NULL nie włączy się sam** po
+wyczyszczeniu. Wymaga ręcznie napisanej migracji następczej (nowy plik, nie edycja istniejących):
+`$table->unsignedBigInteger('organization_id')->nullable(false)->change();`, uruchamianej dopiero,
+gdy `SELECT COUNT(*) ... WHERE organization_id IS NULL` zwraca 0. Dopóki jej nie ma, aplikacja jest
+bezpieczna (nowe wiersze zawsze dostają organizację — trasa wymaga tenanta); brakuje tylko
+gwarancji na poziomie bazy.
+
+**(b) Wyciąganie tenanta ze wspólnej bazy do własnej: tabeli NIE wolno kopiować w całości.**
+Co faktycznie robią skrypty (sprawdzone 2026-11-07): `tenant-backup.sh` i `apply.sh`
+(`dump_database()`) robią `mysqldump` **całej bazy jednego stacku** (`--single-transaction
+--routines --triggers --events "$DB_DATABASE"`, bez `--tables`, `--ignore-table` ani `--where`),
+a `tenant-restore.sh` wgrywa taki dump z powrotem w całości. Cała Część 9 (ścieżki A i B) przenosi
+więc tenanta, który JUŻ ma własną bazę, razem z tą bazą — to jest bezpieczne, w dumpie jest tylko
+jego lista. **Żaden skrypt ani komenda artisan w repo nie wyciąga jednego tenanta ze wspólnej
+bazy** (`organizations:export-data` to eksport RODO, nie dotyka tej tabeli). Jeśli ktoś robi to
+ręcznie z UAT:
+
+- Dla `service_area_waitlist` filtruj po właścicielu, nigdy całą tabelą:
+  `mysqldump --single-transaction --no-create-info --where="organization_id = <ORG_ID>" <baza> service_area_waitlist`.
+- Nie przenoś wierszy z `organization_id IS NULL` (nie wiadomo czyje są).
+- Jeśli używasz dumpu **sprzed** migracji `2026_11_07_110000`, tabela nie ma kolumny i nie da się
+  jej przefiltrować: pomiń ją w całości. Wgranie takiego dumpu do bazy z jedną organizacją, a potem
+  `php artisan migrate`, przypisze **wszystkie** zapisy z całej wspólnej bazy tej jednej organizacji
+  (gałąź „dokładnie jedna organizacja" backfillu) — czyli odda tenantowi dane osobowe klientów
+  pozostałych tenantów.
+- To samo dotyczy każdego dumpu całej wspólnej bazy wgranego do bazy tenanta: w tabeli lądują
+  cudze wiersze (albo import wywala się na FK do `organizations`, jeśli nie ma tam tamtych
+  organizacji). Po przeniesieniu: `SELECT DISTINCT organization_id FROM service_area_waitlist` ma
+  zwrócić wyłącznie ID tego tenanta.
+
 ---
 
 # CZĘŚĆ 10 — Postawienie drugiej maszyny, PreProd, od zera (Faza 4)

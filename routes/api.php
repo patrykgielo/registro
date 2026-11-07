@@ -38,10 +38,11 @@ Route::middleware([ResolveTenant::class, RequireTenant::class, $isProduction ? '
 });
 
 // Waitlist Submission (strict rate limiting)
-// NOTE: ServiceAreaWaitlist has no organization_id / BelongsToOrganization at all —
-// a separate pre-existing design question, not this vulnerability class. Left
-// unscoped intentionally; see VULN-003 doc "Follow-ups".
-Route::middleware($isProduction ? 'throttle:3,1' : 'throttle:30,1')->group(function () {
+// ResolveTenant + RequireTenant: the entry is owned by the tenant whose page the visitor
+// is on (BelongsToOrganization stamps organization_id from it) and the "outside the area?"
+// check must run against THAT tenant's areas only. Same-origin fetch() from the tenant
+// subdomain, like the two routes above.
+Route::middleware([ResolveTenant::class, RequireTenant::class, $isProduction ? 'throttle:3,1' : 'throttle:30,1'])->group(function () {
     Route::post('/service-area/waitlist', [ServiceAreaWaitlistController::class, 'store'])
         ->name('api.service-area.waitlist');
 });

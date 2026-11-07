@@ -208,9 +208,9 @@ per-resource reasoning lives in the PR description; summary:
   reason: suppressing an address silences it for every tenant sharing it.
   Restoring tenant self-service here needs a tenant-scoped suppression model,
   not a narrower button),
-  `ServiceAreaWaitlistResource` (unchanged — one submission can belong to
-  several nearby tenants at once, no clean single-tenant scoping possible,
-  see its own docblock and `VULN-003-root-domain-tenant-bypass.md`), and the
+  `ServiceAreaWaitlistResource` (unchanged gate — kept super-admin-only; since 2026-11-07
+  its rows ARE tenant-owned, so opening it to tenant admins is possible but a product
+  decision, see its own docblock and `VULN-003-root-domain-tenant-bypass.md`), and the
   `custom_html` `Forms\Components\Builder\Block` in
   `app/Filament/Support/BuilderBlocks.php` (unchanged — raw, unescaped
   HTML/JS in tenant-facing CMS pages is a stored-XSS primitive; opening it
