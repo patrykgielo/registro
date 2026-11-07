@@ -863,7 +863,8 @@ class BuilderBlocks
         $icons = [];
         foreach ($files as $file) {
             $name = str_replace('.svg', '', basename($file));
-            $name = str_replace('o-', '', $name);
+            // Leading prefix only: a bare str_replace() also ate inner "o-" ("no-symbol").
+            $name = preg_replace('/^o-/', '', $name);
 
             // Format: "arrow-down" => "Arrow Down"
             $icons[$name] = ucwords(str_replace('-', ' ', $name));

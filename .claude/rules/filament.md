@@ -122,6 +122,22 @@ Select::make('content_type')
 ->getStateUsing(fn ($record) => json_encode($record->old_values))->limit(100)
 ```
 
+## Heroicon Picker — zdejmuj tylko WIODĄCY prefiks (Bug 2026-11-07)
+
+```php
+// ❌ str_replace usuwa KAŻDE "s-": "s-arrows-pointing-in" → "arrowpointing-in"
+$name = str_replace('s-', '', basename($file, '.svg'));
+
+// ✅ Tylko początek nazwy pliku
+$name = preg_replace('/^s-/', '', basename($file, '.svg'));
+```
+
+Zła nazwa to nie „brak ikony": `<x-dynamic-component :component="'heroicon-m-'.$icon">` rzuca
+`ViewException` → **500 na stronie publicznej**. A Select waliduje wartość względem `options()`,
+więc rekord z PRAWDZIWĄ nazwą (`squares-2x2` z seedera onboardingu) nie dawał się zapisać.
+Kopie pickera: `BaseResource` (`s-`), `BuilderBlocks` i `SystemSettings` (`o-`) — nowa kopia
+musi trafić do data providera w `tests/Feature/Filament/HeroiconOptionsTest.php`.
+
 ## Action Modal z Infolist (v4 Pattern)
 
 ```php
