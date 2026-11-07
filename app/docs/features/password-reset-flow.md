@@ -8,11 +8,36 @@ Jedna ścieżka dla wszystkich ról (`routes/web.php`: `password.request`, `pass
 2. Listener w `AppServiceProvider` liczy **w żądaniu** link (host tenanta) i nazwę marki, po czym
    wysyła `PasswordResetNotification` (kolejka `emails`) → `EmailService::sendFromTemplate('password-reset')`
    → wiersz w `email_sends`, szablon, supresje, ponawianie.
-3. `ResetPasswordController` ustawia hasło, loguje użytkownika i kieruje przez `PostAuthDestination`:
-   super-admin → `/platform`; admin/staff → `/admin` (na hoście tenanta) albo subdomena pierwszej organizacji
+3. `ResetPasswordController` ustawia hasło i — **poza super-adminem** — loguje użytkownika i kieruje przez
+   `PostAuthDestination`: admin/staff → `/admin` (na hoście tenanta) albo subdomena pierwszej organizacji
    (z domeny głównej); klient → `IntendedDestination`/`CustomerLandingUrl`.
 
-Nic w tym przepływie nie zakłada klienta; rola decyduje dopiero o miejscu docelowym.
+Rola decyduje o miejscu docelowym, a dla super-admina także o tym, czy reset w ogóle loguje.
+
+## Super-admin: reset NIE loguje
+
+Reset dowodzi kontroli nad **skrzynką**, nie nad kontem. Stock `ResetsPasswords::resetPassword()` kończy się
+`guard()->login()`, więc przejęcie skrzynki super-admina = przejęcie całej platformy (token wystarczał, bez znajomości
+starego hasła), a od #286 link do resetu jest też na ekranie `/platform/login`.
+
+`ResetPasswordController::resetPassword()` dla roli `super-admin` ustawia hasło, rotuje `remember_token`, wysyła
+`PasswordReset` i **nie woła `login()`** (zalogować i wylogować byłoby gorzej: okno + zdarzenia `Login`/`Logout`).
+Odsyła na `filament.platform.auth.login` z komunikatem `passwords.reset_sign_in` — jako flash `status` **i** jako
+`Filament\Notifications\Notification` (login Filamenta nie renderuje flasha `status`, bez notyfikacji komunikat
+byłby ustawiony i niewidoczny). Zdarzenie trafia do `audit_logs` (`password_reset`, `auditable_type=authentication`,
+`new_values = {role, signed_in:false}`, bez hasła i tokenu).
+
+**To jest złagodzenie, nie domknięcie.** Atakujący, który kontroluje skrzynkę, nadal może ustawić hasło i się
+zalogować — w dwóch krokach (reset, potem zwykły login, który jest throttlowany i zostawia ślad w `audit_logs`),
+a nie w jednym. Domyka to dopiero 2FA dla `/platform` oraz mail do właściciela platformy o resecie konta
+super-admina; oba to otwarte follow-upy.
+
+Decyzja „czy logować” zapada w `sendResetResponse()` z roli użytkownika odczytanej z żądania (`broker()->getUser()`),
+a nie z pola kontrolera: Laravel cache'uje instancję kontrolera na trasie, więc stan z jednego resetu przeżyłby do
+następnego w tym samym procesie.
+
+Jedyna ścieżka resetu to `password.*` (Filament `->passwordReset()` jest wyłączony, patrz niżej), więc nie ma drugiej
+do pilnowania. Poza zakresem (osobne zgłoszenia): mail do właściciela platformy o resecie konta super-admina, 2FA.
 
 ## Wejście z paneli (ClickUp 86cbb28m7, 2026-10-04)
 
@@ -57,10 +82,11 @@ więc drugie żądanie zdradziłoby konto. Limit per IP na trasie (`throttle:3,1
 
 `tests/Feature/Auth/AdminPasswordResetEntryTest.php` — prawdziwy `ResolveTenant`, prawdziwe hosty:
 link na loginie admina (host tenanta) i platformy (root), pełny przebieg admina (login → formularz → mail
-w `email_sends` → tokenizowany URL → nowe hasło → `/admin`, 200) i super-admina (→ `/platform`).
+w `email_sends` → tokenizowany URL → nowe hasło → `/admin`, 200) i super-admina (→ `/platform/login`, bez sesji).
 Brak wyliczania kont: `PasswordResetEnumerationTest` (istniejący, powtórzony = throttled i nieznany dają ten sam
 status, `Location`, klucz sesji i brak błędów; wariant JSON; wysyłka tylko do realnych kont).
 Link w mailu: `PasswordResetEmailTest`; miejsce docelowe: `PasswordResetRedirectTest`.
+Super-admin bez logowania, audyt, klient i admin bez zmian: `SuperAdminPasswordResetTest`.
 
 Znane, zastane: własna wersja szablonu `password-reset` tenanta nie obowiązuje wysyłkom z kolejki
 (`EmailTemplate::resolveActive()` czyta tenanta z otoczenia) — patrz `.claude/rules/auth-redirects.md`.

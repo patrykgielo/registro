@@ -139,6 +139,24 @@ logowaniu na `/admin` i `/platform` (rc39, 2026-11-07), a testy wołające `toRe
 przechodzą. Test czegokolwiek, co woła strona Filamenta → przez `Livewire::test()`.
 Strażnik: `PanelLoginLivewireTest`.
 
+## Reset hasła NIE loguje super-admina (2026-11-07)
+
+**Problem:** `ResetsPasswords::resetPassword()` kończy się `guard()->login()`, a `PostAuthDestination` wysyła
+super-admina na `/platform`. **Przyczyna:** reset dowodzi kontroli nad skrzynką, nie kontem — przejęcie skrzynki =
+przejęcie platformy, bez starego hasła (ryzyko wzrosło, gdy #286 dał link do resetu na `/platform/login`).
+**Fix:** `ResetPasswordController::resetPassword()` dla `super-admin` nie woła `login()` (nie "zaloguj i wyloguj"),
+zapisuje `audit_logs` (`password_reset`) i odsyła na login platformy z `passwords.reset_sign_in`.
+**To jest złagodzenie, nie domknięcie.** Kto ma skrzynkę, nadal może ustawić hasło i zalogować się — w dwóch
+krokach zamiast jednego (login jest throttlowany i zostawia ślad w `audit_logs`). Domyka to dopiero 2FA dla `/platform`
+plus mail powiadamiający właściciela platformy o resecie; oba są otwartymi follow-upami.
+**Stan w kontrolerze:** Laravel cache'uje instancję kontrolera na trasie (`Route::getController()`), więc pole
+ustawione przy jednym resecie żyje do następnego w tym samym procesie — decyzję podejmuj z żądania (rola z
+`broker()->getUser()`), nie z właściwości. Strażnik: `test_a_super_admin_reset_does_not_leak_into_the_next_reset_in_the_same_app`.
+**Zapobieganie:** nowa ścieżka ustawiająca hasło z tokenu (np. Filament `->passwordReset()`, link zaproszeniowy)
+nie może logować tej roli. Komunikat idzie też jako `Filament\Notifications\Notification` — login Filamenta nie
+renderuje flasha `status`. Strażnik: `SuperAdminPasswordResetTest`. Ten sam efekt dla `admin`: decyzja produktowa,
+nie zrobiona.
+
 ## Panel login → reset: link, not `->passwordReset()`
 
 `/admin` and `/platform` login screens link into the EXISTING `password.*` flow via
