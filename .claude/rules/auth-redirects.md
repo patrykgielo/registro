@@ -131,6 +131,14 @@ docker compose exec -T app php -r 'var_dump(interface_exists("Pełna\\Nazwa"));'
 Strażnik: `AdminPanelLoginResponseTest::test_admin_panel_login_response_contract_resolves_to_the_custom_class`
 — zweryfikowany mutacją (przywrócenie namespace'u v3 czerwieni go).
 
+## `LoginResponse::toResponse()` zwraca `RedirectResponse|Redirector` — nie zawężaj
+
+Logowanie do panelu to żądanie Livewire, a tam `redirect($url)` zwraca
+`Livewire\Features\SupportRedirects\Redirector`. Samo `: RedirectResponse` = HTTP 500 przy **każdym**
+logowaniu na `/admin` i `/platform` (rc39, 2026-11-07), a testy wołające `toResponse()` wprost
+przechodzą. Test czegokolwiek, co woła strona Filamenta → przez `Livewire::test()`.
+Strażnik: `PanelLoginLivewireTest`.
+
 ## Panel login → reset: link, not `->passwordReset()`
 
 `/admin` and `/platform` login screens link into the EXISTING `password.*` flow via

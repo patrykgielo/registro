@@ -10,6 +10,7 @@ use Filament\Facades\Filament;
 use Filament\Panel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Livewire\Features\SupportRedirects\Redirector;
 
 /**
  * Custom LoginResponse for the admin Filament panel.
@@ -49,13 +50,21 @@ use Illuminate\Http\Request;
  * blast radius would reach ADMIN login, not just the customer flow, without
  * this check.
  *
+ * The return type is a UNION on purpose, matching Filament's own contract:
+ * the panel login page is a Livewire component, and during a Livewire request
+ * Livewire rebinds `redirect`, so `redirect($url)` returns
+ * Livewire\Features\SupportRedirects\Redirector (its `to()` returns `$this`),
+ * not a RedirectResponse. A bare `: RedirectResponse` passes every direct
+ * call and answers HTTP 500 on POST /livewire/update for every real login on
+ * both panels. Guard: PanelLoginLivewireTest.
+ *
  * Bound in AdminPanelProvider::register() — see that method's docblock for
  * why this bind was previously silently inert (wrong Filament v3 contract
  * namespace) and app/docs/features/post-login-return.md for the full story.
  */
 class LoginResponse implements LoginResponseContract
 {
-    public function toResponse($request): RedirectResponse
+    public function toResponse($request): RedirectResponse|Redirector
     {
         // Peek, don't pull — IntendedDestination::discard() below clears
         // BOTH url.intended and url.intended_at unconditionally, regardless
