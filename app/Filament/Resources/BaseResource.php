@@ -82,7 +82,8 @@ abstract class BaseResource extends Resource
         $icons = [];
         foreach ($files as $file) {
             $name = str_replace('.svg', '', basename($file));
-            $name = str_replace('s-', '', $name);
+            // Leading prefix only: a bare str_replace() also ate inner "s-" ("arrows-pointing-in").
+            $name = preg_replace('/^s-/', '', $name);
             $icons[$name] = ucwords(str_replace('-', ' ', $name));
         }
 
