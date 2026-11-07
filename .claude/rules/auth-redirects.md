@@ -152,6 +152,15 @@ plus mail powiadamiający właściciela platformy o resecie; oba są otwartymi f
 **Stan w kontrolerze:** Laravel cache'uje instancję kontrolera na trasie (`Route::getController()`), więc pole
 ustawione przy jednym resecie żyje do następnego w tym samym procesie — decyzję podejmuj z żądania (rola z
 `broker()->getUser()`), nie z właściwości. Strażnik: `test_a_super_admin_reset_does_not_leak_into_the_next_reset_in_the_same_app`.
+
+**Stack dedykowany (`TENANT_SLUG`) — druga awaria tego samego fixa (PR #293):** `bootstrap/providers.php` tam w
+ogóle nie rejestruje `PlatformPanelProvider`, więc `Filament::getPanel('platform')` zwraca `null`, a
+`->getLoginUrl()` kończyło się fatalem **po** zmianie hasła: reset udany, odpowiedź 500. Cel to teraz
+`getPanel('platform') ?? getPanel('admin')` (bez `isStrict: false` — brakujące id zwraca `null` także w trybie strict, a tryb luźny mógłby po cichu dopasować przyszły panel o podobnym id) — na stacku dedykowanym login admina to jedyny istniejący.
+Reguła ogólna: kod mówiący „idź do panelu platformy" musi znać oba modele wdrożenia (`architecture-models.md`).
+Strażnik: `SuperAdminPasswordResetPinnedStackTest` (`putenv('TENANT_SLUG')` PRZED `parent::setUp()`, bo rejestracja
+providera dzieje się przy boot; test-kontrola sprawdza, że fixture naprawdę nie ma panelu). Znane i nietknięte:
+`PostAuthDestination` nadal zwraca `/platform` dla super-admina (404 na stacku dedykowanym przy logowaniu przez `/login`).
 **Zapobieganie:** nowa ścieżka ustawiająca hasło z tokenu (np. Filament `->passwordReset()`, link zaproszeniowy)
 nie może logować tej roli. Komunikat idzie też jako `Filament\Notifications\Notification` — login Filamenta nie
 renderuje flasha `status`. Strażnik: `SuperAdminPasswordResetTest`. Ten sam efekt dla `admin`: decyzja produktowa,

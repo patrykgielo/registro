@@ -36,6 +36,12 @@ Decyzja „czy logować” zapada w `sendResetResponse()` z roli użytkownika od
 a nie z pola kontrolera: Laravel cache'uje instancję kontrolera na trasie, więc stan z jednego resetu przeżyłby do
 następnego w tym samym procesie.
 
+**Stack dedykowany (`TENANT_SLUG` ustawione):** panel platformy tam nie istnieje (`bootstrap/providers.php` go nie
+rejestruje), więc super-admin po resecie — nadal bez logowania i z wpisem w `audit_logs` — trafia na login panelu
+**admina** (`/admin/login` na hoście tenanta), z tym samym komunikatem. Wersja z #293 wołała `getLoginUrl()` na `null`
+i kończyła się 500 po zmianie hasła. Test: `SuperAdminPasswordResetPinnedStackTest`. Ścieżka stacku współdzielonego
+bez zmian.
+
 Jedyna ścieżka resetu to `password.*` (Filament `->passwordReset()` jest wyłączony, patrz niżej), więc nie ma drugiej
 do pilnowania. Poza zakresem (osobne zgłoszenia): mail do właściciela platformy o resecie konta super-admina, 2FA.
 

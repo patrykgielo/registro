@@ -95,7 +95,12 @@ class ResetPasswordController extends Controller
         // as a Filament notification (session-backed, shown by the layout on the next page).
         Notification::make()->success()->title($message)->send();
 
-        return redirect(Filament::getPanel('platform')->getLoginUrl())
+        // A dedicated tenant stack (TENANT_SLUG) does not register the platform panel at all
+        // (bootstrap/providers.php), so the lookup returns null -> fatal on ->getLoginUrl() AFTER the
+        // password was already changed. There the admin panel login is the only one that exists.
+        $panel = Filament::getPanel('platform') ?? Filament::getPanel('admin');
+
+        return redirect($panel->getLoginUrl())
             ->with('status', $message);
     }
 
