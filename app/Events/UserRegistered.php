@@ -25,19 +25,16 @@ class UserRegistered
      *
      * @param  \App\Models\User  $user  The newly registered user
      * @param  \App\Models\Organization|null  $organization  The tenant this registration happened
-     *                                                       on, when RegisterController::registered()
-     *                                                       could resolve one from the request. The
-     *                                                       GET form redirects away with no tenant,
-     *                                                       but a direct POST to the root domain is
-     *                                                       NOT currently blocked the same way
-     *                                                       (separate, already-flagged gap — not
-     *                                                       fixed here) — so this can legitimately be
-     *                                                       null even for a "real" registration, not
-     *                                                       just dev/test tooling. Threaded through so
-     *                                                       the welcome email can be branded for that
-     *                                                       tenant when one is known; RegisterController
-     *                                                       already passes null defensively otherwise
-     *                                                       — keep that guard, do not assume non-null.
+     *                                                       on, resolved from the request by
+     *                                                       RegisterController::registered(). Both the
+     *                                                       form and the submit refuse a tenant-less
+     *                                                       (root domain) request, so a customer
+     *                                                       registration always carries one; null
+     *                                                       remains possible for users created by
+     *                                                       other code or tooling. Threaded through so
+     *                                                       the welcome email is branded for that
+     *                                                       tenant; keep the null guard, do not assume
+     *                                                       non-null.
      */
     public function __construct(
         public User $user,

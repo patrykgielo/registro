@@ -9,13 +9,16 @@ use App\Models\User;
 use App\Support\Auth\CustomerLandingUrl;
 use App\Support\Auth\IntendedDestination;
 use Illuminate\Foundation\Auth\RegistersUsers;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
 class RegisterController extends Controller
 {
-    use RegistersUsers;
+    use RegistersUsers {
+        register as registerUser;
+    }
 
     public function __construct()
     {
@@ -41,13 +44,46 @@ class RegisterController extends Controller
     {
         IntendedDestination::capture($request);
 
-        $tenant = $request->attributes->get('tenant');
+        return $this->redirectWithoutTenant($request) ?? view('auth.register');
+    }
 
-        if (! $tenant) {
-            return redirect()->route('login');
+    /**
+     * Handle a registration request.
+     *
+     * Same tenant guard as the form (redirectWithoutTenant()), and it runs FIRST --
+     * before validation and before any write. ResolveTenant deliberately lets the
+     * root domain through without a tenant, and CheckRegistrationEnabled treats
+     * "no tenant" as enabled, so without this a POST to the root domain created a
+     * customer attached to no organization: an orphan that holds its (unique)
+     * e-mail and blocks the same person's later registration on a real tenant.
+     * Running before validation also keeps the root domain from answering
+     * "e-mail already taken" to anonymous probes.
+     */
+    public function register(Request $request)
+    {
+        return $this->redirectWithoutTenant($request) ?? $this->registerUser($request);
+    }
+
+    /**
+     * The single "no tenant, no customer registration" decision, shared by the form
+     * (GET) and the submit (POST) so the two cannot drift apart again.
+     *
+     * Reads the `tenant` request ATTRIBUTE (set by ResolveTenant for THIS request,
+     * on both the shared stack and the pinned dedicated stack) -- never
+     * TenantFeature::currentTenant(), whose session fallback is not a per-request
+     * signal (see .claude/rules/middleware.md, RequireTenant).
+     *
+     * Redirect rather than 404, deliberately: it is what the form has always
+     * answered, an existing test pins it, and a root-domain visitor who somehow
+     * submits is better sent to the login page than shown an error.
+     */
+    private function redirectWithoutTenant(Request $request): ?RedirectResponse
+    {
+        if ($request->attributes->get('tenant') instanceof Organization) {
+            return null;
         }
 
-        return view('auth.register');
+        return redirect()->route('login');
     }
 
     /**
