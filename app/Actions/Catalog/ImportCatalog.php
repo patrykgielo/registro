@@ -17,15 +17,20 @@ use App\Models\Service;
 use App\Models\ServiceLocationStock;
 use App\Models\ServiceUnit;
 use App\Support\Catalog\CatalogDocument;
+use App\Support\Catalog\CatalogImportConfig;
 use App\Support\Catalog\CatalogImportContext;
 use App\Support\Catalog\CatalogProductValidator;
+use App\Support\Catalog\FetchBudget;
 use App\Support\Catalog\FetchedImage;
 use App\Support\Catalog\HostResolver;
+use App\Support\Catalog\ImageBudgetExceededException;
 use App\Support\Catalog\ImageFetchException;
 use App\Support\Catalog\ImageInspector;
 use App\Support\Catalog\LocalImageLoader;
 use App\Support\Catalog\SafeImageFetcher;
 use App\Support\Catalog\ValidationReport;
+use Closure;
+use Illuminate\Cache\Lock;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +53,7 @@ use Illuminate\Support\Str;
  * and deletes the files already stored. Files are written to the `public` disk with
  * the same names/dirs the admin upload uses (services/featured, services/images).
  */
-final class ImportCatalog
+class ImportCatalog
 {
     public function __construct(private readonly CatalogProductValidator $validator) {}
 
@@ -68,7 +73,14 @@ final class ImportCatalog
             return $result;
         }
 
-        $lock = Cache::lock("catalog-import:{$org->id}", 3600);
+        // TTL = image budget + write allowance + margin, so the lock outlives any run the budget
+        // permits; on top of that it is refreshed (Lock::refresh() — implemented by every store
+        // this app can use: array, file, database, redis, memcached, dynamodb) before each distinct
+        // image request and before the write phase. A lock found lost aborts the run before any write.
+        // That check is point-in-time: the window between the last heartbeat and the commit is not
+        // covered (see the doc) — two imports racing there still cannot duplicate products, the
+        // unique indexes (name/slug per organization) stop the second one.
+        $lock = $this->makeLock($org->id, $this->lockSeconds());
 
         if (! $lock->get()) {
             $result->report->error(null, null, 'blokada', 'inny import tej organizacji jest w toku');
@@ -79,16 +91,117 @@ final class ImportCatalog
         $scratch = null;
 
         try {
-            return CatalogImportContext::asTenant($org, function () use ($org, $doc, $file, $options, $result, &$scratch): ImportResult {
-                return $this->execute($org, $doc, $file, $options, $result, $scratch);
+            $this->removeStaleScratch();
+
+            return CatalogImportContext::asTenant($org, function () use ($org, $doc, $file, $options, $result, $lock, &$scratch): ImportResult {
+                return $this->execute($org, $doc, $file, $options, $result, $scratch, $lock);
             });
         } finally {
-            if ($scratch !== null) {
-                File::deleteDirectory($scratch);
+            // Nothing in here may throw: a throw would REPLACE the in-flight result/exception and a
+            // committed import would be reported as failed ("nic nie zapisano").
+            try {
+                if ($scratch !== null) {
+                    File::deleteDirectory($scratch);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('catalog:import scratch cleanup failed', ['org_id' => $org->id, 'exception' => $e->getMessage()]);
             }
 
-            $lock->release();
+            try {
+                $this->releaseLock($lock);
+            } catch (\Throwable $e) {
+                Log::error('catalog:import lock release failed', ['org_id' => $org->id, 'exception' => $e->getMessage()]);
+                $result->warnings[] = "Blokada catalog-import:{$org->id} nie została zwolniona ({$e->getMessage()}) — wygaśnie sama; zwolnij ją: php artisan catalog:import-unlock id:{$org->id}";
+            }
         }
+    }
+
+    protected function makeLock(int $organizationId, int $seconds): Lock
+    {
+        return Cache::lock("catalog-import:{$organizationId}", $seconds);
+    }
+
+    protected function releaseLock(Lock $lock): void
+    {
+        $lock->release();
+    }
+
+    /** Image budget + 1 h for validation, the write transaction and a safety margin. */
+    protected function lockSeconds(): int
+    {
+        return CatalogImportConfig::importLockSeconds();
+    }
+
+    /**
+     * @return bool false when the lock is no longer ours (expired, force-released, or the store
+     *              failed — a store error must NOT read as "alive")
+     */
+    private function heartbeat(Lock $lock): bool
+    {
+        try {
+            return (bool) $lock->refresh($this->lockSeconds());
+        } catch (\Throwable $e) {
+            // Only the base-class "this driver cannot refresh" case is tolerated (the derived TTL is
+            // then the guarantee). QueryException/PDOException are RuntimeExceptions too — a DB error
+            // inside DatabaseLock::refresh() means we do not know the lock is ours.
+            if ($e::class === \RuntimeException::class && str_contains($e->getMessage(), 'does not support refreshing')) {
+                return true;
+            }
+
+            Log::error('catalog:import lock heartbeat failed — treating the lock as lost', ['exception' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /** Scratch dirs of killed runs: untouched for longer than a live run could possibly take. */
+    private function removeStaleScratch(): void
+    {
+        $root = storage_path('app/tmp/catalog-import');
+
+        if (! is_dir($root)) {
+            return;
+        }
+
+        try {
+            foreach (File::directories($root) as $dir) {
+                $modified = @filemtime($dir); // false when the directory vanished meanwhile
+
+                if ($modified !== false && $modified < time() - CatalogImportConfig::staleScratchSeconds()) {
+                    File::deleteDirectory($dir);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('catalog:import stale scratch cleanup failed', ['exception' => $e->getMessage()]);
+        }
+    }
+
+    protected function forgetSitemap(int $organizationId): void
+    {
+        Cache::forget("sitemap:{$organizationId}");
+    }
+
+    /** Test seam around the one write transaction. */
+    protected function runWriteTransaction(Closure $callback): mixed
+    {
+        return DB::transaction($callback);
+    }
+
+    protected function makeFetcher(ImageInspector $inspector, ImportOptions $options): SafeImageFetcher
+    {
+        return new SafeImageFetcher(
+            app(HostResolver::class),
+            $inspector,
+            hostDelayMs: $options->imageDelayMs,
+            maxRetries: (int) config('catalog_import.max_retries', 3),
+            maxRetryWaitSeconds: (int) config('catalog_import.max_retry_wait_seconds', 60),
+        );
+    }
+
+    /** @return Closure(): float current time in milliseconds */
+    protected function budgetClock(): Closure
+    {
+        return static fn (): float => microtime(true) * 1000;
     }
 
     /**
@@ -119,7 +232,7 @@ final class ImportCatalog
     /**
      * @param  array{products: array<int, mixed>, sha256: string}  $doc
      */
-    private function execute(Organization $org, array $doc, string $file, ImportOptions $options, ImportResult $result, ?string &$scratch): ImportResult
+    private function execute(Organization $org, array $doc, string $file, ImportOptions $options, ImportResult $result, ?string &$scratch, Lock $lock): ImportResult
     {
         $report = $result->report;
         $products = $doc['products'];
@@ -155,7 +268,7 @@ final class ImportCatalog
         if ($fetchImages) {
             $scratch = storage_path('app/tmp/catalog-import/'.Str::uuid());
             File::ensureDirectoryExists($scratch);
-            $fetched = $this->prefetchImages($normalized, dirname((string) realpath($file)), $scratch, $options, $report);
+            $fetched = $this->prefetchImages($normalized, dirname((string) realpath($file)), $scratch, $options, $report, fn (): bool => $this->heartbeat($lock));
 
             if ($report->hasErrors()) {
                 return $result;
@@ -169,12 +282,20 @@ final class ImportCatalog
             return $result;
         }
 
+        // Nothing is written unless the lock is still ours: another import/revert may have been let in.
+        if (! $this->heartbeat($lock)) {
+            $report->error(null, null, 'blokada', 'blokada importu wygasła lub została zwolniona w trakcie — przerwano przed zapisem, nic nie zapisano');
+
+            return $result;
+        }
+
         Log::info('catalog:import write start', ['org_id' => $org->id, 'products' => count($normalized), 'file_sha256' => $doc['sha256']]);
 
         $stored = [];
+        $createdBatchId = null;
 
         try {
-            $batch = DB::transaction(function () use ($org, $normalized, $fetched, $doc, $file, $options, $result, &$stored): CatalogImportBatch {
+            $batch = $this->runWriteTransaction(function () use ($org, $normalized, $fetched, $doc, $file, $options, $result, &$stored, &$createdBatchId): CatalogImportBatch {
                 $batch = CatalogImportBatch::create([
                     'organization_id' => $org->id,
                     'source_filename' => basename($file),
@@ -182,6 +303,7 @@ final class ImportCatalog
                     'status' => CatalogImportBatch::STATUS_COMPLETED,
                     'actor' => $options->actor,
                 ]);
+                $createdBatchId = $batch->id;
 
                 $categories = [];
 
@@ -197,6 +319,18 @@ final class ImportCatalog
                 return $batch;
             });
         } catch (\Throwable $e) {
+            // An exception does not prove a rollback (it may come from the commit itself, or after it).
+            // Look at the database with a FRESH read before touching a single file.
+            $state = $this->batchState($createdBatchId);
+
+            if ($state !== 'absent') {
+                Log::error('catalog:import exception — batch '.($state === 'present' ? 'IS committed' : 'state unknown').', files kept', [
+                    'org_id' => $org->id, 'batch_id' => $createdBatchId, 'exception' => $e->getMessage(),
+                ]);
+
+                throw new CatalogImportCommittedException($createdBatchId, $state === 'present', $e);
+            }
+
             foreach ($stored as $path) {
                 Storage::disk('public')->delete($path);
             }
@@ -206,13 +340,33 @@ final class ImportCatalog
             throw $e;
         }
 
-        Cache::forget("sitemap:{$org->id}");
+        // Post-commit housekeeping must never turn a committed import into a failure.
+        try {
+            $this->forgetSitemap($org->id);
+        } catch (\Throwable $e) {
+            Log::error('catalog:import post-commit step failed', ['org_id' => $org->id, 'batch_id' => $batch->id, 'step' => 'sitemap', 'exception' => $e->getMessage()]);
+            $result->warnings[] = "Mapa strony (cache sitemap:{$org->id}) nie została odświeżona: {$e->getMessage()}. Paczka #{$batch->id} JEST zapisana — sprawdź: php artisan catalog:import-status. Mapa odświeży się sama w ciągu godziny.";
+        }
 
         $result->batch = $batch;
 
         Log::info('catalog:import completed', ['org_id' => $org->id, 'batch_id' => $batch->id, 'counts' => $result->counts]);
 
         return $result;
+    }
+
+    /** 'present' | 'absent' | 'unknown' (the check itself failed) — always a fresh read. */
+    private function batchState(?int $batchId): string
+    {
+        if ($batchId === null) {
+            return 'absent';
+        }
+
+        try {
+            return CatalogImportBatch::query()->whereKey($batchId)->exists() ? 'present' : 'absent';
+        } catch (\Throwable) {
+            return 'unknown';
+        }
     }
 
     /**
@@ -223,8 +377,12 @@ final class ImportCatalog
     {
         $keys = [];
         foreach ($products as $i => $p) {
-            if (is_array($p) && isset($p['external_id']) && is_string($p['external_id'])) {
-                $keys[$i] = $p['external_id'];
+            if (is_array($p)) {
+                $key = CatalogProductValidator::normalize($p)['external_id'] ?? null;
+
+                if (is_string($key)) {
+                    $keys[$i] = $key;
+                }
             }
         }
 
@@ -232,18 +390,22 @@ final class ImportCatalog
             return [];
         }
 
+        // The ledger column is compared case-insensitively on MySQL (the _ci collation) but not on
+        // SQLite — fold both sides here so "ABC" and "abc" are one product everywhere.
+        $folded = array_values(array_unique(array_map(fn (string $k) => Str::lower($k), $keys)));
+
         $existing = CatalogImportItem::query()
             ->where('organization_id', $org->id)
             ->where('entity_type', CatalogImportItem::TYPE_SERVICE)
-            ->whereIn('external_key', array_values($keys))
+            ->whereIn(DB::raw('lower(external_key)'), $folded)
             ->whereNull('reverted_at')
             ->get()
-            ->keyBy('external_key');
+            ->keyBy(fn (CatalogImportItem $item) => Str::lower((string) $item->external_key));
 
         $skip = [];
 
         foreach ($keys as $i => $key) {
-            $item = $existing->get($key);
+            $item = $existing->get(Str::lower($key));
 
             if ($item === null) {
                 continue;
@@ -271,16 +433,32 @@ final class ImportCatalog
      * @param  array<int, array<string, mixed>>  $products
      * @return array<int, array{featured: ?FetchedImage, gallery: array<int, ?FetchedImage>, all: array<int, FetchedImage>}>
      */
-    private function prefetchImages(array $products, string $baseDir, string $scratch, ImportOptions $options, ValidationReport $report): array
+    private function prefetchImages(array $products, string $baseDir, string $scratch, ImportOptions $options, ValidationReport $report, Closure $heartbeat): array
+    {
+        $budget = new FetchBudget(
+            $this->budgetClock(),
+            CatalogImportConfig::imagePhaseSeconds(),
+            CatalogImportConfig::imagePhaseBytes(),
+        );
+
+        try {
+            return $this->prefetchWithinBudget($products, $baseDir, $scratch, $options, $report, $heartbeat, $budget);
+        } catch (ImageBudgetExceededException $e) {
+            // GLOBAL stop: no per-image bookkeeping, nothing is written, the scratch dir is removed by run().
+            $report->error(null, null, 'obrazy', 'faza pobierania obrazów przerwana — '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $products
+     * @return array<int, array{featured: ?FetchedImage, gallery: array<int, ?FetchedImage>, all: array<int, FetchedImage>}>
+     */
+    private function prefetchWithinBudget(array $products, string $baseDir, string $scratch, ImportOptions $options, ValidationReport $report, Closure $heartbeat, FetchBudget $budget): array
     {
         $inspector = new ImageInspector;
-        $fetcher = new SafeImageFetcher(
-            app(HostResolver::class),
-            $inspector,
-            hostDelayMs: $options->imageDelayMs,
-            maxRetries: (int) config('catalog_import.max_retries', 3),
-            maxRetryWaitSeconds: (int) config('catalog_import.max_retry_wait_seconds', 60),
-        );
+        $fetcher = $this->makeFetcher($inspector, $options)->withBudget($budget);
         $local = new LocalImageLoader($inspector);
 
         $out = [];
@@ -310,10 +488,18 @@ final class ImportCatalog
                     : 'url:'.self::normalizeUrl($img['url']);
 
                 if (! array_key_exists($key, $memo)) {
+                    if (! $heartbeat()) {
+                        $report->error(null, null, 'blokada', 'blokada importu wygasła lub została zwolniona w trakcie pobierania obrazów — przerwano, nic nie zapisano');
+
+                        return [];
+                    }
+
                     try {
                         $memo[$key] = isset($img['path'])
                             ? $local->load($img['path'], $baseDir, $scratch)
                             : $fetcher->fetch($img['url'], $scratch);
+
+                        $budget->consumeBytes($memo[$key]->bytes); // each DISTINCT image once
                     } catch (ImageFetchException $e) {
                         $memo[$key] = $e->getMessage();
                     }
@@ -457,7 +643,7 @@ final class ImportCatalog
             'image_sources' => $imageSources ?: null,
         ], fn ($v) => $v !== null);
 
-        $body = filled($p['body_html'] ?? null) ? trim((string) clean($p['body_html'])) : null;
+        $body = filled($p['body_html'] ?? null) ? trim((string) clean($p['body_html'], 'catalog_import')) : null;
 
         $service = Service::withoutGlobalScope('organization')->create([
             'organization_id' => $org->id,
@@ -610,7 +796,7 @@ final class ImportCatalog
 
             foreach ($p['units'] as $unit) {
                 $location = isset($unit['location'])
-                    ? $locations->firstWhere('slug', $unit['location'])
+                    ? $locations->first(fn (Location $l) => (string) $l->slug === (string) $unit['location'])
                     : $locations->first();
 
                 $created = ServiceUnit::create([

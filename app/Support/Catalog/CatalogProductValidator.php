@@ -31,6 +31,14 @@ final class CatalogProductValidator
 {
     public const MAX_GALLERY_IMAGES = 10;
 
+    /** Signed INT column limit (services.sort_order, rental_categories.sort_order). */
+    public const INT_MAX = 2147483647;
+
+    /** Sane per-product caps (the form has none): a DB row per unit, a table line per spec. */
+    public const MAX_UNITS = 500;
+
+    public const MAX_SPECS = 30;
+
     /** A MySQL TEXT column holds 65535 BYTES (not characters): "Zażółć" is 10 bytes. */
     public const TEXT_MAX_BYTES = 65535;
 
@@ -69,6 +77,9 @@ final class CatalogProductValidator
      */
     public static function normalize(array $p): array
     {
+        // What the panel form gets from TrimStrings + ConvertEmptyStringsToNull.
+        $p = self::cleanStrings($p);
+
         $category = $p['category'] ?? null;
 
         if (is_string($category)) {
@@ -88,6 +99,33 @@ final class CatalogProductValidator
         return $p;
     }
 
+    private static function cleanStrings(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            $trimmed = preg_replace('~^[\s\x{FEFF}\x{200B}\x{200E}]+|[\s\x{FEFF}\x{200B}\x{200E}]+$~u', '', $value) ?? $value;
+
+            return $trimmed === '' ? null : $trimmed;
+        }
+
+        return is_array($value) ? array_map(self::cleanStrings(...), $value) : $value;
+    }
+
+    /** Case/space-insensitive key, like the utf8mb4_unicode_ci unique indexes. */
+    private static function fold(string $value): string
+    {
+        $value = trim($value);
+
+        // Accent folding (Zażółć = zazolc) is only safe for text a transliterator can read LOSSLESSLY:
+        // Latin letters, digits, spaces, punctuation and ASCII symbols. Str::ascii() turns emoji into
+        // '' and many different CJK characters into the same pinyin — "different" names would then
+        // collide as false duplicates. Anything else is compared as itself, only lower-cased.
+        if (preg_match('/^[\p{Latin}\p{N}\p{Mn}\p{Zs}\p{P}\x20-\x7E]*$/u', $value) === 1) {
+            return Str::lower(Str::ascii($value));
+        }
+
+        return mb_strtolower($value);
+    }
+
     /**
      * @param  array<int, mixed>  $products  raw `products` list
      * @param  array<int, int>  $skipIndexes  indexes already imported (--skip-existing): schema-validated only
@@ -104,25 +142,26 @@ final class CatalogProductValidator
         $categorySlugs = [];
 
         foreach ($products as $i => $raw) {
-            $ext = is_array($raw) && isset($raw['external_id']) && is_string($raw['external_id']) ? $raw['external_id'] : null;
-
             if (! is_array($raw) || array_is_list($raw)) {
-                $report->error($i, $ext, '(produkt)', 'produkt musi być obiektem JSON');
+                $report->error($i, null, '(produkt)', 'produkt musi być obiektem JSON');
 
                 continue;
             }
 
-            $this->checkKeys($report, $i, $ext, $raw, self::PRODUCT_KEYS, '');
-
             $p = self::normalize($raw);
+            $ext = isset($p['external_id']) && is_string($p['external_id']) ? $p['external_id'] : null;
+
+            $this->checkKeys($report, $i, $ext, $raw, self::PRODUCT_KEYS, '');
 
             $this->validateShape($report, $i, $ext, $p, $ctx);
 
             if ($ext !== null) {
-                if (isset($seenKeys[$ext])) {
-                    $report->error($i, $ext, 'external_id', "zduplikowany w pliku (też produkt #{$seenKeys[$ext]})");
+                $key = self::fold($ext);
+
+                if (isset($seenKeys[$key])) {
+                    $report->error($i, $ext, 'external_id', "zduplikowany w pliku (też produkt #{$seenKeys[$key]})");
                 }
-                $seenKeys[$ext] = $i;
+                $seenKeys[$key] ??= $i;
             }
 
             if (in_array($i, $skipIndexes, true)) {
@@ -157,14 +196,14 @@ final class CatalogProductValidator
         $rules = [
             'external_id' => 'required|string|max:100',
             'name' => 'required|string|max:255',
-            'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
+            'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D'],
             'brand' => 'nullable|string|max:255',
             'category' => 'required|array',
             'category.name' => 'required|string|max:255',
-            'category.slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
+            'category.slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D'],
             'category.icon' => ['nullable', 'string', Rule::in($ctx['icons'])],
             'category.description' => 'nullable|string',
-            'category.sort_order' => 'nullable|integer|min:0',
+            'category.sort_order' => 'nullable|integer|min:0|max:'.self::INT_MAX,
             'excerpt' => 'nullable|string|max:500',
             'description' => 'nullable|string',
             'body_html' => 'nullable|string',
@@ -177,9 +216,9 @@ final class CatalogProductValidator
             'deposit_amount' => 'nullable|'.self::PRICE,
             'price_on_request' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
-            'sort_order' => 'nullable|integer|min:0',
+            'sort_order' => 'nullable|integer|min:0|max:'.self::INT_MAX,
             'published_at' => 'nullable|date',
-            'specs' => 'nullable|array',
+            'specs' => 'nullable|array|max:'.self::MAX_SPECS,
             'specs.*.label' => 'required|string|max:100',
             'specs.*.value' => 'required',
             'specs.*.unit' => 'nullable|string|max:20',
@@ -190,6 +229,7 @@ final class CatalogProductValidator
             'seo.meta_description' => 'nullable|string|max:160',
             'featured_image' => 'nullable|array',
             'gallery' => 'nullable|array|max:'.self::MAX_GALLERY_IMAGES,
+            'gallery.*' => 'required|array',
         ];
 
         foreach (['featured_image', 'gallery.*'] as $prefix) {
@@ -213,7 +253,7 @@ final class CatalogProductValidator
             }
 
             // Measured on what is actually stored: the purified HTML.
-            if (is_string($p['body_html'] ?? null) && strlen(trim((string) clean($p['body_html']))) > self::TEXT_MAX_BYTES) {
+            if (is_string($p['body_html'] ?? null) && strlen(trim((string) clean($p['body_html'], 'catalog_import'))) > self::TEXT_MAX_BYTES) {
                 $v->errors()->add('body_html', 'po oczyszczeniu dłuższe niż '.self::TEXT_MAX_BYTES.' bajtów (kolumna TEXT)');
             }
 
@@ -309,7 +349,7 @@ final class CatalogProductValidator
         if (isset($p['name']) && is_string($p['name'])) {
             // Fold case AND diacritics: the column collation (utf8mb4_unicode_ci) does both, and
             // a false positive here is only an extra error, never a corrupt write.
-            $folded = Str::lower(Str::ascii($p['name']));
+            $folded = self::fold($p['name']);
 
             if (isset($ctx['names'][$folded])) {
                 $report->error($i, $ext, 'name', "istnieje już produkt o tej nazwie w organizacji ('{$ctx['names'][$folded]}') — uniemożliwia to unikalność services_org_name_unique");
@@ -323,15 +363,17 @@ final class CatalogProductValidator
         }
 
         if (isset($p['slug']) && is_string($p['slug']) && $p['slug'] !== '') {
-            if (isset($ctx['slugs'][$p['slug']])) {
+            $slug = self::fold($p['slug']);
+
+            if (isset($ctx['slugs'][$slug])) {
                 $report->error($i, $ext, 'slug', 'slug jest już zajęty w organizacji');
             }
 
-            if (isset($seenSlugs[$p['slug']])) {
-                $report->error($i, $ext, 'slug', "ten sam slug co produkt #{$seenSlugs[$p['slug']]} w pliku");
+            if (isset($seenSlugs[$slug])) {
+                $report->error($i, $ext, 'slug', "ten sam slug co produkt #{$seenSlugs[$slug]} w pliku");
             }
 
-            $seenSlugs[$p['slug']] ??= $i;
+            $seenSlugs[$slug] ??= $i;
         }
     }
 
@@ -365,6 +407,12 @@ final class CatalogProductValidator
             return;
         }
 
+        if (count($units) > self::MAX_UNITS) {
+            $report->error($i, $ext, 'units', 'maksymalnie '.self::MAX_UNITS.' egzemplarzy na produkt');
+
+            return;
+        }
+
         foreach ($units as $n => $unit) {
             $f = "units.{$n}";
 
@@ -382,7 +430,6 @@ final class CatalogProductValidator
                 'status' => ['nullable', Rule::in(array_column(ServiceUnitStatus::cases(), 'value'))],
                 'acquired_at' => 'nullable|date',
                 'notes' => 'nullable|string',
-                'location' => 'nullable|string',
             ]);
 
             foreach ($v->errors()->messages() as $field => $messages) {
@@ -397,24 +444,29 @@ final class CatalogProductValidator
 
             $location = $unit['location'] ?? null;
 
-            if ($location === null && $ctx['activeLocationCount'] !== 1) {
+            if ($location !== null && ! is_string($location) && ! is_int($location)) {
+                // an array/object would otherwise reach isset($ctx['locations'][$location]) as a TypeError
+                $report->error($i, $ext, "{$f}.location", 'musi być tekstem (slugiem oddziału)');
+            } elseif ($location === null && $ctx['activeLocationCount'] !== 1) {
                 $report->error($i, $ext, "{$f}.location", 'wymagane, gdy organizacja nie ma dokładnie jednego aktywnego oddziału');
-            } elseif ($location !== null && ! isset($ctx['locations'][$location])) {
+            } elseif ($location !== null && ! isset($ctx['locations'][(string) $location])) {
                 $report->error($i, $ext, "{$f}.location", "brak aktywnego oddziału o slugu '{$location}'");
             }
 
             $identifier = $unit['identifier'] ?? null;
 
             if (is_string($identifier) && $identifier !== '') {
-                if (isset($ctx['identifiers'][$identifier])) {
+                $key = self::fold($identifier);
+
+                if (isset($ctx['identifiers'][$key])) {
                     $report->error($i, $ext, "{$f}.identifier", 'numer jest już zajęty w organizacji (service_units_org_identifier_unique)');
                 }
 
-                if (isset($seenIdentifiers[$identifier])) {
+                if (isset($seenIdentifiers[$key])) {
                     $report->error($i, $ext, "{$f}.identifier", 'zduplikowany w pliku');
                 }
 
-                $seenIdentifiers[$identifier] = $i;
+                $seenIdentifiers[$key] ??= $i;
             }
         }
     }
@@ -499,15 +551,15 @@ final class CatalogProductValidator
             ->where('organization_id', $org->id)
             ->get(['name', 'slug'])
             ->each(function (Service $s) use (&$names, &$slugs): void {
-                $names[Str::lower(Str::ascii($s->name))] = $s->name;
-                $slugs[(string) $s->slug] = true;
+                $names[self::fold($s->name)] = $s->name;
+                $slugs[self::fold((string) $s->slug)] = true;
             });
 
         $identifiers = ServiceUnit::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)
             ->whereNotNull('identifier')
             ->pluck('identifier')
-            ->flip()
+            ->mapWithKeys(fn (string $identifier) => [self::fold($identifier) => true])
             ->all();
 
         return [

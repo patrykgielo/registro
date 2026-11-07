@@ -17,4 +17,14 @@ return [
     // 429 / 503 only. Any other 4xx fails the image immediately.
     'max_retries' => 3,
     'max_retry_wait_seconds' => 60,
+
+    // GLOBAL budget of the image phase: retry waits, redirects and the per-host delay can otherwise
+    // stretch a run without bound. Checked before every attempt and before every sleep (sleeps are
+    // truncated to what is left); the lock TTL is derived from it (ImportCatalog::lockSeconds()).
+    'image_phase_max_seconds' => (int) env('CATALOG_IMPORT_IMAGE_PHASE_MAX_SECONDS', 900),
+    'image_phase_max_bytes' => (int) env('CATALOG_IMPORT_IMAGE_PHASE_MAX_BYTES', 1024 * 1024 * 1024),
+
+    // `ALTER TABLE … AUTO_INCREMENT` waits on the metadata lock of any open transaction that touched
+    // the table — and every later query on that table queues behind the ALTER. Bound the wait.
+    'auto_increment_lock_wait_seconds' => (int) env('CATALOG_IMPORT_AI_LOCK_WAIT_SECONDS', 5),
 ];

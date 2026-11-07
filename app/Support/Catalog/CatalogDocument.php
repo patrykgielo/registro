@@ -22,9 +22,19 @@ final class CatalogDocument
      */
     public static function load(string $path): array
     {
-        if (! is_file($path) || ! is_readable($path)) {
-            throw new RuntimeException("Plik nie istnieje lub jest nieczytelny: {$path}");
+        // A stream wrapper (phar://, php://, http://, data://, file://…) is never a catalogue file:
+        // phar:// in particular deserialises metadata. Plain filesystem paths only.
+        if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $path) === 1) {
+            throw new RuntimeException('Niedozwolony schemat w ścieżce pliku — podaj zwykłą ścieżkę w systemie plików.');
         }
+
+        $real = realpath($path);
+
+        if ($real === false || ! is_file($real) || ! is_readable($real)) {
+            throw new RuntimeException('Plik nie istnieje lub jest nieczytelny: '.ConsoleText::safe($path));
+        }
+
+        $path = $real;
 
         $bytes = (int) filesize($path);
 

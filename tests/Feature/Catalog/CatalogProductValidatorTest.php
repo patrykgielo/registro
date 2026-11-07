@@ -74,6 +74,16 @@ class CatalogProductValidatorTest extends TestCase
             'spec value not scalar' => [['specs' => [['label' => 'Moc', 'value' => ['x'], 'unit' => 'W']]], '0:specs.0.value'],
             'spec value over 100 chars' => [['specs' => [['label' => 'Moc', 'value' => str_repeat('a', 101), 'unit' => 'W']]], '0:specs.0.value'],
             'published_at not a date' => [['published_at' => 'wczoraj-ish'], '0:published_at'],
+            // round 2: shapes that used to reach prefetch/unit code as raw TypeErrors
+            'gallery entry that is a string' => [['gallery' => ['abc']], '0:gallery.0'],
+            'gallery entry that is null' => [['gallery' => [null]], '0:gallery.0'],
+            'gallery entry that is an int' => [['gallery' => [5]], '0:gallery.0'],
+            'unit location that is an array' => [['stock' => null, 'units' => [['identifier' => 'A', 'location' => ['x']]]], '0:units.0.location'],
+            'unit location that is an object' => [['stock' => null, 'units' => [['identifier' => 'A', 'location' => ['slug' => 'siedziba']]]], '0:units.0.location'],
+            'sort_order beyond a signed INT' => [['sort_order' => 2147483648], '0:sort_order'],
+            'category sort_order beyond a signed INT' => [['category' => ['name' => 'X', 'sort_order' => 2147483648]], '0:category.sort_order'],
+            'more units than the cap' => [['stock' => null, 'units' => array_map(fn ($i) => ['identifier' => "BULK-{$i}"], range(1, 501))], '0:units'],
+            'more specs than the cap' => [['specs' => array_map(fn ($i) => ['label' => "P{$i}", 'value' => '1', 'unit' => null], range(1, 31))], '0:specs'],
             // TEXT columns hold 65535 BYTES: 40000 x "ż" is 40000 characters but 80000 bytes
             'description over 65535 bytes' => [['description' => str_repeat('ż', 40000)], '0:description'],
             'category description over 65535 bytes' => [['category' => ['name' => 'X', 'description' => str_repeat('ż', 40000)]], '0:category.description'],
@@ -93,6 +103,50 @@ class CatalogProductValidatorTest extends TestCase
         $fields = $this->errorFields([$this->product($overrides)]);
 
         $this->assertContains($expected, $fields, 'got: '.json_encode($fields));
+    }
+
+    public function test_strings_are_trimmed_and_empty_strings_become_null_like_the_panel_form_does(): void
+    {
+        $p = CatalogProductValidator::normalize($this->product([
+            'name' => "  Młot udarowy \n",
+            'slug' => "  mlot-udarowy\n",
+            'excerpt' => '   ',
+            'category' => ['name' => ' Narzędzia ', 'slug' => "narzedzia\n"],
+            'specs' => [['label' => ' Moc ', 'value' => ' 800 ', 'unit' => '  ']],
+        ]));
+
+        $this->assertSame('Młot udarowy', $p['name']);
+        $this->assertSame('mlot-udarowy', $p['slug'], 'a trailing newline must never reach the slug column');
+        $this->assertNull($p['excerpt']);
+        $this->assertSame('Narzędzia', $p['category']['name']);
+        $this->assertSame('narzedzia', $p['category']['slug']);
+        $this->assertSame([['label' => 'Moc', 'value' => '800', 'unit' => null]], $p['specs']);
+
+        // …and a blank excerpt / trailing newline are not validation errors
+        $this->assertSame([], $this->errorFields([$this->product(['excerpt' => '   ', 'slug' => "mlot-x\n"])]));
+        // a whitespace-only required field is missing, not "present"
+        $this->assertContains('0:name', $this->errorFields([$this->product(['name' => '   ', 'slug' => null])]));
+    }
+
+    public function test_collisions_are_case_and_whitespace_insensitive_like_the_ci_collation(): void
+    {
+        $a = $this->product(['external_id' => 'ABC', 'name' => 'Młot', 'slug' => 'mlot', 'stock' => null, 'units' => [['identifier' => 'AbC']]]);
+        $b = $this->product(['external_id' => ' abc ', 'name' => '  mŁOT ', 'slug' => 'mlot', 'stock' => null, 'units' => [['identifier' => ' abc ']]]);
+
+        $fields = $this->errorFields([$a, $b]);
+
+        $this->assertContains('1:external_id', $fields);
+        $this->assertContains('1:name', $fields);
+        $this->assertContains('1:units.0.identifier', $fields);
+    }
+
+    public function test_existing_unit_identifiers_collide_regardless_of_case(): void
+    {
+        $service = \App\Models\Service::factory()->itemRental()->create(['organization_id' => $this->org->id]);
+        $location = \App\Models\Location::withoutGlobalScope('organization')->where('organization_id', $this->org->id)->firstOrFail();
+        ServiceUnit::withoutGlobalScope('organization')->create(['organization_id' => $this->org->id, 'service_id' => $service->id, 'location_id' => $location->id, 'identifier' => 'Taken-1']);
+
+        $this->assertContains('0:units.0.identifier', $this->errorFields([$this->product(['stock' => null, 'units' => [['identifier' => ' taken-1']]])]));
     }
 
     public function test_text_just_under_the_byte_cap_is_accepted(): void

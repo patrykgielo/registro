@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Actions\Catalog\CatalogImportCommittedException;
 use App\Actions\Catalog\ImportCatalog;
 use App\Actions\Catalog\ImportOptions;
-use App\Models\Organization;
+use App\Support\Catalog\ConsoleText;
+use App\Support\Catalog\OrganizationResolver;
 use App\Support\Catalog\ValidationReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 class CatalogImportCommand extends Command
 {
     protected $signature = 'catalog:import
-        {organization : ID lub slug organizacji}
+        {organization : id:123, slug:abc, albo samo id/slug (liczba będąca jednocześnie id jednej i slugiem innej organizacji jest błędem — podaj id:/slug:)}
         {file : Ścieżka do pliku JSON z katalogiem}
         {--dry-run : Waliduj cały plik (łącznie z obrazami) i pokaż, co zostałoby utworzone — bez zapisu}
         {--skip-existing : Pomiń produkty, których external_id jest już w niecofniętej paczce (domyślnie to błąd)}
@@ -27,13 +29,16 @@ class CatalogImportCommand extends Command
 
     public function handle(ImportCatalog $import): int
     {
-        $org = $this->resolveOrganization((string) $this->argument('organization'));
+        ['org' => $org, 'error' => $error] = OrganizationResolver::resolve((string) $this->argument('organization'));
 
         if ($org === null) {
-            $this->error('Organizacja nie znaleziona: '.$this->argument('organization'));
+            $this->error($error);
 
             return self::FAILURE;
         }
+
+        // Before ANY validation or fetching: the operator sees which tenant is about to be touched.
+        $this->info('Organizacja docelowa: '.ConsoleText::safe($org->name).' (id '.$org->id.', slug '.ConsoleText::safe((string) $org->slug).')');
 
         $images = (string) $this->option('images');
 
@@ -71,9 +76,15 @@ class CatalogImportCommand extends Command
                 imageDelayMs: $delay !== null ? (int) $delay : (int) config('catalog_import.image_delay_ms', 1000),
                 actor: $this->option('actor') ?: null,
             ));
+        } catch (CatalogImportCommittedException $e) {
+            // NOT "nothing was saved": a fresh read found the batch (or could not rule it out).
+            $this->error(ConsoleText::safe($e->getMessage()));
+            $this->warn('Sprawdź stan: php artisan catalog:import-status '.($e->batchId ? "--batch={$e->batchId} " : '').'id:'.$org->id.' — w razie potrzeby cofnij: '.($e->batchId ? "php artisan catalog:import-revert {$e->batchId}" : 'catalog:import-revert <id paczki>'));
+
+            return self::FAILURE;
         } catch (\Throwable $e) {
             Log::error('catalog:import failed', ['org_id' => $org->id, 'exception' => $e->getMessage()]);
-            $this->error('Import nie powiódł się (nic nie zapisano): '.$e->getMessage());
+            $this->error('Import nie powiódł się (nic nie zapisano): '.ConsoleText::safe($e->getMessage()));
 
             return self::FAILURE;
         }
@@ -87,7 +98,6 @@ class CatalogImportCommand extends Command
         }
 
         $c = $result->counts;
-        $this->info("{$prefix}Organizacja: {$org->name} (ID: {$org->id})");
         $this->info("{$prefix}Produkty do dodania: {$c['products']}, pominięte: {$c['skipped']}");
         $this->info("{$prefix}Kategorie: {$c['categories_created']} nowych, {$c['categories_reused']} istniejących");
         $this->info("{$prefix}Obrazy: {$c['images']}, egzemplarze: {$c['units']}");
@@ -96,6 +106,10 @@ class CatalogImportCommand extends Command
             $this->info('[DRY-RUN] Brak zmian — tryb podglądu.');
         } elseif ($result->batch !== null) {
             $this->info("Gotowe. Paczka #{$result->batch->id} — cofnięcie: php artisan catalog:import-revert {$result->batch->id}");
+
+            foreach ($result->warnings as $warning) {
+                $this->warn(ConsoleText::safe($warning));
+            }
         } else {
             $this->info('Nic do zaimportowania.');
         }
@@ -114,14 +128,5 @@ class CatalogImportCommand extends Command
             $this->error('Błędy ('.count($report->errors()).'):');
             $this->table(['Produkt', 'external_id', 'Pole', 'Komunikat'], $report->rows($report->errors()));
         }
-    }
-
-    private function resolveOrganization(string $identifier): ?Organization
-    {
-        if (ctype_digit($identifier)) {
-            return Organization::find((int) $identifier);
-        }
-
-        return Organization::where('slug', $identifier)->first();
     }
 }

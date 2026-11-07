@@ -38,6 +38,9 @@ final class RevertPlan
 
     public int $cartItems = 0;
 
+    /** service_staff rows (ON DELETE CASCADE) of the products that go — product data, never a block. */
+    public int $staffAssignments = 0;
+
     /** @var array<int, string> id => slug of created-by-batch categories eligible for deletion (decided again after the services are gone) */
     public array $categoryCandidates = [];
 

@@ -51,9 +51,10 @@ final class ValidationReport
     {
         return array_map(fn (array $e) => [
             $e['index'] === null ? '-' : '#'.$e['index'],
-            $e['external_id'] ?? '-',
-            $e['field'],
-            $e['message'],
+            // field names and external ids come straight from the (untrusted) file
+            ConsoleText::safe($e['external_id'] ?? '-'),
+            ConsoleText::safe($e['field']),
+            ConsoleText::safe($e['message']),
         ], $entries);
     }
 }

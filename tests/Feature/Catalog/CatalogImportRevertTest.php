@@ -202,10 +202,16 @@ class CatalogImportRevertTest extends TestCase
     public function test_revert_returns_every_table_to_its_pre_import_state_for_both_organizations(): void
     {
         $this->seedPreExisting();
+        // Time must pass between seed, import and revert: a revert that merely touched
+        // `updated_at` of a pre-existing row (or re-saved it) would be invisible if everything
+        // happened inside one second.
+        $this->travel(10)->minutes();
         $before = $this->dump();
         $beforeAll = $this->dumpAll();
+        $beforeAudit = DB::table('audit_logs')->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
         $filesBefore = $this->files();
 
+        $this->assertNotEmpty($beforeAudit, 'fixture must contain audit rows (units/stock/locations are Auditable)');
         $this->assertGreaterThan(0, count($beforeAll['cart_items']), 'fixture must contain foreign FK children');
         $this->assertGreaterThan(0, count($beforeAll['service_staff']));
         $this->assertGreaterThan(0, count($beforeAll['order_items']));
@@ -230,9 +236,12 @@ class CatalogImportRevertTest extends TestCase
             $this->assertSame($before[$t], $survivors, "{$t}: the import itself modified pre-existing rows");
         }
 
+        $this->travel(10)->minutes();
         $this->revert($batch);
 
         $this->assertSame($before, $this->dump(), 'revert must restore all four tables exactly, both organizations');
+        $auditAfter = DB::table('audit_logs')->whereIn('id', array_column($beforeAudit, 'id'))->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
+        $this->assertSame($beforeAudit, $auditAfter, 'audit rows that existed before the import are untouched by import AND revert');
         $this->assertSame($beforeAll, $this->dumpAll(), 'EVERY other table (cart_items, order_items, rentals, appointments, service_staff, …) must be identical too');
         $this->assertSame($filesBefore, $this->files(), 'revert must delete exactly the files the batch stored — decoys and pre-existing files survive');
 
@@ -368,7 +377,7 @@ class CatalogImportRevertTest extends TestCase
         $batch = $this->runImport();
         Log::spy();
 
-        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--no-interaction' => true])->assertExitCode(0);
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--no-interaction' => true, '--force' => true])->assertExitCode(0);
 
         Log::shouldHaveReceived('warning')->withArgs(fn ($message, $context = []) => $message === 'catalog:import-revert before purge'
             && ($context['interactive'] ?? null) === false
@@ -382,7 +391,10 @@ class CatalogImportRevertTest extends TestCase
         $batch = $this->runImport();
         $this->revert($batch);
 
-        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id])->assertExitCode(1);
+        // a reverted batch is not fatal any more: only the idempotent clean-up runs (nothing left here)
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id])
+            ->expectsOutputToContain('mapa strony odświeżona')
+            ->assertExitCode(0);
         $this->artisan('catalog:import-revert', ['batch' => '99999'])->assertExitCode(1);
         $this->artisan('catalog:import-revert', ['batch' => 'abc'])->assertExitCode(1);
     }

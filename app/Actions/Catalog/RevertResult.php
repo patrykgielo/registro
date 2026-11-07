@@ -14,6 +14,14 @@ final class RevertResult
 
     public int $cartItems = 0;
 
+    public int $staffAssignments = 0;
+
+    /** The cache key of the public sitemap was dropped (idempotent; true on every successful clean-up). */
+    public bool $sitemapForgotten = false;
+
+    /** Post-commit steps that failed (the DB work is committed). @var array<int, array{step: string, label: string, message: string, retry: string}> */
+    public array $warnings = [];
+
     public int $categoriesDeleted = 0;
 
     /** @var array<int, string> */

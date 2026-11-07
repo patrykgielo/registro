@@ -50,6 +50,8 @@ final class SafeImageFetcher
 
     private readonly Closure $clock;
 
+    private ?FetchBudget $budget = null;
+
     /**
      * @param  Closure|null  $sleeper  fn(int $milliseconds): void
      * @param  Closure|null  $clock  fn(): float — current time in milliseconds
@@ -76,6 +78,28 @@ final class SafeImageFetcher
         $this->hostDelayMs = max(0, $milliseconds);
 
         return $this;
+    }
+
+    /**
+     * The GLOBAL budget of the image phase (time; bytes are fed by the caller). Checked before every
+     * attempt and before every sleep; sleeps are truncated to what is left.
+     */
+    public function withBudget(FetchBudget $budget): static
+    {
+        $this->budget = $budget;
+
+        return $this;
+    }
+
+    /** @throws ImageBudgetExceededException */
+    private function pause(int $milliseconds): void
+    {
+        if ($this->budget !== null) {
+            $this->budget->assertTime();
+            $milliseconds = min($milliseconds, max(0, (int) floor($this->budget->remainingMs())));
+        }
+
+        ($this->sleeper)($milliseconds);
     }
 
     /**
@@ -117,7 +141,9 @@ final class SafeImageFetcher
     private function requestWithRetries(string $url, string $host, int $port, string $ip): Response
     {
         for ($attempt = 0; ; $attempt++) {
+            $this->budget?->assertTime(); // before every attempt…
             $this->waitForHost($host);
+            $this->budget?->assertTime(); // …and again after the per-host pause
             $response = $this->request($url, $host, $port, $ip);
             $this->lastRequestAt[$host] = ($this->clock)();
 
@@ -132,7 +158,7 @@ final class SafeImageFetcher
             }
 
             $waitSeconds = $this->retryWaitSeconds($response, $attempt);
-            ($this->sleeper)((int) ($waitSeconds * 1000));
+            $this->pause((int) ($waitSeconds * 1000));
             $this->lastRequestAt[$host] = ($this->clock)();
         }
     }
@@ -161,7 +187,7 @@ final class SafeImageFetcher
         $elapsed = ($this->clock)() - $this->lastRequestAt[$host];
 
         if ($elapsed < $this->hostDelayMs) {
-            ($this->sleeper)((int) ceil($this->hostDelayMs - $elapsed));
+            $this->pause((int) ceil($this->hostDelayMs - $elapsed));
         }
     }
 
@@ -231,11 +257,21 @@ final class SafeImageFetcher
         $max = $this->inspector->maxBytes();
         $pinned = str_contains($ip, ':') ? "[{$ip}]" : $ip;
 
+        // One in-flight request must not outlive the global budget: clip both timeouts to what is left.
+        $timeout = 20;
+        $connectTimeout = 5;
+
+        if ($this->budget !== null) {
+            $left = max(1, (int) ceil($this->budget->remainingMs() / 1000));
+            $timeout = min($timeout, $left);
+            $connectTimeout = min($connectTimeout, $left);
+        }
+
         try {
             return Http::withOptions([
                 'allow_redirects' => false,
-                'connect_timeout' => 5,
-                'timeout' => 20,
+                'connect_timeout' => $connectTimeout,
+                'timeout' => $timeout,
                 'curl' => [CURLOPT_RESOLVE => ["{$host}:{$port}:{$pinned}"]],
                 // The byte cap must count REAL bytes: no transparent gunzip (a few MB of gzip
                 // inflating to gigabytes) — hence `Accept-Encoding: identity` below.

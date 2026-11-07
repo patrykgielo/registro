@@ -12,6 +12,11 @@ use App\Models\Service;
 use App\Models\ServiceLocationStock;
 use App\Models\ServiceUnit;
 use App\Support\Catalog\AutoIncrementResetPlanner;
+use App\Support\Catalog\CatalogImportConfig;
+use Closure;
+use Illuminate\Cache\Lock;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -215,6 +220,13 @@ class RevertCatalogImport
             $plan->fileItemIds[] = (int) $file->id;
         }
 
+        // service_staff is ON DELETE CASCADE: staff assignments are product data and go with the
+        // product — counted (and locked in the locked analysis) so they are never silent.
+        if ($plan->serviceIds !== []) {
+            $staff = DB::table('service_staff')->whereIn('service_id', $plan->serviceIds)->select('service_id');
+            $plan->staffAssignments = ($forUpdate ? $staff->lockForUpdate() : $staff)->get()->count();
+        }
+
         return $plan;
     }
 
@@ -227,28 +239,159 @@ class RevertCatalogImport
         $result = new RevertResult;
         $orgId = (int) $batch->organization_id;
 
+        $this->withOrganizationLock($orgId, $batch, $result, function () use ($batch, $options, $result, $orgId): void {
+            $plan = $this->commitRevert($batch, $options, $result, $orgId);
+
+            // From here on the data is GONE and committed. Nothing below may throw: each step is
+            // guarded on its own and reports a warning with its retry command instead.
+            $this->guardedStep($result, $batch, 'files', 'pliki', fn () => $this->deleteFiles(
+                CatalogImportItem::query()->whereIn('id', $plan->fileItemIds)->get(), $result, $batch
+            ));
+            $this->guardedStep($result, $batch, 'sitemap', 'mapa strony', function () use ($orgId, $result): void {
+                $this->forgetSitemap($orgId);
+                $result->sitemapForgotten = true;
+            });
+
+            if ($options->resetAutoIncrement) {
+                $this->guardedStep($result, $batch, 'auto_increment', 'AUTO_INCREMENT', fn () => $result->autoIncrement = $this->resetAutoIncrement($batch->fresh(), $result));
+            }
+        });
+
+        try {
+            Log::info('catalog:import-revert completed', ['batch_id' => $batch->id, 'org_id' => $orgId, 'services' => $result->services, 'files_deleted' => $result->filesDeleted, 'warnings' => count($result->warnings)]);
+        } catch (\Throwable) {
+            // a broken log channel must not turn a committed revert into a reported failure
+        }
+
+        return $result;
+    }
+
+    /**
+     * `--cleanup-only` / retry path for a batch that is already `reverted` or `partially_reverted`:
+     * ONLY the idempotent, non-deleting-of-rows steps — leftover files
+     * (same pattern / sha256 / no-live-reference checks), the sitemap, and with
+     * `--reset-auto-increment` the reset (same planner conditions). Never touches a DB row of the
+     * revert's scope, so a recycled id cannot be hit.
+     */
+    public function cleanup(CatalogImportBatch $batch, RevertOptions $options): RevertResult
+    {
+        $result = new RevertResult;
+        $orgId = (int) $batch->organization_id;
+
+        $this->withOrganizationLock($orgId, $batch, $result, function () use ($batch, $options, $result, $orgId): void {
+            $this->guardedStep($result, $batch, 'files', 'pliki', fn () => $this->deleteFiles($this->leftoverFileItems($batch), $result, $batch));
+            // always: forgetting the sitemap is idempotent, and it is what a failed 'sitemap' step's retry must do
+            $this->guardedStep($result, $batch, 'sitemap', 'mapa strony', function () use ($orgId, $result): void {
+                $this->forgetSitemap($orgId);
+                $result->sitemapForgotten = true;
+            });
+
+            if ($options->resetAutoIncrement) {
+                $this->guardedStep($result, $batch, 'auto_increment', 'AUTO_INCREMENT', fn () => $result->autoIncrement = $this->resetAutoIncrement($batch->fresh(), $result));
+            }
+        });
+
+        return $result;
+    }
+
+    /**
+     * File items of already-reverted products whose file is not known to be gone. Kept and failed
+     * files stay in this list on purpose: that is what makes the retry able to find them.
+     *
+     * @return Collection<int, CatalogImportItem>
+     */
+    public function leftoverFileItems(CatalogImportBatch $batch): Collection
+    {
+        return $batch->items()->where('entity_type', CatalogImportItem::TYPE_FILE)->whereNotNull('reverted_at')->get()
+            ->filter(fn (CatalogImportItem $f) => empty($f->snapshot['file_removed_at'] ?? null))
+            ->values();
+    }
+
+    protected function makeLock(int $organizationId): Lock
+    {
+        return Cache::lock("catalog-import:{$organizationId}", 3600);
+    }
+
+    protected function releaseLock(Lock $lock): void
+    {
+        $lock->release();
+    }
+
+    /**
+     * @param  Closure(): void  $work
+     *
+     * @throws CatalogOperationInProgressException
+     */
+    private function withOrganizationLock(int $orgId, CatalogImportBatch $batch, RevertResult $result, Closure $work): void
+    {
         // The same lock catalog:import takes: an import and a revert of one organization never overlap.
-        $lock = Cache::lock("catalog-import:{$orgId}", 3600);
+        $lock = $this->makeLock($orgId);
 
         if (! $lock->get()) {
             throw new CatalogOperationInProgressException("Inny import lub cofnięcie tej organizacji jest w toku (blokada catalog-import:{$orgId}).");
         }
 
         try {
-            $plan = $this->executeLocked($batch, $options, $result, $orgId);
+            $work();
         } finally {
-            $lock->release();
+            // Must not throw: by now the work may be COMMITTED, and a throw from here would replace
+            // the result (or an in-flight exception) and get a committed revert reported as a rollback.
+            $this->guardedStep($result, $batch, 'lock', 'zwolnienie blokady', fn () => $this->releaseLock($lock), "php artisan catalog:import-unlock id:{$orgId}");
         }
-
-        Log::info('catalog:import-revert completed', ['batch_id' => $batch->id, 'org_id' => $orgId, 'services' => $result->services, 'files_deleted' => $result->filesDeleted]);
-
-        return $result;
     }
 
-    private function executeLocked(CatalogImportBatch $batch, RevertOptions $options, RevertResult $result, int $orgId): RevertPlan
+    /** A post-commit step: whatever it throws becomes a logged, reported warning — never an exception. */
+    private function guardedStep(RevertResult $result, CatalogImportBatch $batch, string $step, string $label, Closure $work, ?string $retry = null): void
     {
         try {
-            $plan = DB::transaction(function () use ($batch, $options, $result, $orgId): RevertPlan {
+            $work();
+        } catch (\Throwable $e) {
+            try {
+                Log::error('catalog:import-revert post-commit step failed', [
+                    'batch_id' => $batch->id, 'org_id' => $batch->organization_id, 'step' => $step, 'exception' => $e->getMessage(),
+                ]);
+            } catch (\Throwable) {
+                // see above: logging must not become the failure
+            }
+
+            $result->warnings[] = [
+                'step' => $step,
+                'label' => $label,
+                'message' => $e->getMessage(),
+                // --cleanup-only: runs ONLY the idempotent steps, never analyses or deletes a row
+                'retry' => $retry ?? "php artisan catalog:import-revert {$batch->id} --cleanup-only".($step === 'auto_increment' ? ' --reset-auto-increment' : ''),
+            ];
+        }
+    }
+
+    protected function forgetSitemap(int $organizationId): void
+    {
+        Cache::forget("sitemap:{$organizationId}");
+    }
+
+    /** Test seam around the one deleting transaction. */
+    protected function runRevertTransaction(Closure $callback): mixed
+    {
+        return DB::transaction($callback);
+    }
+
+    /**
+     * A token that changes whenever a revert commits on the batch (markLedger() rewrites status +
+     * reverted_at). Always a FRESH read; a seam so the "cannot even check" case is testable.
+     */
+    protected function freshBatchStatus(int $batchId): ?string
+    {
+        $row = DB::table('catalog_import_batches')->where('id', $batchId)->first(['status', 'reverted_at']);
+
+        return $row === null ? null : $row->status.'|'.($row->reverted_at ?? '');
+    }
+
+    private function commitRevert(CatalogImportBatch $batch, RevertOptions $options, RevertResult $result, int $orgId): RevertPlan
+    {
+        $tokenBefore = $batch->status.'|'.($batch->reverted_at?->format('Y-m-d H:i:s') ?? '');
+
+        try {
+            $plan = $this->runRevertTransaction(function () use ($batch, $options, $result, $orgId): RevertPlan {
                 $locked = CatalogImportBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
 
                 // 1. Lock the batch's services FIRST, in id order (the codebase's lock order,
@@ -282,6 +425,10 @@ class RevertCatalogImport
 
                     $result->stocks = DB::table('service_location_stocks')->whereIn('service_id', $ids)->where('organization_id', $orgId)->delete();
                     $this->assertCount($result->stocks, count($plan->stockIds) + count($plan->foreignStockIds), 'stanów magazynowych');
+
+                    // explicit (it would cascade anyway): the count is asserted and reported
+                    $result->staffAssignments = DB::table('service_staff')->whereIn('service_id', $ids)->delete();
+                    $this->assertCount($result->staffAssignments, $plan->staffAssignments, 'przypisań pracowników');
 
                     $result->services = DB::table('services')->whereIn('id', $ids)->where('organization_id', $orgId)->delete();
                     $this->assertCount($result->services, count($ids), 'produktów');
@@ -318,20 +465,29 @@ class RevertCatalogImport
 
                 return $plan;
             });
-        } catch (RevertRefusedException $e) {
+        } catch (RevertRefusedException|CatalogOperationInProgressException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            Log::error('catalog:import-revert failed — rolled back', ['batch_id' => $batch->id, 'org_id' => $orgId, 'exception' => $e->getMessage()]);
+            // An exception does not prove a rollback (the COMMIT itself can fail on the way back, e.g.
+            // "server has gone away"). Ask the database with a fresh read before claiming anything.
+            try {
+                $token = $this->freshBatchStatus((int) $batch->id);
+                $state = $token === null ? 'unknown' : ($token !== $tokenBefore ? 'committed' : 'rolled_back');
+            } catch (\Throwable) {
+                $state = 'unknown';
+            }
 
-            throw $e;
-        }
+            if ($state === 'rolled_back') {
+                Log::error('catalog:import-revert failed — rolled back', ['batch_id' => $batch->id, 'org_id' => $orgId, 'exception' => $e->getMessage()]);
 
-        // Post-commit, best effort: files are not transactional.
-        $this->deleteFiles($batch, $plan, $result);
-        Cache::forget("sitemap:{$orgId}");
+                throw $e;
+            }
 
-        if ($options->resetAutoIncrement) {
-            $result->autoIncrement = $this->resetAutoIncrement($batch->fresh());
+            Log::error('catalog:import-revert exception — commit '.($state === 'committed' ? 'HAPPENED' : 'state unknown'), [
+                'batch_id' => $batch->id, 'org_id' => $orgId, 'exception' => $e->getMessage(),
+            ]);
+
+            throw new RevertCommitStateException((int) $batch->id, $state === 'committed', $e);
         }
 
         return $plan;
@@ -465,15 +621,19 @@ class RevertCatalogImport
         ])->save();
     }
 
-    private function deleteFiles(CatalogImportBatch $batch, RevertPlan $plan, RevertResult $result): void
+    /**
+     * @param  Collection<int, CatalogImportItem>  $items  ledger file rows
+     */
+    private function deleteFiles(Collection $items, RevertResult $result, CatalogImportBatch $batch): void
     {
-        if ($plan->fileItemIds === []) {
-            return;
-        }
-
         $disk = Storage::disk('public');
+        $failed = [];
 
-        foreach (CatalogImportItem::query()->whereIn('id', $plan->fileItemIds)->get() as $file) {
+        foreach ($items as $file) {
+            if (! empty($file->snapshot['file_removed_at'] ?? null)) {
+                continue;
+            }
+
             $path = (string) $file->path;
 
             if (! preg_match(self::FILE_PATTERN, $path)) {
@@ -483,6 +643,8 @@ class RevertCatalogImport
             }
 
             if (! $disk->exists($path)) {
+                $this->markFileRemoved($file); // already gone: nothing left to find on a retry
+
                 continue;
             }
 
@@ -506,20 +668,155 @@ class RevertCatalogImport
                 continue;
             }
 
-            if ($disk->delete($path)) {
+            try {
+                $deleted = $this->removeFile($path);
+            } catch (\Throwable $e) {
+                $deleted = false;
+                $failed[] = $e->getMessage();
+            }
+
+            if ($deleted) {
                 $result->filesDeleted++;
+                $this->markFileRemoved($file);
             } else {
                 $result->filesKept[] = "{$path} (nie udało się usunąć)";
+
+                if ($failed === []) {
+                    $failed[] = 'usunięcie pliku zwróciło błąd';
+                }
             }
         }
+
+        if ($failed !== []) {
+            // one step-level warning: the ledger rows stay unmarked, so the retry finds the files again
+            throw new \RuntimeException('nie udało się usunąć plików: '.$failed[0]);
+        }
+    }
+
+    /** Test seam: the one physical delete. */
+    protected function removeFile(string $path): bool
+    {
+        return Storage::disk('public')->delete($path);
+    }
+
+    private function markFileRemoved(CatalogImportItem $file): void
+    {
+        $file->forceFill(['snapshot' => array_merge($file->snapshot ?? [], ['file_removed_at' => now()->toIso8601String()])])->save();
+    }
+
+    // ------------------------------------------------------------------ AUTO_INCREMENT (bounded, verified)
+
+    /** Test seams around the one place that talks MySQL. */
+    protected function driver(): string
+    {
+        return DB::connection()->getDriverName();
+    }
+
+    protected function sessionLockWait(): ?int
+    {
+        $row = DB::selectOne('select @@session.lock_wait_timeout as v');
+
+        return $row === null ? null : (int) $row->v;
+    }
+
+    protected function setSessionLockWait(?int $seconds): void
+    {
+        if ($seconds !== null) {
+            DB::statement('SET SESSION lock_wait_timeout = '.(int) $seconds);
+        }
+    }
+
+    protected function executeAlter(string $table, int $to): void
+    {
+        if (! array_key_exists($table, AutoIncrementResetPlanner::TABLES)) {
+            throw new \InvalidArgumentException("Tabela {$table} nie jest na liście dozwolonych.");
+        }
+
+        // DDL implicitly commits — which is why this runs after the revert's transaction.
+        // $table comes from a constant whitelist and $to is an int.
+        DB::statement("ALTER TABLE `{$table}` AUTO_INCREMENT = {$to}");
+    }
+
+    /**
+     * The REAL counter. information_schema.TABLES.AUTO_INCREMENT is cached by MySQL 8
+     * (information_schema_stats_expiry, default 86400 s) — read it with the cache switched off.
+     */
+    protected function readCounter(string $table): ?int
+    {
+        $row = DB::selectOne('select @@session.information_schema_stats_expiry as v');
+        $previous = $row === null ? null : (int) $row->v;
+
+        try {
+            DB::statement('SET SESSION information_schema_stats_expiry = 0');
+
+            $value = DB::table('information_schema.TABLES')
+                ->where('TABLE_SCHEMA', DB::getDatabaseName())->where('TABLE_NAME', $table)->value('AUTO_INCREMENT');
+        } finally {
+            if ($previous !== null) {
+                DB::statement('SET SESSION information_schema_stats_expiry = '.$previous);
+            }
+        }
+
+        return $value === null ? null : (int) $value;
+    }
+
+    /**
+     * @return array{reset: bool, reason: string, to?: int, clamped?: bool, actual?: int}
+     */
+    private function applyAutoIncrement(string $table, int $to, int $batchId): array
+    {
+        $seconds = CatalogImportConfig::autoIncrementLockWaitSeconds();
+        $previous = $this->sessionLockWait();
+
+        try {
+            // Without a bound, ALTER waits forever for the metadata lock of any open transaction that
+            // touched the table — and every later query on that table, from every tenant, queues
+            // behind the waiting ALTER.
+            $this->setSessionLockWait($seconds);
+            $this->executeAlter($table, $to);
+        } catch (QueryException $e) {
+            if ((int) ($e->errorInfo[1] ?? 0) === 1205 || str_contains($e->getMessage(), 'Lock wait timeout')) {
+                return ['reset' => false, 'reason' => "tabela zajęta — ponów: catalog:import-revert {$batchId} --cleanup-only --reset-auto-increment"];
+            }
+
+            throw $e;
+        } finally {
+            try {
+                $this->setSessionLockWait($previous);
+            } catch (\Throwable $e) {
+                Log::warning('catalog:import-revert could not restore lock_wait_timeout', ['exception' => $e->getMessage()]);
+            }
+        }
+
+        try {
+            $actual = $this->readCounter($table);
+        } catch (\Throwable $e) {
+            // The ALTER succeeded — this is not an ALTER failure and must not be reported as one.
+            Log::warning('catalog:import-revert could not read the AUTO_INCREMENT back', ['table' => $table, 'exception' => $e->getMessage()]);
+
+            return ['reset' => true, 'reason' => "ALTER wykonany; nie udało się odczytać licznika, by go potwierdzić ({$e->getMessage()})", 'to' => $to];
+        }
+
+        if ($actual === null) {
+            return ['reset' => true, 'reason' => "ustawiono {$to} (nie udało się odczytać licznika, by to potwierdzić)", 'to' => $to];
+        }
+
+        if ($actual !== $to) {
+            return [
+                'reset' => true, 'clamped' => true, 'actual' => $actual, 'to' => $to,
+                'reason' => "MySQL ustawił {$actual} zamiast żądanego {$to} (przycięte do MAX(id)+1 — w tabeli są wiersze o wyższych id)",
+            ];
+        }
+
+        return ['reset' => true, 'reason' => "licznik = {$actual}", 'actual' => $actual, 'to' => $to];
     }
 
     /**
      * @return array<string, array{reset: bool, reason: string}>
      */
-    private function resetAutoIncrement(CatalogImportBatch $batch): array
+    private function resetAutoIncrement(CatalogImportBatch $batch, RevertResult $result): array
     {
-        $driver = DB::connection()->getDriverName();
+        $driver = $this->driver();
         $typeFor = [
             'services' => [CatalogImportItem::TYPE_SERVICE, CatalogImportItem::ORIGIN_CREATED],
             'rental_categories' => [CatalogImportItem::TYPE_CATEGORY, CatalogImportItem::ORIGIN_CREATED],
@@ -551,9 +848,20 @@ class RevertCatalogImport
             $decision = AutoIncrementResetPlanner::decide($driver, $remain, $alias, $ledgerAlias);
 
             if ($decision['reset']) {
-                // DDL implicitly commits — which is why this runs after the revert's transaction.
-                // $table comes from a constant whitelist and $min is an int.
-                DB::statement("ALTER TABLE `{$table}` AUTO_INCREMENT = {$min}");
+                try {
+                    $decision = $this->applyAutoIncrement($table, $min, (int) $batch->id);
+                } catch (\Throwable $e) {
+                    Log::error('catalog:import-revert post-commit step failed', [
+                        'batch_id' => $batch->id, 'org_id' => $batch->organization_id, 'step' => 'auto_increment', 'table' => $table, 'exception' => $e->getMessage(),
+                    ]);
+                    $result->warnings[] = [
+                        'step' => 'auto_increment',
+                        'label' => "AUTO_INCREMENT ({$table})",
+                        'message' => $e->getMessage(),
+                        'retry' => "php artisan catalog:import-revert {$batch->id} --cleanup-only --reset-auto-increment",
+                    ];
+                    $decision = ['reset' => false, 'reason' => "błąd ALTER — ponów: catalog:import-revert {$batch->id} --cleanup-only --reset-auto-increment"];
+                }
             }
 
             $out[$table] = $decision + ['to' => $min];

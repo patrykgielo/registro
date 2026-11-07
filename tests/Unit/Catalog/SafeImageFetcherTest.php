@@ -117,6 +117,88 @@ class SafeImageFetcherTest extends TestCase
         $this->assertStringNotContainsString('@', $ua);
     }
 
+    // ---------------------------------------------------------------- global budget
+
+    private function budget(int $seconds, int $bytes = 1_000_000_000): \App\Support\Catalog\FetchBudget
+    {
+        return new \App\Support\Catalog\FetchBudget(fn (): float => $this->now, $seconds, $bytes);
+    }
+
+    public function test_an_exhausted_budget_stops_before_any_request(): void
+    {
+        Http::fake(['*' => Http::response($this->png(), 200)]);
+        $budget = $this->budget(10);
+        $this->now += 11_000;
+
+        try {
+            $this->fetcher()->withBudget($budget)->fetch('https://img.example.com/a.png', $this->dir);
+            $this->fail('budget not enforced');
+        } catch (\App\Support\Catalog\ImageBudgetExceededException $e) {
+            $this->assertStringContainsString('budżet', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_a_retry_after_sleep_is_truncated_to_the_remaining_budget_and_then_the_budget_error_is_thrown(): void
+    {
+        Http::fake(['*' => Http::response('', 429, ['Retry-After' => '60'])]);
+        $budget = $this->budget(10);
+
+        try {
+            $this->fetcher()->withBudget($budget)->fetch('https://img.example.com/a.png', $this->dir);
+            $this->fail('budget not enforced');
+        } catch (\App\Support\Catalog\ImageBudgetExceededException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame([10_000], $this->sleeps, 'the 60 s wait is cut to the 10 s that are left');
+        Http::assertSentCount(1);
+    }
+
+    public function test_the_per_host_delay_sleep_is_truncated_too(): void
+    {
+        Http::fake(['*' => Http::response($this->png(), 200)]);
+        $fetcher = $this->fetcher(hostDelayMs: 5000)->withBudget($this->budget(3));
+
+        $fetcher->fetch('https://img.example.com/1.png', $this->dir);
+
+        try {
+            $fetcher->fetch('https://img.example.com/2.png', $this->dir);
+            $this->fail('budget not enforced');
+        } catch (\App\Support\Catalog\ImageBudgetExceededException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame([3000], $this->sleeps);
+    }
+
+    public function test_request_timeouts_are_clipped_to_the_remaining_budget_so_one_request_cannot_overshoot_the_deadline(): void
+    {
+        $seen = [];
+        Http::fake(['*' => function (Request $request, array $options) use (&$seen) {
+            $seen[] = [$options['timeout'], $options['connect_timeout']];
+
+            return Http::response($this->png(), 200);
+        }]);
+
+        $this->fetcher()->fetch('https://img.example.com/a.png', $this->dir);                                  // no budget: 20 / 5
+        $this->fetcher()->withBudget($this->budget(8))->fetch('https://img.example.com/b.png', $this->dir);    // 8 s left
+        $this->fetcher()->withBudget($this->budget(3))->fetch('https://img.example.com/c.png', $this->dir);    // 3 s left
+        $this->fetcher()->withBudget($this->budget(100))->fetch('https://img.example.com/d.png', $this->dir);  // plenty
+
+        $this->assertSame([[20, 5], [8, 5], [3, 3], [20, 5]], $seen);
+    }
+
+    public function test_the_byte_budget_counts_what_was_consumed(): void
+    {
+        $budget = $this->budget(100, bytes: 1000);
+
+        $budget->consumeBytes(600);
+        $this->expectException(\App\Support\Catalog\ImageBudgetExceededException::class);
+        $budget->consumeBytes(401);
+    }
+
     // ---------------------------------------------------------------- the REAL request options (seam)
 
     /**

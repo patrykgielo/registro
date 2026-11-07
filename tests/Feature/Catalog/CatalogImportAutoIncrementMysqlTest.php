@@ -44,10 +44,16 @@ class CatalogImportAutoIncrementMysqlTest extends TestCase
 
         // migrate:fresh is about to run: refuse anything that does not look like a throwaway database.
         $host = (string) getenv('DB_HOST');
+        $database = (string) getenv('DB_DATABASE');
 
+        // Exact naming contract with the throwaway runner (database `catalog_test_tmp`): a substring
+        // match would let "latest" or "contest" through. A DB_URL / DB_SOCKET could silently
+        // redirect the connection elsewhere, so their presence is refused outright.
         if (in_array($host, ['mysql', 'registro-mysql', '127.0.0.1', 'localhost', ''], true)
-            || ! preg_match('/test|throwaway|tmp/i', (string) getenv('DB_DATABASE'))) {
-            throw new \RuntimeException("Refusing to run migrate:fresh against host={$host} database=".getenv('DB_DATABASE').' — not a throwaway database.');
+            || preg_match('/^catalog_test_[a-z0-9_]+$/', $database) !== 1
+            || (string) getenv('DB_URL') !== ''
+            || (string) getenv('DB_SOCKET') !== '') {
+            throw new \RuntimeException("Refusing to run migrate:fresh against host={$host} database={$database} — not a throwaway database (need DB_DATABASE=catalog_test_*, no DB_URL/DB_SOCKET).");
         }
 
         parent::setUp();
@@ -82,7 +88,7 @@ class CatalogImportAutoIncrementMysqlTest extends TestCase
         $min = (int) $batch->items()->where('entity_type', 'service')->min('entity_id');
         $this->assertGreaterThan($min, $this->autoIncrement('services'));
 
-        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true])
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true, '--force' => true])
             ->assertExitCode(0);
 
         $this->assertSame($min, $this->autoIncrement('services'));
@@ -98,7 +104,7 @@ class CatalogImportAutoIncrementMysqlTest extends TestCase
         $foreign = Service::factory()->itemRental()->create(); // gets an id ABOVE the batch's
         $before = $this->autoIncrement('services');
 
-        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true])
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true, '--force' => true])
             ->expectsOutputToContain('AUTO_INCREMENT pominięty: services')
             ->assertExitCode(0);
 
@@ -117,11 +123,86 @@ class CatalogImportAutoIncrementMysqlTest extends TestCase
         $batch = CatalogImportBatch::firstOrFail();
         $before = $this->autoIncrement('service_units');
 
-        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true])
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true, '--force' => true])
             ->expectsOutputToContain('AUTO_INCREMENT pominięty: service_units')
             ->assertExitCode(0);
 
         $this->assertSame($before, $this->autoIncrement('service_units'));
+    }
+
+    // ---------------------------------------------------------------- bounded ALTER (round 2, item 3)
+
+    public function test_the_alter_is_bounded_by_lock_wait_timeout_which_is_restored_afterwards(): void
+    {
+        config(['catalog_import.auto_increment_lock_wait_seconds' => 7]);
+        $batch = $this->import();
+        $before = (int) DB::selectOne('select @@session.lock_wait_timeout as v')->v;
+
+        $log = [];
+        DB::listen(function ($q) use (&$log): void {
+            $log[] = $q->sql;
+        });
+
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true, '--force' => true])
+            ->assertExitCode(0);
+
+        $set = fn (int $seconds) => array_search("SET SESSION lock_wait_timeout = {$seconds}", $log, true);
+        $alter = array_search('ALTER TABLE `services` AUTO_INCREMENT = '.(int) $batch->items()->where('entity_type', 'service')->min('entity_id'), $log, true);
+
+        $this->assertNotFalse($alter, 'the ALTER ran');
+        $this->assertNotFalse($set(7));
+        $this->assertLessThan($alter, $set(7), 'the bound is set BEFORE the ALTER');
+        $restored = array_keys(array_filter($log, fn ($s) => $s === "SET SESSION lock_wait_timeout = {$before}"));
+        $this->assertNotEmpty(array_filter($restored, fn ($i) => $i > $alter), 'and restored AFTER it');
+        $this->assertSame($before, (int) DB::selectOne('select @@session.lock_wait_timeout as v')->v);
+    }
+
+    public function test_a_table_held_by_an_open_transaction_gives_a_fast_refusal_not_a_hang_and_the_retry_succeeds(): void
+    {
+        config(['catalog_import.auto_increment_lock_wait_seconds' => 1]);
+        // a SECOND connection: a runtime clone of the mysql one
+        config(['database.connections.mysql_blocker' => config('database.connections.mysql')]);
+
+        $batch = $this->import();
+        $min = (int) $batch->items()->where('entity_type', 'service')->min('entity_id');
+
+        $blocker = DB::connection('mysql_blocker');
+        $blocker->beginTransaction();
+        $blocker->table('services')->select('id')->get(); // a plain read in an open transaction holds the metadata lock
+
+        try {
+            $started = microtime(true);
+
+            $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true, '--force' => true])
+                ->expectsOutputToContain("tabela zajęta — ponów: catalog:import-revert {$batch->id} --cleanup-only --reset-auto-increment")
+                ->assertExitCode(0);
+
+            $this->assertLessThan(15, microtime(true) - $started, 'bounded by lock_wait_timeout, not by the blocker');
+        } finally {
+            $blocker->rollBack();
+            DB::purge('mysql_blocker');
+        }
+
+        $this->assertGreaterThan($min, $this->autoIncrement('services'), 'the counter was NOT touched');
+        $this->assertSame(0, Service::withoutGlobalScope('organization')->count(), 'the revert itself committed');
+
+        // the printed retry command works once the table is free
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--cleanup-only' => true, '--reset-auto-increment' => true, '--no-interaction' => true])
+            ->expectsOutputToContain('AUTO_INCREMENT cofnięty: services')
+            ->assertExitCode(0);
+        $this->assertSame($min, $this->autoIncrement('services'));
+    }
+
+    public function test_the_reported_counter_is_the_real_one(): void
+    {
+        $batch = $this->import();
+
+        \Illuminate\Support\Facades\Artisan::call('catalog:import-revert', ['batch' => (string) $batch->id, '--reset-auto-increment' => true, '--no-interaction' => true, '--force' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        $this->assertMatchesRegularExpression('/AUTO_INCREMENT cofnięty: services — licznik = (\d+)/', $output);
+        preg_match('/AUTO_INCREMENT cofnięty: services — licznik = (\d+)/', $output, $m);
+        $this->assertSame($this->autoIncrement('services'), (int) $m[1], 'what is reported is what information_schema says (uncached)');
     }
 
     /**
@@ -150,7 +231,7 @@ class CatalogImportAutoIncrementMysqlTest extends TestCase
             $log[] = strtolower($q->sql);
         });
 
-        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--no-interaction' => true])->assertExitCode(0);
+        $this->artisan('catalog:import-revert', ['batch' => (string) $batch->id, '--no-interaction' => true, '--force' => true])->assertExitCode(0);
 
         $begin = array_search('@@BEGIN', $log, true);
         $commit = array_search('@@COMMIT', $log, true);

@@ -13,6 +13,9 @@ final class ImportResult
 
     public ?CatalogImportBatch $batch = null;
 
+    /** Post-commit steps that failed — the import itself is committed. @var array<int, string> */
+    public array $warnings = [];
+
     /** @var array<string, int> */
     public array $counts = [
         'products' => 0,
