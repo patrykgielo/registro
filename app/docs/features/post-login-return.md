@@ -356,6 +356,36 @@ verified to fail (`assertNull(session('url.intended_at'))` failing with the
 leftover timestamp) by temporarily reverting to the bare-`pull()` version
 during development.
 
+## Admin panel: every real login answered HTTP 500 (2026-11-07)
+
+**Problem.** Signing in on `/platform/login` or `<tenant>/admin/login` gave
+HTTP 500 on `POST /livewire/update`. The user WAS authenticated (Filament
+logs in before asking for the response), so opening the panel URL by hand
+worked, which made it look like a navigation glitch rather than a crash.
+Shipped in rc39 (#217), so UAT carries it too.
+
+**Cause.** `toResponse()` declared `: RedirectResponse`. The panel login page
+is a Livewire component, and during a Livewire request Livewire rebinds
+`redirect`: `redirect($url)` returns
+`Livewire\Features\SupportRedirects\Redirector`, whose `to()` returns `$this`.
+PHP rejected the return value with a `TypeError`. Filament's own default
+declares `RedirectResponse | Redirector` for exactly this reason.
+
+**Why the tests missed it.** Every `AdminPanelLoginResponseTest` case calls
+`(new LoginResponse)->toResponse(request())` directly, outside Livewire, where
+`redirect()` is the plain Laravel redirector. The class was correct in every
+context the tests built and wrong in the only one production uses.
+
+**Fix.** Return type is `RedirectResponse|Redirector` (Livewire's class, the
+same import as Filament's default). Validation logic unchanged.
+`PanelLoginLivewireTest` drives the real `Filament\Auth\Pages\Login` through
+`Livewire::test()` for both panels, including the honored-`url.intended`
+branch; all five cases failed with the production `TypeError` before the fix.
+
+**Prevention.** A test of anything a Filament page calls must go through the
+page (`Livewire::test()`), not call the collaborator directly — the container
+bindings differ between the two.
+
 ## Files
 
 - `app/Support/Auth/IntendedDestination.php` (new)
