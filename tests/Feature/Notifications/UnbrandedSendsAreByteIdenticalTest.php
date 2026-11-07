@@ -6,6 +6,7 @@ namespace Tests\Feature\Notifications;
 
 use App\Models\EmailSend;
 use App\Models\EmailTemplate;
+use App\Models\Organization;
 use App\Models\ServiceAreaWaitlist;
 use App\Notifications\ServiceAreaAvailableNotification;
 use App\Services\Email\EmailGatewayInterface;
@@ -16,8 +17,8 @@ use Tests\TestCase;
 
 /**
  * Code review (feature/maile-wlasciciel-i-logo, 2026-09-20), item 3: any caller that sends
- * unwrapped (no `organization` known — ServiceAreaAvailableNotification's waitlist has no
- * organization_id column at all, see its own class docblock) must produce output BYTE
+ * unwrapped (no `organization` passed — ServiceAreaAvailableNotification still sends
+ * unbranded, see its own class docblock) must produce output BYTE
  * IDENTICAL to `EmailTemplate::render()` on its own — not merely "doesn't look wrapped".
  * `EmailService::sendFromTemplate()`'s guard is `$organization !== null ? wrap(...) :
  * $rendered['html']` — the false branch performs literally zero transformation, so this
@@ -35,7 +36,11 @@ class UnbrandedSendsAreByteIdenticalTest extends TestCase
         $this->app->instance(EmailGatewayInterface::class, $gateway);
         $this->app->forgetInstance(\App\Services\Email\EmailService::class);
 
-        $waitlist = ServiceAreaWaitlist::create([
+        // The row is tenant-owned now (organization_id NOT NULL), but the fixture is built with
+        // an explicit id and NO ambient tenant: the notification is still sent unbranded (it
+        // does not pass `organization` to sendFromTemplate()), which is what this test pins.
+        $waitlist = ServiceAreaWaitlist::withoutGlobalScopes()->forceCreate([
+            'organization_id' => Organization::factory()->create()->id,
             'email' => 'czekam@example.com',
             'name' => 'Testowy Klient',
             'requested_address' => 'ul. Testowa 5, 00-100 Warszawa',

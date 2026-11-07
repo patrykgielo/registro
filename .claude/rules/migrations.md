@@ -40,6 +40,25 @@ on re-seed (`->withoutGlobalScope('organization')->updateOrCreate([..., 'organiz
 tenant's override or create a duplicate global row. If you add ANOTHER NULL-org-by-design table
 with an `updateOrCreate` seeder, copy this pattern, not the old single-column unique.
 
+## `Schema::hasTable()` wokół LISTY nazw tabel cicho pomija literówki (2026-11-07)
+
+**Problem:** `service_area_waitlist` (l.poj.) nie miała `organization_id` — wszyscy tenanci
+współdzielili jedną listę zapisów (imię, email, telefon, adres, GPS).
+**Przyczyna:** `2026_03_08_000003` (i `…000004`) iterują po tablicy nazw tabel z guardem
+`if (Schema::hasTable($t) && ! Schema::hasColumn($t, 'organization_id'))`. Lista miała
+`service_area_waitlists` (l.mn.) — tabela nie istnieje, guard przepuścił to bez śladu; migracja
+„udała się", a `organization_id` nie powstało. Wyszło dopiero po miesiącach, z ticketu.
+**Naprawa:** `2026_11_07_110000` (kolumna + FK `cascadeOnDelete` + unique per-org) i `…110001`
+(backfill tylko gdy w bazie jest dokładnie 1 organizacja, inaczej wiersze zostają NULL i kolumna
+nullable — nigdy zgadywanie tenanta). Na gałęzi NULL migracja jest już „ran", więc NOT NULL
+wymaga ręcznie napisanej migracji następczej po wyczyszczeniu sierot.
+**Zapobieganie:** guard „pomiń, jeśli nie ma" wolno dać tylko tam, gdzie brak tabeli jest
+LEGALNY (opcjonalny moduł). Dla listy, o której wiesz, że tabele istnieją, **zrób asercję, nie
+skip**: `throw_unless(Schema::hasTable($t), new RuntimeException("Unknown table {$t}"))`. Nowa
+migracja iterująca po liście nazw = test, który sprawdza każdą nazwę z listy przeciw
+`Schema::hasTable()`. Przy review: każdą nazwę z takiej listy zestaw z `Schema::create('…')`
+(`grep -ln "Schema::create('nazwa'" database/migrations/*`).
+
 ## Nowy `email_templates`/`sms_templates` key = też migracja danych (nie tylko seeder)
 
 `EmailTemplateSeeder`/`SmsTemplateSeeder` biegną **tylko raz**, przy pierwszym provisioningu

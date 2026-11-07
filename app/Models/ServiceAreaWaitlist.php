@@ -2,13 +2,22 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * A sign-up for a location outside the tenant's service areas.
+ *
+ * Tenant-owned: `organization_id` is stamped by BelongsToOrganization from the
+ * tenant the public form was submitted on (the route requires one) and is
+ * deliberately NOT in $fillable. Rows from before the column existed on a
+ * multi-organization database may have NULL — they match no tenant's scope.
+ */
 class ServiceAreaWaitlist extends Model
 {
-    use HasFactory, Notifiable;
+    use BelongsToOrganization, HasFactory, Notifiable;
 
     protected $table = 'service_area_waitlist';
 

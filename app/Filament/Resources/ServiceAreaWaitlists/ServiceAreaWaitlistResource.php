@@ -16,16 +16,18 @@ use UnitEnum;
 /**
  * Service Area Waitlist Resource
  *
- * SECURITY (VULN-003 follow-up, 2026-07-05): ServiceAreaWaitlist has no
- * organization_id / BelongsToOrganization — a single submission can be
- * "outside area" for several nearby tenants at once, so it deliberately has
- * no single tenant owner (see VULN-003-root-domain-tenant-bypass.md). Any
- * tenant that enables the `service_area` module would otherwise see EVERY
- * other tenant's waitlist submissions (name, email, phone, address, GPS) —
- * a GDPR-relevant PII leak with no legitimate relationship to those
- * customers. Restricted to super-admin only, same pattern as
- * AuditLogResource / MaintenanceEventResource / EmailEventResource /
- * SmsEventResource (global, no-natural-tenant-owner models).
+ * SECURITY (VULN-003 follow-up, 2026-07-05): at the time ServiceAreaWaitlist had
+ * no organization_id, so any tenant that enabled the `service_area` module would
+ * have seen EVERY other tenant's waitlist submissions (name, email, phone,
+ * address, GPS) — a GDPR-relevant PII leak. Restricted to super-admin only, same
+ * pattern as AuditLogResource / MaintenanceEventResource / EmailEventResource /
+ * SmsEventResource.
+ *
+ * Since 2026_11_07_110000 the rows are tenant-owned (BelongsToOrganization), so
+ * the query below is tenant-scoped and a super-admin on a tenant subdomain sees
+ * that tenant's sign-ups only. The super-admin gate is DELIBERATELY unchanged:
+ * letting tenant admins work their own waitlist is now possible but is a product
+ * decision, not part of the isolation fix.
  */
 class ServiceAreaWaitlistResource extends BaseResource
 {
@@ -86,7 +88,8 @@ class ServiceAreaWaitlistResource extends BaseResource
     }
 
     /**
-     * Restrict access to super-admins only (global model, no tenant owner).
+     * Restrict access to super-admins only. The model is tenant-scoped (BelongsToOrganization);
+     * the gate is kept super-admin-only for now — opening it to tenant admins is a product decision.
      */
     public static function canViewAny(): bool
     {
