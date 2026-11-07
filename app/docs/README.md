@@ -87,6 +87,7 @@ for the conceptual overview these deep-dive.
 | Onboarding & Registration | `features/onboarding-and-registration.md` | Phase 5 complete |
 | Tenant-Stack Provisioning | `features/tenant-stack-provisioning.md` | CLI provisioning + singleton lock for dedicated per-client stacks |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
+| Catalog JSON importer | `features/catalog-json-importer.md` | `catalog:import` / `catalog:import-revert` / `catalog:import-status`: all-or-nothing import of a rental catalogue from JSON, ledger-scoped revert |
 | Content-grid visibility | `features/content-grid-visibility.md` | Block "Siatka treści": what the public sees per type, picker = renderer |
 | Password reset flow | `features/password-reset-flow.md` | Entry from the `/admin` and `/platform` login screens; why not Filament's `passwordReset()` |
 | SMS System | `features/sms-system/` | Stable |
@@ -107,6 +108,7 @@ for the conceptual overview these deep-dive.
 | Filament v4 Widgets | `guides/filament-v4-widgets-guide.md` |
 | CMS Layouts | `guides/cms-layouts.md` |
 | Localisation (pl + en) | `guides/localisation.md` |
+| Druga maszyna i Remote Control | `guides/druga-maszyna-i-remote-control.md` |
 
 ---
 

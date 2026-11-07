@@ -8,6 +8,10 @@
 
 ## Problem 1 (HIGH) — ServiceAreaWaitlistResource cross-tenant PII leak
 
+> **Update 2026-11-07:** the model is tenant-owned now (`organization_id` + `BelongsToOrganization`,
+> see VULN-003 Gap #2 item 3), so the text below describes the state when this was written.
+> The super-admin gate described in "Rozwiązanie 1" is intentionally kept.
+
 `app/Models/ServiceAreaWaitlist.php` has no `organization_id`/`BelongsToOrganization` — a known,
 accepted design gap for the public submission API only (see VULN-003's Gap #2 follow-up:
 "does a waitlist entry even belong to one tenant?"). But

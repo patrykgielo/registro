@@ -1,0 +1,4740 @@
+{
+  "schema_version": 1,
+  "products": [
+    {
+      "external_id": "master-dh-732",
+      "name": "Osuszacz powietrza kondensacyjny Master DH 732 (29 l/24h)",
+      "slug": "osuszacz-powietrza-kondensacyjny-master-dh-732-29-l-24h",
+      "brand": "Master",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Osuszacz kondensacyjny średniej wielkości do mieszkań, piwnic i wylewek. Cichy, z kompresorem rotacyjnym i zbiornikiem 6,5 l.",
+      "body_html": "<p>Master DH 732 sprawdza się przy osuszaniu mieszkań po zalaniu, wysychaniu tynków i wylewek oraz w magazynach do ok. 50 m². W warunkach 30°C i 80% wilgotności usuwa 29 litrów wody na dobę, a w 20°C i 60% około 13 litrów. Pracuje w zakresie temperatur 5-35°C, więc nadaje się też do nieogrzewanych pomieszczeń w sezonie przejściowym. Ma zbiornik 6,5 l i możliwość podłączenia węża do ciągłego odprowadzania skroplin. Zasilany jest z domowego gniazdka 230 V i waży niecałe 20 kg.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Matelo2005 (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 45.0,
+      "price_per_week": 245.0,
+      "price_per_day_long": 30.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania (30°C/80% RH)",
+          "value": "29 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Wydajność osuszania (20°C/60% RH)",
+          "value": "13 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "200",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 1 faza / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,465 kW (maks.)",
+          "unit": null
+        },
+        {
+          "label": "Czynnik chłodniczy",
+          "value": "R290",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "6,5",
+          "unit": "l"
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "5-35",
+          "unit": "°C"
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "35-90",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "35,8 x 33,8 x 55",
+          "unit": "cm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "42",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "19,5",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania (30°C/80% RH): 29 l/24h",
+        "Wydajność osuszania (20°C/60% RH): 13 l/24h",
+        "Przepływ powietrza: 200 m³/h",
+        "Zasilanie: 220-240 V / 1 faza / 50 Hz"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza Master DH 732 - 29 l/24h",
+        "meta_description": "Wypożycz osuszacz Master DH 732: 29 l/24h, cichy kompresor rotacyjny, zbiornik 6,5 l. Do mieszkań, piwnic i wylewek."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/D%C3%A9shumidificateur_d%27air_professionnel.jpg/1280px-D%C3%A9shumidificateur_d%27air_professionnel.jpg",
+        "alt": "Przemysłowy osuszacz kondensacyjny na kółkach",
+        "credit": "Matelo2005",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:D%C3%A9shumidificateur_d%27air_professionnel.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 500
+    },
+    {
+      "external_id": "master-dh-752",
+      "name": "Osuszacz powietrza kondensacyjny Master DH 752 (48 l/24h)",
+      "slug": "osuszacz-powietrza-kondensacyjny-master-dh-752-48-l-24h",
+      "brand": "Master",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Popularny w wypożyczalniach osuszacz budowlany o wydajności do 48 l/24h. Na kółkach, z regulacją wilgotności.",
+      "body_html": "<p>Master DH 752 to jeden z najczęściej wynajmowanych osuszaczy w Polsce: wystarczająco mocny do mieszkania lub domu po zalaniu, a jednocześnie możliwy do przeniesienia przez jedną osobę. Przy 30°C i 80% wilgotności usuwa 48 litrów wody na dobę, a w 20°C i 60% około 21 litrów. Przepływ powietrza wynosi 350 m³/h, a zakres pracy obejmuje wilgotność już od 20% i temperatury 5-35°C. Ma zbiornik 5,7 l, kółka transportowe i pracuje z gniazdka 230 V (ok. 0,7 kW). Do pracy bez nadzoru podłącz wąż odpływowy do kratki lub zlewu.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Matelo2005 (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 55.0,
+      "price_per_week": 280.0,
+      "price_per_day_long": 33.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania (30°C/80% RH)",
+          "value": "48 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Wydajność osuszania (20°C/60% RH)",
+          "value": "21 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "350",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 1 faza / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,7 kW (maks.)",
+          "unit": null
+        },
+        {
+          "label": "Czynnik chłodniczy",
+          "value": "R290",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "5,7",
+          "unit": "l"
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "5-35",
+          "unit": "°C"
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "20-90",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "58 x 42,2 x 82",
+          "unit": "cm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "52",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "30",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania (30°C/80% RH): 48 l/24h",
+        "Wydajność osuszania (20°C/60% RH): 21 l/24h",
+        "Przepływ powietrza: 350 m³/h",
+        "Zasilanie: 220-240 V / 1 faza / 50 Hz"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza Master DH 752 - 48 l/24h",
+        "meta_description": "Wypożycz osuszacz budowlany Master DH 752: do 48 l/24h, 350 m³/h, zbiornik 5,7 l. Idealny po zalaniu i do wylewek."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/D%C3%A9shumidificateur_d%27air_professionnel.jpg/1280px-D%C3%A9shumidificateur_d%27air_professionnel.jpg",
+        "alt": "Przemysłowy osuszacz kondensacyjny na kółkach",
+        "credit": "Matelo2005",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:D%C3%A9shumidificateur_d%27air_professionnel.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 501
+    },
+    {
+      "external_id": "master-dh-772",
+      "name": "Osuszacz powietrza kondensacyjny Master DH 772 (72 l/24h)",
+      "slug": "osuszacz-powietrza-kondensacyjny-master-dh-772-72-l-24h",
+      "brand": "Master",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Mocny osuszacz kondensacyjny do dużych pomieszczeń, hal i domów po zalaniu. Wydajność do 72 l/24h i przepływ 850 m³/h.",
+      "body_html": "<p>Master DH 772 to osuszacz o dużej wydajności, stosowany przy osuszaniu całych kondygnacji budynków, hal magazynowych i obiektów po awarii instalacji. Według instrukcji producenta usuwa do 72 litrów wody na dobę i przetłacza 850 m³/h powietrza. Zbiornik ma 15 l, a urządzenie stoi na dużych kołach, co ułatwia przemieszczanie 57-kilogramowej obudowy. Pracuje w zakresie 5-32°C i 35-90% wilgotności, zasilane z gniazdka 230 V (ok. 1,8 kW). Przy pracy ciągłej podłącz wąż do odpływu, aby uniknąć przerw na opróżnianie zbiornika.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Matelo2005 (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 60.0,
+      "price_per_week": 420.0,
+      "price_per_day_long": 40.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania (30°C/80% RH)",
+          "value": "72 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "850",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 1 faza / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "1,79",
+          "unit": "kW"
+        },
+        {
+          "label": "Pobór prądu",
+          "value": "8,3",
+          "unit": "A"
+        },
+        {
+          "label": "Czynnik chłodniczy",
+          "value": "R407C",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "15",
+          "unit": "l"
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "5-32",
+          "unit": "°C"
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "35-90",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "58,6 x 43,6 x 111",
+          "unit": "cm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "do 60 dB(A)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "57",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania (30°C/80% RH): 72 l/24h",
+        "Przepływ powietrza: 850 m³/h",
+        "Zasilanie: 220-240 V / 1 faza / 50 Hz",
+        "Pobór mocy: 1,79 kW"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza Master DH 772 - 72 l/24h",
+        "meta_description": "Wypożycz mocny osuszacz Master DH 772: 72 l/24h, 850 m³/h, zbiornik 15 l. Do hal, domów po zalaniu i dużych pomieszczeń."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/D%C3%A9shumidificateur_d%27air_professionnel.jpg/1280px-D%C3%A9shumidificateur_d%27air_professionnel.jpg",
+        "alt": "Przemysłowy osuszacz kondensacyjny na kółkach",
+        "credit": "Matelo2005",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:D%C3%A9shumidificateur_d%27air_professionnel.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 502
+    },
+    {
+      "external_id": "dantherm-ad-975",
+      "name": "Osuszacz powietrza kondensacyjny Dantherm AD 975 (76 l/24h)",
+      "slug": "osuszacz-powietrza-kondensacyjny-dantherm-ad-975-76-l-24h",
+      "brand": "Dantherm",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Wydajny osuszacz kondensacyjny z pompką skroplin, do osuszania budynków i dużych pomieszczeń. Do 76 l/24h i przepływ do 900 m³/h.",
+      "body_html": "<p>Dantherm AD 975 to profesjonalny osuszacz mobilny z wbudowaną pompką skroplin, która odprowadza wodę wężem na wysokość do 4 m. Wydajność wynosi 76 l/24h przy 30°C i 80% wilgotności oraz 34,5 l/24h przy 20°C i 60%. Dwa stopnie wentylatora (750 i 900 m³/h) pozwalają dopasować pracę do wielkości pomieszczenia. Urządzenie zasilane jest z jednofazowego gniazdka 230 V (ok. 1,1 kW), ma 5-metrowy przewód i waży niecałe 50 kg. Sprawdzi się w osuszaniu budynków po powodzi, suszeniu wylewek i utrzymywaniu suchych magazynów.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Matelo2005 (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 95.0,
+      "price_per_week": 430.0,
+      "price_per_day_long": 42.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1200.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania (30°C/80% RH)",
+          "value": "76 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Wydajność osuszania (20°C/60% RH)",
+          "value": "34,5 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "750-900",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230 V / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "1,07",
+          "unit": "kW"
+        },
+        {
+          "label": "Czynnik chłodniczy",
+          "value": "R454C",
+          "unit": null
+        },
+        {
+          "label": "Odprowadzanie skroplin",
+          "value": "pompka, wąż 9 mm, wysokość podnoszenia do 4 m",
+          "unit": null
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "5-30",
+          "unit": "°C"
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "30-90",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "90,6 x 50,2 x 54,7 cm (W x S x G)",
+          "unit": null
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "64",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "48,3",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania (30°C/80% RH): 76 l/24h",
+        "Wydajność osuszania (20°C/60% RH): 34,5 l/24h",
+        "Przepływ powietrza: 750-900 m³/h",
+        "Zasilanie: 230 V / 50 Hz"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza Dantherm AD 975 - 76 l/24h",
+        "meta_description": "Wypożycz osuszacz Dantherm AD 975: 76 l/24h, pompka skroplin do 4 m, 900 m³/h. Profesjonalny sprzęt do osuszania budynków."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/D%C3%A9shumidificateur_d%27air_professionnel.jpg/1280px-D%C3%A9shumidificateur_d%27air_professionnel.jpg",
+        "alt": "Przemysłowy osuszacz kondensacyjny na kółkach",
+        "credit": "Matelo2005",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:D%C3%A9shumidificateur_d%27air_professionnel.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 503
+    },
+    {
+      "external_id": "trotec-ttk-355-s",
+      "name": "Osuszacz powietrza kondensacyjny Trotec TTK 355 S (70 l/24h)",
+      "slug": "osuszacz-powietrza-kondensacyjny-trotec-ttk-355-s-70-l-24h",
+      "brand": "Trotec",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Osuszacz budowlany Trotec o wydajności do 70 l/24h, do pomieszczeń do 180 m². Z możliwością podłączenia pompki skroplin.",
+      "body_html": "<p>Trotec TTK 355 S to osuszacz kondensacyjny z serii budowlanej, przeznaczony do pomieszczeń o powierzchni do ok. 180 m² (450 m³). Maksymalna wydajność wynosi 70 l wody na dobę, a zbiornik skroplin ma 6 l, z opcją podłączenia węża lub zewnętrznej pompki (podnoszenie do 4 m). Urządzenie ma czujnik temperatury pomieszczenia, diagnostykę błędów i dobieg wentylatora po wyłączeniu. Zasilane jest z jednofazowego gniazdka 230 V (maks. 1,07 kW), waży 38,5 kg i pracuje w zakresie 5-32°C. Dobrze nadaje się do suszenia wylewek, tynków oraz do usuwania skutków zalania.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Matelo2005 (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 65.0,
+      "price_per_week": 295.0,
+      "price_per_day_long": 28.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1000.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania (maks.)",
+          "value": "70 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230 V / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "1,07 kW (maks.)",
+          "unit": null
+        },
+        {
+          "label": "Czynnik chłodniczy",
+          "value": "R407C, 550 g",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "6",
+          "unit": "l"
+        },
+        {
+          "label": "Maks. wysokość podnoszenia pompki (opcja)",
+          "value": "4",
+          "unit": "m"
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "5-32",
+          "unit": "°C"
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "32-100",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "72 x 45 x 51 cm (W x G x S)",
+          "unit": null
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "54",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "38,5",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania (maks.): 70 l/24h",
+        "Zasilanie: 230 V / 50 Hz",
+        "Pobór mocy: 1,07 kW (maks.)",
+        "Czynnik chłodniczy: R407C, 550 g"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza Trotec TTK 355 S - 70 l/24h",
+        "meta_description": "Wypożycz osuszacz budowlany Trotec TTK 355 S: do 70 l/24h, zbiornik 6 l, do 180 m². Na wylewki, tynki i po zalaniu."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/D%C3%A9shumidificateur_d%27air_professionnel.jpg/1280px-D%C3%A9shumidificateur_d%27air_professionnel.jpg",
+        "alt": "Przemysłowy osuszacz kondensacyjny na kółkach",
+        "credit": "Matelo2005",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:D%C3%A9shumidificateur_d%27air_professionnel.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 504
+    },
+    {
+      "external_id": "trotec-ttk-655-s",
+      "name": "Osuszacz powietrza kondensacyjny Trotec TTK 655 S (do 150 l/24h)",
+      "slug": "osuszacz-powietrza-kondensacyjny-trotec-ttk-655-s-do-150-l-24h",
+      "brand": "Trotec",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Najmocniejszy osuszacz budowlany z serii TTK-S, do 150 l/24h, do pomieszczeń do 300 m². Z odszranianiem gorącym gazem i przyłączem pompki.",
+      "body_html": "<p>Trotec TTK 655 S to duży osuszacz kondensacyjny do pomieszczeń o powierzchni do ok. 300 m² (750 m³). Maksymalna wydajność wynosi 150 l na dobę (według Dantherm Group ok. 91 l/24h przy 30°C i 80% wilgotności), a odszranianie gorącym gazem pozwala pracować także w chłodniejszych pomieszczeniach. Dzięki kompresorowi rotacyjnemu można go przewozić i przechowywać w dowolnej pozycji. Pobiera maks. 1,8 kW z gniazdka 230 V, waży 54 kg i ma przyłącze do zewnętrznej pompki skroplin. Stosuje się go w halach, po zalaniach i przy intensywnym suszeniu nowych budynków.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Matelo2005 (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 100.0,
+      "price_per_week": 450.0,
+      "price_per_day_long": 43.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania (maks.)",
+          "value": "150 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Wydajność osuszania (30°C/80% RH)",
+          "value": "ok. 91 l/24h",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230 V / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "1,8 kW (maks.)",
+          "unit": null
+        },
+        {
+          "label": "Zabezpieczenie",
+          "value": "16",
+          "unit": "A"
+        },
+        {
+          "label": "Czynnik chłodniczy",
+          "value": "R407C, 1300 g",
+          "unit": null
+        },
+        {
+          "label": "Maks. wysokość podnoszenia pompki (opcja)",
+          "value": "4",
+          "unit": "m"
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "5-32",
+          "unit": "°C"
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "32-100",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "81 x 48,5 x 60,5 cm (W x G x S)",
+          "unit": null
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "56",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "54",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania (maks.): 150 l/24h",
+        "Wydajność osuszania (30°C/80% RH): ok. 91 l/24h",
+        "Zasilanie: 230 V / 50 Hz",
+        "Pobór mocy: 1,8 kW (maks.)"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza Trotec TTK 655 S - do 150 l/24h",
+        "meta_description": "Wypożycz mocny osuszacz Trotec TTK 655 S: do 150 l/24h, do 300 m², odszranianie gorącym gazem. Do hal i dużych szkód wodnych."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/D%C3%A9shumidificateur_d%27air_professionnel.jpg/1280px-D%C3%A9shumidificateur_d%27air_professionnel.jpg",
+        "alt": "Przemysłowy osuszacz kondensacyjny na kółkach",
+        "credit": "Matelo2005",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:D%C3%A9shumidificateur_d%27air_professionnel.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 505
+    },
+    {
+      "external_id": "corroventa-ctrk-150-xt",
+      "name": "Osuszacz adsorpcyjny Corroventa CTRK 150 XT (35 l/dobę)",
+      "slug": "osuszacz-adsorpcyjny-corroventa-ctrk-150-xt-35-l-dobe",
+      "brand": "Corroventa",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Osuszacz adsorpcyjny pracujący nawet w -35°C, do zimnych piwnic, magazynów i budów zimą. Wydajność ok. 35 l/dobę.",
+      "body_html": "<p>Corroventa CTRK 150 XT to osuszacz adsorpcyjny, czyli działający na zasadzie wirnika z materiałem pochłaniającym wilgoć, a nie chłodzenia. Dzięki temu pracuje skutecznie także w mocnym mrozie - producent podaje minimalną temperaturę pracy -35°C. Usuwa ok. 35 litrów wody na dobę (1,5 kg/h) przy przepływie powietrza 150 m³/h i poborze 1,6 kW z gniazdka 230 V. Waży 49 kg, więc do transportu potrzebne są dwie osoby lub wózek. Nadaje się do zimowych budów, nieogrzewanych piwnic, magazynów i obiektów wymagających bardzo suchego powietrza. Wilgotne powietrze trzeba odprowadzić wężem poza osuszane pomieszczenie.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: DesiccantDryAir (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 140.0,
+      "price_per_week": 630.0,
+      "price_per_day_long": 61.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1800.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania",
+          "value": "35 l/dobę (1,5 kg/h)",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "150",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230",
+          "unit": "V"
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "1,6",
+          "unit": "kW"
+        },
+        {
+          "label": "Minimalna temperatura pracy",
+          "value": "-35 °C",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "53 x 47 x 93",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "49",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania: 35 l/dobę (1,5 kg/h)",
+        "Przepływ powietrza: 150 m³/h",
+        "Zasilanie: 230 V",
+        "Pobór mocy: 1,6 kW"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza adsorpcyjnego Corroventa CTRK 150 XT",
+        "meta_description": "Wypożycz osuszacz adsorpcyjny Corroventa CTRK 150 XT: praca do -35°C, ok. 35 l/dobę. Do zimnych piwnic, magazynów i budów zimą."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/MDC8000_customized_Estonia.jpg/1280px-MDC8000_customized_Estonia.jpg",
+        "alt": "Przemysłowy osuszacz adsorpcyjny",
+        "credit": "DesiccantDryAir",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:MDC8000_customized_Estonia.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 506
+    },
+    {
+      "external_id": "trotec-ttr-400-d",
+      "name": "Osuszacz adsorpcyjny Trotec TTR 400 D (38,4 kg/24h)",
+      "slug": "osuszacz-adsorpcyjny-trotec-ttr-400-d-38-4-kg-24h",
+      "brand": "Trotec",
+      "category": {
+        "name": "Osuszacze przemysłowe",
+        "slug": "osuszacze-przemyslowe",
+        "icon": "cloud",
+        "description": "Kondensacyjne i adsorpcyjne osuszacze do wysuszania budynków po zalaniu i przyspieszania prac wykończeniowych.",
+        "sort_order": 5
+      },
+      "excerpt": "Osuszacz adsorpcyjny do niskich temperatur i bardzo suchego powietrza, pracujący nawet w -15°C. Lekki i mobilny.",
+      "body_html": "<p>Trotec TTR 400 D to osuszacz adsorpcyjny (z wirnikiem sorpcyjnym), który w odróżnieniu od kondensacyjnych działa skutecznie w niskich temperaturach, od -15 do +35°C. Dzięki temu nadaje się do osuszania chłodnych piwnic, magazynów, zimowych budów, archiwów i do suszenia powłok. Producent podaje wydajność 38,4 kg wody na dobę przy przepływie powietrza 350 m³/h. Urządzenie pobiera 2,2 kW z gniazdka 230 V, waży 20 kg i ma niewielkie wymiary, co ułatwia transport. Wymaga odprowadzenia wilgotnego powietrza wężem poza osuszane pomieszczenie.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: DesiccantDryAir (CC BY-SA 4.0, Wikimedia Commons); Raimond Spekking (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 160.0,
+      "price_per_week": 720.0,
+      "price_per_day_long": 69.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 2400.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Wydajność osuszania",
+          "value": "38,4 kg/24h",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "350",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230 V / 50-60 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "2,2",
+          "unit": "kW"
+        },
+        {
+          "label": "Zakres temperatur pracy",
+          "value": "-15 do +35 °C",
+          "unit": null
+        },
+        {
+          "label": "Zakres wilgotności pracy",
+          "value": "0-100",
+          "unit": "% RH"
+        },
+        {
+          "label": "Wymiary",
+          "value": "40,5 x 35 x 44,3",
+          "unit": "cm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "63",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "20",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Wydajność osuszania: 38,4 kg/24h",
+        "Przepływ powietrza: 350 m³/h",
+        "Zasilanie: 230 V / 50-60 Hz",
+        "Pobór mocy: 2,2 kW"
+      ],
+      "seo": {
+        "meta_title": "Wynajem osuszacza adsorpcyjnego Trotec TTR 400 D",
+        "meta_description": "Wypożycz osuszacz adsorpcyjny Trotec TTR 400 D: praca od -15°C, 38,4 kg/24h, 20 kg wagi. Do zimnych piwnic, archiwów i magazynów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/MDC8000_customized_Estonia.jpg/1280px-MDC8000_customized_Estonia.jpg",
+        "alt": "Przemysłowy osuszacz adsorpcyjny",
+        "credit": "DesiccantDryAir",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:MDC8000_customized_Estonia.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg/1280px-Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg",
+          "alt": "Osuszacz pracujący przy osuszaniu zalanego pomieszczenia",
+          "credit": "Raimond Spekking",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wasserschaden_K%C3%B6lnisches_Stadtmuseum_Juni_2017-5565.jpg"
+        }
+      ],
+      "sort_order": 507
+    },
+    {
+      "external_id": "master-b-100-ced",
+      "name": "Nagrzewnica olejowa Master B 100 CED 29 kW",
+      "slug": "nagrzewnica-olejowa-master-b-100-ced-29-kw",
+      "brand": "Master",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Najpopularniejsza nagrzewnica olejowa na budowach: 29 kW, 800 m³/h, zbiornik 44 l. Do dobrze wentylowanych hal i namiotów.",
+      "body_html": "<p>Master B 100 CED to nagrzewnica olejowa z bezpośrednim spalaniem o mocy 29 kW i przepływie powietrza 800 m³/h. Pali olej napędowy, opałowy lub naftę w tempie ok. 2,7 l/h, a zbiornik 44 l daje ok. 16 godzin pracy bez tankowania. Używa się jej do ogrzewania hal, warsztatów, namiotów, szklarni oraz do wysuszania budynków w trakcie prac wykończeniowych. Ponieważ spaliny trafiają do ogrzewanego powietrza, pomieszczenie musi być stale wentylowane. Wystarczy gniazdko 230 V (0,23 kW), a termostat umożliwia utrzymanie zadanej temperatury.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: 極地狐 (CC BY-SA 2.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 80.0,
+      "price_per_week": 360.0,
+      "price_per_day_long": 35.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "29",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "800",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "2,7",
+          "unit": "l/h"
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy / opałowy / nafta / HVO 100",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "44",
+          "unit": "l"
+        },
+        {
+          "label": "Autonomia",
+          "value": "ok. 16",
+          "unit": "h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 50-60 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,23",
+          "unit": "kW"
+        },
+        {
+          "label": "Stopień ochrony",
+          "value": "IP41",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "107,5 x 60 x 48",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "25",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 29 kW",
+        "Przepływ powietrza: 800 m³/h",
+        "Zużycie paliwa: 2,7 l/h",
+        "Paliwo: olej napędowy / opałowy / nafta / HVO 100"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Master B 100 CED 29 kW",
+        "meta_description": "Wypożycz nagrzewnicę olejową Master B 100 CED 29 kW: 800 m³/h, zbiornik 44 l, do 16 h pracy. Do hal, namiotów i wykończeń."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/26/%E3%82%B8%E3%82%A7%E3%83%83%E3%83%88%E3%83%92%E3%83%BC%E3%82%BF%E3%83%BC120_%2816023675276%29.jpg/1280px-%E3%82%B8%E3%82%A7%E3%83%83%E3%83%88%E3%83%92%E3%83%BC%E3%82%BF%E3%83%BC120_%2816023675276%29.jpg",
+        "alt": "Przenośna nagrzewnica olejowa z bezpośrednim spalaniem",
+        "credit": "極地狐",
+        "license": "CC BY-SA 2.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:%E3%82%B8%E3%82%A7%E3%83%83%E3%83%88%E3%83%92%E3%83%BC%E3%82%BF%E3%83%BC120_(16023675276).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+          "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+        }
+      ],
+      "sort_order": 208
+    },
+    {
+      "external_id": "master-bv-77-e",
+      "name": "Nagrzewnica olejowa Master BV 77 E 21 kW z odprowadzeniem spalin",
+      "slug": "nagrzewnica-olejowa-master-bv-77-e-21-kw-z-odprowadzeniem-spalin",
+      "brand": "Master",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Nagrzewnica olejowa pośrednia 21 kW z odprowadzeniem spalin na zewnątrz. Daje czyste, suche ciepło, także w pomieszczeniach zamkniętych.",
+      "body_html": "<p>Master BV 77 E to nagrzewnica olejowa ze spalaniem pośrednim: spaliny odprowadzane są kominkiem na zewnątrz, a do pomieszczenia trafia czyste, suche powietrze. Dzięki temu można ją stosować w pomieszczeniach zamkniętych, np. w trakcie remontów, w piwnicach i przy suszeniu budynków. Moc wynosi 21 kW, przepływ powietrza 1550 m³/h, a zbiornik 36 l wystarcza na ok. 19 godzin pracy przy zużyciu 2 l/h. Zasilanie 230 V (0,3 kW). Przygotuj rurę spalinową o średnicy 120 mm wyprowadzoną na zewnątrz i opcjonalnie rękaw do rozprowadzania powietrza (fi 305 mm).</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 100.0,
+      "price_per_week": 450.0,
+      "price_per_day_long": 43.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "21",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "1550",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "2,0",
+          "unit": "l/h"
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy / opałowy / nafta / HVO 100",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "36",
+          "unit": "l"
+        },
+        {
+          "label": "Autonomia",
+          "value": "ok. 19",
+          "unit": "h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,3",
+          "unit": "kW"
+        },
+        {
+          "label": "Stopień ochrony",
+          "value": "IP40",
+          "unit": null
+        },
+        {
+          "label": "Średnica rury spalinowej",
+          "value": "120",
+          "unit": "mm"
+        },
+        {
+          "label": "Wymiary",
+          "value": "113 x 38 x 66",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "33",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 21 kW",
+        "Przepływ powietrza: 1550 m³/h",
+        "Zużycie paliwa: 2,0 l/h",
+        "Paliwo: olej napędowy / opałowy / nafta / HVO 100"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Master BV 77 E 21 kW",
+        "meta_description": "Wypożycz nagrzewnicę z odprowadzeniem spalin Master BV 77 E 21 kW: 1550 m³/h, zbiornik 36 l. Czyste ciepło do pomieszczeń zamkniętych."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+        "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+          "alt": "Nagrzewnica nadmuchowa — widok z boku",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+        }
+      ],
+      "sort_order": 209
+    },
+    {
+      "external_id": "remko-clk-70",
+      "name": "Nagrzewnica olejowa Remko CLK 70 68 kW z odprowadzeniem spalin",
+      "slug": "nagrzewnica-olejowa-remko-clk-70-68-kw-z-odprowadzeniem-spalin",
+      "brand": "Remko",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Mobilna nagrzewnica olejowa Remko ze spalaniem pośrednim, obciążenie cieplne 68 kW. Do hal, budów i dużych pomieszczeń.",
+      "body_html": "<p>Remko CLK 70 to mobilna nagrzewnica powietrza ze spalaniem pośrednim, czyli ze spalinami odprowadzanymi kominem na zewnątrz. Nominalne obciążenie cieplne wynosi 68 kW, a moc użyteczna 62 kW, więc nadaje się do ogrzewania hal, magazynów, namiotów i budynków w trakcie wykończeń. Zasilana jest olejem napędowym lub opałowym (także biopaliwami B7/B10 i HVO). Maksymalne ciśnienie tłoczenia wynosi 165 Pa, co pozwala podłączyć rękaw z krótkim odcinkiem kanałów. Przed wynajmem ustal długość i średnicę rury spalinowej oraz dostępność gniazda 230 V.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 180.0,
+      "price_per_week": 810.0,
+      "price_per_day_long": 78.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 2000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Nominalne obciążenie cieplne",
+          "value": "68",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc cieplna",
+          "value": "62",
+          "unit": "kW"
+        },
+        {
+          "label": "Maks. ciśnienie tłoczenia",
+          "value": "165",
+          "unit": "Pa"
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy / opałowy EL, biodiesel B7/B10, HVO",
+          "unit": null
+        },
+        {
+          "label": "Klasa efektywności",
+          "value": "B",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Nominalne obciążenie cieplne: 68 kW",
+        "Moc cieplna: 62 kW",
+        "Maks. ciśnienie tłoczenia: 165 Pa",
+        "Paliwo: olej napędowy / opałowy EL, biodiesel B7/B10, HVO"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Remko CLK 70 68 kW",
+        "meta_description": "Wypożycz nagrzewnicę olejową Remko CLK 70 68 kW z odprowadzeniem spalin. Do hal, magazynów i budów. Sprawdź cennik doby i tygodnia."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+        "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+          "alt": "Nagrzewnica nadmuchowa — widok z boku",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+        }
+      ],
+      "sort_order": 210
+    },
+    {
+      "external_id": "remko-clk-150",
+      "name": "Nagrzewnica olejowa Remko CLK 150 138 kW z odprowadzeniem spalin",
+      "slug": "nagrzewnica-olejowa-remko-clk-150-138-kw-z-odprowadzeniem-spalin",
+      "brand": "Remko",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Duża nagrzewnica olejowa Remko ze spalaniem pośrednim, obciążenie cieplne 150 kW. Do hal produkcyjnych i dużych namiotów.",
+      "body_html": "<p>Remko CLK 150 to jedna z największych mobilnych nagrzewnic olejowych ze spalaniem pośrednim, z obciążeniem cieplnym 150 kW i mocą użyteczną 138 kW. Spaliny odprowadzane są kominem na zewnątrz, więc urządzenie może pracować w zamkniętych halach, magazynach i namiotach wystawowych. Maksymalne ciśnienie tłoczenia wynosi 260 Pa, co umożliwia podłączenie kanałów rozprowadzających. Zasilanie paliwem: olej napędowy lub opałowy, także biodiesel B7/B10 i HVO. To sprzęt do dużych zastosowań - przed wynajmem uzgodnij sposób odprowadzenia spalin i zasilanie 230 V.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 380.0,
+      "price_per_week": 1710.0,
+      "price_per_day_long": 165.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 3000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Nominalne obciążenie cieplne",
+          "value": "150",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc cieplna",
+          "value": "138",
+          "unit": "kW"
+        },
+        {
+          "label": "Maks. ciśnienie tłoczenia",
+          "value": "260",
+          "unit": "Pa"
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy / opałowy EL, biodiesel B7/B10, HVO",
+          "unit": null
+        },
+        {
+          "label": "Klasa efektywności",
+          "value": "C",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Nominalne obciążenie cieplne: 150 kW",
+        "Moc cieplna: 138 kW",
+        "Maks. ciśnienie tłoczenia: 260 Pa",
+        "Paliwo: olej napędowy / opałowy EL, biodiesel B7/B10, HVO"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Remko CLK 150 138 kW",
+        "meta_description": "Wypożycz dużą nagrzewnicę olejową Remko CLK 150 (138 kW) z odprowadzeniem spalin. Do hal produkcyjnych i dużych namiotów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+        "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+          "alt": "Nagrzewnica nadmuchowa — widok z boku",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+        }
+      ],
+      "sort_order": 211
+    },
+    {
+      "external_id": "biemmedue-ec-22",
+      "name": "Nagrzewnica olejowa Biemmedue EC 22 23 kW z odprowadzeniem spalin",
+      "slug": "nagrzewnica-olejowa-biemmedue-ec-22-23-kw-z-odprowadzeniem-spalin",
+      "brand": "Biemmedue",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Nagrzewnica olejowa pośrednia 23 kW z kominem fi 120 mm i zbiornikiem 42 l. Czyste ciepło do remontów i hal.",
+      "body_html": "<p>Biemmedue EC 22 to mobilna nagrzewnica powietrza ze spalaniem pośrednim o nominalnej mocy cieplnej 23,4 kW (moc użyteczna 19,6 kW, sprawność ok. 84%). Spaliny odprowadzane są przez komin fi 120 mm na zewnątrz, więc urządzenie może pracować w zamkniętych pomieszczeniach. Przepływ powietrza wynosi 550 m³/h, zużycie paliwa 1,85 kg/h, a zbiornik ma 42 litry. Zasilanie 230 V (300 W), waga 40 kg. Nadaje się do ogrzewania garaży, warsztatów, małych hal i budynków w trakcie remontu.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 100.0,
+      "price_per_week": 450.0,
+      "price_per_day_long": 43.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 650.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Nominalna moc cieplna",
+          "value": "23,4",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc użyteczna",
+          "value": "19,6",
+          "unit": "kW"
+        },
+        {
+          "label": "Sprawność",
+          "value": "84",
+          "unit": "%"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "550",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "1,85",
+          "unit": "kg/h"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "42",
+          "unit": "l"
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,3",
+          "unit": "kW"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230 V / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Średnica rury spalinowej",
+          "value": "120",
+          "unit": "mm"
+        },
+        {
+          "label": "Wymiary",
+          "value": "107,5 x 44 x 61,5",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "40",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Nominalna moc cieplna: 23,4 kW",
+        "Moc użyteczna: 19,6 kW",
+        "Sprawność: 84 %",
+        "Przepływ powietrza: 550 m³/h"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Biemmedue EC 22 23 kW",
+        "meta_description": "Wypożycz nagrzewnicę olejową Biemmedue EC 22 23 kW z odprowadzeniem spalin: 550 m³/h, zbiornik 42 l. Do garaży, warsztatów i remontów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+        "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+          "alt": "Nagrzewnica nadmuchowa — widok z boku",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+        }
+      ],
+      "sort_order": 212
+    },
+    {
+      "external_id": "biemmedue-ec-55",
+      "name": "Nagrzewnica olejowa Biemmedue EC 55 58 kW z odprowadzeniem spalin",
+      "slug": "nagrzewnica-olejowa-biemmedue-ec-55-58-kw-z-odprowadzeniem-spalin",
+      "brand": "Biemmedue",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Nagrzewnica olejowa pośrednia ok. 58 kW, 2500 m³/h, zbiornik 65 l. Do hal, magazynów i budów.",
+      "body_html": "<p>Biemmedue EC 55 to nagrzewnica powietrza ze spalaniem pośrednim o mocy ok. 58,6 kW (według dystrybutora RECA) i przepływie powietrza 2500 m³/h. Spaliny odprowadzane są kominem na zewnątrz, więc pracuje w zamkniętych halach i budynkach. Zużywa 4,64 l/h oleju opałowego, a zbiornik 65 l daje ok. 14 godzin pracy. Waży 81 kg i ma wymiary ok. 143 x 55 x 94 cm, więc do przewozu potrzebny jest wózek lub dwie osoby. Zasilanie 230 V. Stosuj do dużych garaży, hal i obiektów w stanie surowym.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 170.0,
+      "price_per_week": 765.0,
+      "price_per_day_long": 74.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1500.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Moc cieplna",
+          "value": "58,6",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "2500",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "4,64",
+          "unit": "l/h"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "65",
+          "unit": "l"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230",
+          "unit": "V"
+        },
+        {
+          "label": "Wymiary",
+          "value": "143 x 55 x 94",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "81",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc cieplna: 58,6 kW",
+        "Przepływ powietrza: 2500 m³/h",
+        "Zużycie paliwa: 4,64 l/h",
+        "Pojemność zbiornika: 65 l"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Biemmedue EC 55 58 kW",
+        "meta_description": "Wypożycz nagrzewnicę olejową Biemmedue EC 55 (ok. 58 kW) z odprowadzeniem spalin: 2500 m³/h, zbiornik 65 l. Do hal i budów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+        "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+          "alt": "Nagrzewnica nadmuchowa — widok z boku",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+        }
+      ],
+      "sort_order": 213
+    },
+    {
+      "external_id": "heylo-k-120",
+      "name": "Nagrzewnica olejowa Heylo K 120 125 kW z odprowadzeniem spalin",
+      "slug": "nagrzewnica-olejowa-heylo-k-120-125-kw-z-odprowadzeniem-spalin",
+      "brand": "Heylo",
+      "category": {
+        "name": "Nagrzewnice olejowe",
+        "slug": "nagrzewnice-olejowe",
+        "icon": "fire",
+        "description": "Nagrzewnice z bezpośrednim i pośrednim spalaniem oleju napędowego do hal, namiotów i budów.",
+        "sort_order": 2
+      },
+      "excerpt": "Duża nagrzewnica olejowa Heylo ze spalaniem pośrednim, 125 kW i 9200 m³/h. Do dużych hal i placów budowy.",
+      "body_html": "<p>Heylo K 120 to profesjonalna, duża nagrzewnica olejowa ze spalaniem pośrednim o mocy 125 kW i przepływie powietrza 9200 m³/h z wentylatorem osiowym. Spaliny odprowadzane są kominem fi 197 mm, więc urządzenie może pracować w zamkniętych halach i namiotach. Zużywa ok. 10 kg paliwa na godzinę, zasilane jest z jednofazowego gniazdka 230 V (1,5 kW, 6,9 A) i ma stopień ochrony IP44. Waży 280 kg, więc wymaga wózka widłowego lub dźwigu przy przeładunku. Zestaw obejmuje zdalny monitoring InfoAir. Sprzęt do bardzo dużych obiektów.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Woelle ffm (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 300.0,
+      "price_per_week": 1350.0,
+      "price_per_day_long": 130.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 4000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "125",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "9200",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Ciśnienie powietrza",
+          "value": "300",
+          "unit": "Pa"
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "10",
+          "unit": "kg/h"
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "1,5",
+          "unit": "kW"
+        },
+        {
+          "label": "Prąd znamionowy",
+          "value": "6,9",
+          "unit": "A"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 1 faza / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Stopień ochrony",
+          "value": "IP44",
+          "unit": null
+        },
+        {
+          "label": "Średnica rury spalinowej",
+          "value": "197",
+          "unit": "mm"
+        },
+        {
+          "label": "Wymiary",
+          "value": "189,5 x 88 x 141",
+          "unit": "cm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "76",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "280",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 125 kW",
+        "Przepływ powietrza: 9200 m³/h",
+        "Ciśnienie powietrza: 300 Pa",
+        "Zużycie paliwa: 10 kg/h"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy olejowej Heylo K 120 125 kW",
+        "meta_description": "Wypożycz nagrzewnicę olejową Heylo K 120 (125 kW) z odprowadzeniem spalin: 9200 m³/h, IP44. Do dużych hal i namiotów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg",
+        "alt": "Nagrzewnica nadmuchowa w stalowej ramie",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2Cohne_Schornstein.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+          "alt": "Nagrzewnica nadmuchowa — widok z boku",
+          "credit": "Woelle ffm",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+        }
+      ],
+      "sort_order": 214
+    },
+    {
+      "external_id": "master-blp-33-m",
+      "name": "Nagrzewnica gazowa Master BLP 33 M 33 kW",
+      "slug": "nagrzewnica-gazowa-master-blp-33-m-33-kw",
+      "brand": "Master",
+      "category": {
+        "name": "Nagrzewnice gazowe",
+        "slug": "nagrzewnice-gazowe",
+        "icon": "fire",
+        "description": "Nagrzewnice na propan-butan (LPG) do szybkiego dogrzewania budów, magazynów i warsztatów.",
+        "sort_order": 3
+      },
+      "excerpt": "Nagrzewnica gazowa 18-33 kW na propan-butan z butli. Do ogrzewania hal, namiotów i osuszania obiektów.",
+      "body_html": "<p>Master BLP 33 M to nagrzewnica gazowa z bezpośrednim spalaniem o mocy regulowanej od 18 do 33 kW i przepływie powietrza 1000 m³/h. Zasilana jest propanem lub propanem-butanem z butli; zużycie wynosi do 2,4 kg/h, więc na dobę pracy potrzeba kilku butli 11 kg. Waży 7,5 kg, więc jedna osoba ustawi ją w hali, namiocie lub na placu budowy. Spaliny trafiają do ogrzewanego powietrza, dlatego pomieszczenie musi być stale wentylowane. Zasilanie 230 V potrzebne jest do wentylatora (60 W).</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Arbitrarily0 (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 90.0,
+      "price_per_week": 405.0,
+      "price_per_day_long": 39.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 700.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "18-33",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "1000",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Paliwo",
+          "value": "propan / propan-butan (LPG)",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "2,4",
+          "unit": "kg/h"
+        },
+        {
+          "label": "Ciśnienie gazu",
+          "value": "0,75-1,5",
+          "unit": "bar"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "220-240 V / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,06",
+          "unit": "kW"
+        },
+        {
+          "label": "Wymiary",
+          "value": "55,2 x 22 x 34,2",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "7,5",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 18-33 kW",
+        "Przepływ powietrza: 1000 m³/h",
+        "Paliwo: propan / propan-butan (LPG)",
+        "Zużycie paliwa: 2,4 kg/h"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy gazowej Master BLP 33 M 33 kW",
+        "meta_description": "Wypożycz nagrzewnicę gazową Master BLP 33 M 18-33 kW: 1000 m³/h, propan-butan, 7,5 kg. Do hal, namiotów i budów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+        "alt": "Nagrzewnica nadmuchowa — widok z boku",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Gas_heater_beneath_platform_tennis_court.JPG/1280px-Gas_heater_beneath_platform_tennis_court.JPG",
+          "alt": "Wentylator nagrzewnicy gazowej",
+          "credit": "Arbitrarily0",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gas_heater_beneath_platform_tennis_court.JPG"
+        }
+      ],
+      "sort_order": 315
+    },
+    {
+      "external_id": "trotec-tgh-31-e",
+      "name": "Nagrzewnica gazowa Trotec TGH 31 E 30 kW (propan)",
+      "slug": "nagrzewnica-gazowa-trotec-tgh-31-e-30-kw-propan",
+      "brand": "Trotec",
+      "category": {
+        "name": "Nagrzewnice gazowe",
+        "slug": "nagrzewnice-gazowe",
+        "icon": "fire",
+        "description": "Nagrzewnice na propan-butan (LPG) do szybkiego dogrzewania budów, magazynów i warsztatów.",
+        "sort_order": 3
+      },
+      "excerpt": "Mobilna dmuchawa grzewcza Trotec na propan, 30 kW i 1000 m³/h. Z reduktorem i wężem w zestawie.",
+      "body_html": "<p>Trotec TGH 31 E to mobilna gazowa dmuchawa grzewcza zasilana propanem, o mocy 30 kW i przepływie powietrza 1000 m³/h, zalecana do pomieszczeń o kubaturze do ok. 300 m³. W zestawie znajdują się reduktor ciśnienia i przewód gazowy, więc potrzebna jest tylko butla propanowa i gniazdo 230 V. Urządzenie ma standardowo termostat bezpieczeństwa i kontrolę płomienia. Producent zaznacza, że jest przeznaczone do dobrze wentylowanych pomieszczeń i zadaszonych terenów zewnętrznych, a nie do suszenia budynków, bo spalanie wytwarza dużo pary wodnej.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Arbitrarily0 (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 85.0,
+      "price_per_week": 385.0,
+      "price_per_day_long": 37.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "30",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "1000",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zalecana kubatura pomieszczenia",
+          "value": "do 300 m³",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "propan",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "ok. 2,2",
+          "unit": "kg/h"
+        },
+        {
+          "label": "W zestawie",
+          "value": "reduktor ciśnienia i przewód gazowy",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 30 kW",
+        "Przepływ powietrza: 1000 m³/h",
+        "Zalecana kubatura pomieszczenia: do 300 m³",
+        "Paliwo: propan"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy gazowej Trotec TGH 31 E 30 kW",
+        "meta_description": "Wypożycz nagrzewnicę gazową Trotec TGH 31 E: 30 kW, 1000 m³/h, propan, reduktor w zestawie. Do hal i zadaszonych terenów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+        "alt": "Nagrzewnica nadmuchowa — widok z boku",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Gas_heater_beneath_platform_tennis_court.JPG/1280px-Gas_heater_beneath_platform_tennis_court.JPG",
+          "alt": "Wentylator nagrzewnicy gazowej",
+          "credit": "Arbitrarily0",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gas_heater_beneath_platform_tennis_court.JPG"
+        }
+      ],
+      "sort_order": 316
+    },
+    {
+      "external_id": "biemmedue-arcotherm-gp-45-m",
+      "name": "Nagrzewnica gazowa Biemmedue Arcotherm GP 45 M 23-47 kW",
+      "slug": "nagrzewnica-gazowa-biemmedue-arcotherm-gp-45-m-23-47-kw",
+      "brand": "Biemmedue",
+      "category": {
+        "name": "Nagrzewnice gazowe",
+        "slug": "nagrzewnice-gazowe",
+        "icon": "fire",
+        "description": "Nagrzewnice na propan-butan (LPG) do szybkiego dogrzewania budów, magazynów i warsztatów.",
+        "sort_order": 3
+      },
+      "excerpt": "Lekka nagrzewnica propanowa Arcotherm 23-47 kW, 1250 m³/h. Do hal, namiotów i placów budowy.",
+      "body_html": "<p>Arcotherm GP 45 M firmy Biemmedue to lekka nagrzewnica propanowa z bezpośrednim spalaniem, o płynnej regulacji mocy od 23 do 47 kW i przepływie powietrza 1250 m³/h. Waży zaledwie 13 kg i ma zwarte wymiary (ok. 51 x 28 x 57,5 cm), więc łatwo ją przenosić po budowie. Zasilana jest propanem z butli, a do pracy potrzebuje gniazda elektrycznego (wersja dwunapięciowa). Spaliny trafiają do ogrzewanego powietrza, dlatego pomieszczenie musi być stale wentylowane.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Arbitrarily0 (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 110.0,
+      "price_per_week": 495.0,
+      "price_per_day_long": 48.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 800.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "23-47 kW (płynna regulacja)",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "1250",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Paliwo",
+          "value": "propan (LPG)",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "dwunapięciowe (110/230 V)",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "51,1 x 27,7 x 57,5 cm (W x S x G)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "13",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 23-47 kW (płynna regulacja)",
+        "Przepływ powietrza: 1250 m³/h",
+        "Paliwo: propan (LPG)",
+        "Zasilanie: dwunapięciowe (110/230 V)"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy gazowej Arcotherm GP 45 M 47 kW",
+        "meta_description": "Wypożycz nagrzewnicę propanową Biemmedue Arcotherm GP 45 M 23-47 kW: 1250 m³/h, 13 kg. Do hal, namiotów i budów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+        "alt": "Nagrzewnica nadmuchowa — widok z boku",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Gas_heater_beneath_platform_tennis_court.JPG/1280px-Gas_heater_beneath_platform_tennis_court.JPG",
+          "alt": "Wentylator nagrzewnicy gazowej",
+          "credit": "Arbitrarily0",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gas_heater_beneath_platform_tennis_court.JPG"
+        }
+      ],
+      "sort_order": 317
+    },
+    {
+      "external_id": "biemmedue-arcotherm-gp-65-m",
+      "name": "Nagrzewnica gazowa Biemmedue Arcotherm GP 65 M 32-66 kW",
+      "slug": "nagrzewnica-gazowa-biemmedue-arcotherm-gp-65-m-32-66-kw",
+      "brand": "Biemmedue",
+      "category": {
+        "name": "Nagrzewnice gazowe",
+        "slug": "nagrzewnice-gazowe",
+        "icon": "fire",
+        "description": "Nagrzewnice na propan-butan (LPG) do szybkiego dogrzewania budów, magazynów i warsztatów.",
+        "sort_order": 3
+      },
+      "excerpt": "Nagrzewnica propanowa Arcotherm 32-66 kW z płynną regulacją mocy. Lekka (14 kg), do dużych hal i namiotów.",
+      "body_html": "<p>Arcotherm GP 65 M to nagrzewnica propanowa z bezpośrednim spalaniem i płynną regulacją mocy od 32 do 66 kW. Waży 14 kg i ma wymiary ok. 54 x 32 x 58 cm, dzięki czemu mimo dużej mocy jest łatwa w transporcie. W zestawie dostarczany jest wąż gazowy 1,5 m, a opcjonalnie można dokupić koła. Pracuje na propanie z butli, a do wentylatora potrzebuje gniazda elektrycznego (wersja dwunapięciowa). Spaliny trafiają do powietrza, więc pomieszczenie musi być wentylowane. Przepływ powietrza podawany jest przez dystrybutorów rozbieżnie (1250-1950 m³/h), więc potwierdź go u operatora przed wynajmem.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Arbitrarily0 (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 140.0,
+      "price_per_week": 630.0,
+      "price_per_day_long": 61.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1000.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "32-66 kW (płynna regulacja)",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "propan (LPG)",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "dwunapięciowe (110/230 V)",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "53,8 x 31,7 x 58 cm (W x S x G)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "14",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 32-66 kW (płynna regulacja)",
+        "Paliwo: propan (LPG)",
+        "Zasilanie: dwunapięciowe (110/230 V)",
+        "Wymiary: 53,8 x 31,7 x 58 cm (W x S x G)"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy gazowej Arcotherm GP 65 M 66 kW",
+        "meta_description": "Wypożycz nagrzewnicę propanową Biemmedue Arcotherm GP 65 M 32-66 kW, 14 kg. Do dużych hal, namiotów i placów budowy."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+        "alt": "Nagrzewnica nadmuchowa — widok z boku",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Gas_heater_beneath_platform_tennis_court.JPG/1280px-Gas_heater_beneath_platform_tennis_court.JPG",
+          "alt": "Wentylator nagrzewnicy gazowej",
+          "credit": "Arbitrarily0",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gas_heater_beneath_platform_tennis_court.JPG"
+        }
+      ],
+      "sort_order": 318
+    },
+    {
+      "external_id": "biemmedue-arcotherm-gp-85-m",
+      "name": "Nagrzewnica gazowa Biemmedue Arcotherm GP 85 M 41-85 kW",
+      "slug": "nagrzewnica-gazowa-biemmedue-arcotherm-gp-85-m-41-85-kw",
+      "brand": "Biemmedue",
+      "category": {
+        "name": "Nagrzewnice gazowe",
+        "slug": "nagrzewnice-gazowe",
+        "icon": "fire",
+        "description": "Nagrzewnice na propan-butan (LPG) do szybkiego dogrzewania budów, magazynów i warsztatów.",
+        "sort_order": 3
+      },
+      "excerpt": "Mocna nagrzewnica propanowa Arcotherm 41-85 kW, 2550 m³/h, zużycie do 5,5 kg gazu/h. Do dużych hal i namiotów.",
+      "body_html": "<p>Arcotherm GP 85 M to mocna nagrzewnica propanowa z bezpośrednim spalaniem i regulacją mocy od 41 do 85 kW, o przepływie powietrza 2550 m³/h. Zużywa od 2,5 do 5,5 kg gazu na godzinę, więc do pracy ciągłej potrzebna jest bateria butli lub zbiornik. Pobiera 240 W (wersja dwunapięciowa 110/230 V), waży 16 kg i ma wymiary ok. 70 x 32 x 54 cm. Producent podaje sprawność 100% (całe ciepło trafia do powietrza, razem ze spalinami), dlatego hala musi być stale wentylowana. Typowe zastosowanie to ogrzewanie dużych hal, namiotów wystawowych i budynków w stanie surowym.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Woelle ffm (CC BY-SA 3.0, Wikimedia Commons); Arbitrarily0 (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 180.0,
+      "price_per_week": 810.0,
+      "price_per_day_long": 78.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1250.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "41-85",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "2550",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Paliwo",
+          "value": "propan (LPG)",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "2,458-5,53",
+          "unit": "kg/h"
+        },
+        {
+          "label": "Pobór mocy",
+          "value": "0,24",
+          "unit": "kW"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "dwunapięciowe (110/230 V)",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "70 x 31,7 x 53,8",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "16",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 41-85 kW",
+        "Przepływ powietrza: 2550 m³/h",
+        "Paliwo: propan (LPG)",
+        "Zużycie paliwa: 2,458-5,53 kg/h"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy gazowej Arcotherm GP 85 M 85 kW",
+        "meta_description": "Wypożycz nagrzewnicę propanową Biemmedue Arcotherm GP 85 M 41-85 kW: 2550 m³/h, 16 kg. Do dużych hal i namiotów wystawowych."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg/1280px-Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg",
+        "alt": "Nagrzewnica nadmuchowa — widok z boku",
+        "credit": "Woelle ffm",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ger%C3%A4tewagen_Dekontamination_Personal_-Zeltheizger%C3%A4t%2C_HEATER_AIR_50B%2CSeitenansicht.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Gas_heater_beneath_platform_tennis_court.JPG/1280px-Gas_heater_beneath_platform_tennis_court.JPG",
+          "alt": "Wentylator nagrzewnicy gazowej",
+          "credit": "Arbitrarily0",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gas_heater_beneath_platform_tennis_court.JPG"
+        }
+      ],
+      "sort_order": 319
+    },
+    {
+      "external_id": "remko-elt-9-6",
+      "name": "Nagrzewnica elektryczna Remko ELT 9-6 400 V 9 kW",
+      "slug": "nagrzewnica-elektryczna-remko-elt-9-6-400-v-9-kw",
+      "brand": "Remko",
+      "category": {
+        "name": "Nagrzewnice elektryczne",
+        "slug": "nagrzewnice-elektryczne",
+        "icon": "sun",
+        "description": "Bezspalinowe nagrzewnice 230/400 V do pomieszczeń zamkniętych i wygrzewania wylewek.",
+        "sort_order": 4
+      },
+      "excerpt": "Kompaktowa trójfazowa nagrzewnica elektryczna 9 kW (2 x 4,5 kW), 600 m³/h. Lekka, 14,7 kg.",
+      "body_html": "<p>Remko ELT 9-6 to niewielka nagrzewnica elektryczna o mocy 9 kW, podzielonej na dwa stopnie po 4,5 kW, i przepływie powietrza 600 m³/h. Zasilana jest trójfazowo (400 V) z wtyczką CEE 16 A, a pobór prądu wynosi 13,2 A. Waży tylko 14,7 kg, więc łatwo ją przenieść po budynku. Nie wytwarza spalin, dlatego bezpiecznie ogrzeje warsztat, mieszkanie w remoncie, magazyn lub namiot, gdzie nie wolno używać paliw. Przed wynajmem upewnij się, że na miejscu jest gniazdo 400 V.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Air fans (CC BY-SA 4.0, Wikimedia Commons); Air fans (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 50.0,
+      "price_per_week": 225.0,
+      "price_per_day_long": 22.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "9 kW (2 x 4,5 kW)",
+          "unit": null
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "600",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "400 V / 3 fazy / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Prąd maksymalny",
+          "value": "13,2",
+          "unit": "A"
+        },
+        {
+          "label": "Wtyczka",
+          "value": "CEE 5-pin 16 A",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "14,7",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 9 kW (2 x 4,5 kW)",
+        "Przepływ powietrza: 600 m³/h",
+        "Zasilanie: 400 V / 3 fazy / 50 Hz",
+        "Prąd maksymalny: 13,2 A"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy elektrycznej Remko ELT 9-6 9 kW",
+        "meta_description": "Wypożycz nagrzewnicę elektryczną Remko ELT 9-6 9 kW, 400 V, 600 m³/h, 14,7 kg. Czyste ciepło bez spalin do warsztatów i remontów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Elettroriscaldatore_Stanley_2.jpg/1280px-Elettroriscaldatore_Stanley_2.jpg",
+        "alt": "Nagrzewnica elektryczna w pomieszczeniu",
+        "credit": "Air fans",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_2.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Elettroriscaldatore_Stanley_1.jpg/1280px-Elettroriscaldatore_Stanley_1.jpg",
+          "alt": "Przenośna nagrzewnica elektryczna w ramie",
+          "credit": "Air fans",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_1.jpg"
+        }
+      ],
+      "sort_order": 420
+    },
+    {
+      "external_id": "remko-elt-10-6",
+      "name": "Nagrzewnica elektryczna Remko ELT 10-6 400 V 10,5 kW",
+      "slug": "nagrzewnica-elektryczna-remko-elt-10-6-400-v-10-5-kw",
+      "brand": "Remko",
+      "category": {
+        "name": "Nagrzewnice elektryczne",
+        "slug": "nagrzewnice-elektryczne",
+        "icon": "sun",
+        "description": "Bezspalinowe nagrzewnice 230/400 V do pomieszczeń zamkniętych i wygrzewania wylewek.",
+        "sort_order": 4
+      },
+      "excerpt": "Trójfazowa nagrzewnica elektryczna 10,5 kW (3 x 5,5 kW) z trzema stopniami mocy. Waga 20 kg.",
+      "body_html": "<p>Remko ELT 10-6 to przenośna nagrzewnica elektryczna o mocy nominalnej 10,5 kW, przełączana w trzech stopniach po ok. 5,5 kW. Zasilanie trójfazowe 400 V, waga 20 kg, wymiary ok. 45,5 x 30 x 67,5 cm. Nie wytwarza spalin, więc bezpiecznie sprawdzi się w zamkniętych magazynach, warsztatach i podczas remontów. Trzy stopnie mocy pozwalają dopasować grzanie do wielkości pomieszczenia i obciążenia instalacji. Wymaga gniazda CEE 400 V o odpowiedniej obciążalności.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Air fans (CC BY-SA 4.0, Wikimedia Commons); Air fans (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 55.0,
+      "price_per_week": 250.0,
+      "price_per_day_long": 24.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "10,5 kW (3 stopnie)",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "400 V / 3 fazy / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "45,5 x 30 x 67,5 cm (W x S x G)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "20",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 10,5 kW (3 stopnie)",
+        "Zasilanie: 400 V / 3 fazy / 50 Hz",
+        "Wymiary: 45,5 x 30 x 67,5 cm (W x S x G)",
+        "Waga: 20 kg"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy elektrycznej Remko ELT 10-6",
+        "meta_description": "Wypożycz nagrzewnicę elektryczną Remko ELT 10-6 10,5 kW, 400 V, 3 stopnie mocy, 20 kg. Bez spalin, do magazynów i remontów."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Elettroriscaldatore_Stanley_1.jpg/1280px-Elettroriscaldatore_Stanley_1.jpg",
+        "alt": "Przenośna nagrzewnica elektryczna w ramie",
+        "credit": "Air fans",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_1.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Elettroriscaldatore_Stanley_2.jpg/1280px-Elettroriscaldatore_Stanley_2.jpg",
+          "alt": "Nagrzewnica elektryczna w pomieszczeniu",
+          "credit": "Air fans",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_2.jpg"
+        }
+      ],
+      "sort_order": 421
+    },
+    {
+      "external_id": "remko-elt-18-9",
+      "name": "Nagrzewnica elektryczna Remko ELT 18-9 400 V 18 kW",
+      "slug": "nagrzewnica-elektryczna-remko-elt-18-9-400-v-18-kw",
+      "brand": "Remko",
+      "category": {
+        "name": "Nagrzewnice elektryczne",
+        "slug": "nagrzewnice-elektryczne",
+        "icon": "sun",
+        "description": "Bezspalinowe nagrzewnice 230/400 V do pomieszczeń zamkniętych i wygrzewania wylewek.",
+        "sort_order": 4
+      },
+      "excerpt": "Trójfazowa nagrzewnica elektryczna 18 kW (3 x 6 kW) z poborem 27,5 A. Do hal, magazynów i dużych remontów.",
+      "body_html": "<p>Remko ELT 18-9 to nagrzewnica elektryczna o mocy 18 kW, przełączana w trzech stopniach po 6 kW. Zasilana jest trójfazowo 400 V i pobiera do 27,5 A, więc wymaga gniazda CEE 32 A. Waży 27,4 kg, a wymiary wynoszą ok. 50 x 33,5 x 74 cm. Nie wytwarza spalin, dlatego świetnie nadaje się do ogrzewania hal, magazynów, warsztatów i budynków w trakcie wykończeń oraz do przyspieszania wysychania farb i tynków. Trzy stopnie mocy pozwalają dopasować pobór prądu do instalacji.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Air fans (CC BY-SA 4.0, Wikimedia Commons); Air fans (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 75.0,
+      "price_per_week": 340.0,
+      "price_per_day_long": 32.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 800.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "18 kW (3 x 6 kW)",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "400 V / 3 fazy / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Prąd maksymalny",
+          "value": "27,5",
+          "unit": "A"
+        },
+        {
+          "label": "Wymiary",
+          "value": "50 x 33,5 x 74 cm (W x S x G)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "27,4",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 18 kW (3 x 6 kW)",
+        "Zasilanie: 400 V / 3 fazy / 50 Hz",
+        "Prąd maksymalny: 27,5 A",
+        "Wymiary: 50 x 33,5 x 74 cm (W x S x G)"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy elektrycznej Remko ELT 18-9 18 kW",
+        "meta_description": "Wypożycz nagrzewnicę elektryczną Remko ELT 18-9 18 kW, 400 V, 3 stopnie mocy. Bez spalin, do hal, magazynów i wykończeń."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Elettroriscaldatore_Stanley_1.jpg/1280px-Elettroriscaldatore_Stanley_1.jpg",
+        "alt": "Przenośna nagrzewnica elektryczna w ramie",
+        "credit": "Air fans",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_1.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Elettroriscaldatore_Stanley_2.jpg/1280px-Elettroriscaldatore_Stanley_2.jpg",
+          "alt": "Nagrzewnica elektryczna w pomieszczeniu",
+          "credit": "Air fans",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_2.jpg"
+        }
+      ],
+      "sort_order": 422
+    },
+    {
+      "external_id": "trotec-tds-75-r",
+      "name": "Nagrzewnica elektryczna Trotec TDS 75 R 400 V 15 kW",
+      "slug": "nagrzewnica-elektryczna-trotec-tds-75-r-400-v-15-kw",
+      "brand": "Trotec",
+      "category": {
+        "name": "Nagrzewnice elektryczne",
+        "slug": "nagrzewnice-elektryczne",
+        "icon": "sun",
+        "description": "Bezspalinowe nagrzewnice 230/400 V do pomieszczeń zamkniętych i wygrzewania wylewek.",
+        "sort_order": 4
+      },
+      "excerpt": "Trójfazowa nagrzewnica elektryczna Trotec 15 kW (7,5 / 15 kW), 1100 m³/h, IP24. Lekka, 19 kg.",
+      "body_html": "<p>Trotec TDS 75 R to profesjonalna nagrzewnica elektryczna o mocy 15 kW z dwoma stopniami grzania (7,5 i 15 kW) oraz trybem pracy samego wentylatora. Przepływ powietrza wynosi 1100 m³/h, a poziom hałasu 57 dB(A). Zasilanie trójfazowe 400 V (prąd znamionowy 21,7 A, zabezpieczenie 32 A, wtyczka CEE 32 A). Obudowa ma stopień ochrony IP24, a urządzenie może pracować w temperaturze otoczenia od -15 do +25°C. Wbudowany termostat utrzymuje stałą temperaturę, a wentylator dobiega po wyłączeniu, by schłodzić elementy grzejne. Nie wytwarza spalin.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Air fans (CC BY-SA 4.0, Wikimedia Commons); Air fans (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 65.0,
+      "price_per_week": 295.0,
+      "price_per_day_long": 28.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "7,5 / 15",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "1100",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "400 V / 3 fazy / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Prąd znamionowy",
+          "value": "21,7 A (zabezpieczenie 32 A)",
+          "unit": null
+        },
+        {
+          "label": "Stopień ochrony",
+          "value": "IP24",
+          "unit": null
+        },
+        {
+          "label": "Zakres temperatur otoczenia",
+          "value": "-15 do +25 °C",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "58 x 51 x 86",
+          "unit": "cm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "57",
+          "unit": "dB(A)"
+        },
+        {
+          "label": "Waga",
+          "value": "19",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 7,5 / 15 kW",
+        "Przepływ powietrza: 1100 m³/h",
+        "Zasilanie: 400 V / 3 fazy / 50 Hz",
+        "Prąd znamionowy: 21,7 A (zabezpieczenie 32 A)"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy elektrycznej Trotec TDS 75 R 15 kW",
+        "meta_description": "Wypożycz nagrzewnicę elektryczną Trotec TDS 75 R 15 kW, 400 V, 1100 m³/h, IP24. Czyste ciepło bez spalin, 19 kg."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Elettroriscaldatore_Stanley_2.jpg/1280px-Elettroriscaldatore_Stanley_2.jpg",
+        "alt": "Nagrzewnica elektryczna w pomieszczeniu",
+        "credit": "Air fans",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_2.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Elettroriscaldatore_Stanley_1.jpg/1280px-Elettroriscaldatore_Stanley_1.jpg",
+          "alt": "Przenośna nagrzewnica elektryczna w ramie",
+          "credit": "Air fans",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_1.jpg"
+        }
+      ],
+      "sort_order": 423
+    },
+    {
+      "external_id": "master-b-30-epr",
+      "name": "Nagrzewnica elektryczna Master B 30 EPR 400 V 30 kW",
+      "slug": "nagrzewnica-elektryczna-master-b-30-epr-400-v-30-kw",
+      "brand": "Master",
+      "category": {
+        "name": "Nagrzewnice elektryczne",
+        "slug": "nagrzewnice-elektryczne",
+        "icon": "sun",
+        "description": "Bezspalinowe nagrzewnice 230/400 V do pomieszczeń zamkniętych i wygrzewania wylewek.",
+        "sort_order": 4
+      },
+      "excerpt": "Najmocniejsza przenośna nagrzewnica elektryczna 15/30 kW, przepływ 3500 m³/h. Do hal i dużych obiektów.",
+      "body_html": "<p>Master B 30 EPR to ciężka nagrzewnica elektryczna o mocy 15 lub 30 kW, zasilana trójfazowo 400 V z poborem 3 x 43,5 A. Przepływ powietrza wynosi 3500 m³/h, co pozwala szybko nagrzać dużą halę, magazyn lub kondygnację budynku w trakcie wykończeń. Urządzenie nie wytwarza spalin, a obudowa ma stopień ochrony IP24. Przewód zasilający ma 1,7 m i przekrój 5x4 mm², więc wymaga przyłącza CEE 63 A lub agregatu o odpowiedniej mocy. Masa ok. 51-53 kg i kółka ułatwiają przemieszczanie po równym podłożu.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Air fans (CC BY-SA 4.0, Wikimedia Commons); Air fans (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 110.0,
+      "price_per_week": 495.0,
+      "price_per_day_long": 48.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1500.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc grzewcza",
+          "value": "15 / 30",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływ powietrza",
+          "value": "3500",
+          "unit": "m³/h"
+        },
+        {
+          "label": "Zasilanie",
+          "value": "400 V / 3 fazy / 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Prąd znamionowy",
+          "value": "3 x 43,5",
+          "unit": "A"
+        },
+        {
+          "label": "Przewód zasilający",
+          "value": "1,7 m, 5 x 4 mm²",
+          "unit": null
+        },
+        {
+          "label": "Stopień ochrony",
+          "value": "IP24",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "103 x 58 x 68",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "51-53",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Moc grzewcza: 15 / 30 kW",
+        "Przepływ powietrza: 3500 m³/h",
+        "Zasilanie: 400 V / 3 fazy / 50 Hz",
+        "Prąd znamionowy: 3 x 43,5 A"
+      ],
+      "seo": {
+        "meta_title": "Wynajem nagrzewnicy elektrycznej Master B 30 EPR 30 kW",
+        "meta_description": "Wypożycz nagrzewnicę elektryczną Master B 30 EPR 15/30 kW, 3500 m³/h, 400 V. Do dużych hal i magazynów bez spalin."
+      },
+      "featured_image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Elettroriscaldatore_Stanley_2.jpg/1280px-Elettroriscaldatore_Stanley_2.jpg",
+        "alt": "Nagrzewnica elektryczna w pomieszczeniu",
+        "credit": "Air fans",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_2.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Elettroriscaldatore_Stanley_1.jpg/1280px-Elettroriscaldatore_Stanley_1.jpg",
+          "alt": "Przenośna nagrzewnica elektryczna w ramie",
+          "credit": "Air fans",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Elettroriscaldatore_Stanley_1.jpg"
+        }
+      ],
+      "sort_order": 424
+    },
+    {
+      "external_id": "honda-eu22i",
+      "name": "Agregat prądotwórczy inwerterowy Honda EU 22i 2,2 kVA",
+      "slug": "agregat-pradotworczy-inwerterowy-honda-eu-22i-2-2-kva",
+      "brand": "Honda",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Cichy, lekki agregat inwerterowy 1-fazowy z czystym prądem, dobry do elektroniki i drobnych prac.",
+      "body_html": "<p>Kompaktowy agregat benzynowy z inwerterem daje stabilne napięcie 230 V, bezpieczne dla laptopów, oświetlenia LED i sprzętu nagłośnieniowego. Sprawdza się na imprezach plenerowych, małych budowach i jako awaryjne zasilanie. Pełny zbiornik 3,6 l starcza na kilka godzin pracy, zależnie od obciążenia. Przy wadze ok. 21 kg bez problemu przewieziesz go osobówką. Paliwo to benzyna bezołowiowa, którą dostarcza najemca.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: TaurusEmerald (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 130.0,
+      "price_per_week": 590.0,
+      "price_per_day_long": 56.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1000.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Moc maksymalna",
+          "value": "2,2 kVA (2200 W)",
+          "unit": null
+        },
+        {
+          "label": "Moc ciągła",
+          "value": "1,8",
+          "unit": "kVA"
+        },
+        {
+          "label": "Napięcie",
+          "value": "230 V, 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Liczba faz",
+          "value": "1",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "benzyna bezołowiowa",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "3,6",
+          "unit": "l"
+        },
+        {
+          "label": "Czas pracy",
+          "value": "ok. 3,5-9 h (zależnie od obciążenia)",
+          "unit": null
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "ok. 52 dB(A) z 7 m",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "20,7",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "51,2 x 29 x 42,5",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc maksymalna: 2,2 kVA (2200 W)",
+        "Moc ciągła: 1,8 kVA",
+        "Napięcie: 230 V, 50 Hz",
+        "Liczba faz: 1"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu Honda EU 22i 2,2 kVA inwerter",
+        "meta_description": "Wypożycz cichy agregat prądotwórczy Honda EU 22i 2,2 kVA. Inwerter, 230 V, ok. 21 kg. Ceny za dobę, weekend i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Honda_EU2000i_Inverter_Generator.jpg/1280px-Honda_EU2000i_Inverter_Generator.jpg",
+        "alt": "Inwerterowy agregat prądotwórczy Honda",
+        "credit": "TaurusEmerald",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Honda_EU2000i_Inverter_Generator.jpg"
+      },
+      "gallery": [],
+      "sort_order": 125
+    },
+    {
+      "external_id": "honda-eu30is",
+      "name": "Agregat prądotwórczy inwerterowy Honda EU 30is 3,0 kVA",
+      "slug": "agregat-pradotworczy-inwerterowy-honda-eu-30is-3-0-kva",
+      "brand": "Honda",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Inwerterowy agregat 1-fazowy z rozruchem elektrycznym, na plac budowy i do zasilania wrażliwego sprzętu.",
+      "body_html": "<p>Agregat o mocy 3 kVA z elektronicznym stabilizowaniem napięcia, wygodny gdy trzeba zasilić narzędzia elektryczne i jednocześnie elektronikę. Zbiornik 13 l daje ok. 7 godzin ciągłej pracy, a rozruch elektryczny ułatwia start. Dobrze radzi sobie z szlifierkami, piłami i oświetleniem na budowie oraz zasilaniem stoisk i eventów. Waży niecałe 60 kg i ma kółka do przetaczania. Paliwo: benzyna bezołowiowa po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: TaurusEmerald (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 180.0,
+      "price_per_week": 810.0,
+      "price_per_day_long": 78.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 2000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Moc maksymalna",
+          "value": "3,0",
+          "unit": "kVA"
+        },
+        {
+          "label": "Moc znamionowa",
+          "value": "2,8",
+          "unit": "kVA"
+        },
+        {
+          "label": "Napięcie",
+          "value": "230 V, 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Liczba faz",
+          "value": "1",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "benzyna bezołowiowa",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "1,82",
+          "unit": "l/h"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "13",
+          "unit": "l"
+        },
+        {
+          "label": "Czas pracy",
+          "value": "7,1",
+          "unit": "h"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "LwA 91 dB(A)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "59",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "65,8 x 44,7 x 55,8",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc maksymalna: 3,0 kVA",
+        "Moc znamionowa: 2,8 kVA",
+        "Napięcie: 230 V, 50 Hz",
+        "Liczba faz: 1"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu Honda EU 30is 3 kVA inwerter",
+        "meta_description": "Agregat prądotwórczy Honda EU 30is 3 kVA do wypożyczenia. Rozruch elektryczny, czysty prąd 230 V. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Honda_EU3000is_Inverter_Generator.jpg/1280px-Honda_EU3000is_Inverter_Generator.jpg",
+        "alt": "Inwerterowy agregat prądotwórczy Honda EU 3000is",
+        "credit": "TaurusEmerald",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Honda_EU3000is_Inverter_Generator.jpg"
+      },
+      "gallery": [],
+      "sort_order": 126
+    },
+    {
+      "external_id": "honda-em5500cxs",
+      "name": "Agregat prądotwórczy Honda EM 5500 CXS 5,5 kW",
+      "slug": "agregat-pradotworczy-honda-em-5500-cxs-5-5-kw",
+      "brand": "Honda",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Mocny 1-fazowy agregat benzynowy z rozruchem elektrycznym do pracy na budowie.",
+      "body_html": "<p>Agregat z silnikiem Honda GX390 i układem i-AVR stabilizującym napięcie, o mocy 5,5 kW (6,9 kVA) maksymalnie. Zasili kilka narzędzi jednocześnie, np. piły, szlifierki i oświetlenie. Zbiornik 23,5 l starcza na ok. 8 godzin, a rozruch elektryczny skraca start. Waży ok. 109 kg, więc do przewozu potrzebny jest bus lub przyczepa. Paliwo (benzyna 95) po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: TaurusEmerald (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 220.0,
+      "price_per_week": 990.0,
+      "price_per_day_long": 95.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1500.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Moc maksymalna",
+          "value": "5,5 kW (6,87 kVA)",
+          "unit": null
+        },
+        {
+          "label": "Moc ciągła",
+          "value": "5,0 kW (6,25 kVA)",
+          "unit": null
+        },
+        {
+          "label": "Napięcie",
+          "value": "230 V, 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Liczba faz",
+          "value": "1",
+          "unit": null
+        },
+        {
+          "label": "Silnik",
+          "value": "Honda GX390, 389 cm3",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "benzyna",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "ok. 2,9",
+          "unit": "l/h"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "23,5",
+          "unit": "l"
+        },
+        {
+          "label": "Czas pracy",
+          "value": "do 8 h",
+          "unit": null
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "77 dB(A) ciśnienie, 96 dB(A) moc akustyczna",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "108,8",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "72,5 x 70,6 x 71,9",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc maksymalna: 5,5 kW (6,87 kVA)",
+        "Moc ciągła: 5,0 kW (6,25 kVA)",
+        "Napięcie: 230 V, 50 Hz",
+        "Liczba faz: 1"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu Honda EM 5500 CXS 5,5 kW",
+        "meta_description": "Wypożycz agregat prądotwórczy Honda EM 5500 CXS 5,5 kW, 230 V, rozruch elektryczny. Ceny za dobę i tydzień, kaucja."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Yancey_Caterpillar_Portable_Generator.jpg/1280px-Yancey_Caterpillar_Portable_Generator.jpg",
+        "alt": "Przenośny agregat prądotwórczy w obudowie",
+        "credit": "TaurusEmerald",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Yancey_Caterpillar_Portable_Generator.jpg"
+      },
+      "gallery": [],
+      "sort_order": 127
+    },
+    {
+      "external_id": "kipor-kde12sta3",
+      "name": "Agregat prądotwórczy diesel Kipor KDE 12 STA3 10 kVA",
+      "slug": "agregat-pradotworczy-diesel-kipor-kde-12-sta3-10-kva",
+      "brand": "Kipor",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Wyciszony diesel 3-fazowy 10 kVA na budowę lub jako zasilanie awaryjne.",
+      "body_html": "<p>Agregat wysokoprężny z kompletem gniazd 230/400 V, popularny jako zasilanie placu budowy i obiektów bez przyłącza. Zbiornik 26 l pozwala pracować ok. 7 godzin ciągle, a obudowa tłumi hałas do ok. 72 dB(A) z 7 m. Waga 310 kg wymaga transportu w kilka osób lub wózkiem, na szczęście agregat ma kółka. Paliwo: olej napędowy po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Aurora Generators (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 350.0,
+      "price_per_week": 1580.0,
+      "price_per_day_long": 152.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 4000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Moc znamionowa",
+          "value": "10 kVA (maks. 11 kVA)",
+          "unit": null
+        },
+        {
+          "label": "Napięcie",
+          "value": "230/400 V, 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "340 g/kWh lub mniej",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "26",
+          "unit": "l"
+        },
+        {
+          "label": "Czas pracy",
+          "value": "do 7 h",
+          "unit": null
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "72 dB(A) z 7 m",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "310",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "135 x 79,5 x 85",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc znamionowa: 10 kVA (maks. 11 kVA)",
+        "Napięcie: 230/400 V, 50 Hz",
+        "Liczba faz: 3",
+        "Paliwo: olej napędowy"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu diesel Kipor KDE 12 STA3 10 kVA",
+        "meta_description": "Agregat prądotwórczy diesel 10 kVA Kipor KDE 12 STA3 do wypożyczenia. 400 V, wyciszony. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Aurora_Diesel_Generator.jpg/1280px-Aurora_Diesel_Generator.jpg",
+        "alt": "Holowany agregat prądotwórczy diesla",
+        "credit": "Aurora Generators",
+        "license": "CC BY 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Aurora_Diesel_Generator.jpg"
+      },
+      "gallery": [],
+      "sort_order": 128
+    },
+    {
+      "external_id": "pramac-gbw22p",
+      "name": "Agregat prądotwórczy diesel Pramac GBW 22 P 20 kVA",
+      "slug": "agregat-pradotworczy-diesel-pramac-gbw-22-p-20-kva",
+      "brand": "Pramac",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Wyciszony diesel ok. 20 kVA 3-fazowy do większych budów i zasilania obiektów.",
+      "body_html": "<p>Agregat z silnikiem Perkins w obudowie dźwiękochłonnej (ok. 66 dB(A) z 7 m), dający 20 kVA mocy ciągłej i 22 kVA maksymalnie. Zasili kilka maszyn trójfazowych jednocześnie, np. kontenery biurowe i narzędzia. Zbiornik 51 l wystarcza na wiele godzin pracy, bo przy pełnym obciążeniu agregat pali ok. 5,7 l/h. Waży ok. 640 kg, więc potrzebny jest transport z dźwigiem lub wózkiem. Paliwo po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Aurora Generators (CC BY 4.0, Wikimedia Commons); Mbrickn (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 550.0,
+      "price_per_week": 2480.0,
+      "price_per_day_long": 238.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 6000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Moc ciągła",
+          "value": "20,12 kVA (16,1 kW)",
+          "unit": null
+        },
+        {
+          "label": "Moc maksymalna",
+          "value": "22 kVA (17,6 kW)",
+          "unit": null
+        },
+        {
+          "label": "Napięcie",
+          "value": "230/400",
+          "unit": "V"
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Silnik",
+          "value": "Perkins 404J-22G, 2220 cm3",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "5,74 l/h przy pełnym obciążeniu",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "51",
+          "unit": "l"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "66 dB(A) z 7 m",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 640",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "164,5 x 87 x 107",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc ciągła: 20,12 kVA (16,1 kW)",
+        "Moc maksymalna: 22 kVA (17,6 kW)",
+        "Napięcie: 230/400 V",
+        "Liczba faz: 3"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu diesel Pramac GBW 22 P 20 kVA",
+        "meta_description": "Agregat prądotwórczy Pramac GBW 22 P 20 kVA do wynajęcia. Diesel, 400 V, wyciszony. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Aurora_Diesel_Generator.jpg/1280px-Aurora_Diesel_Generator.jpg",
+        "alt": "Holowany agregat prądotwórczy diesla",
+        "credit": "Aurora Generators",
+        "license": "CC BY 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Aurora_Diesel_Generator.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cummins_Generator.jpg/1280px-Cummins_Generator.jpg",
+          "alt": "Agregat prądotwórczy diesla w obudowie wyciszonej",
+          "credit": "Mbrickn",
+          "license": "CC BY 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Cummins_Generator.jpg"
+        }
+      ],
+      "sort_order": 129
+    },
+    {
+      "external_id": "atlascopco-qas20",
+      "name": "Agregat prądotwórczy Atlas Copco QAS 20 20 kVA",
+      "slug": "agregat-pradotworczy-atlas-copco-qas-20-20-kva",
+      "brand": "Atlas Copco",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Wyciszony diesel 20 kVA 3-fazowy z serii rental, wytrzymały na placu budowy.",
+      "body_html": "<p>Agregat z silnikiem wysokoprężnym w stalowej, wyciszonej obudowie, projektowany do ciężkiej pracy w wypożyczalniach. Zasila maszyny budowlane, oświetlenie i kontenery socjalne dzięki gniazdom 230 V i 400 V. Zbiornik 115 l pozwala pracować przez długi czas bez tankowania. Waga rzędu 800 kg wymaga transportu z podnośnikiem lub lawetą. Paliwo (olej napędowy) po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Ave Maria Mõistlik (CC BY-SA 4.0, Wikimedia Commons); Mbrickn (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 650.0,
+      "price_per_week": 2930.0,
+      "price_per_day_long": 282.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 8000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Moc ciągła",
+          "value": "20 kVA (16 kW)",
+          "unit": null
+        },
+        {
+          "label": "Napięcie",
+          "value": "230/400",
+          "unit": "V"
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Prąd znamionowy",
+          "value": "29",
+          "unit": "A"
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "115",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 795",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "178 x 87 x 120",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc ciągła: 20 kVA (16 kW)",
+        "Napięcie: 230/400 V",
+        "Liczba faz: 3",
+        "Prąd znamionowy: 29 A"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu Atlas Copco QAS 20 20 kVA",
+        "meta_description": "Agregat prądotwórczy Atlas Copco QAS 20 20 kVA do wypożyczenia. Diesel, 400 V, wyciszony. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/QAX60.IMG_20210721_201642%281%29.jpg/1280px-QAX60.IMG_20210721_201642%281%29.jpg",
+        "alt": "Mobilny agregat prądotwórczy Atlas Copco na przyczepie",
+        "credit": "Ave Maria Mõistlik",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:QAX60.IMG_20210721_201642(1).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cummins_Generator.jpg/1280px-Cummins_Generator.jpg",
+          "alt": "Agregat prądotwórczy diesla w obudowie wyciszonej",
+          "credit": "Mbrickn",
+          "license": "CC BY 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Cummins_Generator.jpg"
+        }
+      ],
+      "sort_order": 130
+    },
+    {
+      "external_id": "atlascopco-qas60",
+      "name": "Agregat prądotwórczy Atlas Copco QAS 60 60 kVA",
+      "slug": "agregat-pradotworczy-atlas-copco-qas-60-60-kva",
+      "brand": "Atlas Copco",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Diesel 60 kVA do dużych budów i zasilania obiektów.",
+      "body_html": "<p>Agregat w obudowie wyciszającej z silnikiem Perkins 1104D-44TG3, dający 60 kVA mocy ciągłej i 66 kVA awaryjnie. Zasili kilka maszyn trójfazowych jednocześnie oraz hale tymczasowe i place eventowe. Zbiornik 298 l i zużycie ok. 14 l/h przy pełnym obciążeniu dają długą pracę między tankowaniami. Waży ok. 1,4 t, więc dostawa wymaga lawety lub dźwigu. Paliwo (olej napędowy) po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Ave Maria Mõistlik (CC BY-SA 4.0, Wikimedia Commons); Mbrickn (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 1200.0,
+      "price_per_week": 5400.0,
+      "price_per_day_long": 520.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 14000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Moc ciągła",
+          "value": "60",
+          "unit": "kVA"
+        },
+        {
+          "label": "Moc awaryjna",
+          "value": "66",
+          "unit": "kVA"
+        },
+        {
+          "label": "Napięcie",
+          "value": "400 V, 3 fazy, 50 Hz",
+          "unit": null
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Prąd",
+          "value": "87",
+          "unit": "A"
+        },
+        {
+          "label": "Silnik",
+          "value": "Perkins 1104D-44TG3",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "14 l/h przy 100% obciążenia",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "298",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "1433",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "226 x 105 x 143",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc ciągła: 60 kVA",
+        "Moc awaryjna: 66 kVA",
+        "Napięcie: 400 V, 3 fazy, 50 Hz",
+        "Liczba faz: 3"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu Atlas Copco QAS 60 60 kVA",
+        "meta_description": "Agregat prądotwórczy Atlas Copco QAS 60 60 kVA do wynajęcia. Diesel, 400 V, wyciszony. Ceny za dobę i miesiąc."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/QAX60.IMG_20210721_201642%281%29.jpg/1280px-QAX60.IMG_20210721_201642%281%29.jpg",
+        "alt": "Mobilny agregat prądotwórczy Atlas Copco na przyczepie",
+        "credit": "Ave Maria Mõistlik",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:QAX60.IMG_20210721_201642(1).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cummins_Generator.jpg/1280px-Cummins_Generator.jpg",
+          "alt": "Agregat prądotwórczy diesla w obudowie wyciszonej",
+          "credit": "Mbrickn",
+          "license": "CC BY 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Cummins_Generator.jpg"
+        }
+      ],
+      "sort_order": 131
+    },
+    {
+      "external_id": "atlascopco-qas100",
+      "name": "Agregat prądotwórczy Atlas Copco QAS 100 100 kVA",
+      "slug": "agregat-pradotworczy-atlas-copco-qas-100-100-kva",
+      "brand": "Atlas Copco",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Duży diesel 100 kVA do zasilania całych placów budowy.",
+      "body_html": "<p>Agregat największej mocy w ofercie: 100 kVA (80 kW) w wyciszonej obudowie, z gniazdami 230 V oraz 400 V 16/32/63 A. Obsłuży żurawie, sprężarki, pompy i oświetlenie jednocześnie. Zbiornik 230 l i spalanie ok. 22,8 l/h dają kilkanaście godzin pracy na jednym tankowaniu. Waży niemal 2 t i ma ponad 2,8 m długości, więc transport wymaga lawety lub dźwigu. Paliwo po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Ave Maria Mõistlik (CC BY-SA 4.0, Wikimedia Commons); Mbrickn (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 1800.0,
+      "price_per_week": 8100.0,
+      "price_per_day_long": 780.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 17000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Moc",
+          "value": "100 kVA (80 kW)",
+          "unit": null
+        },
+        {
+          "label": "Napięcie",
+          "value": "230/400",
+          "unit": "V"
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Gniazda",
+          "value": "1x 230 V/16 A, 400 V/16 A, 400 V/32 A, 400 V/63 A",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "22,8",
+          "unit": "l/h"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "230",
+          "unit": "l"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "93 dB(A) moc akustyczna",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "1992",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "285 x 110 x 162",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc: 100 kVA (80 kW)",
+        "Napięcie: 230/400 V",
+        "Liczba faz: 3",
+        "Gniazda: 1x 230 V/16 A, 400 V/16 A, 400 V/32 A, 400 V/63 A"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu Atlas Copco QAS 100 100 kVA",
+        "meta_description": "Agregat prądotwórczy Atlas Copco QAS 100 100 kVA do wynajęcia. Diesel, 400 V. Ceny za dobę, tydzień i miesiąc."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/QAX60.IMG_20210721_201642%281%29.jpg/1280px-QAX60.IMG_20210721_201642%281%29.jpg",
+        "alt": "Mobilny agregat prądotwórczy Atlas Copco na przyczepie",
+        "credit": "Ave Maria Mõistlik",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:QAX60.IMG_20210721_201642(1).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cummins_Generator.jpg/1280px-Cummins_Generator.jpg",
+          "alt": "Agregat prądotwórczy diesla w obudowie wyciszonej",
+          "credit": "Mbrickn",
+          "license": "CC BY 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Cummins_Generator.jpg"
+        }
+      ],
+      "sort_order": 132
+    },
+    {
+      "external_id": "sdmo-j33",
+      "name": "Agregat prądotwórczy SDMO J33 33 kVA",
+      "slug": "agregat-pradotworczy-sdmo-j33-33-kva",
+      "brand": "SDMO",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Diesel 3-fazowy 33 kVA w obudowie wyciszonej, na większe budowy.",
+      "body_html": "<p>Agregat z silnikiem wysokoprężnym w obudowie dźwiękochłonnej, zaprojektowany z myślą o wynajmie i pracy ciągłej. Zasili plac budowy, halę lub imprezę plenerową. Zużycie wynosi ok. 5,5 l/h przy 75% obciążenia. Wersja wyciszona z małym zbiornikiem waży ok. 817 kg, a z dużym zbiornikiem do ok. 1000 kg. Przystosowany do podnoszenia i transportu na lawecie. Paliwo po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Mbrickn (CC BY 4.0, Wikimedia Commons); Aurora Generators (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 900.0,
+      "price_per_week": 4050.0,
+      "price_per_day_long": 390.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 8000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Moc",
+          "value": "33",
+          "unit": "kVA"
+        },
+        {
+          "label": "Napięcie",
+          "value": "230/400",
+          "unit": "V"
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "5,5 l/h przy 75% obciążenia",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "100",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "817 kg (wersja wyciszona)",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "170 x 89,6 x 118",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc: 33 kVA",
+        "Napięcie: 230/400 V",
+        "Liczba faz: 3",
+        "Paliwo: olej napędowy"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu SDMO J33 33 kVA diesel",
+        "meta_description": "Agregat prądotwórczy SDMO J33 33 kVA do wynajęcia. Diesel, 400 V, wyciszony. Ceny za dobę, tydzień i miesiąc."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cummins_Generator.jpg/1280px-Cummins_Generator.jpg",
+        "alt": "Agregat prądotwórczy diesla w obudowie wyciszonej",
+        "credit": "Mbrickn",
+        "license": "CC BY 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Cummins_Generator.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Aurora_Diesel_Generator.jpg/1280px-Aurora_Diesel_Generator.jpg",
+          "alt": "Holowany agregat prądotwórczy diesla",
+          "credit": "Aurora Generators",
+          "license": "CC BY 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Aurora_Diesel_Generator.jpg"
+        }
+      ],
+      "sort_order": 133
+    },
+    {
+      "external_id": "pramac-gbw30p",
+      "name": "Agregat prądotwórczy diesel Pramac GBW 30 P 30 kVA",
+      "slug": "agregat-pradotworczy-diesel-pramac-gbw-30-p-30-kva",
+      "brand": "Pramac",
+      "category": {
+        "name": "Agregaty prądotwórcze",
+        "slug": "agregaty-pradotworcze",
+        "icon": "bolt",
+        "description": "Przenośne agregaty inwerterowe i holowane agregaty diesla 230/400 V — zasilanie budowy, imprez i awaryjne.",
+        "sort_order": 1
+      },
+      "excerpt": "Diesel 30 kVA 3-fazowy z silnikiem Perkins na większe budowy.",
+      "body_html": "<p>Agregat z silnikiem Perkins o mocy ok. 30 kVA, w wersji z obudową wyciszającą. Zasili kilka maszyn trójfazowych i oświetlenie na średniej budowie lub imprezie. Zbiornik ma 51 l, a długość i szerokość to ok. 200 x 92 cm. Waga zależy od wersji, ok. 680-700 kg suchy. Transport lawetą lub dźwigiem. Paliwo po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Aurora Generators (CC BY 4.0, Wikimedia Commons); Mbrickn (CC BY 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 800.0,
+      "price_per_week": 3600.0,
+      "price_per_day_long": 347.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 7000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Moc",
+          "value": "ok. 30",
+          "unit": "kVA"
+        },
+        {
+          "label": "Napięcie",
+          "value": "230/400",
+          "unit": "V"
+        },
+        {
+          "label": "Liczba faz",
+          "value": "3",
+          "unit": null
+        },
+        {
+          "label": "Silnik",
+          "value": "Perkins",
+          "unit": null
+        },
+        {
+          "label": "Paliwo",
+          "value": "olej napędowy",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "51",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 680-700",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "ok. 200 x 92 x 110-127",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Moc: ok. 30 kVA",
+        "Napięcie: 230/400 V",
+        "Liczba faz: 3",
+        "Silnik: Perkins"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu diesel Pramac GBW 30 P 30 kVA",
+        "meta_description": "Agregat prądotwórczy Pramac GBW 30 P 30 kVA do wynajęcia. Diesel Perkins, 400 V. Ceny za dobę, tydzień i miesiąc."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Aurora_Diesel_Generator.jpg/1280px-Aurora_Diesel_Generator.jpg",
+        "alt": "Holowany agregat prądotwórczy diesla",
+        "credit": "Aurora Generators",
+        "license": "CC BY 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Aurora_Diesel_Generator.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cummins_Generator.jpg/1280px-Cummins_Generator.jpg",
+          "alt": "Agregat prądotwórczy diesla w obudowie wyciszonej",
+          "credit": "Mbrickn",
+          "license": "CC BY 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Cummins_Generator.jpg"
+        }
+      ],
+      "sort_order": 134
+    },
+    {
+      "external_id": "pft-g4x-standard",
+      "name": "Agregat tynkarski PFT G4 X Standard",
+      "slug": "agregat-tynkarski-pft-g4-x-standard",
+      "brand": "PFT",
+      "category": {
+        "name": "Agregaty tynkarskie",
+        "slug": "agregaty-tynkarskie",
+        "icon": "paint-brush",
+        "description": "Mieszarko-pompy do maszynowego tynkowania, wylewek i zapraw.",
+        "sort_order": 6
+      },
+      "excerpt": "Popularna maszyna do nakładania tynków maszynowych gipsowych i cementowo-wapiennych.",
+      "body_html": "<p>Agregat z pompą ślimakową, który miesza suchą zaprawę z wodą i podaje ją wężem do pistoletu tynkarskiego. Sprawdza się przy tynkach wewnętrznych i zewnętrznych na dużych powierzchniach, ze zbiornikiem na zaprawę 145 l. Wymaga zasilania trójfazowego 400 V i przyłącza wody. Wydajność pompy to ok. 22 l/min, a zasięg podawania do 30 m (wąż 25 mm) lub 50 m (wąż 35 mm). Waży 279 kg, więc potrzebne są dwie osoby i przyczepa lub bus.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Michel Pol (CC BY-SA 4.0, Wikimedia Commons); Mixplaster (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 400.0,
+      "price_per_week": 1800.0,
+      "price_per_day_long": 173.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 5000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Zasilanie",
+          "value": "400 V, 3 fazy, 50 Hz (dostępna wersja przełączalna 230/400 V)",
+          "unit": null
+        },
+        {
+          "label": "Moc silnika pompy",
+          "value": "5,5",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc silnika podajnika",
+          "value": "0,75",
+          "unit": "kW"
+        },
+        {
+          "label": "Sprężarka",
+          "value": "0,9",
+          "unit": "kW"
+        },
+        {
+          "label": "Wydajność",
+          "value": "ok. 22 l/min (do 85 l/min przy podajniku gwiazdowym)",
+          "unit": null
+        },
+        {
+          "label": "Ciśnienie tłoczenia",
+          "value": "30",
+          "unit": "bar"
+        },
+        {
+          "label": "Zasięg podawania",
+          "value": "30 m (wąż 25 mm) / 50 m (wąż 35 mm)",
+          "unit": null
+        },
+        {
+          "label": "Pojemność kosza",
+          "value": "145",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "279",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "120 x 72 x 153",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Zasilanie: 400 V, 3 fazy, 50 Hz (dostępna wersja przełączalna 230/400 V)",
+        "Moc silnika pompy: 5,5 kW",
+        "Moc silnika podajnika: 0,75 kW",
+        "Sprężarka: 0,9 kW"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu tynkarskiego PFT G4 X Standard",
+        "meta_description": "Wypożycz agregat tynkarski PFT G4 X do tynków maszynowych. 400 V, 22 l/min. Ceny za dobę, tydzień i miesiąc."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Gips-spuit-machine.jpg/1280px-Gips-spuit-machine.jpg",
+        "alt": "Agregat tynkarski PFT",
+        "credit": "Michel Pol",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Gips-spuit-machine.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/f/f2/%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg",
+          "alt": "Agregat tynkarski z zasypem i pompą ślimakową",
+          "credit": "Mixplaster",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg"
+        }
+      ],
+      "sort_order": 635
+    },
+    {
+      "external_id": "pft-g5c",
+      "name": "Agregat tynkarski PFT G5 c",
+      "slug": "agregat-tynkarski-pft-g5-c",
+      "brand": "PFT",
+      "category": {
+        "name": "Agregaty tynkarskie",
+        "slug": "agregaty-tynkarskie",
+        "icon": "paint-brush",
+        "description": "Mieszarko-pompy do maszynowego tynkowania, wylewek i zapraw.",
+        "sort_order": 6
+      },
+      "excerpt": "Wydajniejsza maszyna tynkarska PFT z regulacją dozowania wody.",
+      "body_html": "<p>Model do pracy na większych powierzchniach, z pompą ślimakową i silnikiem 5,5 kW oraz przekładnią podajnika 0,75 kW. Obsługuje tynki gipsowe i cementowo-wapienne. Wersja G5 c występuje na 400 V (istnieje też wersja FC 230 V). Wymaga przyłącza wody, przepływomierz wody ma zakres 150-1500 l/h. Przed wypożyczeniem pokazujemy obsługę i czyszczenie, co ogranicza ryzyko zatkania węży.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Michel Pol (CC BY-SA 4.0, Wikimedia Commons); Mixplaster (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 480.0,
+      "price_per_week": 2160.0,
+      "price_per_day_long": 208.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 6000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Zasilanie",
+          "value": "400 V, 3 fazy",
+          "unit": null
+        },
+        {
+          "label": "Moc silnika pompy",
+          "value": "5,5",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc silnika podajnika",
+          "value": "0,75",
+          "unit": "kW"
+        },
+        {
+          "label": "Przepływomierz wody",
+          "value": "150-1500",
+          "unit": "l/h"
+        }
+      ],
+      "features": [
+        "Zasilanie: 400 V, 3 fazy",
+        "Moc silnika pompy: 5,5 kW",
+        "Moc silnika podajnika: 0,75 kW",
+        "Przepływomierz wody: 150-1500 l/h"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu tynkarskiego PFT G5 c",
+        "meta_description": "Agregat tynkarski PFT G5 c do wypożyczenia. 400 V, tynki gipsowe i cementowo-wapienne. Cena za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Gips-spuit-machine.jpg/1280px-Gips-spuit-machine.jpg",
+        "alt": "Agregat tynkarski PFT",
+        "credit": "Michel Pol",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Gips-spuit-machine.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/f/f2/%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg",
+          "alt": "Agregat tynkarski z zasypem i pompą ślimakową",
+          "credit": "Mixplaster",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg"
+        }
+      ],
+      "sort_order": 636
+    },
+    {
+      "external_id": "mtec-duomix",
+      "name": "Agregat tynkarski m-tec duo-mix",
+      "slug": "agregat-tynkarski-m-tec-duo-mix",
+      "brand": "m-tec",
+      "category": {
+        "name": "Agregaty tynkarskie",
+        "slug": "agregaty-tynkarskie",
+        "icon": "paint-brush",
+        "description": "Mieszarko-pompy do maszynowego tynkowania, wylewek i zapraw.",
+        "sort_order": 6
+      },
+      "excerpt": "Maszyna tynkarska 400 V do tynków i szpachli maszynowych, z podajnikiem i sprężarką.",
+      "body_html": "<p>Agregat do nakładania tynków i zapraw maszynowo: mieszanie, pompowanie i podawanie wężem w jednym urządzeniu. Wydajność ok. 22 l/min w standardowej pompie, zasięg do 60 m w poziomie i 30 m w pionie. Wymaga zasilania 400 V (bezpiecznik 25 A) i wody z sieci. Waga ok. 260 kg, więc potrzebne są dwie osoby i przyczepa lub bus.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Mixplaster (CC BY-SA 4.0, Wikimedia Commons); Michel Pol (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 350.0,
+      "price_per_week": 1580.0,
+      "price_per_day_long": 152.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 4500.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Zasilanie",
+          "value": "400 V, 50 Hz, 3 fazy, bezpiecznik 25 A",
+          "unit": null
+        },
+        {
+          "label": "Moc silnika podajnika",
+          "value": "3,0",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc sekcji mieszania i pompy",
+          "value": "5,5",
+          "unit": "kW"
+        },
+        {
+          "label": "Sprężarka",
+          "value": "0,9",
+          "unit": "kW"
+        },
+        {
+          "label": "Pompa wody",
+          "value": "0,75",
+          "unit": "kW"
+        },
+        {
+          "label": "Wydajność",
+          "value": "ok. 22 l/min (5-60 l/min zależnie od pompy)",
+          "unit": null
+        },
+        {
+          "label": "Zasięg podawania",
+          "value": "do 60 m w poziomie, 30 m w pionie",
+          "unit": null
+        },
+        {
+          "label": "Ciśnienie tłoczenia",
+          "value": "do 30 bar",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 260",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "ok. 135 x 64 x 145",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Zasilanie: 400 V, 50 Hz, 3 fazy, bezpiecznik 25 A",
+        "Moc silnika podajnika: 3,0 kW",
+        "Moc sekcji mieszania i pompy: 5,5 kW",
+        "Sprężarka: 0,9 kW"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu tynkarskiego m-tec duo-mix",
+        "meta_description": "Agregat tynkarski m-tec duo-mix 400 V do wypożyczenia. Tynki i szpachle maszynowe, 22 l/min. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/f/f2/%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg",
+        "alt": "Agregat tynkarski z zasypem i pompą ślimakową",
+        "credit": "Mixplaster",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Gips-spuit-machine.jpg/1280px-Gips-spuit-machine.jpg",
+          "alt": "Agregat tynkarski PFT",
+          "credit": "Michel Pol",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gips-spuit-machine.jpg"
+        }
+      ],
+      "sort_order": 637
+    },
+    {
+      "external_id": "malek-m5max-400v",
+      "name": "Agregat tynkarski Małek Agregaty M-5 MAX 400 V",
+      "slug": "agregat-tynkarski-malek-agregaty-m-5-max-400-v",
+      "brand": "Małek Agregaty",
+      "category": {
+        "name": "Agregaty tynkarskie",
+        "slug": "agregaty-tynkarskie",
+        "icon": "paint-brush",
+        "description": "Mieszarko-pompy do maszynowego tynkowania, wylewek i zapraw.",
+        "sort_order": 6
+      },
+      "excerpt": "Polski agregat tynkarski 400 V do tynków cementowo-wapiennych i gipsowych.",
+      "body_html": "<p>Polska maszyna tynkarska z silnikiem podawania pompy 6,05 kW, ciśnieniem do 40 bar i zasięgiem do 40 m. Zbiornik mieści ok. 150 l zaprawy, a sprężarka daje 250 l/min. Zasilanie trójfazowe 400 V, kabel 20 m z wtyczką 32 A. Waży 254 kg. W zestawie wąż roboczy DN25 10 m, wąż wody 25 m i wąż powietrza 12,5 m.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Mixplaster (CC BY-SA 4.0, Wikimedia Commons); Michel Pol (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 330.0,
+      "price_per_week": 1490.0,
+      "price_per_day_long": 143.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 3500.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Zasilanie",
+          "value": "400 V, 3 fazy (+ 2 gniazda 230 V)",
+          "unit": null
+        },
+        {
+          "label": "Moc silnika pompy",
+          "value": "6,05",
+          "unit": "kW"
+        },
+        {
+          "label": "Moc podajnika",
+          "value": "0,83",
+          "unit": "kW"
+        },
+        {
+          "label": "Pompa wody",
+          "value": "0,9",
+          "unit": "kW"
+        },
+        {
+          "label": "Sprężarka",
+          "value": "0,9 kW, 250 l/min przy 5,5 bar",
+          "unit": null
+        },
+        {
+          "label": "Ciśnienie tłoczenia",
+          "value": "40",
+          "unit": "bar"
+        },
+        {
+          "label": "Zasięg podawania",
+          "value": "40",
+          "unit": "m"
+        },
+        {
+          "label": "Maks. uziarnienie",
+          "value": "3",
+          "unit": "mm"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "ok. 150 l (+96 l przedłużka)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "254",
+          "unit": "kg"
+        },
+        {
+          "label": "Wysokość załadunku",
+          "value": "95",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Zasilanie: 400 V, 3 fazy (+ 2 gniazda 230 V)",
+        "Moc silnika pompy: 6,05 kW",
+        "Moc podajnika: 0,83 kW",
+        "Pompa wody: 0,9 kW"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu tynkarskiego Małek M-5 MAX 400 V",
+        "meta_description": "Agregat tynkarski Małek Agregaty M-5 MAX 400 V do wypożyczenia. Tynki maszynowe, 40 bar, 40 m. Cena za dobę."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/f/f2/%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg",
+        "alt": "Agregat tynkarski z zasypem i pompą ślimakową",
+        "credit": "Mixplaster",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Gips-spuit-machine.jpg/1280px-Gips-spuit-machine.jpg",
+          "alt": "Agregat tynkarski PFT",
+          "credit": "Michel Pol",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Gips-spuit-machine.jpg"
+        }
+      ],
+      "sort_order": 638
+    },
+    {
+      "external_id": "putzmeister-mp25",
+      "name": "Agregat tynkarski Putzmeister MP 25",
+      "slug": "agregat-tynkarski-putzmeister-mp-25",
+      "brand": "Putzmeister",
+      "category": {
+        "name": "Agregaty tynkarskie",
+        "slug": "agregaty-tynkarskie",
+        "icon": "paint-brush",
+        "description": "Mieszarko-pompy do maszynowego tynkowania, wylewek i zapraw.",
+        "sort_order": 6
+      },
+      "excerpt": "Kompaktowa maszyna tynkarska do suchych zapraw dla ekip wykonawczych.",
+      "body_html": "<p>Agregat mieszająco-pompujący do tynków gipsowych i cementowych, produkowany przez Putzmeister. Wydajność do 25 l/min, zasięg do 40 m w poziomie i 15 m w pionie, pojemność zbiornika ok. 115 l. Zasilanie 400 V i woda z sieci. Waga zależnie od źródła 235-273 kg, można go rozłożyć na części bez narzędzi na czas transportu.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Michel Pol (CC BY-SA 4.0, Wikimedia Commons); Mixplaster (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 420.0,
+      "price_per_week": 1890.0,
+      "price_per_day_long": 182.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 6000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Zasilanie",
+          "value": "400",
+          "unit": "V"
+        },
+        {
+          "label": "Wydajność",
+          "value": "do 25 l/min",
+          "unit": null
+        },
+        {
+          "label": "Zasięg podawania",
+          "value": "40 m poziomo, 15 m pionowo",
+          "unit": null
+        },
+        {
+          "label": "Ciśnienie tłoczenia",
+          "value": "do 30 bar",
+          "unit": null
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "ok. 115",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 235",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "132,4 x 72,8 x 144,3",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Zasilanie: 400 V",
+        "Wydajność: do 25 l/min",
+        "Zasięg podawania: 40 m poziomo, 15 m pionowo",
+        "Ciśnienie tłoczenia: do 30 bar"
+      ],
+      "seo": {
+        "meta_title": "Wynajem agregatu tynkarskiego Putzmeister MP 25",
+        "meta_description": "Wypożycz agregat tynkarski Putzmeister MP 25 do tynków maszynowych. 25 l/min, zasięg 40 m. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Gips-spuit-machine.jpg/1280px-Gips-spuit-machine.jpg",
+        "alt": "Agregat tynkarski PFT",
+        "credit": "Michel Pol",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Gips-spuit-machine.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/f/f2/%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg",
+          "alt": "Agregat tynkarski z zasypem i pompą ślimakową",
+          "credit": "Mixplaster",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D1%81%D1%82%D0%B0%D0%BD%D1%86%D0%B8%D1%8F_-_%D0%A8%D1%82%D1%83%D0%BA%D0%B0%D1%82%D1%83%D1%80%D0%BD%D0%B0%D1%8F_%D0%BC%D0%B0%D1%88%D0%B8%D0%BD%D0%B0.jpg"
+        }
+      ],
+      "sort_order": 639
+    },
+    {
+      "external_id": "stihl-bt131",
+      "name": "Świder glebowy spalinowy Stihl BT 131",
+      "slug": "swider-glebowy-spalinowy-stihl-bt-131",
+      "brand": "Stihl",
+      "category": {
+        "name": "Świdry i wiertnice glebowe",
+        "slug": "swidry-i-wiertnice-glebowe",
+        "icon": "arrow-down-circle",
+        "description": "Spalinowe i hydrauliczne świdry do otworów pod słupki, ogrodzenia i fundamenty punktowe.",
+        "sort_order": 7
+      },
+      "excerpt": "Jednoosobowy profesjonalny świder spalinowy 4-MIX do otworów pod słupki i sadzonki.",
+      "body_html": "<p>Świder z silnikiem 4-MIX o mocy 1,4 kW (1,9 KM) i pojemności 36,3 cm3, obsługiwany przez jedną osobę. Wiercisz nim otwory o średnicy do 300 mm pod słupki ogrodzeniowe, pergole i drzewka. Obroty wrzeciona to 200 obr./min, a hamulec QuickStop poprawia bezpieczeństwo przy zablokowaniu wiertła. Wiertła o różnych średnicach (40-300 mm) dobierasz do zadania. Paliwo benzyna bezołowiowa po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Retired electrician (CC0, Wikimedia Commons); George Armstrong (FEMA) (Public domain, Wikimedia Commons).</em></p>",
+      "price_per_day": 160.0,
+      "price_per_week": 720.0,
+      "price_per_day_long": 69.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 800.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "spalinowy 4-MIX, jednoosobowy",
+          "unit": null
+        },
+        {
+          "label": "Pojemność skokowa",
+          "value": "36,3 cm3",
+          "unit": null
+        },
+        {
+          "label": "Moc",
+          "value": "1,4 kW (1,9 KM)",
+          "unit": null
+        },
+        {
+          "label": "Obroty wrzeciona",
+          "value": "200",
+          "unit": "obr./min"
+        },
+        {
+          "label": "Maks. średnica otworu",
+          "value": "300",
+          "unit": "mm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "100 dB(A) moc akustyczna, 92 dB(A) ciśnienie",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "10 kg (bez paliwa i wiertła)",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Typ: spalinowy 4-MIX, jednoosobowy",
+        "Pojemność skokowa: 36,3 cm3",
+        "Moc: 1,4 kW (1,9 KM)",
+        "Obroty wrzeciona: 200 obr./min"
+      ],
+      "seo": {
+        "meta_title": "Wynajem świdra glebowego Stihl BT 131",
+        "meta_description": "Wypożycz jednoosobowy świder glebowy Stihl BT 131. Otwory do 300 mm pod słupki i sadzonki. Ceny za dobę i weekend."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Ada_7_handheld_drilling_machine%2C_53_ccm_%281%29.jpg/1280px-Ada_7_handheld_drilling_machine%2C_53_ccm_%281%29.jpg",
+        "alt": "Spalinowy świder glebowy z wiertłami",
+        "credit": "Retired electrician",
+        "license": "CC0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ada_7_handheld_drilling_machine,_53_ccm_(1).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/FEMA_-_44228_-_AmeriCorps_Member_Drills_Holes_for_Fencing_in_Mississippi.jpg/1280px-FEMA_-_44228_-_AmeriCorps_Member_Drills_Holes_for_Fencing_in_Mississippi.jpg",
+          "alt": "Wiercenie otworów pod słupki świdrem spalinowym",
+          "credit": "George Armstrong (FEMA)",
+          "license": "Public domain",
+          "source_page": "https://commons.wikimedia.org/wiki/File:FEMA_-_44228_-_AmeriCorps_Member_Drills_Holes_for_Fencing_in_Mississippi.jpg"
+        }
+      ],
+      "sort_order": 740
+    },
+    {
+      "external_id": "stihl-bt360",
+      "name": "Wiertnica glebowa dwuosobowa Stihl BT 360",
+      "slug": "wiertnica-glebowa-dwuosobowa-stihl-bt-360",
+      "brand": "Stihl",
+      "category": {
+        "name": "Świdry i wiertnice glebowe",
+        "slug": "swidry-i-wiertnice-glebowe",
+        "icon": "arrow-down-circle",
+        "description": "Spalinowe i hydrauliczne świdry do otworów pod słupki, ogrodzenia i fundamenty punktowe.",
+        "sort_order": 7
+      },
+      "excerpt": "Mocna wiertnica spalinowa 2-osobowa do twardszego gruntu i otworów do 400 mm.",
+      "body_html": "<p>Silnik 60,3 cm3 o mocy 2,9 kW (3,9 KM) i wolne obroty 50 obr./min dają duży moment obrotowy w trudnym gruncie. Obsługa dwuosobowa, uchwyt składany. Wiercisz otwory o średnicy do 400 mm. Waży 28,8 kg bez wiertła, które wypożyczane jest osobno w wybranej średnicy. Dostępne przedłużki 500 i 1000 mm. Paliwo po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: George Armstrong (FEMA) (Public domain, Wikimedia Commons); Retired electrician (CC0, Wikimedia Commons).</em></p>",
+      "price_per_day": 250.0,
+      "price_per_week": 1130.0,
+      "price_per_day_long": 108.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1200.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "spalinowy, dwuosobowy",
+          "unit": null
+        },
+        {
+          "label": "Pojemność skokowa",
+          "value": "60,3 cm3",
+          "unit": null
+        },
+        {
+          "label": "Moc",
+          "value": "2,9 kW (3,9 KM)",
+          "unit": null
+        },
+        {
+          "label": "Obroty wrzeciona",
+          "value": "50",
+          "unit": "obr./min"
+        },
+        {
+          "label": "Maks. średnica otworu",
+          "value": "400",
+          "unit": "mm"
+        },
+        {
+          "label": "Poziom hałasu",
+          "value": "111 dB(A) moc akustyczna, 99 dB(A) ciśnienie",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "28,8",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Typ: spalinowy, dwuosobowy",
+        "Pojemność skokowa: 60,3 cm3",
+        "Moc: 2,9 kW (3,9 KM)",
+        "Obroty wrzeciona: 50 obr./min"
+      ],
+      "seo": {
+        "meta_title": "Wynajem wiertnicy glebowej Stihl BT 360",
+        "meta_description": "Wiertnica glebowa Stihl BT 360 dla dwóch osób do wypożyczenia. Twardy grunt, otwory do 400 mm. Ceny za dobę i tydzień."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/FEMA_-_44228_-_AmeriCorps_Member_Drills_Holes_for_Fencing_in_Mississippi.jpg/1280px-FEMA_-_44228_-_AmeriCorps_Member_Drills_Holes_for_Fencing_in_Mississippi.jpg",
+        "alt": "Wiercenie otworów pod słupki świdrem spalinowym",
+        "credit": "George Armstrong (FEMA)",
+        "license": "Public domain",
+        "source_page": "https://commons.wikimedia.org/wiki/File:FEMA_-_44228_-_AmeriCorps_Member_Drills_Holes_for_Fencing_in_Mississippi.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/Ada_7_handheld_drilling_machine%2C_53_ccm_%282%29.jpg/1280px-Ada_7_handheld_drilling_machine%2C_53_ccm_%282%29.jpg",
+          "alt": "Spalinowy świder glebowy",
+          "credit": "Retired electrician",
+          "license": "CC0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ada_7_handheld_drilling_machine,_53_ccm_(2).jpg"
+        }
+      ],
+      "sort_order": 741
+    },
+    {
+      "external_id": "littlebeaver-hydtb11h",
+      "name": "Holowana wiertnica hydrauliczna Little Beaver HYD-TB11H",
+      "slug": "holowana-wiertnica-hydrauliczna-little-beaver-hyd-tb11h",
+      "brand": "Little Beaver",
+      "category": {
+        "name": "Świdry i wiertnice glebowe",
+        "slug": "swidry-i-wiertnice-glebowe",
+        "icon": "arrow-down-circle",
+        "description": "Spalinowe i hydrauliczne świdry do otworów pod słupki, ogrodzenia i fundamenty punktowe.",
+        "sort_order": 7
+      },
+      "excerpt": "Holowana wiertnica hydrauliczna z silnikiem Honda 11 KM do dużych otworów.",
+      "body_html": "<p>Wiertnica na kołach, holowana za autem, z napędem hydraulicznym i silnikiem Honda 11 KM. Moment do 300 ft-lb (ok. 407 Nm) przy 150 obr./min pozwala wiercić w twardym i kamienistym gruncie. Przyjmuje świdry 36 i 42 cali, średnice do ok. 16 cali (ok. 40 cm). Zbiornik oleju 6,5 galona. Masa wysyłkowa ok. 575 funtów (ok. 261 kg). Wymaga holowania i obsługi doświadczonej osoby. Uwaga: to model amerykański, dostępność w Polsce trzeba sprawdzić przed dodaniem do oferty.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Retired electrician (CC0, Wikimedia Commons); Retired electrician (CC0, Wikimedia Commons).</em></p>",
+      "price_per_day": 380.0,
+      "price_per_week": 1710.0,
+      "price_per_day_long": 165.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 4000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "hydrauliczna, holowana",
+          "unit": null
+        },
+        {
+          "label": "Silnik",
+          "value": "Honda 11 KM",
+          "unit": null
+        },
+        {
+          "label": "Moment obrotowy",
+          "value": "do 300 ft-lb (ok. 407 Nm)",
+          "unit": null
+        },
+        {
+          "label": "Obroty świdra",
+          "value": "150",
+          "unit": "obr./min"
+        },
+        {
+          "label": "Maks. średnica świdra",
+          "value": "16 cali (ok. 40 cm)",
+          "unit": null
+        },
+        {
+          "label": "Długość świdrów",
+          "value": "36 lub 42 cale",
+          "unit": null
+        },
+        {
+          "label": "Przepływ hydrauliczny",
+          "value": "6 gpm (ok. 23 l/min)",
+          "unit": null
+        },
+        {
+          "label": "Ciśnienie",
+          "value": "2700 psi (ok. 186 bar)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 261 kg (575 lb, masa wysyłkowa)",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Typ: hydrauliczna, holowana",
+        "Silnik: Honda 11 KM",
+        "Moment obrotowy: do 300 ft-lb (ok. 407 Nm)",
+        "Obroty świdra: 150 obr./min"
+      ],
+      "seo": {
+        "meta_title": "Wynajem wiertnicy hydraulicznej Little Beaver TB11H",
+        "meta_description": "Holowana wiertnica glebowa hydrauliczna Little Beaver HYD-TB11H z silnikiem Honda do wypożyczenia. Duże otwory, twardy grunt."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Ada_7_handheld_drilling_machine%2C_53_ccm_%283%29.jpg/1280px-Ada_7_handheld_drilling_machine%2C_53_ccm_%283%29.jpg",
+        "alt": "Świder glebowy z silnikiem spalinowym",
+        "credit": "Retired electrician",
+        "license": "CC0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ada_7_handheld_drilling_machine,_53_ccm_(3).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Ada_7_handheld_drilling_machine%2C_53_ccm_%281%29.jpg/1280px-Ada_7_handheld_drilling_machine%2C_53_ccm_%281%29.jpg",
+          "alt": "Spalinowy świder glebowy z wiertłami",
+          "credit": "Retired electrician",
+          "license": "CC0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ada_7_handheld_drilling_machine,_53_ccm_(1).jpg"
+        }
+      ],
+      "sort_order": 742
+    },
+    {
+      "external_id": "groundhog-hd99h",
+      "name": "Hydrauliczna wiertnica glebowa Ground Hog HD99-H",
+      "slug": "hydrauliczna-wiertnica-glebowa-ground-hog-hd99-h",
+      "brand": "Ground Hog",
+      "category": {
+        "name": "Świdry i wiertnice glebowe",
+        "slug": "swidry-i-wiertnice-glebowe",
+        "icon": "arrow-down-circle",
+        "description": "Spalinowe i hydrauliczne świdry do otworów pod słupki, ogrodzenia i fundamenty punktowe.",
+        "sort_order": 7
+      },
+      "excerpt": "Holowana jednoosobowa wiertnica hydrauliczna z silnikiem Honda 9 KM.",
+      "body_html": "<p>Wiertnica na kółkach z pompą hydrauliczną 6 gpm i silnikiem Honda 9 KM, obsługiwana przez jedną osobę. Wierci otwory do 18 cali (ok. 46 cm) przy ok. 140 obr./min bez obciążenia, z momentem rzędu 275 ft-lb. Masa po złożeniu ok. 295 funtów (ok. 134 kg). Dobra do ogrodzeń, nasadzeń i fundamentów punktowych w ciężkim gruncie. Uwaga: model amerykański, dostępność w Polsce trzeba sprawdzić przed dodaniem do oferty.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Retired electrician (CC0, Wikimedia Commons); Retired electrician (CC0, Wikimedia Commons).</em></p>",
+      "price_per_day": 300.0,
+      "price_per_week": 1350.0,
+      "price_per_day_long": 130.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 3000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "hydrauliczna, holowana",
+          "unit": null
+        },
+        {
+          "label": "Silnik",
+          "value": "Honda 9 KM",
+          "unit": null
+        },
+        {
+          "label": "Moment obrotowy",
+          "value": "ok. 275 ft-lb (ok. 373 Nm)",
+          "unit": null
+        },
+        {
+          "label": "Obroty bez obciążenia",
+          "value": "140",
+          "unit": "obr./min"
+        },
+        {
+          "label": "Maks. średnica świdra",
+          "value": "18 cali (ok. 46 cm)",
+          "unit": null
+        },
+        {
+          "label": "Przepływ pompy",
+          "value": "6 gpm (ok. 23 l/min)",
+          "unit": null
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 134 kg (295 lb)",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Typ: hydrauliczna, holowana",
+        "Silnik: Honda 9 KM",
+        "Moment obrotowy: ok. 275 ft-lb (ok. 373 Nm)",
+        "Obroty bez obciążenia: 140 obr./min"
+      ],
+      "seo": {
+        "meta_title": "Wynajem wiertnicy hydraulicznej Ground Hog HD99-H",
+        "meta_description": "Hydrauliczna wiertnica glebowa Ground Hog HD99-H z silnikiem Honda do wypożyczenia. Otwory do 46 cm. Ceny za dobę."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Ada_7_handheld_drilling_machine%2C_53_ccm_%283%29.jpg/1280px-Ada_7_handheld_drilling_machine%2C_53_ccm_%283%29.jpg",
+        "alt": "Świder glebowy z silnikiem spalinowym",
+        "credit": "Retired electrician",
+        "license": "CC0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Ada_7_handheld_drilling_machine,_53_ccm_(3).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Ada_7_handheld_drilling_machine%2C_53_ccm_%281%29.jpg/1280px-Ada_7_handheld_drilling_machine%2C_53_ccm_%281%29.jpg",
+          "alt": "Spalinowy świder glebowy z wiertłami",
+          "credit": "Retired electrician",
+          "license": "CC0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Ada_7_handheld_drilling_machine,_53_ccm_(1).jpg"
+        }
+      ],
+      "sort_order": 743
+    },
+    {
+      "external_id": "wacker-neuson-dpu6555h",
+      "name": "Zagęszczarka płytowa rewersyjna Wacker Neuson DPU 6555 H",
+      "slug": "zageszczarka-plytowa-rewersyjna-wacker-neuson-dpu-6555-h",
+      "brand": "Wacker Neuson",
+      "category": {
+        "name": "Zagęszczarki płytowe",
+        "slug": "zageszczarki-plytowe",
+        "icon": "square-3-stack-3d",
+        "description": "Zagęszczarki jednokierunkowe i rewersyjne do podbudów, kostki brukowej i wykopów.",
+        "sort_order": 8
+      },
+      "excerpt": "Ciężka zagęszczarka rewersyjna ok. 500 kg do dróg, placów i podbudów.",
+      "body_html": "<p>Maszyna o sile odśrodkowej 65 kN i masie ok. 460-495 kg (zależnie od wersji) do zagęszczania podbudów drogowych, kruszyw i kostki na dużych powierzchniach. Sterowanie do przodu i do tyłu pozwala pracować w rowach i przy krawężnikach. Szerokość robocza 56 cm, z płytą rozszerzającą 71 cm. Napęd diesel Hatz. Do transportu potrzebna przyczepa z windą lub rampą.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Reise Reise (CC BY-SA 4.0, Wikimedia Commons); Reise Reise (CC BY-SA 4.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 500.0,
+      "price_per_week": 2250.0,
+      "price_per_day_long": 217.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 8000.0,
+      "stock": {
+        "quantity": 1
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "rewersyjna",
+          "unit": null
+        },
+        {
+          "label": "Napęd",
+          "value": "diesel",
+          "unit": null
+        },
+        {
+          "label": "Siła odśrodkowa",
+          "value": "65",
+          "unit": "kN"
+        },
+        {
+          "label": "Częstotliwość",
+          "value": "69",
+          "unit": "Hz"
+        },
+        {
+          "label": "Szerokość robocza",
+          "value": "56 cm (71 cm z rozszerzeniem)",
+          "unit": null
+        },
+        {
+          "label": "Szerokość płyty",
+          "value": "55",
+          "unit": "cm"
+        },
+        {
+          "label": "Długość płyty",
+          "value": "90",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 460-495",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Typ: rewersyjna",
+        "Napęd: diesel",
+        "Siła odśrodkowa: 65 kN",
+        "Częstotliwość: 69 Hz"
+      ],
+      "seo": {
+        "meta_title": "Wynajem zagęszczarki Wacker Neuson DPU 6555 H",
+        "meta_description": "Zagęszczarka rewersyjna Wacker Neuson DPU 6555 H 65 kN do wypożyczenia. Drogi, podbudowy, kostka. Cena za dobę."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Wacker_Neuson_DPU_6555_%2801%29.jpg/1280px-Wacker_Neuson_DPU_6555_%2801%29.jpg",
+        "alt": "Zagęszczarka rewersyjna Wacker Neuson DPU 6555",
+        "credit": "Reise Reise",
+        "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Wacker_Neuson_DPU_6555_(01).jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/06/Wacker_Neuson_DPU_6555_%2802%29.jpg/1280px-Wacker_Neuson_DPU_6555_%2802%29.jpg",
+          "alt": "Zagęszczarka Wacker Neuson DPU 6555 — widok z boku",
+          "credit": "Reise Reise",
+          "license": "CC BY-SA 4.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Wacker_Neuson_DPU_6555_(02).jpg"
+        }
+      ],
+      "sort_order": 844
+    },
+    {
+      "external_id": "wacker-neuson-dpu3060h",
+      "name": "Zagęszczarka płytowa rewersyjna Wacker Neuson DPU 3060 H",
+      "slug": "zageszczarka-plytowa-rewersyjna-wacker-neuson-dpu-3060-h",
+      "brand": "Wacker Neuson",
+      "category": {
+        "name": "Zagęszczarki płytowe",
+        "slug": "zageszczarki-plytowe",
+        "icon": "square-3-stack-3d",
+        "description": "Zagęszczarki jednokierunkowe i rewersyjne do podbudów, kostki brukowej i wykopów.",
+        "sort_order": 8
+      },
+      "excerpt": "Średnia zagęszczarka rewersyjna 190 kg do kostki, podsypki i prac drogowych.",
+      "body_html": "<p>Zagęszczarka rewersyjna z siłą odśrodkową 30 kN i częstotliwością 90 Hz, do zagęszczania podsypek pod kostkę, żwiru i gruntów spoistych. Szerokość płyty 60 cm, napęd diesel Hatz. Masa ok. 190 kg, zwrotna w swojej klasie. Możliwość dołożenia maty do bruku. Transport na przyczepie lub busem z rampą.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Mr.checker (CC BY-SA 3.0, Wikimedia Commons); Fumikas Sagisavas (CC0, Wikimedia Commons).</em></p>",
+      "price_per_day": 300.0,
+      "price_per_week": 1350.0,
+      "price_per_day_long": 130.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 3500.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "rewersyjna",
+          "unit": null
+        },
+        {
+          "label": "Napęd",
+          "value": "diesel Hatz 1B30 (ok. 4,2 kW)",
+          "unit": null
+        },
+        {
+          "label": "Siła odśrodkowa",
+          "value": "30",
+          "unit": "kN"
+        },
+        {
+          "label": "Częstotliwość",
+          "value": "90",
+          "unit": "Hz"
+        },
+        {
+          "label": "Szerokość płyty",
+          "value": "60",
+          "unit": "cm"
+        },
+        {
+          "label": "Długość płyty",
+          "value": "70,3",
+          "unit": "cm"
+        },
+        {
+          "label": "Waga",
+          "value": "190",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Typ: rewersyjna",
+        "Napęd: diesel Hatz 1B30 (ok. 4,2 kW)",
+        "Siła odśrodkowa: 30 kN",
+        "Częstotliwość: 90 Hz"
+      ],
+      "seo": {
+        "meta_title": "Wynajem zagęszczarki Wacker Neuson DPU 3060 H",
+        "meta_description": "Zagęszczarka rewersyjna Wacker Neuson DPU 3060 H 190 kg do wypożyczenia. Kostka, podsypka, żwir. Cena za dobę."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Plate_compactor.jpg/1280px-Plate_compactor.jpg",
+        "alt": "Zagęszczarka płytowa jednokierunkowa",
+        "credit": "Mr.checker",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Plate_compactor.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Asphalt_pavement_plate_compactor.jpg/1280px-Asphalt_pavement_plate_compactor.jpg",
+          "alt": "Zagęszczarka płytowa z silnikiem spalinowym",
+          "credit": "Fumikas Sagisavas",
+          "license": "CC0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Asphalt_pavement_plate_compactor.jpg"
+        }
+      ],
+      "sort_order": 845
+    },
+    {
+      "external_id": "bomag-bvp18-45",
+      "name": "Zagęszczarka płytowa jednokierunkowa Bomag BVP 18/45",
+      "slug": "zageszczarka-plytowa-jednokierunkowa-bomag-bvp-18-45",
+      "brand": "Bomag",
+      "category": {
+        "name": "Zagęszczarki płytowe",
+        "slug": "zageszczarki-plytowe",
+        "icon": "square-3-stack-3d",
+        "description": "Zagęszczarki jednokierunkowe i rewersyjne do podbudów, kostki brukowej i wykopów.",
+        "sort_order": 8
+      },
+      "excerpt": "Lekka zagęszczarka jednokierunkowa 91 kg do podsypek, chodników i kostki.",
+      "body_html": "<p>Zagęszczarka jednokierunkowa o masie ok. 91 kg i sile odśrodkowej 18 kN, z płytą roboczą 45 cm. Napędzana silnikiem benzynowym Honda GX160, zbiornik ok. 3,1 l. Do podsypek pod kostkę, chodników i zasypek. Prosta obsługa, zmieści się do kombi lub busa. Paliwo po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Fumikas Sagisavas (CC0, Wikimedia Commons); Mr.checker (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 160.0,
+      "price_per_week": 720.0,
+      "price_per_day_long": 69.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "jednokierunkowa",
+          "unit": null
+        },
+        {
+          "label": "Napęd",
+          "value": "benzyna, Honda GX160",
+          "unit": null
+        },
+        {
+          "label": "Siła odśrodkowa",
+          "value": "18",
+          "unit": "kN"
+        },
+        {
+          "label": "Częstotliwość",
+          "value": "90",
+          "unit": "Hz"
+        },
+        {
+          "label": "Szerokość robocza",
+          "value": "45",
+          "unit": "cm"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "3,1",
+          "unit": "l"
+        },
+        {
+          "label": "Waga",
+          "value": "ok. 91",
+          "unit": "kg"
+        }
+      ],
+      "features": [
+        "Typ: jednokierunkowa",
+        "Napęd: benzyna, Honda GX160",
+        "Siła odśrodkowa: 18 kN",
+        "Częstotliwość: 90 Hz"
+      ],
+      "seo": {
+        "meta_title": "Wynajem zagęszczarki Bomag BVP 18/45",
+        "meta_description": "Zagęszczarka płytowa Bomag BVP 18/45 91 kg do wypożyczenia. Podsypki, chodniki, kostka. Ceny za dobę i weekend."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Asphalt_pavement_plate_compactor.jpg/1280px-Asphalt_pavement_plate_compactor.jpg",
+        "alt": "Zagęszczarka płytowa z silnikiem spalinowym",
+        "credit": "Fumikas Sagisavas",
+        "license": "CC0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Asphalt_pavement_plate_compactor.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Plate_compactor.jpg/1280px-Plate_compactor.jpg",
+          "alt": "Zagęszczarka płytowa jednokierunkowa",
+          "credit": "Mr.checker",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Plate_compactor.jpg"
+        }
+      ],
+      "sort_order": 846
+    },
+    {
+      "external_id": "honda-wt30x",
+      "name": "Pompa spalinowa do brudnej wody Honda WT 30 X",
+      "slug": "pompa-spalinowa-do-brudnej-wody-honda-wt-30-x",
+      "brand": "Honda",
+      "category": {
+        "name": "Pompy do wody brudnej",
+        "slug": "pompy-do-wody-brudnej",
+        "icon": "funnel",
+        "description": "Motopompy i pompy zatapialne do odwadniania wykopów, piwnic i placów budowy.",
+        "sort_order": 9
+      },
+      "excerpt": "Benzynowa motopompa 3 cale do wody brudnej z piaskiem i szlamem.",
+      "body_html": "<p>Pompa spalinowa z silnikiem Honda GX270 (6,3 kW), wydajność ok. 1200 l/min i wysokość podnoszenia ok. 27 m. Przepuszcza zanieczyszczenia do ok. 28 mm, więc nadaje się do wykopów i zalanych piwnic. Przyłącza 80 mm (3 cale). Zbiornik 5,3 l daje ok. 2 godziny pracy, zużycie ok. 2,45 l/h. Waży 61 kg. Paliwo benzyna bezołowiowa po stronie najemcy.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Radosław Drożdżewski (Zwiadowca21), praca pochodna: TheAdam0s (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 180.0,
+      "price_per_week": 810.0,
+      "price_per_day_long": 78.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1000.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "spalinowa, odśrodkowa, 3 cale",
+          "unit": null
+        },
+        {
+          "label": "Silnik",
+          "value": "Honda GX270, 270 cm3, 6,3 kW",
+          "unit": null
+        },
+        {
+          "label": "Wydajność",
+          "value": "1200",
+          "unit": "l/min"
+        },
+        {
+          "label": "Wysokość podnoszenia",
+          "value": "27",
+          "unit": "m"
+        },
+        {
+          "label": "Maks. wysokość ssania",
+          "value": "8",
+          "unit": "m"
+        },
+        {
+          "label": "Przyłącza",
+          "value": "80 mm (3 cale)",
+          "unit": null
+        },
+        {
+          "label": "Maks. średnica zanieczyszczeń",
+          "value": "28",
+          "unit": "mm"
+        },
+        {
+          "label": "Zużycie paliwa",
+          "value": "2,45",
+          "unit": "l/h"
+        },
+        {
+          "label": "Pojemność zbiornika",
+          "value": "5,3",
+          "unit": "l"
+        },
+        {
+          "label": "Czas pracy",
+          "value": "ok. 2,15",
+          "unit": "h"
+        },
+        {
+          "label": "Waga",
+          "value": "61",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "66 x 49,5 x 51,5",
+          "unit": "cm"
+        }
+      ],
+      "features": [
+        "Typ: spalinowa, odśrodkowa, 3 cale",
+        "Silnik: Honda GX270, 270 cm3, 6,3 kW",
+        "Wydajność: 1200 l/min",
+        "Wysokość podnoszenia: 27 m"
+      ],
+      "seo": {
+        "meta_title": "Wynajem pompy do brudnej wody Honda WT 30 X",
+        "meta_description": "Motopompa do brudnej wody Honda WT 30 X 3 cale, 1200 l/min do wypożyczenia. Odwadnianie wykopów i piwnic."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/09/Motopompy-cropped.jpg",
+        "alt": "Spalinowe motopompy odpompowujące wodę ze studzienki",
+        "credit": "Radosław Drożdżewski (Zwiadowca21), praca pochodna: TheAdam0s",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Motopompy-cropped.jpg"
+      },
+      "gallery": [],
+      "sort_order": 947
+    },
+    {
+      "external_id": "tsurumi-lb480",
+      "name": "Pompa zatapialna do brudnej wody Tsurumi LB-480",
+      "slug": "pompa-zatapialna-do-brudnej-wody-tsurumi-lb-480",
+      "brand": "Tsurumi",
+      "category": {
+        "name": "Pompy do wody brudnej",
+        "slug": "pompy-do-wody-brudnej",
+        "icon": "funnel",
+        "description": "Motopompy i pompy zatapialne do odwadniania wykopów, piwnic i placów budowy.",
+        "sort_order": 9
+      },
+      "excerpt": "Elektryczna pompa zatapialna 2 cale do wody brudnej, do odwadniania piwnic i wykopów.",
+      "body_html": "<p>Zatapialna pompa elektryczna 2/3 KM, jednofazowa, z króćcem 2 cale. Przepuszcza zanieczyszczenia do ok. 6 mm i pracuje przy niskim poziomie wody (ok. 5 cm). Waży ok. 12,7 kg, wymiary 195 x 286 mm, kabel 9,8 m. Sprawdza się przy odpompowywaniu zalań i wykopów. Wąż tłoczny trzeba dobrać osobno. Dane z karty amerykańskiej wersji 110 V; egzemplarz do wynajmu w Polsce ma wersję 230 V.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Johanna83 at Dutch Wikipedia (CC BY-SA 3.0, Wikimedia Commons); Thamizhpparithi Maari (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 90.0,
+      "price_per_week": 410.0,
+      "price_per_day_long": 39.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 450.0,
+      "stock": {
+        "quantity": 3
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "zatapialna elektryczna",
+          "unit": null
+        },
+        {
+          "label": "Zasilanie",
+          "value": "230 V, 1 faza",
+          "unit": null
+        },
+        {
+          "label": "Moc silnika",
+          "value": "2/3",
+          "unit": "KM"
+        },
+        {
+          "label": "Średnica króćca",
+          "value": "2",
+          "unit": "cale"
+        },
+        {
+          "label": "Maks. średnica zanieczyszczeń",
+          "value": "6",
+          "unit": "mm"
+        },
+        {
+          "label": "Wydajność",
+          "value": "ok. 222-250",
+          "unit": "l/min"
+        },
+        {
+          "label": "Waga",
+          "value": "12,7 kg (28 lb)",
+          "unit": null
+        },
+        {
+          "label": "Wymiary",
+          "value": "średnica 19,5 cm, wysokość 28,6 cm",
+          "unit": null
+        },
+        {
+          "label": "Długość kabla",
+          "value": "ok. 9,8",
+          "unit": "m"
+        }
+      ],
+      "features": [
+        "Typ: zatapialna elektryczna",
+        "Zasilanie: 230 V, 1 faza",
+        "Moc silnika: 2/3 KM",
+        "Średnica króćca: 2 cale"
+      ],
+      "seo": {
+        "meta_title": "Wynajem pompy zatapialnej Tsurumi LB-480",
+        "meta_description": "Pompa zatapialna Tsurumi LB-480 do brudnej wody do wypożyczenia. Odwadnianie piwnic i wykopów. Cena za dobę."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/6/61/Dompelpomp.jpg",
+        "alt": "Pompa zatapialna do wody brudnej",
+        "credit": "Johanna83 at Dutch Wikipedia",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Dompelpomp.jpg"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/A_photo_on_Submersible_Pump.JPG/1280px-A_photo_on_Submersible_Pump.JPG",
+          "alt": "Pompa zatapialna odwadniająca wykop",
+          "credit": "Thamizhpparithi Maari",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:A_photo_on_Submersible_Pump.JPG"
+        }
+      ],
+      "sort_order": 948
+    },
+    {
+      "external_id": "grindex-minor",
+      "name": "Pompa zatapialna do wody brudnej Grindex Minor",
+      "slug": "pompa-zatapialna-do-wody-brudnej-grindex-minor",
+      "brand": "Grindex",
+      "category": {
+        "name": "Pompy do wody brudnej",
+        "slug": "pompy-do-wody-brudnej",
+        "icon": "funnel",
+        "description": "Motopompy i pompy zatapialne do odwadniania wykopów, piwnic i placów budowy.",
+        "sort_order": 9
+      },
+      "excerpt": "Wytrzymała pompa zatapialna 3,7 kW do odwadniania budowy i wody ze szlamem.",
+      "body_html": "<p>Pompa zatapialna przeznaczona do odwadniania wykopów, szybów i placów budowy, odporna na zanieczyszczenia mechaniczne. Moc znamionowa 3,7 kW (wersje N i H), waga ok. 50 kg, wysokość ok. 77 cm i średnica ok. 29 cm. Wymaga węża tłoczącego i zasilania elektrycznego odpowiedniego do mocy silnika. Transport zwykle jedną osobą z użyciem liny lub wózka.</p><p><em>Zdjęcia poglądowe — przedstawiają urządzenie tego typu, nie konkretny egzemplarz z oferty. Źródło: Thamizhpparithi Maari (CC BY-SA 3.0, Wikimedia Commons); Johanna83 at Dutch Wikipedia (CC BY-SA 3.0, Wikimedia Commons).</em></p>",
+      "price_per_day": 200.0,
+      "price_per_week": 900.0,
+      "price_per_day_long": 87.0,
+      "price_threshold_days": 14,
+      "deposit_amount": 1500.0,
+      "stock": {
+        "quantity": 2
+      },
+      "specs": [
+        {
+          "label": "Typ",
+          "value": "zatapialna elektryczna, wersje N i H",
+          "unit": null
+        },
+        {
+          "label": "Moc znamionowa",
+          "value": "3,7",
+          "unit": "kW"
+        },
+        {
+          "label": "Częstotliwość",
+          "value": "50",
+          "unit": "Hz"
+        },
+        {
+          "label": "Waga",
+          "value": "50",
+          "unit": "kg"
+        },
+        {
+          "label": "Wymiary",
+          "value": "wysokość 76,8 cm, średnica 28,6 cm",
+          "unit": null
+        }
+      ],
+      "features": [
+        "Typ: zatapialna elektryczna, wersje N i H",
+        "Moc znamionowa: 3,7 kW",
+        "Częstotliwość: 50 Hz",
+        "Waga: 50 kg"
+      ],
+      "seo": {
+        "meta_title": "Wynajem pompy zatapialnej Grindex Minor 3,7 kW",
+        "meta_description": "Pompa zatapialna Grindex Minor 3,7 kW do brudnej wody i szlamu do wypożyczenia. Odwadnianie wykopów. Cena za dobę."
+      },
+      "featured_image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/A_photo_on_Submersible_Pump.JPG/1280px-A_photo_on_Submersible_Pump.JPG",
+        "alt": "Pompa zatapialna odwadniająca wykop",
+        "credit": "Thamizhpparithi Maari",
+        "license": "CC BY-SA 3.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:A_photo_on_Submersible_Pump.JPG"
+      },
+      "gallery": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/6/61/Dompelpomp.jpg",
+          "alt": "Pompa zatapialna do wody brudnej",
+          "credit": "Johanna83 at Dutch Wikipedia",
+          "license": "CC BY-SA 3.0",
+          "source_page": "https://commons.wikimedia.org/wiki/File:Dompelpomp.jpg"
+        }
+      ],
+      "sort_order": 949
+    }
+  ]
+}

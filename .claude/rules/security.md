@@ -135,6 +135,29 @@ $validSignatures = [
 - [ ] A07: Auth Failures - 2FA for admins (recommended)
 - [ ] **A08: Software and Data Integrity Failures** - SVG sanitization, magic bytes
 
+## Strażnik tylko na GET nie strzeże niczego — POST `/customer/register` (2026-11-07)
+
+**Problem:** POST na domenę główną tworzył konto klienta bez organizacji. Konto-sierota trzyma unikalny
+e-mail i blokuje tej samej osobie późniejszą rejestrację u prawdziwego tenanta.
+
+**Przyczyna:** `showRegistrationForm()` odsyłał gościa bez tenanta na login, ale `register()` (POST) nie
+sprawdzał niczego: `ResolveTenant` przepuszcza domenę główną bez atrybutu `tenant`, a
+`CheckRegistrationEnabled` dla `null` zwraca „włączone” (domyślne `true`). Formularz był zamknięty, jego
+adres akcji — nie. Do tego `registered()` dopinał organizację tylko `if ($tenant instanceof Organization)`,
+więc brak tenanta przechodził po cichu.
+
+**Rozwiązanie:** jedna decyzja `redirectWithoutTenant()` w `RegisterController`, wołana przez GET i POST;
+POST sprawdza ją PRZED walidacją (inaczej domena główna odpowiada „e-mail zajęty” anonimowym sondom).
+Odpowiedź: redirect na `login`, tak jak formularz (nie 404). Czyta atrybut `tenant`, więc działa też na
+stacku dedykowanym (`TENANT_SLUG` przypina tenanta niezależnie od subdomeny).
+
+**Zapobieganie:** każda ochrona formularza (GET) musi mieć odpowiednik na jego akcji (POST) — wspólna
+metoda lub wspólny middleware, nie dwie kopie warunku. Przy przeglądzie trasy z `ResolveTenant` bez
+`RequireTenant` zapytaj: „co się stanie, gdy `tenant` jest `null`?” i szukaj `if ($tenant instanceof …)`
+bez `else` w kontrolerze. Test: `tests/Feature/Auth/RegisterRequiresTenantTest.php`.
+`SettingsManager::isRegistrationEnabledFor(null) === true` zostaje celowo (jedyni wołający: ten middleware
+i `isRegistrationEnabled()` w layoucie/view composerze, gdzie `null` = domena główna).
+
 ## NIE ustawiaj TrustProxies „na wszelki wypadek" (incydent 2026-08-08)
 
 `request()->ip()` jest tu **dowodem prawnym**, nie telemetrią: trafia do `users.sms_consent_ip`,

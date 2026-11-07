@@ -31,6 +31,16 @@ return [
             'AutoFormat.AutoParagraph' => true,
             'AutoFormat.RemoveEmpty' => true,
         ],
+        // catalog:import body_html: ONLY what the admin RichEditor toolbar can produce
+        // (ServiceResource: bold, italic, underline, link, lists, h2, h3, blockquote). No img/div/span/style —
+        // a less-trusted file must not be able to plant a tracking pixel. The product page still renders
+        // with `default`; a subset on write renders identically.
+        'catalog_import' => [
+            'HTML.Doctype' => 'HTML 4.01 Transitional',
+            'HTML.Allowed' => 'p,br,b,strong,i,em,u,a[href|title],ul,ol,li,h2,h3,blockquote',
+            'AutoFormat.AutoParagraph' => true,
+            'AutoFormat.RemoveEmpty' => true,
+        ],
         'test' => [
             'Attr.EnableID' => 'true',
         ],

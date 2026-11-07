@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ServiceAreaWaitlist;
 use App\Services\ServiceAreaValidator;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -72,16 +73,14 @@ class ServiceAreaWaitlistController extends Controller
                 'message' => __('service_area.waitlist.success'),
             ], 201);
 
-        } catch (\Illuminate\Database\QueryException $e) {
-            // Unique constraint violation - already on waitlist
-            if ($e->getCode() === '23000') {
-                return response()->json([
-                    'success' => false,
-                    'message' => __('service_area.waitlist.duplicate'),
-                ], 409);
-            }
-
-            throw $e;
+        } catch (UniqueConstraintViolationException) {
+            // Only the unique (organization_id, email, lat, lng) means "already on the
+            // waitlist". Any other integrity error (FK, NOT NULL — both SQLSTATE 23000
+            // too) is a bug and must surface, not be reported to the visitor as a duplicate.
+            return response()->json([
+                'success' => false,
+                'message' => __('service_area.waitlist.duplicate'),
+            ], 409);
         }
     }
 }

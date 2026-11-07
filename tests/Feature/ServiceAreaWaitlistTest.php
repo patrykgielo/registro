@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Organization;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaWaitlist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -11,18 +12,33 @@ class ServiceAreaWaitlistTest extends TestCase
 {
     use RefreshDatabase;
 
+    private Organization $org;
+
     protected function setUp(): void
     {
         parent::setUp();
 
+        // The waitlist is tenant-owned: the route requires a resolved tenant (RequireTenant)
+        // and entries get organization_id from it. Fixtures created outside a request take it
+        // from the session escape hatch (TenantFeature::currentTenant(), tests only).
+        config(['app.domain' => 'registro.local']);
+        $this->org = Organization::factory()->create();
+        session(['tenant_id' => $this->org->id]);
+
         // Disable rate limiting middleware for tests
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+    }
+
+    private function waitlistUrl(): string
+    {
+        return "http://{$this->org->slug}.registro.local/api/service-area/waitlist";
     }
 
     public function test_it_creates_waitlist_entry_for_outside_location(): void
     {
         // Arrange: Create Warsaw service area only
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -31,7 +47,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Submit waitlist form for Poznań (outside area)
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'name' => 'Jan Kowalski',
             'phone' => '+48 123 456 789',
@@ -68,6 +84,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -87,7 +104,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Try to create duplicate entry
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Stary Rynek 1, Poznań',
             'latitude' => 52.4064,
@@ -109,6 +126,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -117,7 +135,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Try to add waitlist entry for location INSIDE service area
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Plac Defilad 1, Warszawa',
             'latitude' => 52.2297,
@@ -138,7 +156,7 @@ class ServiceAreaWaitlistTest extends TestCase
     public function test_it_validates_required_fields(): void
     {
         // Act: Submit without required fields
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             // Missing email, address, coordinates
         ]);
 
@@ -156,6 +174,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -164,7 +183,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Submit with invalid email
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'invalid-email',
             'address' => 'Stary Rynek 1, Poznań',
             'latitude' => 52.4064,
@@ -180,6 +199,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -188,7 +208,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Submit with invalid latitude
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Invalid Location',
             'latitude' => 95, // Invalid (max 90)
@@ -200,7 +220,7 @@ class ServiceAreaWaitlistTest extends TestCase
         $response->assertJsonValidationErrors(['latitude']);
 
         // Act: Submit with invalid longitude
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Invalid Location',
             'latitude' => 52.2297,
@@ -223,6 +243,7 @@ class ServiceAreaWaitlistTest extends TestCase
 
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -232,7 +253,7 @@ class ServiceAreaWaitlistTest extends TestCase
 
         // Act: Make 3 requests (within limit)
         for ($i = 0; $i < 3; $i++) {
-            $response = $this->postJson('/api/service-area/waitlist', [
+            $response = $this->postJson($this->waitlistUrl(), [
                 'email' => "user{$i}@gmail.com",
                 'address' => 'Stary Rynek 1, Poznań',
                 'latitude' => 52.4064,
@@ -242,7 +263,7 @@ class ServiceAreaWaitlistTest extends TestCase
         }
 
         // Act: 4th request should be rate limited
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'user4@gmail.com',
             'address' => 'Stary Rynek 1, Poznań',
             'latitude' => 52.4064,
@@ -257,6 +278,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -265,7 +287,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Submit waitlist form
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Stary Rynek 1, Poznań',
             'latitude' => 52.4064,
@@ -284,6 +306,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -292,7 +315,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Submit with only email (no name, no phone)
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Stary Rynek 1, Poznań',
             'latitude' => 52.4064,
@@ -314,6 +337,7 @@ class ServiceAreaWaitlistTest extends TestCase
     {
         // Arrange: Create Warsaw service area
         ServiceArea::factory()->create([
+            'organization_id' => $this->org->id,
             'city_name' => 'Warszawa',
             'latitude' => 52.2297,
             'longitude' => 21.0122,
@@ -322,7 +346,7 @@ class ServiceAreaWaitlistTest extends TestCase
         ]);
 
         // Act: Create waitlist entry
-        $response = $this->postJson('/api/service-area/waitlist', [
+        $response = $this->postJson($this->waitlistUrl(), [
             'email' => 'jan.kowalski@gmail.com',
             'address' => 'Stary Rynek 1, Poznań',
             'latitude' => 52.4064,

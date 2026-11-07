@@ -85,6 +85,9 @@ class AppServiceProvider extends ServiceProvider
         // Register MaintenanceService as singleton
         $this->app->singleton(MaintenanceService::class);
 
+        // catalog:import — DNS seam of the SSRF guard (tests bind a fake)
+        $this->app->bind(\App\Support\Catalog\HostResolver::class, \App\Support\Catalog\DnsHostResolver::class);
+
         // Bind EmailGateway interface to appropriate implementation
         // Use FakeEmailGateway in testing to prevent actual SMTP connections
         if ($this->app->environment('testing')) {

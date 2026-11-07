@@ -37,3 +37,4 @@
 - [project_dead_primary_scale.md](project_dead_primary_scale.md) — `primary-*` Tailwind classes compile to nothing (only `brand` is registered); ~45 files still affected, list + exclusions inside
 - [feedback_verify_wcag_contrast_numerically.md](feedback_verify_wcag_contrast_numerically.md) — compute OKLCH→WCAG contrast, don't eyeball text-on-brand-bg opacity
 - [feedback_shared_working_directory.md](feedback_shared_working_directory.md) — check `git status` before staging, this repo may have concurrent uncommitted WIP from other sessions
+- [project_faza5_5_dostepne_gdzie_indziej.md](project_faza5_5_dostepne_gdzie_indziej.md) — `LocationContext` now bound `scoped()`; Laravel's HTTP test harness doesn't tear down `$this->app` between simulated `->get()` calls, so a warm-up+diff query-count test is unsound for anything `scoped()`-backed — assert the exact shape within ONE request instead

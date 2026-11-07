@@ -20,12 +20,8 @@ use Tests\TestCase;
  * and passes it through the event into the notification's constructor, which
  * threads it into sendFromTemplate() as `organization:`.
  *
- * This does NOT prove the tenant is always non-null: a direct POST to the root
- * domain skips the GET form's redirect-to-login guard and can currently reach
- * `registered()` with no tenant resolved (separate, already-flagged gap, not
- * fixed here) — `RegisterController` already handles that defensively (passes
- * null), and `UserRegistered`'s own docblock documents it. Not asserted here
- * because it belongs to that separate ticket, not this branding test.
+ * The root-domain POST (no tenant) is refused before `registered()` is reached --
+ * see RegisterRequiresTenantTest.
  *
  * Same pipeline-integrity style as PasswordResetEmailTest — real ResolveTenant,
  * asserts on the persisted EmailSend row, not a faked notification.

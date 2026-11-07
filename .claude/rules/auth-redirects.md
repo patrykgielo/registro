@@ -131,6 +131,41 @@ docker compose exec -T app php -r 'var_dump(interface_exists("Pełna\\Nazwa"));'
 Strażnik: `AdminPanelLoginResponseTest::test_admin_panel_login_response_contract_resolves_to_the_custom_class`
 — zweryfikowany mutacją (przywrócenie namespace'u v3 czerwieni go).
 
+## `LoginResponse::toResponse()` zwraca `RedirectResponse|Redirector` — nie zawężaj
+
+Logowanie do panelu to żądanie Livewire, a tam `redirect($url)` zwraca
+`Livewire\Features\SupportRedirects\Redirector`. Samo `: RedirectResponse` = HTTP 500 przy **każdym**
+logowaniu na `/admin` i `/platform` (rc39, 2026-11-07), a testy wołające `toResponse()` wprost
+przechodzą. Test czegokolwiek, co woła strona Filamenta → przez `Livewire::test()`.
+Strażnik: `PanelLoginLivewireTest`.
+
+## Reset hasła NIE loguje super-admina (2026-11-07)
+
+**Problem:** `ResetsPasswords::resetPassword()` kończy się `guard()->login()`, a `PostAuthDestination` wysyła
+super-admina na `/platform`. **Przyczyna:** reset dowodzi kontroli nad skrzynką, nie kontem — przejęcie skrzynki =
+przejęcie platformy, bez starego hasła (ryzyko wzrosło, gdy #286 dał link do resetu na `/platform/login`).
+**Fix:** `ResetPasswordController::resetPassword()` dla `super-admin` nie woła `login()` (nie "zaloguj i wyloguj"),
+zapisuje `audit_logs` (`password_reset`) i odsyła na login platformy z `passwords.reset_sign_in`.
+**To jest złagodzenie, nie domknięcie.** Kto ma skrzynkę, nadal może ustawić hasło i zalogować się — w dwóch
+krokach zamiast jednego (login jest throttlowany i zostawia ślad w `audit_logs`). Domyka to dopiero 2FA dla `/platform`
+plus mail powiadamiający właściciela platformy o resecie; oba są otwartymi follow-upami.
+**Stan w kontrolerze:** Laravel cache'uje instancję kontrolera na trasie (`Route::getController()`), więc pole
+ustawione przy jednym resecie żyje do następnego w tym samym procesie — decyzję podejmuj z żądania (rola z
+`broker()->getUser()`), nie z właściwości. Strażnik: `test_a_super_admin_reset_does_not_leak_into_the_next_reset_in_the_same_app`.
+
+**Stack dedykowany (`TENANT_SLUG`) — druga awaria tego samego fixa (PR #293):** `bootstrap/providers.php` tam w
+ogóle nie rejestruje `PlatformPanelProvider`, więc `Filament::getPanel('platform')` zwraca `null`, a
+`->getLoginUrl()` kończyło się fatalem **po** zmianie hasła: reset udany, odpowiedź 500. Cel to teraz
+`getPanel('platform') ?? getPanel('admin')` (bez `isStrict: false` — brakujące id zwraca `null` także w trybie strict, a tryb luźny mógłby po cichu dopasować przyszły panel o podobnym id) — na stacku dedykowanym login admina to jedyny istniejący.
+Reguła ogólna: kod mówiący „idź do panelu platformy" musi znać oba modele wdrożenia (`architecture-models.md`).
+Strażnik: `SuperAdminPasswordResetPinnedStackTest` (`putenv('TENANT_SLUG')` PRZED `parent::setUp()`, bo rejestracja
+providera dzieje się przy boot; test-kontrola sprawdza, że fixture naprawdę nie ma panelu). Znane i nietknięte:
+`PostAuthDestination` nadal zwraca `/platform` dla super-admina (404 na stacku dedykowanym przy logowaniu przez `/login`).
+**Zapobieganie:** nowa ścieżka ustawiająca hasło z tokenu (np. Filament `->passwordReset()`, link zaproszeniowy)
+nie może logować tej roli. Komunikat idzie też jako `Filament\Notifications\Notification` — login Filamenta nie
+renderuje flasha `status`. Strażnik: `SuperAdminPasswordResetTest`. Ten sam efekt dla `admin`: decyzja produktowa,
+nie zrobiona.
+
 ## Panel login → reset: link, not `->passwordReset()`
 
 `/admin` and `/platform` login screens link into the EXISTING `password.*` flow via

@@ -453,7 +453,8 @@ protected static ?string $module = null;          // zawsze widoczny (core)
 // AuditLogResource, EmailEventResource, SmsEventResource — BelongsToOrganization, open to admin (2026-08-07)
 // EmailEvent/SmsEvent: organization_id copied from EmailSend/SmsSend at creation — NOT auto from ambient tenant context
 
-// RoleResource, MaintenanceEvent, EmailSuppression, SmsSuppression, ServiceAreaWaitlist → super-admin only (no safe scoping — see role-escalation-guard.md)
+// RoleResource, MaintenanceEvent, EmailSuppression, SmsSuppression → super-admin only (no safe scoping — see role-escalation-guard.md)
+// ServiceAreaWaitlist → BelongsToOrganization since 2026-11-07 (tenant-scoped); resource stays super-admin only for now (opening it to tenant admins = product decision)
 // VehicleType/CarBrand/CarModel → read-only dla non-super-admin (subsystem being removed, do not promote)
 ```
 
