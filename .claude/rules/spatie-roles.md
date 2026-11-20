@@ -3,6 +3,8 @@ paths:
   - "app/Actions/**"
   - "app/Listeners/**"
   - "app/Http/Controllers/Auth/**"
+  - "app/Http/Middleware/**"
+  - "app/Providers/HorizonServiceProvider.php"
 ---
 
 # Spatie Roles & Permissions Rules - CRITICAL
@@ -44,7 +46,41 @@ testowy seeduje role sam (obecnie: `TestReferenceDataSeeder`, raz na proces).
 | `admin` | web | Właściciel organizacji (onboarding) |
 | `customer` | web | Klient (rejestracja customer) |
 | `staff` | web | Pracownik (dodawany przez admina) |
-| `super-admin` | web | Super-admin platformy |
+| `super-admin` | web | Super-admin platformy — **na dedykowanym stacku tenanta NIE istnieje** (patrz niżej) |
+
+## Bramka na `super-admin` to martwa bramka na stacku tenanta
+
+**Problem:** Czterech funkcji klienta nie dało się użyć na dedykowanym stacku: tryb konserwacji (admin
+włączał, `AdminMaintenanceCheck` wpuszczał tylko `super-admin` → klient zamykał sobie panel, wracała go
+tylko CLI), wniosek o zamknięcie konta (mail do `User::role('super-admin')->get()` → pusta kolekcja,
+flaga ustawiona, UI pokazywało „Wniosek wysłany"), `/horizon` (403 dla wszystkich), harmonogram
+pracownika (zasoby tylko `admin|super-admin`, choć seeder daje `staff` uprawnienia do dostępności).
+
+**Przyczyna:** Stack tenanta ma własną bazę i **zero** użytkowników `super-admin` — nigdy ich nie będzie
+(`/platform` w ogóle nie jest rejestrowany, `bootstrap/providers.php`). Kod pisany pod współdzielony stack
+traktował `super-admin` jako „operatora, który zawsze jest pod ręką". Każdy `hasRole('super-admin')` jako
+JEDYNA droga do czegoś, co klient ma wolno zrobić albo uruchomić, jest tam ścianą. Test na współdzielonym
+stacku jej nie widzi: jest zielony, bo super-admin tam istnieje.
+
+**Rozwiązanie:** Funkcja, którą może uruchomić tenant `admin`, musi go też wpuścić z powrotem — jawnie, nie jako
+skutek uboczny awansu roli — ale **zależnie od modelu wdrożenia**: stack tenanta (`config('app.tenant_slug')`) →
+`admin` + `super-admin`; stack współdzielony → `super-admin` jak dotąd (flaga konserwacji to jeden globalny klucz,
+admin jednego tenanta nie może nadpisać okna konserwacji operatora). Tak działają `AdminMaintenanceCheck` i bramka Horizona. Odbiorca maila operatora to
+ADRES (`getGlobal('account.closure_request_email')`), nigdy rola. Pusty odbiorca = `Log::error` + komunikat
+błędu + brak zmiany stanu, nie „sukces". Bramka zależna od stacku czyta `config('app.tenant_slug')`
+(`HorizonServiceProvider`).
+
+**Zapobieganie:**
+- Pisząc `hasRole('super-admin')` zapytaj: *czy to jedyna droga i czy na stacku tenanta ktoś ją ma?* Jeśli
+  nie — dołóż `admin` albo zdecyduj, że to funkcja operatora (CLI), i nie wystawiaj jej w UI klienta.
+- `Notification::send(User::role('super-admin')->get(), …)` jest zabronione: pusta kolekcja = brak błędu,
+  brak maila. Użyj `Notification::route('mail', $adres)` i sprawdź adres przed zmianą stanu.
+- Test na wzorzec „stack przypięty": `putenv('TENANT_SLUG=…')` przed `parent::setUp()`, `tearDown()` je zdejmuje
+  (`tests/Feature/Horizon/HorizonGatePinnedStackTest.php`, `Auth/SuperAdminPasswordResetPinnedStackTest.php`).
+  Po stronie danych: nie zakładaj, że w tabeli `users` jest ktokolwiek z `super-admin`
+  (`ClosureRequestRecipientTest::setUp()` to asercjonuje).
+- Zasób Filament dla pracownika filtruje po `user_id`, nie po roli widoku: `App\Filament\Traits\ScopesStaffToOwnRecords`
+  (admin widzi wszystko, `staff` tylko własne; `user_id` przypinany po stronie serwera w `Create*/Edit*`).
 
 ## Pliki z `assignRole()`
 

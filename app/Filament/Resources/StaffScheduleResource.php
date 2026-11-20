@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\StaffScheduleResource\Pages;
+use App\Filament\Traits\ScopesStaffToOwnRecords;
 use App\Models\StaffSchedule;
 use App\Models\User;
 use BackedEnum;
@@ -17,6 +18,9 @@ use UnitEnum;
 
 class StaffScheduleResource extends BaseResource
 {
+    // Admins manage everyone; staff manage only their own schedule (staff.manage_availability).
+    use ScopesStaffToOwnRecords;
+
     protected static ?string $model = StaffSchedule::class;
 
     protected static ?string $module = 'staff';
@@ -42,11 +46,21 @@ class StaffScheduleResource extends BaseResource
                         ->label('Pracownik')
                         ->relationship('user', 'first_name', function (Builder $query) {
                             $query->role('staff');
+
+                            // Staff see only themselves in the list, not their colleagues' names.
+                            if (static::isStaffLimitedToOwnRecords()) {
+                                $query->whereKey(auth()->id());
+                            }
                         })
                         ->getOptionLabelFromRecordUsing(fn (User $record) => $record->name)
                         ->searchable()
                         ->preload()
-                        ->required(),
+                        ->required()
+                        ->default(fn () => static::isStaffLimitedToOwnRecords() ? auth()->id() : null)
+                        ->disabled(fn () => static::isStaffLimitedToOwnRecords())
+                        // Disabled fields are not dehydrated by default; the Create/Edit page
+                        // pins the value server-side (forceOwnUserId), so it cannot be tampered with.
+                        ->dehydrated(true),
 
                     Forms\Components\Select::make('day_of_week')
                         ->label('Dzień tygodnia')
@@ -157,7 +171,8 @@ class StaffScheduleResource extends BaseResource
                     })
                     ->getOptionLabelFromRecordUsing(fn (User $record) => $record->name)
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->visible(fn () => ! static::isStaffLimitedToOwnRecords()),
 
                 Tables\Filters\SelectFilter::make('day_of_week')
                     ->label('Dzień tygodnia')
@@ -183,7 +198,8 @@ class StaffScheduleResource extends BaseResource
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
+                    // Per-record check on top of the scoped query, as StaffVacationPeriodResource does.
+                    Actions\DeleteBulkAction::make()->authorizeIndividualRecords(),
                     Actions\BulkAction::make('activate')
                         ->label('Aktywuj zaznaczone')
                         ->icon('heroicon-o-check-circle')
@@ -221,13 +237,5 @@ class StaffScheduleResource extends BaseResource
             'create' => Pages\CreateStaffSchedule::route('/create'),
             'edit' => Pages\EditStaffSchedule::route('/{record}/edit'),
         ];
-    }
-
-    /**
-     * Restrict access to admins and super-admins only.
-     */
-    public static function canViewAny(): bool
-    {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 }

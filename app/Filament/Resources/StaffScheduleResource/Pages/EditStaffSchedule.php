@@ -10,6 +10,11 @@ class EditStaffSchedule extends EditRecord
 {
     protected static string $resource = StaffScheduleResource::class;
 
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return StaffScheduleResource::forceOwnUserId($data);
+    }
+
     protected function getHeaderActions(): array
     {
         return [

@@ -45,6 +45,11 @@ class ClosureRequestTest extends TestCase
         $this->org = Organization::factory()->create(['owner_id' => $this->admin->id]);
 
         Cache::flush();
+
+        // requestClosure() mails the global operator address and refuses to run without one.
+        // The recipient behaviour itself is pinned in ClosureRequestRecipientTest.
+        app(SettingsManager::class)->setGlobal('account.closure_request_email', 'operator@registro.test');
+        Cache::flush();
     }
 
     public function test_closure_request_sets_timestamp(): void
@@ -143,7 +148,10 @@ class ClosureRequestTest extends TestCase
             'actor_id' => $this->admin->id,
         ]);
 
-        Notification::assertSentTo($this->superAdmin, OrganizationClosureRequestedNotification::class);
+        Notification::assertSentOnDemand(
+            OrganizationClosureRequestedNotification::class,
+            fn ($notification, array $channels, $notifiable) => $notifiable->routes['mail'] === 'operator@registro.test'
+        );
     }
 
     public function test_guard_closing_state_prevents_request(): void
@@ -166,7 +174,7 @@ class ClosureRequestTest extends TestCase
             $logsBefore,
             OrganizationLifecycleLog::where('event', 'closure_requested')->count()
         );
-        Notification::assertNotSentTo($this->superAdmin, OrganizationClosureRequestedNotification::class);
+        Notification::assertSentOnDemandTimes(OrganizationClosureRequestedNotification::class, 0);
     }
 
     public function test_guard_already_pending_prevents_duplicate(): void
@@ -197,7 +205,7 @@ class ClosureRequestTest extends TestCase
             1,
             OrganizationLifecycleLog::where('event', 'closure_requested')->count()
         );
-        Notification::assertSentToTimes($this->superAdmin, OrganizationClosureRequestedNotification::class, 1);
+        Notification::assertSentOnDemandTimes(OrganizationClosureRequestedNotification::class, 1);
     }
 
     public function test_settings_page_denies_staff_access(): void

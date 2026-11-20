@@ -86,6 +86,7 @@ class OrganizationLifecycleLogResource extends Resource
             'data_export_downloaded' => 'Pobrano eksport danych',
             'closure_requested' => 'Wniosek o zamknięcie',
             'closure_request_dismissed' => 'Wniosek odrzucony',
+            'closure_request_withdrawn' => 'Wniosek wycofany',
             'closed' => 'Zamknięte',
             'suspended' => 'Zawieszone',
             'reactivated' => 'Reaktywowane',

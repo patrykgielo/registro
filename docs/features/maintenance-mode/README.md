@@ -26,7 +26,7 @@ Professional maintenance mode system for Laravel 12 + Filament application with 
 This maintenance mode system provides:
 
 - **4 Maintenance Types**: Deployment, Pre-launch, Scheduled, Emergency
-- **Multiple Bypass Methods**: Admin override (all types), secret token (non-prelaunch)
+- **Bypass Methods**: `super-admin` role, secret token (non-prelaunch); on a dedicated tenant stack the tenant `admin` also keeps the PANEL (see "Bypass Methods")
 - **Redis State Storage**: Survives container restarts
 - **Nginx-Level Optimization**: Zero PHP overhead for pre-launch mode
 - **Filament Admin UI**: Toggle maintenance with visual status indicators
@@ -63,7 +63,7 @@ Request → CheckMaintenanceMode middleware
           ↓ YES
           Check bypass:
           1. Secret token (query param or session)
-          2. User role (admin, super-admin)
+          2. User role (super-admin only; see "Bypass Methods")
           ↓
           Bypass OK? → YES → Continue to app
           ↓ NO
@@ -202,7 +202,7 @@ $service->enable(
 - Regenerate token button
 - View Event Log button (links to audit trail)
 
-**Access Control**: Only `super-admin` and `admin` roles
+**Access Control**: Only `super-admin` and `admin` roles can open this page. Whether they can still reach the panel once maintenance is on depends on the deployment model (see "Bypass Methods").
 
 ---
 
@@ -322,40 +322,40 @@ $status = $service->getStatus();
 
 ## Bypass Methods
 
-### Bypass Priority (Checked in Order)
+### Two different checks, and the deployment model decides (verified in code)
 
-1. **Admin Override** (HIGHEST PRIORITY)
-   - Checks: User has `super-admin` or `admin` role
-   - Result: Always bypass (applies to ALL maintenance types including PRELAUNCH)
-   - Log: "Maintenance bypass granted (admin override)"
-   - Why: Admins need access to manage system during maintenance
+The maintenance flag is ONE global cache/Redis key. What an `admin` may do about it differs between the two
+deployment models, so the roles below are not one list:
 
-2. **Maintenance Type Check**
-   - PRELAUNCH: Block all non-admins (no secret token bypass)
-   - DEPLOYMENT/SCHEDULED/EMERGENCY: Allow secret token bypass
+| Where | Check | Who passes |
+|---|---|---|
+| Filament panel `/admin` | `AdminMaintenanceCheck` (panel `authMiddleware`) | **Dedicated tenant stack** (`TENANT_SLUG` set): `admin` and `super-admin`. **Shared stack** (UAT demo, no `TENANT_SLUG`): `super-admin` only. `staff` never. |
+| Public site | `CheckMaintenanceMode` -> `MaintenanceService::canBypass()` | `super-admin` role, or a valid secret token (non-PRELAUNCH). A tenant `admin` browsing the storefront uses the token. |
 
-3. **Secret Token** (if applicable)
-   - Token provided via query param or session
-   - Only works for non-PRELAUNCH modes
+Why the panel rule depends on the model: on a dedicated stack the tenant admin is the one who switches maintenance
+on (`MaintenanceSettings`), the stack has its own database and NO super-admin, so blocking `admin` there is a permanent
+lockout that only the CLI (`maintenance:disable`) undoes. On the shared stack the flag is platform-wide, so a tenant
+admin must not be able to override an operator's maintenance window. Blocked users (`staff`, and `admin` on the shared
+stack) get the 503 page `filament.pages.maintenance`.
 
-### 1. Role-Based Bypass (Admins)
+The panel rule does not look at the maintenance TYPE: it is the same for DEPLOYMENT, SCHEDULED, EMERGENCY and PRELAUNCH.
 
-**Administrators (super-admin, admin) can ALWAYS bypass ALL maintenance types, including PRELAUNCH.**
+### Bypass Priority (public site, checked in order)
+
+1. **Role** - `MaintenanceService::canBypass()`: `super-admin` only (logged: "Maintenance bypass granted (super-admin)").
+2. **Secret token** - query param or session; only for DEPLOYMENT/SCHEDULED/EMERGENCY (PRELAUNCH issues no token).
+
+### 1. Role-Based Bypass
 
 ```php
-// CheckMaintenanceMode middleware
-if ($service->canBypass(Auth::user())) {
-    return $next($request); // Admin always allowed
+// CheckMaintenanceMode middleware (public site)
+if ($service->canBypass(Auth::user())) {   // super-admin only
+    return $next($request);
 }
 ```
 
-**Why admins have access:**
-- Monitor deployment progress
-- Respond to critical issues
-- Manage system configuration
-- Disable maintenance mode if needed
-
-**Non-admin users** (customer, staff, guest) are blocked during ALL maintenance types.
+Customers, tenant admins, staff and guests are blocked on the public site during ALL maintenance types unless they
+hold the token.
 
 ### 2. Secret Token Bypass
 
@@ -478,7 +478,9 @@ docker compose restart app nginx
 
 ### Can't access admin panel during maintenance
 
-**Admins (super-admin, admin) can ALWAYS access admin panel** during any maintenance mode, including PRELAUNCH.
+**Dedicated tenant stack:** `admin` and `super-admin` can ALWAYS open the admin panel during any maintenance mode.
+**Shared stack:** only `super-admin` can; a tenant `admin` sees the maintenance page by design (the flag is platform-wide).
+`staff` never can. See "Bypass Methods".
 
 If admin access is not working, check:
 
@@ -737,17 +739,18 @@ CheckMaintenanceMode (FIRST - before auth, before Filament)
     │   ↓
     │   ├─ Is /admin or /admin/*? → ✅ Bypass (let Filament handle auth) [PR #40]
     │   ├─ Already on / → 503 + maintenance template
-    │   ├─ Can bypass (admin/token)? → ✅ Continue to app
+    │   ├─ Can bypass (super-admin / token)? → ✅ Continue to app
     │   └─ Otherwise → 302 Redirect to /
     ↓
 Auth Middleware
     ↓
 Filament Middleware (for /admin routes)
     ↓
-    ├─ User::canAccessPanel() checks maintenance + role
+    ├─ AdminMaintenanceCheck (authMiddleware; canAccessPanel() deliberately does NOT check maintenance)
     │   ↓
-    │   ├─ Admin/super-admin? → ✅ Access granted
-    │   └─ Staff/customer? → ❌ Blocked by Filament
+    │   ├─ Dedicated stack: admin / super-admin? → ✅ Access granted
+    │   ├─ Shared stack: super-admin? → ✅ Access granted
+    │   └─ Everyone else (staff; admin on the shared stack)? → ❌ 503 maintenance page
     ↓
 Application
 ```
@@ -756,7 +759,7 @@ Application
 
 **All unauthorized requests redirect to home page (`/`) which displays maintenance template:**
 
-**Note:** `/admin` routes are exempted from middleware blocking (as of PR #40). Filament handles authorization via `User::canAccessPanel()`.
+**Note:** `/admin` routes are exempted from middleware blocking (as of PR #40). Filament's `AdminMaintenanceCheck` decides (see "Bypass Methods"); `User::canAccessPanel()` does not look at maintenance.
 
 ```bash
 # Examples:

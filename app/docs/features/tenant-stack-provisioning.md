@@ -221,6 +221,21 @@ stack. This assumption is load-bearing for the panel gating above; if a future c
 `TENANT_SLUG` was set (or unset) at build time for every deployed stack — worth a note if that
 changes.
 
+## Horizon — `/horizon` stays, the gate follows the deployment model
+
+`HorizonServiceProvider` cannot be dropped on a tenant stack: the same image runs the queue worker. So `/horizon`
+exists there, and `viewHorizon` was `super-admin` only, which is a 403 for everyone on a stack that has no
+super-admin. The gate (`HorizonServiceProvider::gate()`) now reads `config('app.tenant_slug')`:
+
+| Stack | Who may open `/horizon` |
+|---|---|
+| Dedicated (`TENANT_SLUG` set) | `admin` (the tenant owner) and `super-admin` |
+| Shared (no `TENANT_SLUG`) | `super-admin` only, as before |
+
+Staff, customers and guests never. Tests: `tests/Feature/Horizon/HorizonGateTest.php` (shared) and
+`HorizonGatePinnedStackTest.php` (pinned). Rule behind it: `.claude/rules/spatie-roles.md`, "Bramka na `super-admin`
+to martwa bramka na stacku tenanta".
+
 ## Request-time gating — `ResolveTenant`, `TrustHosts`, `TrustProxies`
 
 Provisioning creates the organization; this section is what actually serves it once the container

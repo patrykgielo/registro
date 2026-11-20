@@ -223,6 +223,23 @@ wizyt i wypożyczeń, top usług według przychodu, eksport CSV/PDF.
 koszyki, źródła ruchu, jakość sesji. Oba omijają kontrolę modułową i są
 tylko do odczytu, poza dwiema akcjami eksportu w `Statistics`.
 
+## Konto firmy: tryb konserwacji, wniosek o zamknięcie, grafik pracownika
+
+**Tryb konserwacji** (Ustawienia systemowe → Tryb konserwacji). Administrator firmy włącza go i wyłącza sam.
+W czasie konserwacji klienci widzą stronę konserwacji, a administrator **nadal wchodzi do panelu** i może ją
+wyłączyć w dowolnej chwili; pracownicy zamiast panelu widzą komunikat o konserwacji. Żeby samemu obejrzeć stronę
+klienta w trakcie konserwacji (poza trybem „Pre-launch”), użyj tokenu dostępu pokazanego po jej włączeniu.
+
+**Wniosek o zamknięcie konta** (Ustawienia → zakładka „Konto”). Wniosek trafia e-mailem do operatora platformy
+Registro i niczego nie zamyka automatycznie — operator skontaktuje się z Tobą. Jeśli adres, na który trafiają
+wnioski, nie jest ustawiony, system powie wprost, że wniosek **nie został złożony** (nic się wtedy nie zapisuje) —
+skontaktuj się z obsługą platformy. Dopóki zamykanie konta się nie rozpoczęło, możesz wniosek wycofać przyciskiem
+„Wycofaj wniosek” (operator dostaje o tym wiadomość); potem w każdej chwili złożysz nowy. Jeśli wniosku nie da się przekazać operatorowi, system mówi to wprost i go nie zapisuje.
+
+**Grafik pracownika** (Kadra → Harmonogramy, Wyjątki od harmonogramu, Urlopy). Pracownik widzi i edytuje
+wyłącznie własne wpisy: swoje godziny pracy, wyjątki i urlopy. Wpisów kolegów nie widzi i nie może ich zmienić.
+Administrator widzi i zarządza grafikami wszystkich pracowników.
+
 ## Kluczowe pliki
 
 `app/Filament/Resources/OrderResource.php`, `app/Filament/Resources/AppointmentResource.php`,

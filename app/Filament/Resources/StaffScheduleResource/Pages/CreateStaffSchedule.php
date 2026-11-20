@@ -8,4 +8,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateStaffSchedule extends CreateRecord
 {
     protected static string $resource = StaffScheduleResource::class;
+
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        return StaffScheduleResource::forceOwnUserId($data);
+    }
 }
