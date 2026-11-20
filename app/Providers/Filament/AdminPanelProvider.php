@@ -167,7 +167,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-                \App\Http\Middleware\AdminMaintenanceCheck::class, // Block non-super-admin during maintenance
+                \App\Http\Middleware\AdminMaintenanceCheck::class, // Maintenance: super-admin passes; admin too on a dedicated stack (TENANT_SLUG); staff blocked
             ])
 
             // Login screen -> existing /password/reset flow (resources/views/filament/auth/forgot-password-link.blade.php)

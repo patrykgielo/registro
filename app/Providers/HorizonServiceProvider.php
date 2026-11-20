@@ -23,12 +23,21 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     /**
      * Register the Horizon gate.
      *
-     * This gate determines who can access Horizon (super-admin only, all environments).
+     * Shared stack: super-admin only. Dedicated tenant stack (TENANT_SLUG set): there is NO
+     * super-admin user and never will be, so a super-admin-only gate is a 403 for everyone —
+     * the tenant's own `admin` (plus `super-admin`, should one ever exist) may open it.
+     * The provider itself must stay registered: the same image runs the queue worker.
      */
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
-            return $user?->hasRole('super-admin') ?? false;
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(
+                config('app.tenant_slug') ? ['admin', 'super-admin'] : ['super-admin']
+            );
         });
     }
 }

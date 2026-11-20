@@ -108,7 +108,7 @@ codebase actually gates on:
 
 | Pattern | Count | Examples |
 |---|---|---|
-| `canViewAny()` = `admin`/`super-admin`, no other `can*()` override | ~13 | `CustomerResource`, `EmployeeResource`, `CategoryResource`, `PageResource`, `PostResource`, `PromotionResource`, `PortfolioItemResource`, `ReminderConfigResource`, `RentalCategoryResource`, `RentalResource`, `ServiceResource`, `ExtensionRequestResource`, `StaffScheduleResource` |
+| `canViewAny()` = `admin`/`super-admin`, no other `can*()` override | ~13 | `CustomerResource`, `EmployeeResource`, `CategoryResource`, `PageResource`, `PostResource`, `PromotionResource`, `PortfolioItemResource`, `ReminderConfigResource`, `RentalCategoryResource`, `RentalResource`, `ServiceResource`, `ExtensionRequestResource` |
 | Full `can*()` set already defined (super-admin-only, permission-based, or per-record) | ~18 | `UserResource`, `RoleResource`, `StaffVacationPeriodResource`, `CarBrandResource`/`CarModelResource`/`VehicleTypeResource` (super-admin only), `EmailSuppressionResource`/`SmsSuppressionResource`/`EmailTemplateResource`/`SmsTemplateResource` (Spatie permission-based), `AuditLogResource`/`EmailEventResource`/`SmsEventResource`/`EmailSendResource`/`SmsSendResource`/`ServiceAreaWaitlistResource` |
 | `canViewAny()` = `admin`/`super-admin`/`staff`, no other override | 1 | `AppointmentResource` — fixed by adding explicit overrides (see below) |
 | No `can*()` at all | 1 | `ServiceAreaResource` — fixed by adding `canViewAny()` |
@@ -120,6 +120,18 @@ list", with zero behavioral change for that audience. That is the "narrowing
 but not breaking" requirement: nothing that worked for an admin stops
 working; everything that worked for a customer/guest/unrelated role (which
 should never have worked) stops.
+
+## Own-records resources: `StaffScheduleResource`, `StaffDateExceptionResource`
+
+Both used to be `admin`/`super-admin` only, although the seeder grants `staff` the permissions
+`staff.manage_availability` / `staff.view_availability`: the people a schedule is about could not see it.
+They now use `App\Filament\Traits\ScopesStaffToOwnRecords` (same shape as `StaffVacationPeriodResource`):
+`staff` see, create, edit and delete only rows with their own `user_id`; `admin`/`super-admin` (also a user
+holding both `admin` and `staff`) see everything. The scope lives in `getEloquentQuery()`, so a colleague's
+id is simply "not found" for table actions and bulk actions. The form pins `user_id` for staff
+(default + disabled + `dehydrated`, option list reduced to the actor) and the `Create*`/`Edit*` pages call
+`forceOwnUserId()` in `mutateFormDataBefore*`, so a tampered `user_id` never reaches the database. Tests:
+`tests/Feature/Filament/StaffOwnScheduleTest.php`.
 
 ## Resources needing explicit action beyond the default
 

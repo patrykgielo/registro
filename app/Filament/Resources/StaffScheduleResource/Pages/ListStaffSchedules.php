@@ -22,14 +22,16 @@ class ListStaffSchedules extends ListRecords
                 ->icon('heroicon-o-calendar')
                 ->color('warning')
                 ->url(fn () => StaffDateExceptionResource::getUrl('index'))
-                ->badge(fn () => \App\Models\StaffDateException::where('exception_date', '>=', now()->toDateString())->count())
+                ->visible(fn () => StaffDateExceptionResource::canViewAny())
+                ->badge(fn () => StaffDateExceptionResource::getEloquentQuery()->where('exception_date', '>=', now()->toDateString())->count())
                 ->badgeColor('warning'),
             Actions\Action::make('manage_vacations')
                 ->label('Zarządzaj urlopami')
                 ->icon('heroicon-o-sun')
                 ->color('success')
                 ->url(fn () => StaffVacationPeriodResource::getUrl('index'))
-                ->badge(fn () => \App\Models\StaffVacationPeriod::where('end_date', '>=', now()->toDateString())->count())
+                ->visible(fn () => StaffVacationPeriodResource::canViewAny())
+                ->badge(fn () => StaffVacationPeriodResource::getEloquentQuery()->where('end_date', '>=', now()->toDateString())->count())
                 ->badgeColor('success'),
         ];
     }

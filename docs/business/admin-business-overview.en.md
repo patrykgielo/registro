@@ -217,6 +217,22 @@ orders/appointments/rentals, top services by revenue, CSV/PDF export.
 abandonment, traffic sources, session quality. Both bypass module gating and
 are read-only except for the two export actions on `Statistics`.
 
+## Company account: maintenance mode, closure request, staff schedule
+
+**Maintenance mode** (System settings -> Maintenance mode). The company administrator switches it on and off
+alone. During maintenance customers see the maintenance page while the administrator **still opens the panel** and
+can switch it off at any moment; staff see a maintenance notice instead of the panel. To look at the customer site
+yourself during maintenance (except in "Pre-launch" mode), use the access token shown when you switch it on.
+
+**Account closure request** (Settings -> "Konto" tab). The request is e-mailed to the Registro platform operator and
+closes nothing automatically; the operator will get in touch. If the address that receives requests is not set,
+the system says plainly that the request was **not submitted** (nothing is saved) and you should contact the platform
+operator. Until closing has started you can take the request back with "Wycofaj wniosek" (the operator is told), and file a new one at any time. If the request cannot be passed to the operator, the system says so and does not save it.
+
+**Staff schedule** (Staff -> Schedules, Schedule exceptions, Vacations). A staff member sees and edits only their
+own entries: their working hours, exceptions and vacations. They cannot see or change a colleague's entries.
+The administrator sees and manages everyone's schedules.
+
 ## Key files
 
 `app/Filament/Resources/OrderResource.php`, `app/Filament/Resources/AppointmentResource.php`,

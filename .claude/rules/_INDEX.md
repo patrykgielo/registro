@@ -19,7 +19,7 @@ Format: `plik.md → paths`. Szukaj po pliku, który edytujesz — to jest trigg
 - `models.md` → `app/Models/**`
 - `filament.md` → `app/Filament/**` — v4 namespace (BREAKING); `filament-resources.md` → `app/Filament/Resources/**`
 - `filament-settings-pages.md` → `app/Filament/Pages/*Settings.php`
-- `spatie-roles.md` → `app/Actions/**` — role i uprawnienia
+- `spatie-roles.md` → `app/Actions/**`, `app/Http/Middleware/**`, `HorizonServiceProvider.php` — role i uprawnienia; bramka na `super-admin` = martwa bramka na stacku tenanta
 - `tests.md` → `tests/**`
 - `migrations.md` → `database/migrations/**`
 - `security.md` → `app/Http/Controllers/Auth/**`
