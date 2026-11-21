@@ -9,8 +9,8 @@ use App\Filament\Traits\HasGroupedSettings;
 use App\Models\Organization;
 use App\Models\OrganizationLifecycleLog;
 use App\Models\Page as PageModel;
-use App\Models\User;
 use App\Notifications\OrganizationClosureRequestedNotification;
+use App\Notifications\OrganizationClosureWithdrawnNotification;
 use App\Services\Sms\SmsService;
 use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
@@ -32,6 +32,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Facades\Storage;
@@ -56,6 +57,14 @@ class SystemSettings extends Page implements HasForms
      * Livewire render). Private → Livewire never persists it, so it resets each
      * request and always reflects fresh DB state. See closureOrg().
      */
+    /**
+     * Lifecycle states in which a closure request can be neither filed nor withdrawn. Used inside
+     * the UPDATE (not only in a pre-check), so a state change between check and write is refused.
+     *
+     * @var array<int, string>
+     */
+    private const CLOSURE_BLOCKING_STATES = ['closing', 'closed'];
+
     private ?Organization $closureOrgCache = null;
 
     private bool $closureOrgResolved = false;
@@ -1658,7 +1667,9 @@ class SystemSettings extends Page implements HasForms
      *
      * Core tab (not in TAB_MODULE_MAP) — always visible to all admins.
      * Closure does NOT happen automatically: the action only flags the org and
-     * notifies super-admins. Super-admin then runs the guarded offboarding.
+     * mails the platform operator (global `account.closure_request_email`). The operator
+     * then runs the guarded offboarding. There is NO super-admin on a dedicated tenant
+     * stack, so the recipient is an address, never a role.
      */
     /**
      * Resolve the current tenant's Organization once per request (memoised).
@@ -1767,8 +1778,11 @@ class SystemSettings extends Page implements HasForms
                                     .'administrator skontaktuje się z Tobą. Czy chcesz kontynuować?'
                                 )
                                 ->modalSubmitActionLabel('Tak, złóż wniosek')
-                                ->action('requestClosure'),
+                                // A closure, not the string form: with a string, Filament's wire:click calls the method
+                                // directly and the confirmation modal above never opens.
+                                ->action(fn () => $this->requestClosure()),
                         ])
+                            ->key('request_closure_actions')
                             ->columnSpanFull()
                             ->hidden(function (): bool {
                                 $org = $this->closureOrg();
@@ -1781,15 +1795,57 @@ class SystemSettings extends Page implements HasForms
                                     OrganizationLifecycleState::Closed,
                                 ], true) || $org->closure_requested_at !== null;
                             }),
+
+                        // Withdraw button: the only place the flag is cleared on a dedicated stack
+                        // (no /platform "Odrzuć wniosek" there). Not offered once closing has started.
+                        \Filament\Schemas\Components\Actions::make([
+                            \Filament\Actions\Action::make('withdrawClosureRequest')
+                                ->label(__('account_closure.withdraw.label'))
+                                ->color('gray')
+                                ->icon('heroicon-o-arrow-uturn-left')
+                                ->authorize(fn () => auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false)
+                                ->requiresConfirmation()
+                                ->modalHeading(__('account_closure.withdraw.modal_heading'))
+                                ->modalDescription(__('account_closure.withdraw.modal_description'))
+                                ->modalSubmitActionLabel(__('account_closure.withdraw.submit'))
+                                // A closure, not the string form: with a string, Filament's wire:click calls the method
+                                // directly and the confirmation modal above never opens.
+                                ->action(fn () => $this->withdrawClosureRequest()),
+                        ])
+                            ->key('withdraw_closure_actions')
+                            ->columnSpanFull()
+                            ->visible(function (): bool {
+                                $org = $this->closureOrg();
+                                if ($org === null || $org->closure_requested_at === null) {
+                                    return false;
+                                }
+
+                                return ! in_array($org->lifecycle_state, [
+                                    OrganizationLifecycleState::Closing,
+                                    OrganizationLifecycleState::Closed,
+                                ], true);
+                            }),
                     ]),
             ]);
+    }
+
+    /**
+     * The mailbox that receives closure requests: the platform-GLOBAL setting, not a role.
+     * Null when it is missing or not an address; the caller must NOT pretend it sent anything.
+     */
+    private function closureRecipient(): ?string
+    {
+        $raw = app(SettingsManager::class)->getGlobal('account.closure_request_email');
+        $email = is_string($raw) ? trim($raw) : '';
+
+        return $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
     }
 
     /**
      * Process a tenant's closure request.
      *
      * Flags the org with closure_requested_at, writes a durable audit log entry,
-     * and notifies super-admins. Does NOT change lifecycle_state — the super-admin
+     * and mails the operator address. Does NOT change lifecycle_state; the operator
      * runs the guarded offboarding separately.
      */
     public function requestClosure(): void
@@ -1818,16 +1874,87 @@ class SystemSettings extends Page implements HasForms
             return;
         }
 
-        // Atomic conditional write — guards against a TOCTOU race where two
-        // concurrent Livewire requests both pass the null-check and double-fire
-        // the log + notification. Only one UPDATE flips a null timestamp.
-        $affected = \Illuminate\Support\Facades\DB::table('organizations')
-            ->where('id', $org->id)
-            ->whereNull('closure_requested_at')
-            ->update(['closure_requested_at' => now()]);
+        // Resolve the recipient BEFORE touching the flag. With no one to tell, flagging the org
+        // would show "pending" in the UI, hide the request button and leave the operator
+        // uninformed: a request that exists only on the client's screen. Fail loudly instead.
+        $recipient = $this->closureRecipient();
 
-        if ($affected === 0) {
+        if ($recipient === null) {
+            Log::error('Account closure request could not be delivered: account.closure_request_email is missing or invalid.', [
+                'organization_id' => $org->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            Notification::make()
+                ->title(__('account_closure.no_recipient.title'))
+                ->body(__('account_closure.no_recipient.body'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // Flag + lifecycle log + mail are ONE unit: if handing the mail to the queue throws (Redis
+        // down, bad mail config) the transaction rolls the flag and the log row back, so the UI never
+        // shows a "pending" request the operator was not told about. Deliberately NOT
+        // ShouldQueueAfterCommit here: that would move the dispatch outside the transaction, where a
+        // failure could no longer undo the flag. (A mail job that fails LATER, in the worker, is
+        // invisible to the UI; it lands in failed_jobs.)
+        //
+        // The UPDATE itself is the atomic gate: it flips a null timestamp only for a non-closing org,
+        // so two concurrent Livewire requests (TOCTOU) or a state change after the pre-check above
+        // cannot double-fire or file a request for an org that is already being closed.
+        try {
+            $filed = \Illuminate\Support\Facades\DB::transaction(function () use ($org, $recipient): bool {
+                $affected = \Illuminate\Support\Facades\DB::table('organizations')
+                    ->where('id', $org->id)
+                    ->whereNull('closure_requested_at')
+                    ->whereNotIn('lifecycle_state', self::CLOSURE_BLOCKING_STATES)
+                    ->update(['closure_requested_at' => now()]);
+
+                if ($affected === 0) {
+                    return false;
+                }
+
+                $org->refresh();
+
+                OrganizationLifecycleLog::record($org, 'closure_requested', auth()->user());
+
+                NotificationFacade::route('mail', $recipient)
+                    ->notify(new OrganizationClosureRequestedNotification($org, auth()->user()));
+
+                return true;
+            });
+        } catch (\Throwable $e) {
+            Log::error('Account closure request failed and was rolled back.', [
+                'organization_id' => $org->id,
+                'user_id' => auth()->id(),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            Notification::make()
+                ->title(__('account_closure.send_failed.title'))
+                ->body(__('account_closure.send_failed.body'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        if (! $filed) {
             $org->refresh();
+
+            if (in_array($org->lifecycle_state, [OrganizationLifecycleState::Closing, OrganizationLifecycleState::Closed], true)) {
+                Notification::make()
+                    ->title('Konto jest już w trakcie zamykania')
+                    ->body('Twoje konto jest już w trakcie procesu zamknięcia. Skontaktuj się z administratorem.')
+                    ->info()
+                    ->send();
+
+                return;
+            }
+
             Notification::make()
                 ->title('Wniosek już złożony')
                 ->body('Wniosek o zamknięcie konta został już złożony dnia '.$org->closure_requested_at?->format('d.m.Y').'.')
@@ -1837,20 +1964,126 @@ class SystemSettings extends Page implements HasForms
             return;
         }
 
-        $org->refresh();
-
-        OrganizationLifecycleLog::record($org, 'closure_requested', auth()->user());
-
-        NotificationFacade::send(
-            User::role('super-admin')->get(),
-            new OrganizationClosureRequestedNotification($org, auth()->user())
-        );
-
         Notification::make()
             ->title('Wniosek wysłany')
             ->body('Wniosek o zamknięcie konta został złożony. Skontaktujemy się z Tobą wkrótce.')
             ->success()
             ->send();
+    }
+
+    /**
+     * Withdraw a pending closure request (clears `closure_requested_at`).
+     *
+     * On a dedicated tenant stack this is the only way to clear the flag: the
+     * platform panel's "Odrzuć wniosek" does not exist there. Does not touch
+     * lifecycle_state, and is refused once closing has started (Reaktywuj is the operator's).
+     */
+    public function withdrawClosureRequest(): void
+    {
+        $org = TenantFeature::currentTenant();
+
+        if ($org === null) {
+            Notification::make()
+                ->title('Brak kontekstu organizacji')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        if (in_array($org->lifecycle_state, [
+            OrganizationLifecycleState::Closing,
+            OrganizationLifecycleState::Closed,
+        ], true)) {
+            Notification::make()
+                ->title(__('account_closure.withdraw.too_late'))
+                ->info()
+                ->send();
+
+            return;
+        }
+
+        // Atomic, same reasoning as the request: only the call that flips non-null -> null logs, and
+        // the state guard sits in the UPDATE itself (0 rows = refused), not only in the check above.
+        $withdrawn = \Illuminate\Support\Facades\DB::transaction(function () use ($org): bool {
+            $affected = \Illuminate\Support\Facades\DB::table('organizations')
+                ->where('id', $org->id)
+                ->whereNotNull('closure_requested_at')
+                ->whereNotIn('lifecycle_state', self::CLOSURE_BLOCKING_STATES)
+                ->update(['closure_requested_at' => null]);
+
+            if ($affected === 0) {
+                return false;
+            }
+
+            OrganizationLifecycleLog::record($org->refresh(), 'closure_request_withdrawn', auth()->user());
+
+            return true;
+        });
+
+        if (! $withdrawn) {
+            $org->refresh();
+            $closing = in_array($org->lifecycle_state, [OrganizationLifecycleState::Closing, OrganizationLifecycleState::Closed], true);
+
+            Notification::make()
+                ->title($closing ? __('account_closure.withdraw.too_late') : __('account_closure.withdraw.nothing_pending'))
+                ->info()
+                ->send();
+
+            return;
+        }
+
+        // The tenant's right to withdraw does not depend on the operator's mailbox: the mail is
+        // best-effort, but a failure is logged and shown, never silent.
+        if (! $this->notifyOperatorOfWithdrawal($org)) {
+            Notification::make()
+                ->title(__('account_closure.withdraw.done_title'))
+                ->body(__('account_closure.withdraw.done_operator_not_told'))
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title(__('account_closure.withdraw.done_title'))
+            ->body(__('account_closure.withdraw.done_body'))
+            ->success()
+            ->send();
+    }
+
+    /**
+     * Tell the operator (same global address as the request) that the request was taken back.
+     * Returns false, after logging, when there is no usable address or the dispatch throws.
+     */
+    private function notifyOperatorOfWithdrawal(Organization $org): bool
+    {
+        $recipient = $this->closureRecipient();
+
+        if ($recipient === null) {
+            Log::error('Account closure withdrawal could not be announced: account.closure_request_email is missing or invalid.', [
+                'organization_id' => $org->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return false;
+        }
+
+        try {
+            NotificationFacade::route('mail', $recipient)
+                ->notify(new OrganizationClosureWithdrawnNotification($org, auth()->user()));
+        } catch (\Throwable $e) {
+            Log::error('Account closure withdrawal mail could not be dispatched.', [
+                'organization_id' => $org->id,
+                'user_id' => auth()->id(),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

@@ -1,4 +1,4 @@
-<x-filament-panels::page.simple>
+<x-filament-panels::layout.simple>
     <div class="text-center py-12">
         <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-warning-100 dark:bg-warning-900/20">
             <x-heroicon-o-wrench-screwdriver class="h-8 w-8 text-warning-600 dark:text-warning-400" />
@@ -10,7 +10,7 @@
 
         <p class="mt-4 text-base text-gray-600 dark:text-gray-400">
             Dostep do panelu administracyjnego jest tymczasowo ograniczony.<br>
-            Tylko super-administratorzy moga korzystac z systemu w tym czasie.
+            Skontaktuj sie z administratorem, jesli potrzebujesz dostepu w tym czasie.
         </p>
 
         @if($type)
@@ -34,4 +34,4 @@
             </p>
         </div>
     </div>
-</x-filament-panels::page.simple>
+</x-filament-panels::layout.simple>

@@ -102,7 +102,7 @@ public function terminate(Request $request, Response $response): void
 
 ## Istniejące Middleware (reference)
 
-- `CheckMaintenanceMode` - tryb maintenance z bypass dla admin
+- `CheckMaintenanceMode` - tryb maintenance z bypass dla admin (strona publiczna: `MaintenanceService::canBypass`, tylko `super-admin` albo token). `AdminMaintenanceCheck` (panel `/admin`): stack tenanta (`TENANT_SLUG`) → `admin` + `super-admin` (admin włącza konserwację, więc musi móc ją wyłączyć; nie ma tam super-admina); stack współdzielony → tylko `super-admin`. `staff` zawsze dostaje stronę 503. Patrz `spatie-roles.md` → „Bramka na `super-admin`”.
 - `Authenticate` - Laravel default
 - `VerifyCsrfToken` - Laravel default
 - `CheckBookingEnabled` (`check-booking-enabled`) - przekierowuje na home gdy `isBookingEnabled() === false` dla tenanta

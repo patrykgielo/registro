@@ -10,6 +10,11 @@ class EditStaffDateException extends EditRecord
 {
     protected static string $resource = StaffDateExceptionResource::class;
 
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return StaffDateExceptionResource::forceOwnUserId($data);
+    }
+
     protected function getHeaderActions(): array
     {
         return [

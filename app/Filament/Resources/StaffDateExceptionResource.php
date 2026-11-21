@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\StaffDateExceptionResource\Pages;
+use App\Filament\Traits\ScopesStaffToOwnRecords;
 use App\Models\StaffDateException;
 use App\Models\User;
 use BackedEnum;
@@ -17,6 +18,9 @@ use UnitEnum;
 
 class StaffDateExceptionResource extends BaseResource
 {
+    // Admins manage everyone; staff manage only their own exceptions (staff.manage_availability).
+    use ScopesStaffToOwnRecords;
+
     protected static ?string $model = StaffDateException::class;
 
     protected static ?string $module = 'staff';
@@ -44,11 +48,21 @@ class StaffDateExceptionResource extends BaseResource
                         ->label('Pracownik')
                         ->relationship('user', 'first_name', function (Builder $query) {
                             $query->role('staff');
+
+                            // Staff see only themselves in the list, not their colleagues' names.
+                            if (static::isStaffLimitedToOwnRecords()) {
+                                $query->whereKey(auth()->id());
+                            }
                         })
                         ->getOptionLabelFromRecordUsing(fn (User $record) => $record->name)
                         ->searchable()
                         ->preload()
-                        ->required(),
+                        ->required()
+                        ->default(fn () => static::isStaffLimitedToOwnRecords() ? auth()->id() : null)
+                        ->disabled(fn () => static::isStaffLimitedToOwnRecords())
+                        // Disabled fields are not dehydrated by default; the Create/Edit page
+                        // pins the value server-side (forceOwnUserId), so it cannot be tampered with.
+                        ->dehydrated(true),
 
                     Forms\Components\DatePicker::make('exception_date')
                         ->label('Data wyjątku')
@@ -165,7 +179,8 @@ class StaffDateExceptionResource extends BaseResource
                     })
                     ->getOptionLabelFromRecordUsing(fn (User $record) => $record->name)
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->visible(fn () => ! static::isStaffLimitedToOwnRecords()),
 
                 Tables\Filters\SelectFilter::make('exception_type')
                     ->label('Typ wyjątku')
@@ -188,7 +203,8 @@ class StaffDateExceptionResource extends BaseResource
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
+                    // Per-record check on top of the scoped query, as StaffVacationPeriodResource does.
+                    Actions\DeleteBulkAction::make()->authorizeIndividualRecords(),
                 ]),
             ])
             ->emptyStateHeading('Brak wyjątków')
@@ -210,31 +226,5 @@ class StaffDateExceptionResource extends BaseResource
             'create' => Pages\CreateStaffDateException::route('/create'),
             'edit' => Pages\EditStaffDateException::route('/{record}/edit'),
         ];
-    }
-
-    /**
-     * Restrict access to admins and super-admins only.
-     *
-     * Consistent with StaffScheduleResource, which this resource is a sub-workflow of
-     * (accessed via its "Zarządzaj wyjątkami" header action).
-     */
-    public static function canViewAny(): bool
-    {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
-    }
-
-    public static function canCreate(): bool
-    {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
-    }
-
-    public static function canEdit($record): bool
-    {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
-    }
-
-    public static function canDelete($record): bool
-    {
-        return auth()->user()?->hasAnyRole(['admin', 'super-admin']) ?? false;
     }
 }
