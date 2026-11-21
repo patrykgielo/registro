@@ -1,18 +1,24 @@
 #!/bin/bash
-# Notification Hook — Post-Compaction Rules Re-injection
+# Post-Compaction Rules Re-injection (wired as SessionStart, matcher "compact")
 #
 # When context compaction occurs, rules loaded at session start get summarized
-# into vague references and lose their enforcement power. This hook detects
-# the "compact" notification and re-injects critical TIER 1 rules.
+# into vague references and lose their enforcement power. This hook re-injects
+# the critical TIER 1 rules. SessionStart stdout is added to Claude's context.
+#
+# Pure text, so it never needs WSL (HOOK_FORWARD=0) and never needs a JSON
+# parser: the matcher already restricts it to compaction, and the test below is
+# a regex on the raw input.
 
 set -euo pipefail
 
-INPUT=$(cat)
+HOOK_FORWARD=0
+# shellcheck source=lib/wsl-forward.sh
+source "${BASH_SOURCE[0]%/*}/lib/wsl-forward.sh"
 
-# Only trigger on SubagentCompact notifications
-TYPE=$(echo "$INPUT" | jq -r '.type // empty' 2>/dev/null || true)
+hook_read_input
 
-if [[ "$TYPE" != *"compact"* && "$TYPE" != *"Compact"* ]]; then
+# SessionStart reports `"source":"compact"`; the legacy Notification event used `type`.
+if ! [[ "$HOOK_INPUT" =~ \"(source|type|notification_type)\"[[:space:]]*:[[:space:]]*\"[^\"]*[Cc]ompact ]]; then
     exit 0
 fi
 

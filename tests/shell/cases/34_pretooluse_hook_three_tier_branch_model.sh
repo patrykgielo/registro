@@ -43,13 +43,11 @@ run_hook() {
     printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$command_json" | bash "$HOOK"
 }
 
-decision_of() {
-    echo "$1" | jq -r '.hookSpecificOutput.permissionDecision // "MALFORMED"'
-}
+# decision_of comes from lib/harness.sh (python3, not jq -- jq is installed nowhere we run).
 
 # --- Case 1: gh pr create --base main from staging -- must be ALLOWED. ---
 OUT="$(run_hook staging '"gh pr create --base main --title x"')"
-assert_eq "allow" "$(decision_of "$OUT")" "gh pr create --base main from staging (GAP 1)"
+assert_eq "pass" "$(decision_of "$OUT")" "gh pr create --base main from staging (GAP 1)"
 
 # --- Case 2: gh pr create --base main from feature/* -- must be BLOCKED. ---
 OUT="$(run_hook feature/foo '"gh pr create --base main --title x"')"
@@ -67,12 +65,12 @@ assert_eq "deny" "$(decision_of "$OUT")" "git commit on staging (GAP 2)"
 # --- Case 5: git commit while on feature/* -- must be ALLOWED (unaffected
 # by this change, guards against a regression narrowing feature/* too). ---
 OUT="$(run_hook feature/foo '"git commit -m test"')"
-assert_eq "allow" "$(decision_of "$OUT")" "git commit on feature/*"
+assert_eq "pass" "$(decision_of "$OUT")" "git commit on feature/*"
 
 # --- Case 6: gh pr create --base staging from develop -- must be ALLOWED
 # (this is how the develop -> staging promotion itself is opened). ---
 OUT="$(run_hook develop '"gh pr create --base staging --title x"')"
-assert_eq "allow" "$(decision_of "$OUT")" "gh pr create --base staging from develop"
+assert_eq "pass" "$(decision_of "$OUT")" "gh pr create --base staging from develop"
 
 # --- Case 7: git push origin main from staging -- must stay BLOCKED.
 # Promotion to main is staging -> main via PR (gh pr merge), never a raw
@@ -83,6 +81,6 @@ assert_eq "deny" "$(decision_of "$OUT")" "git push origin main from staging"
 # --- Case 8: git push origin main from hotfix/* -- must stay ALLOWED
 # (the documented emergency escape hatch, unaffected by this change). ---
 OUT="$(run_hook hotfix/x '"git push origin main"')"
-assert_eq "allow" "$(decision_of "$OUT")" "git push origin main from hotfix/*"
+assert_eq "pass" "$(decision_of "$OUT")" "git push origin main from hotfix/*"
 
 test_finish

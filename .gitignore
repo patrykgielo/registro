@@ -111,6 +111,10 @@ ssh_config
 .staging-credentials.local
 *.credentials.local
 .claude/worktrees/
+# Personal Claude Code overrides. Hook wiring and shared settings live in the
+# COMMITTED .claude/settings.json -- they used to live here, so they vanished on
+# every fresh clone and nothing ever ran.
+.claude/settings.local.json
 # cc-doctor: local timestamp for the weekly MCP health check
 .claude/.cc-doctor-mcp-stamp
 /check_loader.php

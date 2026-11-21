@@ -216,6 +216,6 @@ Separate Claude Code instances working in parallel. Use for large features (3 te
 | `.claude/agents/*.md` | Agent definitions (13 files) |
 | `.claude/agent-memory/*/MEMORY.md` | Persistent agent knowledge |
 | `.claude/hooks/subagent-quality-gate.sh` | SubagentStop quality gate |
-| `.claude/settings.local.json` | Agent Teams env var + hooks |
+| `.claude/settings.json` | Agent Teams env var + hooks (committed) |
 | `.claude/rules/agent-usage.md` | When to use which agent |
 | `.claude/skills/frontend-design/SKILL.md` | Anthropic official design skill |
