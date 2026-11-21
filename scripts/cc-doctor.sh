@@ -20,13 +20,28 @@
 #   scripts/cc-doctor.sh --full    # force the MCP health check
 #   scripts/cc-doctor.sh --hook    # JSON for SessionStart, silent when clean
 #
-# Exit: 0 clean, 1 findings.
+# Exit: 0 clean, 1 findings. In --hook mode: always 0 -- Claude Code only reads
+# a hook's JSON on exit 0, so reporting findings with exit 1 delivered nothing.
+#
+# On the Windows desktop app this re-executes itself inside WSL (the shim in
+# .claude/hooks/lib), where python3 lives. It then inspects the Windows clone's
+# files through /mnt/c -- those are what Claude Code actually loads.
 ###############################################################################
 
 set -uo pipefail
 
+_DOCTOR_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.claude/hooks/lib"
+if [ -f "$_DOCTOR_LIB/wsl-forward.sh" ]; then
+    # shellcheck source=../.claude/hooks/lib/wsl-forward.sh
+    source "$_DOCTOR_LIB/wsl-forward.sh"
+    registro_wsl_forward "${BASH_SOURCE[0]}" "$@"
+fi
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USER_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+# Forwarded from Windows, "home" is the WINDOWS profile: that is where Claude
+# Code keeps ~/.claude and ~/.claude.json. WSL's own $HOME has neither.
+USER_HOME="${REGISTRO_WIN_HOME:-$HOME}"
+USER_DIR="${CLAUDE_CONFIG_DIR:-$USER_HOME/.claude}"
 STAMP="$PROJECT_DIR/.claude/.cc-doctor-mcp-stamp"
 TIER1_BUDGET=12000
 MCP_MAX_AGE_DAYS=7
@@ -35,7 +50,7 @@ MODE="normal"
 case "${1:-}" in
     --full) MODE="full" ;;
     --hook) MODE="hook" ;;
-    --help|-h) sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    --help|-h) sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
 esac
 
 FINDINGS=()
@@ -138,11 +153,11 @@ done
 # every session start. Connectivity is checked separately below.
 ###############################################################################
 configured_servers() {
-    python3 - "$USER_DIR" "$PROJECT_DIR" <<'PY' 2>/dev/null
+    python3 - "$USER_DIR" "$PROJECT_DIR" "$USER_HOME" <<'PY' 2>/dev/null
 import json, os, sys
 names = set()
 for path in (
-    os.path.join(os.path.expanduser("~"), ".claude.json"),
+    os.path.join(sys.argv[3], ".claude.json"),
     os.path.join(sys.argv[2], ".mcp.json"),
 ):
     try:
@@ -162,6 +177,9 @@ SERVERS="$(configured_servers)"
 referenced="$(grep -rhoE 'mcp__[a-zA-Z0-9_-]+__' \
     "$PROJECT_DIR"/.claude/agents/*.md "$USER_DIR"/agents/*.md 2>/dev/null \
     | sed -E 's/^mcp__//; s/__$//' | sort -u)"
+# Without python3 the configured list above is empty, which would flag EVERY
+# server as unconfigured. That is check 4d's finding, not forty false ones.
+command -v python3 >/dev/null 2>&1 || referenced=""
 
 while IFS= read -r srv; do
     [ -n "$srv" ] || continue
@@ -195,24 +213,193 @@ for path in sys.argv[1:]:
 PY
 }
 
+# Executable means: mode 100755 in the git index when the file is tracked. The
+# Windows clone lives on NTFS, where /mnt/c reports every file as 777 and the
+# exec bit of the working copy proves nothing; the index is what a Linux
+# checkout of the same commit will get.
+script_is_executable() {
+    local rel mode
+    rel="${1#"$PROJECT_DIR"/}"
+    mode="$(git -c safe.directory='*' -C "$PROJECT_DIR" ls-files -s -- "$rel" 2>/dev/null | cut -c1-6)"
+    if [ -n "$mode" ]; then
+        [ "$mode" = 100755 ]
+    else
+        [ -x "$1" ]
+    fi
+}
+
+SETTINGS_FILES=("$USER_DIR/settings.json"
+                "$PROJECT_DIR/.claude/settings.json"
+                "$PROJECT_DIR/.claude/settings.local.json")
+
 while IFS= read -r cmd; do
     [ -n "$cmd" ] || continue
-    path="${cmd%% *}"
-    path="${path//\"/}"
+    path="${cmd//\"/}"
+    path="${path#bash }"
+    path="${path#sh }"
+    path="${path%% *}"
+    path="${path//\$\{CLAUDE_PROJECT_DIR\}/$PROJECT_DIR}"
     path="${path//\$CLAUDE_PROJECT_DIR/$PROJECT_DIR}"
-    path="${path//\$HOME/$HOME}"
+    path="${path//\$HOME/$USER_HOME}"
     case "$path" in
         /*) ;;
         *) continue ;;
     esac
     if [ ! -f "$path" ]; then
         finding "hook script missing: $path"
-    elif [ ! -x "$path" ]; then
-        finding "hook script not executable: $path"
+    elif ! script_is_executable "$path"; then
+        finding "hook script not executable (git mode is not 100755): $path"
     fi
-done < <(hook_commands "$USER_DIR/settings.json" \
-                       "$PROJECT_DIR/.claude/settings.json" \
-                       "$PROJECT_DIR/.claude/settings.local.json")
+done < <(hook_commands "${SETTINGS_FILES[@]}")
+
+###############################################################################
+# 4b. Settings files must be valid JSON
+#
+# hook_commands above skips a file it cannot parse, so a stray comma in
+# settings.json would unwire every hook and say nothing.
+###############################################################################
+for f in "${SETTINGS_FILES[@]}"; do
+    [ -f "$f" ] || continue
+    if command -v python3 >/dev/null 2>&1 && ! python3 -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$f" 2>/dev/null; then
+        finding "$f is not valid JSON -- Claude Code ignores the whole file, so everything it wires is off"
+    fi
+done
+
+###############################################################################
+# 4c. Every hook script must be wired, and wired once
+#
+# The hooks lived for months in a gitignored settings.local.json that did not
+# exist on this machine: five scripts, a rules file claiming they enforced
+# things, and nothing running. The wiring is now committed in
+# .claude/settings.json. A script nobody calls is the same failure, so list
+# them. The reverse mistake -- the same command in settings.json AND
+# settings.local.json -- runs the hook twice, so that is flagged too.
+###############################################################################
+if [ ! -f "$PROJECT_DIR/.claude/settings.json" ]; then
+    finding ".claude/settings.json is missing -- hooks are wired nowhere (it is committed; restore it from git)"
+fi
+
+ALL_WIRED="$(hook_commands "${SETTINGS_FILES[@]}")"
+for hook in "$PROJECT_DIR"/.claude/hooks/*.sh "$PROJECT_DIR"/scripts/cc-doctor.sh; do
+    [ -f "$hook" ] || continue
+    printf '%s\n' "$ALL_WIRED" | grep -qF "$(basename "$hook")" ||
+        finding "hook script exists but is wired in no settings file: ${hook#"$PROJECT_DIR"/}"
+done
+
+if [ -f "$PROJECT_DIR/.claude/settings.json" ] && [ -f "$PROJECT_DIR/.claude/settings.local.json" ]; then
+    dups="$(sort <(hook_commands "$PROJECT_DIR/.claude/settings.json") \
+                 <(hook_commands "$PROJECT_DIR/.claude/settings.local.json") | uniq -d)"
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        finding "hook wired in BOTH settings.json and settings.local.json (it runs twice): $d"
+    done <<<"$dups"
+fi
+
+###############################################################################
+# 4c2. The PreToolUse guard must cover EVERY shell tool
+#
+# On the Windows desktop app the primary shell tool is PowerShell, not Bash. A
+# matcher of just "Bash" leaves it entirely unguarded -- git commit, git push and
+# migrate:fresh through it are never seen. Flag a pre-tool-use.sh entry whose
+# matcher does not select both tools.
+###############################################################################
+if command -v python3 >/dev/null 2>&1; then
+    while IFS= read -r problem; do
+        [ -n "$problem" ] || continue
+        finding "$problem"
+    done < <(python3 - "${SETTINGS_FILES[@]}" <<'PY' 2>/dev/null
+import json, re, sys
+for path in sys.argv[1:]:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        continue
+    for entry in (data.get("hooks") or {}).get("PreToolUse") or []:
+        if not any("pre-tool-use.sh" in (h.get("command") or "") for h in entry.get("hooks") or []):
+            continue
+        m = entry.get("matcher", "")
+        if m in ("", "*"):
+            continue
+        # Claude Code: letters/digits/_-,| and spaces are an exact list, anything else a regex.
+        if re.fullmatch(r"[A-Za-z0-9_,| -]+", m):
+            names = {n for n in re.split(r"[|, ]+", m) if n}
+            covered = {"Bash", "PowerShell"} <= names
+        else:
+            try:
+                covered = bool(re.fullmatch(m, "Bash") and re.fullmatch(m, "PowerShell"))
+            except re.error:
+                covered = False
+        if not covered:
+            print("%s: PreToolUse matcher '%s' for pre-tool-use.sh does not select BOTH Bash and PowerShell -- the PowerShell tool (primary shell on Windows) bypasses the guard entirely" % (path, m))
+PY
+)
+fi
+
+###############################################################################
+# 4d. The hooks need a JSON parser where they RUN
+#
+# They used jq, which exists nowhere; `jq: command not found` inside $(...)
+# leaves the variable empty, so pre-tool-use.sh read every command as empty and
+# blocked nothing. They now use python3. Without it the guard fails closed on
+# guarded commands, but that is a degraded state worth a loud line.
+###############################################################################
+if [ -f "$_DOCTOR_LIB/json.sh" ]; then
+    # shellcheck source=../.claude/hooks/lib/json.sh
+    source "$_DOCTOR_LIB/json.sh"
+    if ! hook_python; then
+        finding "no python3 in $(uname -s)${REGISTRO_HOOK_ORIGIN:+ (WSL, forwarded)}: hooks cannot read their input. PreToolUse now DENIES guarded commands and skips the rest. Fix: sudo apt install python3"
+    fi
+else
+    finding "hook library missing: .claude/hooks/lib/json.sh -- every hook fails to start"
+fi
+
+###############################################################################
+# 4e. Windows clone drift (manual runs only)
+#
+# Claude Code on the Windows desktop app loads CLAUDE.md and rules from a
+# mirror clone that falls behind the WSL tree. session-sync.sh fixes and
+# reports this at session start; --hook mode leaves it to that script so the
+# two do not race and report twice. Manual runs check it here too.
+###############################################################################
+if [ "$MODE" != "hook" ]; then
+    # REGISTRO_WIN_CLONE set but EMPTY means "there is no Windows clone" (tests,
+    # pure-Linux machines); only an UNSET variable falls back to probing.
+    CLONE="${REGISTRO_WIN_CLONE:-}"
+    if [ -z "$CLONE" ] && [ -z "${REGISTRO_WIN_CLONE+x}" ]; then
+        case "$PROJECT_DIR" in /mnt/*) CLONE="$PROJECT_DIR" ;; esac
+        [ -n "$CLONE" ] || { [ -d /mnt/c/projects/registro/.git ] && CLONE=/mnt/c/projects/registro; }
+    fi
+    WSL_TREE="${REGISTRO_WSL_TREE:-/var/www/projects/registro/app}"
+    if [ -n "$CLONE" ]; then
+        if [ ! -d "$WSL_TREE" ]; then
+            finding "WSL tree $WSL_TREE does not exist -- Windows-clone drift cannot be checked (REGISTRO_WSL_TREE)"
+        else
+            cg() { git -c safe.directory='*' -C "$CLONE" "$@"; }
+            norm() { awk -F'\t' '{ split($1, a, " "); print $2 "\t" a[3] }' | sort; }
+            clone_ls="$(cg ls-tree -r HEAD -- .claude CLAUDE.md 2>/dev/null | norm)"
+            tree_ls="$(git -c safe.directory='*' -C "$WSL_TREE" ls-tree -r HEAD -- .claude CLAUDE.md 2>/dev/null | norm)"
+            if [ -z "$clone_ls" ] || [ -z "$tree_ls" ]; then
+                finding "could not read .claude/ from the clone ($CLONE) or the WSL tree ($WSL_TREE) -- drift NOT checked"
+            elif [ "$clone_ls" != "$tree_ls" ]; then
+                # Only meaningful when both sit on the SAME branch. The WSL tree is
+                # usually on a feature branch whose .claude/ legitimately differs
+                # from the clone's develop -- that is not drift, and flagging it
+                # would make every run noisy.
+                tree_branch="$(git -c safe.directory='*' -C "$WSL_TREE" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+                clone_branch="$(cg symbolic-ref --short -q HEAD 2>/dev/null || true)"
+                if [ -n "$tree_branch" ] && [ "$tree_branch" = "$clone_branch" ]; then
+                    diffs="$(diff <(printf '%s\n' "$clone_ls") <(printf '%s\n' "$tree_ls") | grep '^[<>]' | cut -c3- | cut -f1 | sort -u | head -8 | paste -sd, -)"
+                    finding "Windows clone's .claude/ + CLAUDE.md differ from the WSL tree (both on $tree_branch): $diffs"
+                fi
+            fi
+            behind="$(cg rev-list --count 'HEAD..@{u}' 2>/dev/null)" || behind=""
+            if [[ "$behind" =~ ^[0-9]+$ ]] && [ "$behind" -gt 0 ]; then
+                finding "Windows clone is $behind commit(s) behind its upstream (as of its last fetch) -- the next session start fast-forwards it"
+            fi
+        fi
+    fi
+fi
 
 ###############################################################################
 # 5. Files a hook depends on must exist
@@ -287,11 +474,12 @@ if [ "$MODE" = "hook" ]; then
     msg="cc-doctor found ${#FINDINGS[@]} configuration problem(s):"
     for f in "${FINDINGS[@]}"; do msg="${msg}"$'\n'"  - ${f}"; done
     msg="${msg}"$'\n'"Run scripts/cc-doctor.sh for detail."
-    if command -v jq >/dev/null 2>&1; then
-        jq -n --arg ctx "$msg" \
-          '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
-    fi
-    exit 1
+    # No jq: it exists nowhere we run, and its absence used to make this block
+    # print nothing at all -- the findings were computed and then dropped.
+    # Both fields: additionalContext reaches Claude, systemMessage the user.
+    esc="${msg//\\/\\\\}"; esc="${esc//\"/\\\"}"; esc="${esc//$'\n'/\\n}"; esc="${esc//$'\t'/\\t}"
+    printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$esc" "$esc"
+    exit 0 # Claude Code reads a hook's JSON only on exit 0
 fi
 
 if [ ${#FINDINGS[@]} -eq 0 ]; then

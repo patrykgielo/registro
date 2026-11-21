@@ -75,11 +75,13 @@ Jedzie z repozytorium i nie wymaga niczego: `CLAUDE.md`, `.claude/rules/**`,
 `.claude/agents/**`, `app/docs/**`.
 
 **Nie jedzie i trzeba odtworzyć:**
-- `.claude/settings.local.json` — gitignorowany; **kopia JSON do odtworzenia leży
-  w `.claude/rules/claude-code-config.md`**. Zawiera 6 zdarzeń hooków
-  (`PreToolUse`, `UserPromptSubmit`, `Stop`, `Notification`, `SubagentStop`, `SessionStart`).
-  Sprawdzone 2026-10-05: **zero ścieżek bezwzględnych**, 6 użyć `$CLAUDE_PROJECT_DIR` —
-  czyli hooki są przenośne bez edycji.
+- Hooki jadą z repozytorium: wpięcie jest w commitowanym `.claude/settings.json` (od 2026-11-21;
+  wcześniej w gitignorowanym `settings.local.json`, którego nowa maszyna nie miała — stąd hooki nie
+  biegły wcale). Zero ścieżek bezwzględnych, wszystko przez `$CLAUDE_PROJECT_DIR`. Na maszynie z Windows
+  hooki same przekazują się do WSL — wymagają tam `python3` i dystrybucji z `REGISTRO_WSL_DISTRO`
+  (szczegóły: `.claude/rules/claude-code-config.md`, sekcja „Hooki: Windows → WSL"). Po `git clone`
+  uruchom `scripts/cc-doctor.sh` — powie, czego brakuje.
+- `.claude/settings.local.json` — gitignorowany, tylko osobiste nadpisania.
 - Serwery MCP — konfiguracja jest per maszyna, tokeny OAuth nie są przenośne.
   Po `git clone` zrób `claude mcp list` i zaloguj te, które pokazują „Needs authentication".
   **MCP dodawaj wyłącznie przez `claude mcp add`** — `mcpServers` w `settings.json`
@@ -140,6 +142,6 @@ tar xzf registro-claude-memory.tar.gz -C ~/.claude/projects/-var-www-projects-re
 
 ## Powiązane
 
-- `.claude/rules/claude-code-config.md` — kopia `settings.local.json`, znane bugi CC, modele agentów
+- `.claude/rules/claude-code-config.md` — wpięcie hooków (Windows → WSL), znane bugi CC, modele agentów
 - `.claude/rules/deployment.md` — zmienne krytyczne, zakazy
 - `app/docs/deployment/instalacja-tenanta-od-zera.md` — procedury operatora na serwerze

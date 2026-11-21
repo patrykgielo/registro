@@ -9,8 +9,17 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
-PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty' 2>/dev/null || true)
+# Runs inside WSL even when Claude Code runs from Windows (lib/wsl-forward.sh).
+# shellcheck source=lib/wsl-forward.sh
+source "${BASH_SOURCE[0]%/*}/lib/wsl-forward.sh"
+registro_wsl_forward "${BASH_SOURCE[0]}" "$@"
+
+hook_read_input
+PROMPT=""
+if ! hook_parse PROMPT:prompt; then
+    # Not an empty prompt: the parser is missing (or the input is not JSON).
+    echo "prompt-submit: no JSON parser (python3) -- reminders skipped. Install python3 in WSL." >&2
+fi
 
 # --- Cache expiry detection ---
 # Anthropic prompt cache TTL = 5 minutes. After idle > 5 min the next turn

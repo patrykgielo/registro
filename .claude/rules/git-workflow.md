@@ -2,7 +2,7 @@
 
 ## AI Attribution
 
-Wyłączone przez `.claude/settings.local.json` → `"attribution":{"commit":"","pr":""}`.
+Wyłączone przez `.claude/settings.json` → `"attribution":{"commit":"","pr":""}`.
 
 ## Model trzywarstwowy (od 2026-08-16)
 

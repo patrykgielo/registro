@@ -214,3 +214,63 @@ fi
 exec "$REAL_OPENSSL_BIN" "$@"
 EOS
 }
+
+# --- Claude Code hook helpers -------------------------------------------------
+# Used by the cases that run .claude/hooks/*.sh for real (34, 38-43).
+
+# decision_of JSON -- permissionDecision of a PreToolUse reply: "deny" (or any
+# decision the hook set), "pass" for VALID JSON that carries no permissionDecision
+# (the hook has no objection and the normal permission flow applies), and
+# "MALFORMED" for anything that is not a JSON object.
+# python3, not jq: jq is installed on neither the host nor the WSL distro, and a
+# test that needs it fails for a reason that has nothing to do with the hook.
+decision_of() {
+    printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    if not isinstance(d, dict):
+        raise ValueError
+except Exception:
+    print("MALFORMED")
+else:
+    print((d.get("hookSpecificOutput") or {}).get("permissionDecision", "pass"))
+'
+}
+
+# reason_of JSON -- permissionDecisionReason, or "".
+reason_of() {
+    printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin)["hookSpecificOutput"].get("permissionDecisionReason", ""))
+except Exception:
+    print("")
+'
+}
+
+# pretool_json COMMAND [CWD] [TOOL] -- the stdin Claude Code sends a PreToolUse
+# hook for a Bash (default) or PowerShell call. Built with python so quotes,
+# newlines and control characters in COMMAND stay valid JSON.
+pretool_json() {
+    python3 -c '
+import json, sys
+d = {"tool_name": sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else "Bash", "tool_input": {"command": sys.argv[1]}}
+if len(sys.argv) > 2 and sys.argv[2]:
+    d["cwd"] = sys.argv[2]
+print(json.dumps(d))
+' "$1" "${2:-}" "${3:-}"
+}
+
+# new_repo DIR BRANCH -- a throwaway git repo with one commit, on BRANCH.
+new_repo() {
+    local dir="$1" branch="$2"
+    mkdir -p "$dir"
+    git -C "$dir" init -q
+    git -C "$dir" config user.email test@example.com
+    git -C "$dir" config user.name test
+    : >"$dir/f.txt"
+    git -C "$dir" add f.txt
+    git -C "$dir" commit -qm init >/dev/null
+    git -C "$dir" checkout -q -B "$branch" >/dev/null 2>&1
+}

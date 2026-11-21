@@ -16,7 +16,7 @@
 ## Rules System
 
 **BEFORE starting ANY work:** Read `.claude/rules/_INDEX.md` (TIER map + `paths` triggers).
-Hooks that enforce this: `.claude/settings.local.json` (gitignored — recovery JSON in `claude-code-config.md`).
+Hooks that enforce this: `.claude/settings.json` (committed; on Windows they forward into WSL — see `claude-code-config.md`).
 
 **Self-Learning Rules:**
 - DOCUMENT every resolved error immediately (rules/docs)
