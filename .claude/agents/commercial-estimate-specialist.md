@@ -1,7 +1,7 @@
 ---
 name: commercial-estimate-specialist
 description: Generates client-ready commercial IT project estimates with ROI analysis, market benchmarking and pricing breakdowns. Handles retrospective estimates with hours derived from Git history, LOC and complexity; forward-looking estimates for proposed features; and hybrid estimates combining delivered phases with projections.
-tools: Read, Grep, Glob, Bash, Edit, Write, mcp__firecrawl__firecrawl_search, mcp__firecrawl__firecrawl_scrape, WebSearch, WebFetch, mcp__clickup__clickup_get_task_time_entries, mcp__clickup__clickup_search
+tools: Read, Grep, Glob, Bash, Edit, Write, WebSearch, WebFetch
 model: sonnet
 color: blue
 effort: medium

@@ -1,7 +1,10 @@
 # Browser-use Integration
 
 **Added:** 2026-03-22
-**Status:** Active
+**Status:** NIESKONFIGUROWANE na tej maszynie (stan 2026-11-21) — opis poniżej to instrukcja instalacji, nie opis stanu.
+
+> **Uwaga 2026-11-21.** **Firecrawl został usunięty** (brak serwera i klucza; wszystkie odwołania do niego w tym dokumencie są historyczne). **browser-use też nie jest tu skonfigurowany** — `~/.claude.json` nie ma żadnego serwera MCP, a skilla `browser-use` nie ma w `~/.claude/skills`. Aktualna ścieżka: **research = `WebSearch` / `WebFetch`** (agent `web-research-specialist`); **strony za loginem, SPA i testowanie UI = przeglądarka sesji głównej** (Claude in Chrome / wbudowana), nie podagent. Wracaj do instrukcji niżej tylko wtedy, gdy świadomie instalujesz browser-use.
+
 **Repo:** https://github.com/browser-use/browser-use (79k+ stars)
 **Docs:** https://docs.browser-use.com
 
@@ -73,20 +76,20 @@ export BROWSER_USE_API_KEY="<klucz>"
 
 ---
 
-## Kiedy używać browser-use vs Firecrawl
+## Kiedy używać browser-use vs WebFetch / WebSearch (dawniej: vs Firecrawl)
 
 | Scenariusz | Narzędzie | Dlaczego |
 |------------|-----------|----------|
-| Scraping statycznej strony | **Firecrawl** | Szybszy (2-5s vs 60-120s) |
-| Bulk scraping wielu URL | **Firecrawl** | Obsługuje batch |
+| Scraping statycznej strony | **WebFetch** | Szybszy (kilka s vs 60-120s) |
+| Wiele URL | **WebFetch**, po kolei | Brak batcha i crawlera — strony pobiera się pojedynczo |
 | Strona za loginem | **Browser-use** | Może kliknąć login form |
 | SPA/React/Vue app | **Browser-use** | Renderuje JS, czeka na content |
 | Multi-step navigation | **Browser-use** | Agent decyduje gdzie kliknąć |
 | Testowanie naszego UI | **Browser-use** | Może otworzyć registro.local |
 | Wypełnianie formularzy | **Browser-use** | Klika, wpisuje, submituje |
-| Proste wyszukiwanie | **Firecrawl** | `firecrawl_search` jest szybszy |
+| Proste wyszukiwanie | **WebSearch** | Szybszy |
 
-**Zasada:** Firecrawl = domyślne (90% zadań). Browser-use = interaktywne zadania, strony za loginem, testowanie UI (10% zadań).
+**Zasada:** `WebSearch` / `WebFetch` = domyślne (większość zadań). Browser-use (jeśli zainstalowany) albo przeglądarka sesji głównej = interaktywne zadania, strony za loginem, testowanie UI.
 
 ---
 
@@ -127,7 +130,7 @@ Prompt: "Użyj browser-use żeby wejść na stronę z React SPA,
 - **Brak stealth/CAPTCHA** na darmowym tierze
 - **10 krajów proxy:** us, uk, fr, it, jp, au, de, fi, ca, in
 - **Token warning** — Claude Code ostrzega gdy output > 10,000 tokenów
-- **Czas** — 60-120s na task (vs 2-5s Firecrawl)
+- **Czas** — 60-120s na task (vs kilka sekund przy WebFetch)
 
 ---
 

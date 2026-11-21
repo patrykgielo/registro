@@ -110,8 +110,14 @@ for path in sys.argv[1:]:
     # An indented line is legal only under a key that opened a block scalar
     # (`>`/`|`) or that has no inline value at all (a list or nested mapping).
     indent_ok = False
+    seq_ok = False  # the last key had no inline value: an UNINDENTED `- item` list may follow
     for n, line in enumerate(text[4:end].split("\n"), start=2):
         if not line.strip():
+            continue
+        # YAML allows a sequence to sit at the parent key's own column:
+        #   disallowedTools:
+        #   - Edit
+        if seq_ok and (line.startswith("- ") or line.rstrip() == "-"):
             continue
         if line[0] in " \t":
             if not indent_ok:
@@ -125,6 +131,7 @@ for path in sys.argv[1:]:
             break
         value = line.split(":", 1)[1].strip()
         indent_ok = value == "" or bool(BLOCK.match(value))
+        seq_ok = value == ""
 PY
 }
 
@@ -189,6 +196,56 @@ while IFS= read -r srv; do
         finding "MCP server '$srv' is referenced by agents ($users) but is not configured anywhere"
     fi
 done <<<"$referenced"
+
+###############################################################################
+# 3b. An agent that gets its tools by INHERITANCE must keep doing so
+#
+# ClickUp reaches this project as a claude.ai connector, whose tool names embed
+# an account id (mcp__<account-id>__clickup_*) that differs per machine and so
+# cannot be written into an agent file. clickup-task-manager therefore has NO
+# `tools:` allowlist -- it inherits the session's -- and `disallowedTools` is
+# what keeps it from writing files or running commands. Check 3 cannot see a
+# connector (it reads ~/.claude.json and .mcp.json only), so this guards the two
+# ways the arrangement silently breaks:
+#   * a `tools:` line comes back: whatever names it lists either do not resolve
+#     (the agent loses ClickUp without a word) or the agent loses inheritance;
+#   * `disallowedTools` loses Edit/Write/Bash: an agent that was meant to be
+#     read-only on the repository can now rewrite it.
+# An absent agent file is not a finding: there is nothing to mislead anyone.
+###############################################################################
+INHERITING_AGENTS="clickup-task-manager"
+for name in $INHERITING_AGENTS; do
+    f="$PROJECT_DIR/.claude/agents/$name.md"
+    [ -f "$f" ] || continue
+    fm="$(awk 'NR==1 && $0=="---" {inside=1; next} inside && $0=="---" {exit} inside' "$f")"
+    if printf '%s\n' "$fm" | grep -qE '^tools:'; then
+        finding "agent $name has a 'tools:' allowlist -- it must inherit the session's tools (a connector's tool names embed an account id and cannot be listed); restrict with disallowedTools instead"
+    fi
+    # The key's own line plus its continuation lines: an indented `  - X`, or the
+    # sequence at the key's own column (`- X`), which YAML also allows.
+    deny="$(printf '%s\n' "$fm" | awk '/^disallowedTools:/ {on=1; print; next} on && (/^[[:space:]]/ || /^-([[:space:]]|$)/) {print; next} {on=0}')"
+    if [ -z "$deny" ]; then
+        finding "agent $name has no 'disallowedTools' -- with no tools allowlist it inherits Edit, Write and Bash too"
+    else
+        # One entry per line, exactly as written: strip the key, list dashes,
+        # flow brackets, quotes and spaces. A SCOPED entry such as Bash(git push *)
+        # stays `Bash(git push *)` and so is not the plain name. The docs say a
+        # specifier in disallowedTools still removes the whole tool; this check
+        # asks for the plain name anyway, so the intent is unambiguous and does not
+        # depend on that reading holding.
+        entries="$(printf '%s\n' "$deny" \
+            | sed -E 's/^disallowedTools:[[:space:]]*//; s/^[[:space:]]*-([[:space:]]+|$)//' \
+            | tr ',' '\n' | tr -d '[]' \
+            | sed -E "s/^[[:space:]]+//; s/[[:space:]]+\$//; s/^[\"']//; s/[\"']\$//")"
+        for t in Edit Write Bash; do
+            if ! printf '%s\n' "$entries" | grep -qxF "$t"; then
+                hint=""
+                printf '%s\n' "$entries" | grep -qF "$t(" && hint=" (only a scoped '$t(...)' entry is listed -- list plain '$t')"
+                finding "agent $name: disallowedTools does not deny $t -- it inherits it from the session${hint}"
+            fi
+        done
+    fi
+done
 
 ###############################################################################
 # 4. Hook commands must exist and be executable

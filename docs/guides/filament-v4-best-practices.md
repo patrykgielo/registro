@@ -49,7 +49,7 @@ docker compose exec app composer show filament/filament | grep versions
 
 1. **Search official docs:** https://filamentphp.com/docs/4.x/
 2. **Check release notes** for when method was introduced
-3. **Use web-research-specialist agent** with Firecrawl to verify availability
+3. **Use web-research-specialist agent** (WebSearch/WebFetch) to verify availability
 4. **Test locally** before deploying to staging/production
 
 #### Real-World Example: 500 Error from Missing Method
