@@ -248,6 +248,24 @@ for name in $INHERITING_AGENTS; do
 done
 
 ###############################################################################
+# 3c. No agent may use `allowed-tools:` in its frontmatter
+#
+# `allowed-tools` is a skill / slash-command field. A subagent reads `tools` (an
+# allowlist) and `disallowedTools`; anything else is ignored WITHOUT an error, so
+# the agent inherits EVERY tool of the session -- Bash, Agent, Edit and every MCP
+# connector (mail send, Drive share, ClickUp...). content-strategist carried the
+# line and was listed as "Tools: All tools". Only the frontmatter is
+# inspected: the words may well appear in an agent's body text.
+###############################################################################
+for f in "$PROJECT_DIR"/.claude/agents/*.md; do
+    [ -f "$f" ] || continue
+    fm="$(awk 'NR==1 && $0=="---" {inside=1; next} inside && $0=="---" {exit} inside' "$f")"
+    if printf '%s\n' "$fm" | grep -qE '^allowed-tools:'; then
+        finding "agent $(basename "$f" .md) uses 'allowed-tools:' in its frontmatter -- that field is ignored for subagents, so the agent inherits EVERY session tool (Bash, Agent, every MCP connector). Use 'tools:' (allowlist) / 'disallowedTools:'"
+    fi
+done
+
+###############################################################################
 # 4. Hook commands must exist and be executable
 #
 # A hook whose script is missing does nothing and reports nothing.
