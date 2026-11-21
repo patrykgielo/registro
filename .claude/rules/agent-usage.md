@@ -24,7 +24,7 @@ STOP → agent → implementuj
 | ClickUp | `clickup-task-manager` |
 | Koordynacja wielu agentów | `project-coordinator` |
 
-**Research:** Firecrawl = domyślne (statyczne strony). Browser-use = loginy, SPA, multi-step.
+**Research:** `WebSearch`/`WebFetch`. Loginy, SPA: przeglądarka sesji głównej (Claude in Chrome).
 
 **Modele:** wszyscy agenci na aliasach (`sonnet`/`opus`/`haiku`), nigdy przypięta wersja — szczegóły i tabela w `claude-code-config.md`.
 

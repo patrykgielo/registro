@@ -238,7 +238,7 @@ Complete architectural guides for Laravel Filament v4.2.3 admin panel developmen
 
 - **[Migration Guide](./guides/filament-v4-migration-guide.md)** - Complete v3 → v4 breaking changes checklist. Review if working with older code or Filament v3 examples.
 
-- **[Browser-use MCP](./guides/browser-use-mcp.md)** - Autonomous browser agent integration. Use when Firecrawl is insufficient (pages behind login, SPA, form interaction, UI testing).
+- **[Browser-use MCP](./guides/browser-use-mcp.md)** - Autonomous browser agent integration (instrukcja instalacji — **nieskonfigurowane na tej maszynie**, Firecrawl usunięty 2026-11-21). Research = WebSearch/WebFetch; pages behind login, SPA, form interaction, UI testing = przeglądarka sesji głównej albo browser-use po instalacji.
 
 - **[Agent Teams](./guides/agent-teams.md)** - Multi-agent configuration: effort levels, persistent memory, worktree isolation, Agent Teams (experimental parallel work).
 

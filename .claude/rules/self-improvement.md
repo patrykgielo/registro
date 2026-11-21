@@ -22,7 +22,7 @@ Format: **Problem / Przyczyna / Rozwiązanie / Zapobieganie**
 
 ## ZASADA 3: Research Przed Zgadywaniem
 
-Nie wiesz? → `web-research-specialist` + firecrawl. Nie próbuj na ślepo.
+Nie wiesz? → `web-research-specialist`. Nie próbuj na ślepo.
 
 ## ZASADA 4: Przeszukiwanie Projektu
 

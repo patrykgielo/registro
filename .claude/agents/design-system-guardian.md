@@ -1,7 +1,7 @@
 ---
 name: design-system-guardian
 description: Validates and maintains the design system. Checks that components use design tokens from design-system.json instead of hardcoded colors, spacing or typography; audits design-system.json against tailwind.config.js for drift; reviews component-registry.json compliance; adds missing design tokens. Reports violations with suggested fixes rather than generating components.
-tools: Read, Grep, Glob, Edit, Write, mcp__firecrawl__firecrawl_search, mcp__firecrawl__firecrawl_scrape, WebSearch, WebFetch
+tools: Read, Grep, Glob, Edit, Write, WebSearch, WebFetch
 model: sonnet
 color: purple
 effort: medium

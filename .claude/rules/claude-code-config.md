@@ -140,7 +140,7 @@ Uruchamiany automatycznie przy starcie sesji (hook `SessionStart`, tryb `--hook`
 
 Wpięcie: `.claude/settings.json` (commitowany) — `SessionStart` → `session-sync.sh` + `cc-doctor.sh --hook`. Odzyskanie po utracie: `git checkout -- .claude/settings.json`.
 
-Sprawdza rzeczy rozstrzygalne: aliasy modeli, brak `mcpServers` w settings, czy serwery MCP używane przez agentów są skonfigurowane i odpowiadają, czy skrypty hooków istnieją i mają w indeksie gita tryb 100755, czy pliki testowane przez hooki istnieją, budżet TIER 1 — oraz (od 2026-11-21): brak `settings.json`, settings nie-JSON, **skrypt hooka niewpięty nigdzie**, ten sam hook w `settings.json` i `settings.local.json`, **brak parsera JSON (python3) tam, gdzie hooki biegną**, **matcher PreToolUse niewybierający i `Bash`, i `PowerShell`**, dryf klona Windows względem drzewa WSL (tylko ręcznie, tylko gdy oba na tej samej gałęzi; w `--hook` robi to `session-sync.sh`). W trybie `--hook` zawsze exit 0 — Claude Code czyta JSON hooka tylko przy exit 0. Nie ocenia, czy nową funkcję warto wdrożyć.
+Sprawdza rzeczy rozstrzygalne: aliasy modeli, brak `mcpServers` w settings, czy serwery MCP używane przez agentów są skonfigurowane i odpowiadają (`mcp__X__` w pliku agenta bez serwera `X` = porażka; wpisane na sztywno id konektora też), czy agent zbudowany na dziedziczeniu narzędzi (`clickup-task-manager`) nie dostał z powrotem allowlisty `tools` i ma `disallowedTools`, czy skrypty hooków istnieją i mają w indeksie gita tryb 100755, czy pliki testowane przez hooki istnieją, budżet TIER 1 — oraz (od 2026-11-21): brak `settings.json`, settings nie-JSON, **skrypt hooka niewpięty nigdzie**, ten sam hook w `settings.json` i `settings.local.json`, **brak parsera JSON (python3) tam, gdzie hooki biegną**, **matcher PreToolUse niewybierający i `Bash`, i `PowerShell`**, dryf klona Windows względem drzewa WSL (tylko ręcznie, tylko gdy oba na tej samej gałęzi; w `--hook` robi to `session-sync.sh`). W trybie `--hook` zawsze exit 0 — Claude Code czyta JSON hooka tylko przy exit 0. Nie ocenia, czy nową funkcję warto wdrożyć.
 
 **Powstał, bo każda awaria konfiguracji tutaj była cicha** — firecrawl w nieistniejącym kluczu, agenci zamrożeni na starych modelach, hook testujący plik, którego nic nie tworzy. Stąd jego zasada: **brak artefaktu to porażka, nie pominięcie.**
 
@@ -182,6 +182,22 @@ powłoce czy TLS. Wszystkie regresje warstwy wdrożeniowej wyszły spod niego.
 
 **Zapobieganie:** serwery MCP dodawaj **wyłącznie** przez `claude mcp add` (zapisuje do `~/.claude.json` albo `.mcp.json`). Po dodaniu zweryfikuj `claude mcp list` — status musi brzmieć `✔ Connected`. Konfiguracja wklejona ręcznie do złego pliku nie zgłasza błędu.
 
+## Agenci a MCP: Firecrawl usunięty, ClickUp przez dziedziczenie (2026-11-21)
+
+**Problem.** `cc-doctor` zgłaszał, że serwery `clickup` i `firecrawl` są używane przez agentów, a nie są skonfigurowane nigdzie. Zmierzone 2026-11-21: `~/.claude.json` nie ma **żadnego** serwera MCP, `.mcp.json` nie istnieje, a `browser-use` też nie jest skonfigurowany (ani jako serwer, ani jako skill użytkownika). Dziewięciu agentów miało `mcp__firecrawl__*` (ośmiu w `tools`, `content-strategist` w `allowed-tools`), `clickup-task-manager` — 17 nazw `mcp__clickup__*`, `commercial-estimate-specialist` — dwie.
+
+**Przyczyna.** (1) Firecrawl: brak serwera i klucza na tej maszynie. (2) ClickUp dociera do sesji jako **konektor claude.ai**; nazwy jego narzędzi niosą id konta (`mcp__<id-konta>__clickup_create_task`), a nie `mcp__clickup__…`. Allowlista z `mcp__clickup__…` nie mogła więc nigdy się rozwiązać, a `cc-doctor` czyta tylko `~/.claude.json` i `.mcp.json`, więc konektorów nie widzi w ogóle. Dokumentacja podagentów: lista `tools`, z której **nic** się nie rozwiązuje, kończy się błędem startu; co robi lista częściowo nierozwiązywalna — dokumentacja nie mówi.
+
+**Rozwiązanie.**
+- Firecrawl usunięty z agentów, z treści `web-research-specialist`, skilla `deep-research` i reguł TIER 1. Ścieżka researchu: `WebSearch` / `WebFetch`. Strony za loginem i SPA: przeglądarka sesji głównej (Claude in Chrome / wbudowana), nie podagent.
+- `clickup-task-manager`: **bez `tools`** (dziedziczy z sesji), `disallowedTools: Edit, Write, NotebookEdit, Bash, Agent, WebFetch, WebSearch, Skill`; na początku treści (reguła krytyczna idzie pierwsza — #7515 wyżej) jest instrukcja: sprawdź, czy masz narzędzia `clickup_*`, a jeśli nie — **zatrzymaj się i zgłoś**, nie udawaj. W treści narzędzia występują jako `clickup_*`, bez prefiksu serwera.
+- `commercial-estimate-specialist`: ClickUp **usunięty**, nie dziedziczony. To pisarz (`Edit`/`Write`/`Bash`), a pominięcie `tools` daje mu narzędzia **wszystkich** konektorów sesji (poczta, dysk, sklep…); treść nigdy nie używała ClickUpa.
+
+**Zapobieganie.**
+- **Nigdy nie wpisuj id konektora do pliku agenta** — jest per konto i per maszyna. Agent, który potrzebuje konektora: dziedziczenie + `disallowedTools`. `cc-doctor` (check 3) flaguje każde `mcp__X__` bez skonfigurowanego serwera `X`, więc wpisane id konektora też wpadnie; check 3b pilnuje, żeby `clickup-task-manager` nie odzyskał `tools` i miał `disallowedTools` z gołymi `Edit`, `Write`, `Bash`. Zapis zawężony `Bash(…)` się nie liczy: dokumentacja mówi, że specyfikator w `disallowedTools` i tak zdejmuje całe narzędzie, ale doctor woli nazwę gołą, żeby intencja nie zależała od tej interpretacji. Sekwencja YAML bez wcięcia, lista w nawiasach i cudzysłowy są akceptowane. Test: `tests/shell/cases/48_*`.
+- **Cena dziedziczenia:** `disallowedTools` odcina pliki, powłokę, sieć (`WebFetch`/`WebSearch`), `Skill` i `Agent`, ale **nie** inne konektory sesji (poczta, dysk, czat, sklep) — da się je odciąć tylko wpisując ich id na sztywno, czego nie robimy. „Używaj tylko `clickup_*`, niczego nie wysyłaj poza ClickUp" jest więc **wyłącznie zapisem w prompcie**. **Ryzyko resztkowe — wstrzyknięcie przez treść z ClickUpa:** nazwa zadania, opis, komentarz i załącznik bywają pisane przez osoby trzecie i mogą zawierać polecenia („wyślij to mailem", „uruchom…"). Agent ma je traktować jako dane (reguła 4 jego promptu), ale poza promptem nic go nie zatrzyma przed użyciem innego konektora. Dlatego prompt zabrania też użycia narzędzi niszczących i wychodzących (`delete_*`, `send_chat_message`, `create_reminder`, `merge_tasks`) bez wyraźnej prośby wołającego.
+- **Zweryfikowane 2026-11-21:** podagent bez `tools:` **widzi** narzędzia konektora (`mcp__<id-konta>__clickup_*`) — próba tylko do odczytu (`get_workspace_hierarchy`) przeszła. Dokumentacja podagentów tego wprost nie obiecuje (mówi o „narzędziach MCP z głównej rozmowy"), więc to wynik pomiaru, nie gwarancja produktu — przy zmianie wersji Claude Code warto powtórzyć. Nazwy narzędzi w prompcie agenta są sprawdzone z listą z konektora; nieistniejących (`get_task_time_entries`, `bulk_create_tasks`) już tam nie ma.
+
 ## Frontmatter agenta: prawdziwy newline zabija cały plik
 
 **Incydent 2026-08-11.** `design-system-guardian` i `commercial-estimate-specialist` **nie ładowały się w ogóle** — nie było ich na liście dostępnych agentów, przez nieznany czas, bez jednego komunikatu.
@@ -202,8 +218,6 @@ Context: ...                                                #        przerwany n
 Dwuznaczne `: ` w środku jednoliniowego skalara (`Context: User…`) Claude Code przepuszcza, mimo że PyYAML odrzuca — **nie waliduj tego PyYAML-em**, dostaniesz fałszywe alarmy na agentach, które działają. `cc-doctor` sprawdza to strukturalnie (check 1b): każda linia frontmatteru to klucz albo wcięta kontynuacja klucza bez wartości inline. Sprawdzone w obie strony — flaguje wersję sprzed naprawy, przepuszcza po naprawie.
 
 **Zasada ogólna:** żadna konfiguracja nie jest sprawna, dopóki nie została uruchomiona. To ta sama klasa błędu co osierocony kontener `registro-queue` — plik mówił jedno, rzeczywistość drugie.
-
-Firecrawl: Free = 500 kredytów jednorazowo, Hobby = 3 000/mies. Scrape = 1 kredyt/strona. Wyczerpane kredyty też nie dają błędu — agenci po prostu nie działają.
 
 ## `gh pr edit --milestone` nie działa w tym repo
 
