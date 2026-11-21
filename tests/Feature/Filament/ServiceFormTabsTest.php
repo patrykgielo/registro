@@ -35,7 +35,8 @@ class ServiceFormTabsTest extends TestCase
         'Podstawowe' => ['Podstawowe informacje', 'Zdjęcie wyróżniające'],
         'Cena i magazyn' => ['Cennik wypożyczenia', 'Magazyn i identyfikacja'],
         'Specyfikacja' => ['Specyfikacja techniczna'],
-        'Treść' => ['Główna treść', 'Zaawansowane bloki (opcjonalnie)'],
+        // Stage 3: renamed per the approved mockup; the fixture rental has no blocks, hence "(0)".
+        'Treść' => ['Opis produktu', 'Zaawansowane bloki (0)'],
         'SEO i konwersja' => ['SEO i publikacja', 'Optymalizacja konwersji'],
     ];
 
