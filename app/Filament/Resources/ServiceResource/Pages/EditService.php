@@ -22,6 +22,40 @@ class EditService extends EditRecord
         ];
     }
 
+    /**
+     * The form binds only `metadata.specs`, and Filament's getState() returns
+     * only bound paths — saving that as-is rewrites the whole `metadata`
+     * column to `{specs: [...]}` and drops every other key (catalog-import
+     * `image_sources` credits, anything a seeder/API added). Merge the form's
+     * keys OVER what is stored: the form wins per top-level key, so clearing
+     * the specs (`[]`) still clears them. Top-level `array_replace`, not a
+     * recursive merge — `specs` is a list, a recursive merge would resurrect
+     * deleted rows. Read from the DB, not `$this->record`: the form may have
+     * been open for a long time and the in-memory record is its stale copy.
+     * A form that sends no `metadata` at all (time_slot) is left untouched.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (! array_key_exists('metadata', $data)) {
+            return $data;
+        }
+
+        // In-memory record only when the row is gone; a NULL in the DB is a real value
+        // (it must not resurrect the stale keys the form was opened with).
+        $fresh = $this->record->fresh();
+        $stored = $fresh ? $fresh->metadata : $this->record->metadata;
+
+        $data['metadata'] = array_replace(
+            is_array($stored) ? $stored : [],
+            is_array($data['metadata']) ? $data['metadata'] : [],
+        );
+
+        return $data;
+    }
+
     protected function afterSave(): void
     {
         RouteQuantityFieldToPrimaryLocationStock::handle($this->record);

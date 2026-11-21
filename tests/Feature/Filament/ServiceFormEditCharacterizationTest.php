@@ -264,20 +264,66 @@ class ServiceFormEditCharacterizationTest extends TestCase
         $this->assertSame($stocksBefore, $this->stockRows($service));
     }
 
-    public function test_e1_known_gap_noop_save_drops_metadata_keys_the_form_does_not_bind(): void
+    public function test_e1_noop_save_keeps_the_metadata_keys_the_form_does_not_bind(): void
     {
-        // KNOWN GAP (stage 1 will change this): the form binds only metadata.specs, so a save rewrites
-        // `metadata` to {specs: [...]} - `image_sources` (catalog-import credits) and any other key vanish.
+        // Fixed in stage 1: the form binds only metadata.specs, but EditService::mutateFormDataBeforeSave()
+        // merges the form's keys over the stored metadata, so `image_sources` (catalog-import credits) and
+        // any other key survive a save.
+        $specs = [['label' => 'Moc', 'value' => '800', 'unit' => 'W']];
+        $metadata = [
+            'specs' => $specs,
+            'image_sources' => [['file' => 'services/featured/a.jpg', 'credit' => 'Jan Kowalski']],
+            'extra_key' => 'keep me',
+        ];
+        $service = $this->rentalService(['metadata' => $metadata]);
+
+        $this->saveUnchanged($service);
+
+        $this->assertSame($this->ksortDeep($metadata), $this->ksortDeep($this->reload($service)->metadata));
+    }
+
+    public function test_e1_metadata_nulled_in_the_db_while_the_form_is_open_is_not_resurrected_from_the_stale_record(): void
+    {
         $specs = [['label' => 'Moc', 'value' => '800', 'unit' => 'W']];
         $service = $this->rentalService(['metadata' => [
             'specs' => $specs,
             'image_sources' => [['file' => 'services/featured/a.jpg', 'credit' => 'Jan Kowalski']],
-            'extra_key' => 'keep me',
         ]]);
 
-        $this->saveUnchanged($service);
+        $component = $this->openEdit($service);
+        Service::withoutGlobalScope('organization')->whereKey($service->id)->update(['metadata' => null]);
 
-        $this->assertSame($this->ksortDeep(['specs' => $specs]), $this->ksortDeep($this->reload($service)->metadata));
+        $this->saveForm($component)->assertHasNoFormErrors();
+
+        $this->assertSame(['specs' => $specs], $this->reload($service)->metadata, 'only the form keys; the stale image_sources must not come back');
+    }
+
+    public function test_e1_the_merge_ignores_a_stale_in_memory_record_when_the_stored_metadata_is_null(): void
+    {
+        // The end-to-end test above cannot tell the two fallbacks apart: Livewire re-hydrates $record from the DB on
+        // every request, so the in-memory record is never stale there. Hence the direct call with a stale instance.
+        $service = $this->rentalService(['metadata' => ['specs' => [], 'image_sources' => [['file' => 'a.jpg', 'credit' => 'Jan']]]]);
+        $stale = $this->reload($service);
+        Service::withoutGlobalScope('organization')->whereKey($service->id)->update(['metadata' => null]);
+
+        $page = $this->openEdit($service)->instance();
+        $page->record = $stale;
+        $merge = new \ReflectionMethod($page, 'mutateFormDataBeforeSave');
+
+        $this->assertSame(['metadata' => ['specs' => []]], $merge->invoke($page, ['metadata' => ['specs' => []]]));
+    }
+
+    public function test_e1_the_form_wins_over_stored_metadata_so_clearing_or_replacing_specs_still_works(): void
+    {
+        $extra = ['image_sources' => [['file' => 'services/featured/a.jpg', 'credit' => 'Jan Kowalski']], 'extra_key' => 'keep me'];
+        $service = $this->rentalService(['metadata' => ['specs' => [['label' => 'Moc', 'value' => '800', 'unit' => 'W']]] + $extra]);
+
+        $this->saveForm($this->openEdit($service)->fillForm(['metadata.specs' => []]))->assertHasNoFormErrors();
+        $this->assertSame($this->ksortDeep(['specs' => []] + $extra), $this->ksortDeep($this->reload($service)->metadata), 'cleared specs stay cleared, other keys stay');
+
+        $new = [['label' => 'Waga', 'value' => '5', 'unit' => 'kg']];
+        $this->saveForm($this->openEdit($service)->fillForm(['metadata.specs' => $new]))->assertHasNoFormErrors();
+        $this->assertSame($this->ksortDeep(['specs' => $new] + $extra), $this->ksortDeep($this->reload($service)->metadata), 'replaced specs win, other keys stay');
     }
 
     public function test_e1_known_gap_noop_save_nulls_a_featured_image_whose_file_is_missing_on_disk(): void
@@ -638,6 +684,7 @@ class ServiceFormEditCharacterizationTest extends TestCase
 
         $component = $this->setAll($this->openEdit($service), [
             'name' => $chars(255),
+            'slug' => $chars(255), // the name no longer rewrites the slug on edit (stage 1, C6), so the slug boundary is set explicitly
             'excerpt' => $chars(500),
             'meta_title' => $chars(60),
             'meta_description' => $chars(160),
@@ -653,7 +700,7 @@ class ServiceFormEditCharacterizationTest extends TestCase
 
         $fresh = $this->reload($service);
         $this->assertSame($chars(255), $fresh->name);
-        $this->assertSame($chars(255), $fresh->slug, 'the name rewrote the slug (see C6)');
+        $this->assertSame($chars(255), $fresh->slug);
         $this->assertSame($chars(500), $fresh->excerpt);
         $this->assertSame($chars(60), $fresh->meta_title);
         $this->assertSame($chars(160), $fresh->meta_description);

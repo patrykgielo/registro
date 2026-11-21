@@ -7,6 +7,7 @@ namespace Tests\Feature\Filament;
 use App\Enums\ServiceType;
 use App\Filament\Resources\ServiceResource;
 use App\Filament\Resources\ServiceResource\Pages\CreateService;
+use App\Filament\Resources\ServiceResource\Pages\ListServices;
 use App\Models\Organization;
 use App\Models\Service;
 use Illuminate\Database\QueryException;
@@ -558,16 +559,27 @@ class ServiceFormCreateCharacterizationTest extends TestCase
             ->assertSet('data.slug', 'wiertarka-udarowa-elac');
     }
 
-    public function test_c6_known_gap_editing_the_name_of_an_existing_service_rewrites_its_slug_and_so_its_public_url(): void
+    public function test_c6_editing_the_name_of_an_existing_service_does_not_rewrite_its_slug(): void
     {
-        // KNOWN GAP (stage 1 will change this): ->afterStateUpdated() on `name` runs on EDIT too, so a typo fix in
-        // the name silently changes the slug (and the public URL) when the form is saved.
+        // Fixed in stage 1: the name -> slug auto-fill is create-only, so a typo fix in the name keeps the public URL.
         $service = $this->rentalService(['name' => 'Stara nazwa', 'slug' => 'stary-slug']);
 
-        $this->saveForm($this->openEdit($service)->set('data.name', 'Nowa nazwa')->assertSet('data.slug', 'nowa-nazwa'))
+        $this->saveForm($this->openEdit($service)->set('data.name', 'Nowa nazwa')->assertSet('data.slug', 'stary-slug'))
             ->assertHasNoFormErrors();
 
-        $this->assertSame('nowa-nazwa', $this->reload($service)->slug);
+        $fresh = $this->reload($service);
+        $this->assertSame('Nowa nazwa', $fresh->name);
+        $this->assertSame('stary-slug', $fresh->slug);
+    }
+
+    public function test_c6_the_slug_stays_editable_by_hand_on_edit(): void
+    {
+        $service = $this->rentalService(['name' => 'Stara nazwa', 'slug' => 'stary-slug']);
+
+        $this->saveForm($this->openEdit($service)->set('data.name', 'Nowa nazwa')->set('data.slug', 'recznie-zmieniony'))
+            ->assertHasNoFormErrors();
+
+        $this->assertSame('recznie-zmieniony', $this->reload($service)->slug);
     }
 
     public function test_c6_a_slug_set_after_the_name_survives_and_a_noop_save_never_touches_the_slug(): void
@@ -680,6 +692,29 @@ class ServiceFormCreateCharacterizationTest extends TestCase
         } catch (QueryException) {
             $this->assertSame('100.00', $this->reload($service)->price);
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Type labels - the form select and the list filter (stage 1)
+    // ---------------------------------------------------------------------------------------------
+
+    private const TYPE_LABELS = [
+        'time_slot' => 'Usługa (rezerwacja terminu)',
+        'item_rental' => 'Wypożyczenie (przedmiot)',
+    ];
+
+    public function test_the_type_select_offers_polish_labels_not_enum_case_names(): void
+    {
+        $select = Livewire::test(CreateService::class)->instance()->getSchema('form')->getFlatFields()['service_type'];
+
+        $this->assertSame(self::TYPE_LABELS, $select->getOptions());
+    }
+
+    public function test_the_list_type_filter_offers_polish_labels_not_enum_case_names(): void
+    {
+        $filter = Livewire::test(ListServices::class)->instance()->getTable()->getFilter('service_type');
+
+        $this->assertSame(self::TYPE_LABELS, $filter->getOptions());
     }
 
     // ---------------------------------------------------------------------------------------------

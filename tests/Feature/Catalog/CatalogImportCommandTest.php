@@ -159,9 +159,9 @@ class CatalogImportCommandTest extends TestCase
         $after = $service->fresh();
         $this->assertSameJsonData($before, $after->only(['content', 'features', 'body', 'featured_image', 'quantity_total']));
         $this->assertSameJsonData([['label' => 'Moc', 'value' => 800, 'unit' => 'W']], $after->metadata['specs']);
-        // Known, documented: the admin form only binds metadata.specs, so a save drops
-        // metadata.image_sources — the same data stays in the ledger (file items' snapshot).
-        $this->assertArrayNotHasKey('image_sources', $after->metadata ?? []);
+        // The admin form only binds metadata.specs, but EditService merges the form's keys over the
+        // stored metadata, so the import's metadata.image_sources survives a save (and stays in the ledger too).
+        $this->assertArrayHasKey('image_sources', $after->metadata ?? []);
         $ledger = CatalogImportItem::where('entity_type', 'file')->where('service_id', $service->id)->get();
         $this->assertSame('Jan Kowalski', $ledger->firstWhere('snapshot.role', 'gallery')->snapshot['credit']);
     }
