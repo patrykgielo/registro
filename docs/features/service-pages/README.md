@@ -204,8 +204,8 @@ private function buildServiceSchema(Service $service): string
         'url' => route('service.show', $service),
     ];
 
-    // Add offers with price
-    if ($service->price) {
+    // Add offers with price (never for price_on_request - see the Filament section)
+    if ($service->price && ! $service->price_on_request) {
         $schema['offers'] = [
             '@type' => 'Offer',
             'price' => $service->price,
@@ -276,7 +276,8 @@ the product type is hidden, and Filament neither validates nor saves the fields 
 | Treść | all | **Krótki opis** (`excerpt`, max 500 chars, with a client-side "N / 500" counter), **Opis produktu** (`body`), **Zaawansowane bloki** (Builder), **Co zawiera usługa** (`features`, up to 4 points shown as "✓" items on the product tile) |
 | SEO i konwersja | all | **SEO i publikacja** (meta title/description, area served, publication date), **Optymalizacja konwersji** (rating, review count, popular badge, weekly bookings) |
 
-- A rental's `price` is not edited in the form (the field is hidden); the stored value is left as it is.
+- A rental's `price` is not edited in the form (the field is hidden). Since 2026-11-21 (stage B) the model copies `price_per_day` into it on every save of an item rental (`SyncsRentalPriceWithDailyRate`: panel, import, seeders, console); with no daily rate the stored value is left as it is (`0.00` on create). A time slot's `price` is a required field (an empty value is a validation error) and is never touched by that sync.
+- **JSON-LD `offers`** (`ServiceController::buildServiceSchema`): emitted when `price` is set **and the product is not "price on request"**. A price-on-request product (either type) gets no `offers` node at all — Google reads a numeric price literally (`0` = free) and an Offer without `price` is invalid, so the safe form is no Offer. The Product/Service node itself stays.
 - **Block types** in "Zaawansowane bloki": image, gallery, video, CTA, columns, quote, and more (see `BuilderBlocks`).
 - **Published At**: `NULL` = draft (not visible on frontend); future date = scheduled; past date = published.
 - **Meta Title** falls back to `name`, **Meta Description** to `excerpt`.

@@ -14,7 +14,6 @@ use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Text;
 use Filament\Schemas\JsContent;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -218,13 +217,13 @@ class ServiceFormFieldMovesTest extends TestCase
         }
     }
 
-    public function test_a_rental_create_still_writes_duration_minutes_60_and_price_zero(): void
+    public function test_a_rental_create_still_writes_duration_minutes_60_and_price_from_price_per_day(): void
     {
         $id = $this->createMinimalRental();
 
         $row = $this->snapshot($id);
         $this->assertSame(60, $row['duration_minutes']);
-        $this->assertSame('0.00', $row['price']);
+        $this->assertSame('10.00', $row['price'], 'stage B: a rental price follows price_per_day');
     }
 
     public function test_a_time_slot_duration_is_computed_from_hours_and_minutes_across_tabs_and_saved(): void
@@ -260,7 +259,7 @@ class ServiceFormFieldMovesTest extends TestCase
     }
 
     // ---------------------------------------------------------------------------------------------
-    // 3. price: hidden for a rental, untouched by its saves; still editable for a time_slot
+    // 3. price: hidden for a rental (stage B: follows price_per_day); required and editable for a time_slot
     // ---------------------------------------------------------------------------------------------
 
     public function test_price_is_hidden_for_a_rental_and_visible_for_a_time_slot(): void
@@ -269,35 +268,15 @@ class ServiceFormFieldMovesTest extends TestCase
         $this->openEdit($this->timeSlotService())->assertFormFieldIsVisible('price');
     }
 
-    /**
-     * @return array<string, array{0: float|int, 1: float|int}> [stored price, price_per_day]
-     */
-    public static function storedRentalPrices(): array
+    public function test_a_price_forced_into_a_rental_state_is_ignored_and_price_per_day_wins(): void
     {
-        return [
-            'zero price' => [0, 100],
-            'imported rental: price equals price_per_day' => [137.5, 137.5],
-            'price differs from price_per_day' => [99.99, 150],
-        ];
-    }
-
-    #[DataProvider('storedRentalPrices')]
-    public function test_a_rental_edit_save_keeps_the_stored_price(float|int $price, float|int $perDay): void
-    {
-        $service = $this->rentalService(['price' => $price, 'price_per_day' => $perDay]);
-        $before = $this->snapshot($service);
-
-        // A no-op save, then a save that changes something else, then one where a (hidden) price is forced into the state.
-        $this->saveUnchanged($service);
-        $this->assertSame($before, $this->snapshot($service));
-
-        $this->saveForm($this->openEdit($service)->set('data.sort_order', 9))->assertHasNoFormErrors();
-        $after = $this->snapshot($service);
-        $this->assertSame($before['price'], $after['price']);
-        $this->assertSame($this->except($before, ['sort_order']), $this->except($after, ['sort_order']));
+        // Stage B replaced "the stored rental price is kept" (stage A) with "it follows price_per_day":
+        // ServiceFormRentalPriceTest covers the sync. This keeps the stage A guarantee that the hidden field
+        // is never dehydrated, whatever its state holds.
+        $service = $this->rentalService(['price_per_day' => 150]);
 
         $this->saveForm($this->openEdit($service)->set('data.price', 1))->assertHasNoFormErrors();
-        $this->assertSame($before['price'], $this->snapshot($service)['price'], 'a hidden price is not dehydrated, whatever the state holds');
+        $this->assertSame('150.00', $this->snapshot($service)['price']);
     }
 
     public function test_a_hidden_price_is_not_validated_on_a_rental(): void
@@ -308,13 +287,12 @@ class ServiceFormFieldMovesTest extends TestCase
         $this->assertSame('100.00', $this->snapshot($service)['price']);
     }
 
-    public function test_a_rental_create_ignores_a_typed_price_and_stores_the_db_default(): void
+    public function test_a_rental_create_ignores_a_typed_price_and_stores_price_per_day(): void
     {
-        // Before stage A the form sent price 0.00 (its default) and the DB default is 0: both end up '0.00'.
-        // A price forced into the (hidden) field's state is not dehydrated either, so the DB default still wins.
+        // A price forced into the (hidden) field's state is not dehydrated; stage B copies price_per_day (10) instead.
         $id = $this->createMinimalRental(['price' => 55]);
 
-        $this->assertSame('0.00', $this->snapshot($id)['price']);
+        $this->assertSame('10.00', $this->snapshot($id)['price']);
     }
 
     public function test_a_time_slot_still_saves_price_and_price_from(): void
@@ -328,30 +306,22 @@ class ServiceFormFieldMovesTest extends TestCase
         $this->assertSame('99.00', $row['price_from']);
     }
 
-    public function test_known_gap_clearing_the_price_of_a_time_slot_still_throws_a_database_exception(): void
+    public function test_clearing_the_price_of_a_time_slot_is_a_validation_error_and_keeps_the_stored_price(): void
     {
-        // Stage B makes it required. Until then a time_slot keeps the gap the rental used to share (c8 in the
-        // create characterization test); a rental can no longer reach it because its price is hidden.
+        // Stage B closed the c8 gap: the time_slot price is required, so an empty field never reaches the NOT NULL column.
         $service = $this->timeSlotService(['price' => 100]);
 
-        try {
-            $this->saveForm($this->openEdit($service)->set('data.price', null));
-            $this->fail('expected a QueryException');
-        } catch (QueryException) {
-            $this->assertSame('100.00', $this->reload($service)->price);
-        }
+        $this->saveForm($this->openEdit($service)->set('data.price', null))->assertHasFormErrors(['price' => 'required']);
+        $this->assertSame('100.00', $this->reload($service)->price);
     }
 
-    public function test_known_gap_clearing_the_price_on_a_time_slot_create_throws_a_database_exception(): void
+    public function test_clearing_the_price_on_a_time_slot_create_is_a_validation_error_and_creates_nothing(): void
     {
         $this->addLocation();
 
-        try {
-            $this->submitCreate(['service_type' => ServiceType::TimeSlot->value, 'name' => 'Młot', 'slug' => 'mlot', 'price' => null]);
-            $this->fail('expected a QueryException');
-        } catch (QueryException) {
-            $this->assertSame(0, Service::withoutGlobalScopes()->where('slug', 'mlot')->count());
-        }
+        $this->submitCreate(['service_type' => ServiceType::TimeSlot->value, 'name' => 'Młot', 'slug' => 'mlot', 'price' => null])
+            ->assertHasFormErrors(['price' => 'required']);
+        $this->assertSame(0, Service::withoutGlobalScopes()->where('slug', 'mlot')->count());
     }
 
     // ---------------------------------------------------------------------------------------------

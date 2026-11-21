@@ -230,8 +230,11 @@ class ServiceController extends Controller
             'url' => route('service.show', $service),
         ];
 
-        // Add offers if price exists
-        if ($service->price) {
+        // Add offers if price exists - but never for a "price on request" service. Its stored `price` is a
+        // placeholder (0.00 or a stale copy), and Google reads a numeric Offer price literally ("0" = free),
+        // while an Offer without `price` is invalid (price is required). So the whole Offer is omitted;
+        // the Product/Service node stays valid schema.org, it just advertises no price.
+        if ($service->price && ! $service->price_on_request) {
             $schema['offers'] = [
                 '@type' => 'Offer',
                 'price' => $service->price,

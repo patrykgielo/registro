@@ -531,7 +531,14 @@ class ServiceFormEditCharacterizationTest extends TestCase
 
         $after = $this->snapshot($service);
         $this->assertSame($expected, $after[$field]);
-        $this->assertSame($this->except($before, [$field]), $this->except($after, [$field]), "saving `{$field}` changed another column");
+
+        // Stage B: a rental's `price` is derived from `price_per_day` on every save, so it moves with it - and only with it.
+        $derived = ($type === ServiceType::ItemRental->value && $field === 'price_per_day') ? ['price'] : [];
+        if ($derived !== []) {
+            $this->assertSame($expected, $after['price'], 'a rental price must follow price_per_day');
+        }
+
+        $this->assertSame($this->except($before, [$field, ...$derived]), $this->except($after, [$field, ...$derived]), "saving `{$field}` changed another column");
     }
 
     public function test_e3_changing_the_category_round_trips(): void
