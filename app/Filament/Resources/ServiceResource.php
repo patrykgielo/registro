@@ -19,7 +19,9 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\TextSize;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -38,6 +40,9 @@ class ServiceResource extends BaseResource
     protected static string|UnitEnum|null $navigationGroup = 'content';
 
     protected static ?int $navigationSort = 1;
+
+    /** `excerpt` limit: the field's maxLength and the "N / 500" counter below it read the same number. */
+    private const EXCERPT_MAX_LENGTH = 500;
 
     protected static ?string $modelLabel = 'Usługa';
 
@@ -144,83 +149,12 @@ class ServiceResource extends BaseResource
                                             ->default('sparkles')
                                             ->helperText('Ikona wyświetlana na karcie usługi'),
 
-                                        Forms\Components\Textarea::make('excerpt')
-                                            ->label('Krótki opis (excerpt)')
-                                            ->maxLength(500)
-                                            ->rows(3)
-                                            ->helperText('Wyświetlany na liście usług (max 500 znaków)')
-                                            ->columnSpanFull(),
-
-                                        // Duration fields (time_slot only)
-                                        Grid::make(3)
-                                            ->schema([
-                                                Forms\Components\TextInput::make('duration_days')
-                                                    ->label('Dni')
-                                                    ->numeric()
-                                                    ->minValue(0)
-                                                    ->maxValue(0)
-                                                    ->default(0)
-                                                    ->suffix('dni')
-                                                    ->helperText('Usługi wielodniowe nie są obsługiwane')
-                                                    ->disabled()
-                                                    ->dehydrated(false),
-                                                Forms\Components\TextInput::make('duration_hours')
-                                                    ->label('Godziny')
-                                                    ->numeric()
-                                                    ->minValue(0)
-                                                    ->maxValue(23)
-                                                    ->suffix('godz')
-                                                    ->live(onBlur: true)
-                                                    ->afterStateHydrated(function ($state, $set, $get, $record) {
-                                                        if ($record && $record->duration_minutes) {
-                                                            $set('duration_hours', floor($record->duration_minutes / 60));
-                                                        }
-                                                    })
-                                                    ->afterStateUpdated(function ($state, $set, $get) {
-                                                        $hours = (int) ($state ?? 0);
-                                                        $minutes = (int) ($get('duration_mins') ?? 0);
-                                                        $set('duration_minutes', ($hours * 60) + $minutes);
-                                                    })
-                                                    ->dehydrated(false),
-                                                Forms\Components\TextInput::make('duration_mins')
-                                                    ->label('Minuty')
-                                                    ->numeric()
-                                                    ->minValue(0)
-                                                    ->maxValue(59)
-                                                    ->step(15)
-                                                    ->suffix('min')
-                                                    ->live(onBlur: true)
-                                                    ->afterStateHydrated(function ($state, $set, $get, $record) {
-                                                        if ($record && $record->duration_minutes) {
-                                                            $set('duration_mins', $record->duration_minutes % 60);
-                                                        }
-                                                    })
-                                                    ->afterStateUpdated(function ($state, $set, $get) {
-                                                        $hours = (int) ($get('duration_hours') ?? 0);
-                                                        $minutes = (int) ($state ?? 0);
-                                                        $set('duration_minutes', ($hours * 60) + $minutes);
-                                                    })
-                                                    ->dehydrated(false),
-                                            ])
-                                            ->columnSpanFull()
-                                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
-
+                                        // MUST stay here (always visible): it dehydrates for EVERY type (a rental create writes the
+                                        // default 60 - pinned by test_c3_known_gap_a_rental_create_writes_duration_minutes_60) and Filament
+                                        // skips fields inside a hidden Tab/Section. The hours/minutes inputs on the time_slot-only
+                                        // "Cena i czas trwania" tab write into it via $set('duration_minutes') (same state path).
                                         Forms\Components\Hidden::make('duration_minutes')
                                             ->default(60),
-
-                                        Forms\Components\TextInput::make('price')
-                                            ->label('Cena bazowa')
-                                            ->numeric()
-                                            ->default(0.00)
-                                            ->prefix('PLN')
-                                            ->helperText('Podstawowa cena usługi'),
-
-                                        Forms\Components\TextInput::make('price_from')
-                                            ->label('Cena "od" (opcjonalnie)')
-                                            ->numeric()
-                                            ->prefix('PLN')
-                                            ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)')
-                                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
 
                                         Forms\Components\Toggle::make('is_active')
                                             ->label('Aktywna')
@@ -278,6 +212,88 @@ class ServiceResource extends BaseResource
                                             ->default('85')
                                             ->selectablePlaceholder(false),
                                     ]),
+                            ]),
+
+                        // time_slot only (the mirror of the rental tabs below): same condition as its one section, so a
+                        // hidden tab is hidden like a hidden section - its fields are neither validated nor saved.
+                        // A rental's `price` is not editable (stage B computes it); the stored value is left alone.
+                        Tab::make('Cena i czas trwania')
+                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type')))
+                            ->schema([
+                                Section::make('Cena i czas trwania')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('price')
+                                            ->label('Cena')
+                                            ->numeric()
+                                            ->default(0.00)
+                                            ->prefix('PLN')
+                                            ->helperText('Podstawowa cena usługi')
+                                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
+
+                                        Forms\Components\TextInput::make('price_from')
+                                            ->label('Cena "od" (opcjonalnie)')
+                                            ->numeric()
+                                            ->prefix('PLN')
+                                            ->helperText('Jeśli cena jest zmienna, podaj cenę minimalną (np. od 150 PLN)')
+                                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
+
+                                        // Duration inputs (display-only, never dehydrated): they write the Hidden `duration_minutes`
+                                        // that lives in "Podstawowe" (see the note there).
+                                        Grid::make(3)
+                                            ->schema([
+                                                Forms\Components\TextInput::make('duration_days')
+                                                    ->label('Dni')
+                                                    ->numeric()
+                                                    ->minValue(0)
+                                                    ->maxValue(0)
+                                                    ->default(0)
+                                                    ->suffix('dni')
+                                                    ->helperText('Usługi wielodniowe nie są obsługiwane')
+                                                    ->disabled()
+                                                    ->dehydrated(false),
+                                                Forms\Components\TextInput::make('duration_hours')
+                                                    ->label('Godziny')
+                                                    ->numeric()
+                                                    ->minValue(0)
+                                                    ->maxValue(23)
+                                                    ->suffix('godz')
+                                                    ->live(onBlur: true)
+                                                    ->afterStateHydrated(function ($state, $set, $get, $record) {
+                                                        if ($record && $record->duration_minutes) {
+                                                            $set('duration_hours', floor($record->duration_minutes / 60));
+                                                        }
+                                                    })
+                                                    ->afterStateUpdated(function ($state, $set, $get) {
+                                                        $hours = (int) ($state ?? 0);
+                                                        $minutes = (int) ($get('duration_mins') ?? 0);
+                                                        $set('duration_minutes', ($hours * 60) + $minutes);
+                                                    })
+                                                    ->dehydrated(false),
+                                                Forms\Components\TextInput::make('duration_mins')
+                                                    ->label('Minuty')
+                                                    ->numeric()
+                                                    ->minValue(0)
+                                                    ->maxValue(59)
+                                                    ->step(15)
+                                                    ->suffix('min')
+                                                    ->live(onBlur: true)
+                                                    ->afterStateHydrated(function ($state, $set, $get, $record) {
+                                                        if ($record && $record->duration_minutes) {
+                                                            $set('duration_mins', $record->duration_minutes % 60);
+                                                        }
+                                                    })
+                                                    ->afterStateUpdated(function ($state, $set, $get) {
+                                                        $hours = (int) ($get('duration_hours') ?? 0);
+                                                        $minutes = (int) ($state ?? 0);
+                                                        $set('duration_minutes', ($hours * 60) + $minutes);
+                                                    })
+                                                    ->dehydrated(false),
+                                            ])
+                                            ->columnSpanFull()
+                                            ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
+                                    ])
+                                    ->columns(2)
+                                    ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
                             ]),
 
                         // Both sections are item_rental only: a tab with no visible section must not render empty.
@@ -447,6 +463,26 @@ class ServiceResource extends BaseResource
 
                         Tab::make('Treść')
                             ->schema([
+                                // Krótki opis. As with `body` below, the heading names the field, so its label is hidden
+                                // visually (kept for screen readers). The "N / 500" counter is client-side only: `$wire.$get()`
+                                // reads the already-entangled state, so typing causes no server round-trip (Filament 4.11.5 has
+                                // no built-in counter for a Textarea). JS length counts code points, like PHP's mb_strlen.
+                                Section::make('Krótki opis')
+                                    ->description('Na kafelku (2 linie) i w Google, gdy nie ma meta opisu.')
+                                    ->schema([
+                                        Forms\Components\Textarea::make('excerpt')
+                                            ->label('Krótki opis')
+                                            ->hiddenLabel()
+                                            ->maxLength(self::EXCERPT_MAX_LENGTH)
+                                            ->rows(3)
+                                            ->belowContent(
+                                                Text::make('[...String($wire.$get(\'data.excerpt\') ?? \'\')].length + \' / '.self::EXCERPT_MAX_LENGTH.'\'')
+                                                    ->js()
+                                                    ->size(TextSize::Small),
+                                            )
+                                            ->columnSpanFull(),
+                                    ]),
+
                                 // Sekcja 3: Opis produktu. The heading already names the field, so its label is hidden
                                 // visually (kept for screen readers) and the helper text - which said the same as the
                                 // section description - is gone.
@@ -508,6 +544,27 @@ class ServiceResource extends BaseResource
                                             ->addActionLabel('Dodaj blok')
                                             ->columnSpanFull()
                                             ->helperText('Opcjonalne: dodaj galerie, wideo, przyciski CTA, hero sections i więcej'),
+                                    ]),
+
+                                // Moved from "Optymalizacja konwersji", unchanged and visible for both types (stage C reworks it
+                                // for rentals). The section description replaces the old helper text, so that is dropped and
+                                // the label is hidden visually like `body`'s.
+                                Section::make('Co zawiera usługa')
+                                    ->description('Do 4 punktów z ✓ na kafelku produktu na liście.')
+                                    ->schema([
+                                        Forms\Components\Repeater::make('features')
+                                            ->label('Co zawiera usługa')
+                                            ->hiddenLabel()
+                                            ->simple(
+                                                Forms\Components\TextInput::make('feature')
+                                                    ->label('Cecha')
+                                                    ->required()
+                                                    ->maxLength(100)
+                                            )
+                                            ->minItems(0)
+                                            ->maxItems(4)
+                                            ->columnSpanFull()
+                                            ->defaultItems(0),
                                     ]),
                             ]),
 
@@ -576,20 +633,6 @@ class ServiceResource extends BaseResource
                                             ->minValue(0)
                                             ->helperText('Dla wiadomości pilności: "Zarezerwowano X razy w tym tygodniu"')
                                             ->default(0),
-
-                                        Forms\Components\Repeater::make('features')
-                                            ->label('Co zawiera usługa')
-                                            ->simple(
-                                                Forms\Components\TextInput::make('feature')
-                                                    ->label('Cecha')
-                                                    ->required()
-                                                    ->maxLength(100)
-                                            )
-                                            ->minItems(0)
-                                            ->maxItems(4)
-                                            ->helperText('3-4 punkty wyświetlane na karcie usługi z ikonami checkmark')
-                                            ->columnSpanFull()
-                                            ->defaultItems(0),
                                     ])
                                     ->columns(2)
                                     ->collapsed(),
