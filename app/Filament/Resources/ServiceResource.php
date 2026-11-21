@@ -8,6 +8,7 @@ use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Resources\ServiceResource\RelationManagers\LocationStocksRelationManager;
 use App\Filament\Resources\ServiceResource\RelationManagers\UnitsRelationManager;
 use App\Filament\Support\BuilderBlocks;
+use App\Filament\Support\BuilderBlockSummary;
 use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Service;
 use App\Support\TenantFeature;
@@ -404,10 +405,15 @@ class ServiceResource extends BaseResource
                                                     ->placeholder('np. W')
                                                     ->maxLength(20),
                                             ])
-                                            ->columns(3)
+                                            // Stage 3: one compact row per parameter. Column headings sit once above the rows;
+                                            // below Filament's container breakpoint a row stacks and shows per-field labels.
+                                            ->table([
+                                                Forms\Components\Repeater\TableColumn::make('Parametr'),
+                                                Forms\Components\Repeater\TableColumn::make('Wartość'),
+                                                Forms\Components\Repeater\TableColumn::make('Jednostka')->width('9rem'),
+                                            ])
+                                            ->compact()
                                             ->reorderable()
-                                            ->collapsible()
-                                            ->itemLabel(fn (array $state): ?string => isset($state['label']) ? "{$state['label']}: {$state['value']} {$state['unit']}" : null)
                                             ->addActionLabel('Dodaj parametr')
                                             ->columnSpanFull()
                                             ->defaultItems(0)
@@ -441,27 +447,34 @@ class ServiceResource extends BaseResource
 
                         Tab::make('Treść')
                             ->schema([
-                                // Sekcja 3: Główna treść
-                                Section::make('Główna treść')
+                                // Sekcja 3: Opis produktu. The heading already names the field, so its label is hidden
+                                // visually (kept for screen readers) and the helper text - which said the same as the
+                                // section description - is gone.
+                                Section::make('Opis produktu')
+                                    ->description('Główny tekst strony produktu. Obrazy i galerie dodajesz blokami poniżej.')
                                     ->schema([
                                         Forms\Components\RichEditor::make('body')
-                                            ->label('Opis usługi')
+                                            ->label('Opis produktu')
+                                            ->hiddenLabel()
                                             ->toolbarButtons([
                                                 'bold', 'italic', 'underline',
                                                 'link', 'bulletList', 'orderedList',
                                                 'h2', 'h3', 'blockquote',
                                             ])
                                             ->columnSpanFull()
-                                            ->extraInputAttributes(['style' => 'min-height: 30rem;'])
-                                            ->helperText('Szczegółowy opis usługi. Obrazki dodaj przez bloki poniżej.'),
+                                            ->extraInputAttributes(['style' => 'min-height: 30rem;']),
                                     ]),
 
-                                // Sekcja 4: Zaawansowane Bloki (collapsed)
-                                Section::make('Zaawansowane bloki (opcjonalnie)')
+                                // Sekcja 4: Zaawansowane bloki. NOT collapsed - inside a tab collapsing only hides content.
+                                // The heading carries the block count, so it changes with the state: the key is therefore
+                                // fixed (Section derives its default key from the heading).
+                                Section::make(fn (callable $get): string => 'Zaawansowane bloki ('.self::countBlocks($get('content')).')')
+                                    ->key('advanced-blocks-section', isInheritable: false)
+                                    ->description('Wyświetlane pod opisem, w tej kolejności. Zapisują się razem z opisem.')
                                     ->schema([
                                         Forms\Components\Builder::make('content')
                                             ->label('Dodatkowe bloki')
-                                            ->blocks([
+                                            ->blocks(BuilderBlockSummary::apply([
                                                 ...BuilderBlocks::allBlocks('services'),
                                                 Forms\Components\Builder\Block::make('service_features')
                                                     ->label('Cechy usługi (automatyczne)')
@@ -482,16 +495,20 @@ class ServiceResource extends BaseResource
                                                             ])
                                                             ->default('simple'),
                                                     ]),
-                                            ])
+                                            ]))
                                             ->collapsible()
                                             ->collapsed()
                                             ->blockNumbers(false)
                                             ->reorderable()
+                                            ->reorderableWithButtons()
+                                            ->blockPickerColumns(['default' => 1, 'sm' => 2, 'lg' => 3])
+                                            // The section heading shows the count: re-render the whole form after
+                                            // add / delete / move, not just this Builder.
+                                            ->partiallyRenderAfterActionsCalled(false)
                                             ->addActionLabel('Dodaj blok')
                                             ->columnSpanFull()
                                             ->helperText('Opcjonalne: dodaj galerie, wideo, przyciski CTA, hero sections i więcej'),
-                                    ])
-                                    ->collapsed(),
+                                    ]),
                             ]),
 
                         Tab::make('SEO i konwersja')
@@ -755,6 +772,12 @@ class ServiceResource extends BaseResource
         }
 
         return 'Więcej niż jeden aktywny oddział, albo istnieje stan magazynowy na innym oddziale — ustaw ilości w zakładce "Stany magazynowe" poniżej.';
+    }
+
+    /** Number of blocks in the `content` Builder state, for the "Zaawansowane bloki (N)" heading. */
+    private static function countBlocks(mixed $state): int
+    {
+        return is_array($state) ? count($state) : 0;
     }
 
     private static function isRentalType(mixed $value): bool

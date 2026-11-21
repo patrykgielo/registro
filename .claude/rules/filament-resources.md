@@ -21,6 +21,17 @@ co przed zakładkami (E2/E7). Nowe pole = do istniejącej zakładki; warunek zak
 (test „hides exactly what its sections hide"). Błąd walidacji w nieaktywnej zakładce przełącza ją sam Filament 4.11.5
 (`form-validation-error` → `expand` na rodzicach pola → `x-on:expand` panelu) — nie dodawaj własnego mechanizmu.
 
+**Etap 3 (2026-11-21) — Specyfikacja i Treść, tylko prezentacja** (`ServiceFormContentAndSpecLayoutTest`). `metadata.specs` to
+`Repeater->table([TableColumn…])->compact()` (kolumny: Parametr · Wartość · Jednostka, bez `collapsible()`/`itemLabel()`; drag zostaje).
+Sekcja „Zaawansowane bloki (N)" NIE jest zwinięta, a nagłówek liczy bloki z `$get('content')` — Section wylicza domyślny klucz KOMPONENTU
+(ten od `wire:key` i renderu częściowego) Z NAGŁÓWKA, więc z licznikiem klucz zmieniałby się z każdym dodanym blokiem — dlatego
+`->key('advanced-blocks-section', isInheritable: false)`. Ścieżka stanu zostaje `data.content` tak czy tak; `isInheritable: false`
+chroni co innego: bez niego klucz sekcji wchodzi w klucze pól potomnych (`getFlatFields()` zwraca `advanced-blocks-section.content`
+zamiast `content`, a guard pól i testy czytają właśnie to). Builder: `reorderableWithButtons()` obok dragu, `blockPickerColumns()`,
+`partiallyRenderAfterActionsCalled(false)` (inaczej licznik w nagłówku sekcji nie odświeża się po dodaniu/usunięciu bloku).
+Etykiety „typ — streszczenie" dokłada `App\Filament\Support\BuilderBlockSummary::apply()` (tylko ServiceResource; `BuilderBlocks`
+bez zmian, Pages/Posts zostają przy samych nazwach typów); picker pyta o etykietę bez stanu i dostaje samą nazwę typu.
+
 **Etap 1 (2026-11-21) naprawił trzy luki** (testy przemianowane z `known_gap`): **e1 — `metadata`**,
 **c6 — slug** i **etykiety typu**.
 - `metadata`: `EditService::mutateFormDataBeforeSave()` scala klucze formularza NA zapisane
