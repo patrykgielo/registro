@@ -13,6 +13,14 @@ Testy `*_known_gap_*` pinują ZNANE wady — świadoma poprawka zmienia dokładn
 się go zmienia, nie osłabia innych). Guard pól czyta formularz (`getFlatFields`), więc nowe pole
 bez fixture'a i klasyfikacji w E7 = czerwono.
 
+**Etap 2 (2026-11-21) — zakładki.** Formularz to jeden `Tabs` (Podstawowe · Cena i magazyn · Specyfikacja · Treść ·
+SEO i konwersja), `persistTabInQueryString()`; układ przypięty w `ServiceFormTabsTest`. Zakładki „Cena i magazyn" i
+„Specyfikacja" mają to samo `visible()` co ich sekcje (`isRentalType`) — ukryta zakładka jest ukryta jak ukryta sekcja:
+jej pola nie są walidowane ani zapisywane (Filament je pomija, NIE zeruje), więc zapis time_slotu jest bajt w bajt ten sam
+co przed zakładkami (E2/E7). Nowe pole = do istniejącej zakładki; warunek zakładki musi zostać równy warunkowi jej sekcji
+(test „hides exactly what its sections hide"). Błąd walidacji w nieaktywnej zakładce przełącza ją sam Filament 4.11.5
+(`form-validation-error` → `expand` na rodzicach pola → `x-on:expand` panelu) — nie dodawaj własnego mechanizmu.
+
 **Etap 1 (2026-11-21) naprawił trzy luki** (testy przemianowane z `known_gap`): **e1 — `metadata`**,
 **c6 — slug** i **etykiety typu**.
 - `metadata`: `EditService::mutateFormDataBeforeSave()` scala klucze formularza NA zapisane
