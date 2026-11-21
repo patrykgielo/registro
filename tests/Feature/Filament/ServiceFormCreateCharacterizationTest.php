@@ -126,7 +126,8 @@ class ServiceFormCreateCharacterizationTest extends TestCase
             'slug' => 'wiertarka-pelna',
             'icon' => 'star',
             'excerpt' => 'Krótki opis produktu',
-            'price' => '12.50',
+            // Stage A: `price` is hidden for rentals, so the typed 12.5 is ignored and the DB default applies.
+            'price' => '0.00',
             'price_from' => null,
             'is_active' => false,
             'sort_order' => 9,
@@ -673,7 +674,8 @@ class ServiceFormCreateCharacterizationTest extends TestCase
         $this->addLocation();
 
         try {
-            $this->submit(['service_type' => ServiceType::ItemRental->value, 'name' => 'Młot', 'slug' => 'mlot', 'price_per_day' => 5, 'price' => null]);
+            // Stage A: only a time_slot can still reach the gap (the field is hidden for rentals).
+            $this->submit(['service_type' => ServiceType::TimeSlot->value, 'name' => 'Młot', 'slug' => 'mlot', 'price' => null]);
             $this->fail('expected a QueryException');
         } catch (QueryException) {
             $this->assertSame(0, Service::withoutGlobalScopes()->where('slug', 'mlot')->count());
@@ -684,7 +686,7 @@ class ServiceFormCreateCharacterizationTest extends TestCase
     {
         // KNOWN GAP (stage 1 will change this): same, on UPDATE - the stored price is kept.
         $this->addLocation();
-        $service = $this->rentalService(['price' => 100]);
+        $service = $this->timeSlotService(['price' => 100]); // stage A: rentals cannot reach it any more
 
         try {
             $this->saveForm($this->openEdit($service)->set('data.price', null));

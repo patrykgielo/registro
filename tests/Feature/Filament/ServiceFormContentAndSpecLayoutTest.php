@@ -61,9 +61,10 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
             $tab->getChildSchema()->getComponents(withHidden: true),
             fn ($component): bool => $component instanceof Section,
         ));
-        $this->assertCount(2, $sections, 'tab `Treść` holds exactly two sections');
+        // Stage A: Krótki opis, Opis produktu, Zaawansowane bloki, Co zawiera usługa.
+        $this->assertCount(4, $sections, 'tab `Treść` holds four sections');
 
-        return $sections[1];
+        return $sections[2];
     }
 
     /** @return array<int, array{type: string, data: array<string, mixed>}> */
@@ -191,7 +192,8 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
 
         $tab = collect($page->instance()->getSchema('form')->getFlatComponents(withHidden: true))
             ->first(fn ($component): bool => $component instanceof Tab && (string) $component->getLabel() === 'Treść');
-        $first = array_values(array_filter($tab->getChildSchema()->getComponents(withHidden: true), fn ($c): bool => $c instanceof Section))[0];
+        // Stage A: "Krótki opis" comes first, the body editor section is second.
+        $first = array_values(array_filter($tab->getChildSchema()->getComponents(withHidden: true), fn ($c): bool => $c instanceof Section))[1];
 
         $this->assertSame('Opis produktu', (string) $first->getHeading());
         $this->assertSame('Główny tekst strony produktu. Obrazy i galerie dodajesz blokami poniżej.', (string) $first->getDescription());

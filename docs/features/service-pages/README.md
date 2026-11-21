@@ -47,7 +47,7 @@ app/
 ├── Http/Controllers/
 │   └── ServiceController.php            # Public show() + Schema.org generation
 ├── Filament/Resources/
-│   └── ServiceResource.php              # Admin CRUD with 4 sections
+│   └── ServiceResource.php              # Admin CRUD, product form in tabs
 resources/views/
 ├── services/
 │   ├── index.blade.php                  # Service listing page
@@ -260,53 +260,26 @@ Route::get('/uslugi/{service:slug}', [ServiceController::class, 'show'])->name('
 
 ## Admin Panel Usage
 
-### Filament Resource: 4 Sections
+### Filament Resource: product form in tabs
 
 **File**: `app/Filament/Resources/ServiceResource.php`
 
-The admin form is divided into 4 collapsible sections following Pages/Posts pattern:
+The form is one `Tabs` component (the active tab is kept in the query string, `?tab=`). A tab that does not apply to
+the product type is hidden, and Filament neither validates nor saves the fields of a hidden tab.
 
-#### 1. Podstawowe Informacje (Basic Information)
+| Tab | Shown for | Sections and fields |
+|-----|-----------|---------------------|
+| Podstawowe | all | **Podstawowe informacje**: type (fixed after creation), name, slug, icon, active, sort order. **Zdjęcie wyróżniające**: image, overlay colour and opacity |
+| Cena i czas trwania | time slot only | **Cena i czas trwania**: Cena (`price`), Cena "od" (`price_from`), duration (hours + minutes) |
+| Cena i magazyn | rental only | **Cennik wypożyczenia**, **Magazyn i identyfikacja** |
+| Specyfikacja | rental only | **Specyfikacja techniczna** (parameter / value / unit table) |
+| Treść | all | **Krótki opis** (`excerpt`, max 500 chars, with a client-side "N / 500" counter), **Opis produktu** (`body`), **Zaawansowane bloki** (Builder), **Co zawiera usługa** (`features`, up to 4 points shown as "✓" items on the product tile) |
+| SEO i konwersja | all | **SEO i publikacja** (meta title/description, area served, publication date), **Optymalizacja konwersji** (rating, review count, popular badge, weekly bookings) |
 
-- **Name**: Auto-generates slug on blur
-- **Slug**: Editable, unique constraint
-- **Excerpt**: Short summary (max 500 chars)
-- **Duration**: Hours + Minutes inputs
-- **Price**: Numeric with PLN prefix
-- **Price From**: Optional "Od X PLN" display
-- **Area Served**: Local SEO field (e.g., "Poznań")
-- **Active**: Toggle visibility
-- **Sort Order**: Display order
-
-#### 2. Treść Strony (Page Content)
-
-- **Body**: RichEditor with toolbar (bold, italic, headings, lists, links, blockquote)
-- 90% of content goes here
-- XSS protection via HTMLPurifier
-
-#### 3. Zaawansowane Bloki Treści (Advanced Content Blocks)
-
-**Collapsed by default** - Builder with 7 block types:
-
-1. **Image**: Upload, alt text, caption, size (small/medium/large/full)
-2. **Gallery**: Multiple images, grid columns (2/3/4)
-3. **Video**: YouTube/Vimeo embed URL, caption
-4. **CTA**: Heading, description, button text/URL, style (primary/secondary/accent)
-5. **Two Columns**: Left/right RichEditor columns
-6. **Three Columns**: Three RichEditor columns
-7. **Quote**: Quote text, author, author title
-
-#### 4. SEO i Publikacja (SEO & Publishing)
-
-**Collapsed by default**:
-
-- **Featured Image**: Upload with preview (200px height)
-- **Meta Title**: Max 60 chars (fallback to `name`)
-- **Meta Description**: Max 160 chars (fallback to `excerpt`)
-- **Published At**: DateTime picker
-  - `NULL` = Draft (not visible on frontend)
-  - Future date = Scheduled (not visible until date)
-  - Past date = Published (visible on frontend)
+- A rental's `price` is not edited in the form (the field is hidden); the stored value is left as it is.
+- **Block types** in "Zaawansowane bloki": image, gallery, video, CTA, columns, quote, and more (see `BuilderBlocks`).
+- **Published At**: `NULL` = draft (not visible on frontend); future date = scheduled; past date = published.
+- **Meta Title** falls back to `name`, **Meta Description** to `excerpt`.
 
 ### Admin Features
 
@@ -824,5 +797,5 @@ php artisan view:cache
 ---
 
 **Maintained by**: Laravel Senior Architect Agent
-**Last Updated**: 2025-12-08
+**Last Updated**: 2026-11-21
 **Review Cycle**: Quarterly

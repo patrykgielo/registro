@@ -44,7 +44,7 @@ class ServiceFormEditCharacterizationTest extends TestCase
 
     // E7 classification. Hand lists live ONLY here; test_every_dehydrated_form_field_... proves they match the form.
     private const FIELDS_FOR_BOTH_TYPES = [
-        'service_type', 'name', 'slug', 'icon', 'excerpt', 'price', 'is_active', 'sort_order',
+        'service_type', 'name', 'slug', 'icon', 'excerpt', 'is_active', 'sort_order',
         'featured_image', 'hero_overlay_color', 'hero_overlay_opacity', 'body', 'content',
         'meta_title', 'meta_description', 'area_served', 'published_at',
         'average_rating', 'total_reviews', 'is_popular', 'booking_count_week', 'features',
@@ -55,7 +55,8 @@ class ServiceFormEditCharacterizationTest extends TestCase
         'deposit_amount', 'price_on_request', 'quantity_total', 'rental_category_id', 'brand', 'metadata.specs',
     ];
 
-    private const TIME_SLOT_ONLY_FIELDS = ['duration_days', 'duration_hours', 'duration_mins', 'price_from'];
+    // Stage A: `price` is hidden for rentals (stage B computes it from price_per_day).
+    private const TIME_SLOT_ONLY_FIELDS = ['duration_days', 'duration_hours', 'duration_mins', 'price_from', 'price'];
 
     /** Hidden field, computed from the hours/minutes inputs; visible for neither type. */
     private const COMPUTED_FIELDS = ['duration_minutes'];
@@ -477,7 +478,6 @@ class ServiceFormEditCharacterizationTest extends TestCase
     public static function scalarFieldCases(): array
     {
         $common = [
-            'price' => ['price', 12.34, '12.34'],
             'icon' => ['icon', 'star', 'star'],
             'excerpt' => ['excerpt', 'Nowy krótki opis', 'Nowy krótki opis'],
             'sort_order' => ['sort_order', 7, 7],
@@ -507,6 +507,7 @@ class ServiceFormEditCharacterizationTest extends TestCase
         ];
 
         $slotOnly = [
+            'price' => ['price', 12.34, '12.34'],
             'price_from' => ['price_from', 80, '80.00'],
         ];
 
@@ -645,7 +646,6 @@ class ServiceFormEditCharacterizationTest extends TestCase
             'brand' => $chars(256),
             'area_served' => $chars(256),
             'price_per_day' => null,
-            'price' => 'abc',
             'sort_order' => null,
             'price_threshold_days' => 366,
             'quantity_total' => 0,
@@ -661,7 +661,7 @@ class ServiceFormEditCharacterizationTest extends TestCase
         ]);
         $this->saveForm($component);
 
-        foreach (['name', 'slug', 'excerpt', 'meta_title', 'meta_description', 'brand', 'area_served', 'price_per_day', 'price', 'sort_order', 'price_threshold_days', 'quantity_total', 'average_rating', 'total_reviews', 'booking_count_week', 'features'] as $field) {
+        foreach (['name', 'slug', 'excerpt', 'meta_title', 'meta_description', 'brand', 'area_served', 'price_per_day', 'sort_order', 'price_threshold_days', 'quantity_total', 'average_rating', 'total_reviews', 'booking_count_week', 'features'] as $field) {
             $this->assertTrue($this->hasErrorOn($component, 'data.'.$field), "no validation error on data.{$field}; got: ".implode(', ', $component->errors()->keys()));
         }
 
@@ -762,13 +762,14 @@ class ServiceFormEditCharacterizationTest extends TestCase
         $original = $this->snapshot($service);
 
         $component = $this->saveForm($this->setAll($this->openEdit($service), [
+            'price' => 'abc', // stage A: the numeric rule now applies to time_slot only
             'price_from' => 'abc',
             'meta_title' => str_repeat('a', 61),
             'duration_hours' => 24,
             'duration_mins' => 60,
         ]));
 
-        foreach (['price_from', 'meta_title', 'duration_hours', 'duration_mins'] as $field) {
+        foreach (['price', 'price_from', 'meta_title', 'duration_hours', 'duration_mins'] as $field) {
             $this->assertTrue($this->hasErrorOn($component, 'data.'.$field), "no validation error on data.{$field}");
         }
         $this->assertSame($original, $this->snapshot($service));

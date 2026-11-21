@@ -32,6 +32,8 @@ zamiast `content`, a guard pól i testy czytają właśnie to). Builder: `reorde
 Etykiety „typ — streszczenie" dokłada `App\Filament\Support\BuilderBlockSummary::apply()` (tylko ServiceResource; `BuilderBlocks`
 bez zmian, Pages/Posts zostają przy samych nazwach typów); picker pyta o etykietę bez stanu i dostaje samą nazwę typu.
 
+**Etap A (2026-11-21) — przenosiny pól.** Nowa zakładka „Cena i czas trwania" (tylko time_slot; `! isRentalType`, ten sam warunek na zakładce, sekcji i polach) trzyma `price`, `price_from` i wejścia czasu. `Hidden::make('duration_minutes')` MUSI zostać w „Podstawowe": dehydruje się dla KAŻDEGO typu (rental create zapisuje 60, `c3_known_gap`), a pole w ukrytej zakładce jest pomijane — przeniesienie zmieniłoby dane wypożyczeń; `$set('duration_minutes')` z zakładki czasu trafia w ten sam `data.duration_minutes`. `price` jest ukryte dla rentala (zapis go nie czyta ani nie nadpisuje, create → default DB `0.00`); `excerpt` i `features` mieszkają w „Treść" (obie zawsze widoczne = dehydracja bez zmian). Licznik „N / 500" to `Text::make('…')->js()` w `belowContent()` czytający `$wire.$get('data.excerpt')` — bez `->live()`, zero round-tripów (Filament 4.11.5 nie ma wbudowanego licznika dla Textarea). Przed przeniesieniem pola do warunkowej zakładki sprawdź, czy dziś dehydruje się dla obu typów (`getState()` rentala/time_slotu przed i po).
+
 **Etap 1 (2026-11-21) naprawił trzy luki** (testy przemianowane z `known_gap`): **e1 — `metadata`**,
 **c6 — slug** i **etykiety typu**.
 - `metadata`: `EditService::mutateFormDataBeforeSave()` scala klucze formularza NA zapisane

@@ -26,17 +26,22 @@ class ServiceFormTabsTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;
 
-    private const ALL_TABS = ['Podstawowe', 'Cena i magazyn', 'Specyfikacja', 'Treść', 'SEO i konwersja'];
+    /** Every tab the form defines (stage A: a time_slot-only price tab right after Podstawowe). */
+    private const ALL_TABS = ['Podstawowe', 'Cena i czas trwania', 'Cena i magazyn', 'Specyfikacja', 'Treść', 'SEO i konwersja'];
 
-    private const TIME_SLOT_TABS = ['Podstawowe', 'Treść', 'SEO i konwersja'];
+    private const RENTAL_TABS = ['Podstawowe', 'Cena i magazyn', 'Specyfikacja', 'Treść', 'SEO i konwersja'];
+
+    private const TIME_SLOT_TABS = ['Podstawowe', 'Cena i czas trwania', 'Treść', 'SEO i konwersja'];
 
     /** Section headings per tab - the approved mapping. */
     private const SECTIONS_BY_TAB = [
         'Podstawowe' => ['Podstawowe informacje', 'Zdjęcie wyróżniające'],
+        'Cena i czas trwania' => ['Cena i czas trwania'],
         'Cena i magazyn' => ['Cennik wypożyczenia', 'Magazyn i identyfikacja'],
         'Specyfikacja' => ['Specyfikacja techniczna'],
         // Stage 3: renamed per the approved mockup; the fixture rental has no blocks, hence "(0)".
-        'Treść' => ['Opis produktu', 'Zaawansowane bloki (0)'],
+        // Stage A: Krótki opis and Co zawiera usługa moved here.
+        'Treść' => ['Krótki opis', 'Opis produktu', 'Zaawansowane bloki (0)', 'Co zawiera usługa'],
         'SEO i konwersja' => ['SEO i publikacja', 'Optymalizacja konwersji'],
     ];
 
@@ -149,7 +154,7 @@ class ServiceFormTabsTest extends TestCase
     {
         $component = $this->openEdit($this->rentalService());
 
-        $this->assertSame(self::ALL_TABS, $this->visibleTabLabels($component));
+        $this->assertSame(self::RENTAL_TABS, $this->visibleTabLabels($component));
         $this->assertSame(self::ALL_TABS, array_keys($this->allTabs($component)), 'a hidden tab must still be defined in the same place');
     }
 
@@ -192,7 +197,7 @@ class ServiceFormTabsTest extends TestCase
         $this->assertSame(self::TIME_SLOT_TABS, $this->visibleTabLabels($component), 'default type is time_slot');
 
         $component->set('data.service_type', ServiceType::ItemRental->value);
-        $this->assertSame(self::ALL_TABS, $this->visibleTabLabels($component));
+        $this->assertSame(self::RENTAL_TABS, $this->visibleTabLabels($component));
 
         $component->set('data.service_type', ServiceType::TimeSlot->value);
         $this->assertSame(self::TIME_SLOT_TABS, $this->visibleTabLabels($component));
@@ -249,11 +254,12 @@ class ServiceFormTabsTest extends TestCase
         $tabs = $this->allTabs($this->openEdit($this->rentalService()));
 
         $expected = [
-            'Podstawowe' => ['service_type', 'name', 'slug', 'price', 'is_active', 'featured_image', 'hero_overlay_color'],
+            'Podstawowe' => ['service_type', 'name', 'slug', 'is_active', 'featured_image', 'hero_overlay_color'],
+            'Cena i czas trwania' => ['price', 'price_from', 'duration_days', 'duration_hours', 'duration_mins'],
             'Cena i magazyn' => ['price_per_day', 'price_per_day_long', 'deposit_amount', 'price_on_request', 'quantity_total', 'rental_category_id', 'brand'],
             'Specyfikacja' => ['metadata.specs'],
-            'Treść' => ['body', 'content'],
-            'SEO i konwersja' => ['meta_title', 'published_at', 'average_rating', 'is_popular', 'features'],
+            'Treść' => ['excerpt', 'body', 'content', 'features'],
+            'SEO i konwersja' => ['meta_title', 'published_at', 'average_rating', 'is_popular'],
         ];
 
         foreach ($expected as $label => $fields) {
@@ -297,9 +303,9 @@ class ServiceFormTabsTest extends TestCase
         $html = $component->html();
         $this->assertStringContainsString('handleFormValidationError', $html, 'root schema listener for form-validation-error');
         $this->assertSame(
-            count($tabs),
+            count($this->visibleTabLabels($component)), // a hidden tab renders no panel
             substr_count($html, 'x-on:expand="tab ='),
-            'every tab panel must answer the `expand` event by activating itself',
+            'every rendered tab panel must answer the `expand` event by activating itself',
         );
     }
 
