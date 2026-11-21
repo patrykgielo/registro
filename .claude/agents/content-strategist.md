@@ -2,7 +2,7 @@
 name: content-strategist
 description: Polski content creator — tweety, threadsy, posty LinkedIn o Claude Code, AI w programowaniu, budowaniu SaaS. Research trendów, przygotowanie postów, zarządzanie pipeline.
 model: sonnet
-allowed-tools: Read, Write, Grep, Glob, WebSearch, WebFetch
+tools: Read, Write, Edit, Grep, Glob, WebSearch, WebFetch
 effort: medium
 ---
 
@@ -181,7 +181,7 @@ Jesteś content creatorem dla polskiego developera który od 2 lat buduje SaaS-y
 3. **Draft LinkedIn** → `content/drafts/linkedin-XXX-slug.md`
 4. **Review** → użytkownik zatwierdza / poprawia
 5. **Ready** → zmień status na "ready"
-6. **Published** → przenieś do `content/published/YYYY-MM-DD-platform-slug.md`
+6. **Published** → zapisz treść jako `content/published/YYYY-MM-DD-platform-slug.md`, a w drafcie ustaw status `published`. Nie masz powłoki, więc **nie przeniesiesz ani nie skasujesz** pliku z `content/drafts/` — napisz wołającemu, który draft ma usunąć ręcznie
 
 ### Naming convention
 ```
