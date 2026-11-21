@@ -5,6 +5,23 @@ paths:
 
 # Filament Resources - Save Behavior
 
+## ServiceResource (formularz produktu) — siatka bezpieczeństwa (2026-11-21)
+
+Każda zmiana `ServiceResource::form()`, `CreateService`, `EditService` lub ich relation managerów
+musi zostawić zielone `tests/Feature/Filament/ServiceForm{Edit,Create}CharacterizationTest.php`.
+Testy `*_known_gap_*` pinują ZNANE wady — świadoma poprawka zmienia dokładnie jeden z nich (i wtedy
+się go zmienia, nie osłabia innych). Guard pól czyta formularz (`getFlatFields`), więc nowe pole
+bez fixture'a i klasyfikacji w E7 = czerwono.
+
+Co ta siatka pokazała o zapisie w Filament 4 (dotyczy KAŻDEGO formularza):
+- `getState()` zwraca tylko ścieżki powiązane z polami → kolumna JSON z polem na `metadata.specs`
+  traci pozostałe klucze `metadata` przy każdym zapisie.
+- FileUpload z hydratowaną ścieżką, której nie ma na dysku: `featured_image` → NULL, galeria gubi
+  element po cichu, pojedynczy blok `image` blokuje zapis całej strony.
+- Zapisana wartość spoza opcji Selecta (`in`) blokuje zapis CAŁEGO rekordu.
+- Formularz otwarty dawno nadpisuje wartości zmienione w międzyczasie (stan magazynu z relation
+  managera, liczniki) — zapis wysyła wszystko, co ma w `$data`.
+
 ## ZASADA: Pozostań na stronie po zapisie (Content Resources)
 
 Resources z kategorii Content Management (Pages, Posts, Promotions, Portfolio) powinny używać traitów:

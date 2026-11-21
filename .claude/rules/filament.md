@@ -195,4 +195,7 @@ na `?Model $record` (Create page nie ma jeszcze rekordu). Pełny przykład: `app
 
 ## Version Check
 
-Projekt: **v4.5.2**. Przed nowymi metodami: https://filamentphp.com/docs/4.x/
+Wersję czytaj z `composer.lock` (`"name": "filament/filament"` → `version`), nie z tego pliku —
+wpisana tu liczba (4.5.2) rozjechała się z instalacją (4.11.5 w 2026-11) i dwa razy wprowadziła
+w błąd. Kod vendora jest tylko w drzewie WSL (`/var/www/projects/registro/app/vendor`).
+Przed nowymi metodami: https://filamentphp.com/docs/4.x/

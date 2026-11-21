@@ -1,5 +1,8 @@
 # Test Engineer — Project Memory
 
+## Product form STAGE 0 safety net (added 2026-11-21)
+- [project_service_form_stage0_safety_net_2026-11-21.md](project_service_form_stage0_safety_net_2026-11-21.md) — `tests/Feature/Filament/ServiceForm{Edit,Create}CharacterizationTest.php` + `ServiceFormTestSupport` trait pin ServiceResource's form before the tabs refactor; KNOWN GAP tests flip on deliberate fixes. Lists the Filament/Livewire facts that contradicted the architect's analysis (content/metadata not byte-identical on no-op save, FileUpload drops missing files, `fillForm([])` resets defaults).
+
 ## Storefront walkthrough (Layer 2) — real cross-tenant leak found (added 2026-08-29)
 - [project_storefront_walkthrough_substitute_bindings_leak_2026-08-29.md](project_storefront_walkthrough_substitute_bindings_leak_2026-08-29.md) — `tests/Feature/StorefrontWalkthroughTest.php`, real-Host-header + real `ResolveTenant` middleware (not the usual bind-override test double) found that `SubstituteBindings` (implicit `{model:slug}` binding) runs BEFORE `ResolveTenant` for every route on a `BelongsToOrganization` model, because it's baked into Laravel's default `web` middleware group — a real, previously-undiscovered cross-tenant leak, orthogonal to VULN-003's documented layers. NOT fixed (out of task scope, reported to team-lead). Also documents the "compact assertion helper" pattern (avoid `assertSee()`'s full-page-dump failure messages inside an accumulate-violations test) and a reusable falsifiability-proof technique.
 
