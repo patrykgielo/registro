@@ -107,8 +107,12 @@ class ServiceResource extends BaseResource
                             ->required()
                             ->maxLength(255)
                             ->live(onBlur: true)
-                            ->afterStateUpdated(function (string $state, callable $set) {
-                                $set('slug', Str::slug($state));
+                            // Slug follows the name only on CREATE: on edit a typo fix in the
+                            // name must not silently change the public URL.
+                            ->afterStateUpdated(function (string $state, callable $set, ?Model $record) {
+                                if ($record === null) {
+                                    $set('slug', Str::slug($state));
+                                }
                             })
                             ->columnSpanFull(),
 
@@ -120,7 +124,9 @@ class ServiceResource extends BaseResource
                                 ignoreRecord: true,
                                 modifyRuleUsing: TenantScopedUniqueRule::forCurrentTenant(),
                             )
-                            ->helperText('Automatycznie generowany z nazwy'),
+                            ->helperText(fn (?Model $record): string => $record === null
+                                ? 'Automatycznie generowany z nazwy'
+                                : 'Adres strony. Zmiana nazwy nie zmienia adresu — zmień go tutaj ręcznie, jeśli chcesz.'),
 
                         Forms\Components\Select::make('icon')
                             ->label('Ikona usługi')

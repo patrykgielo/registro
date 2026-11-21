@@ -224,8 +224,13 @@ reads as zero available.
   what keeps GD inside `memory_limit`). `/thumb/…/1280px-…` Wikimedia URLs are ordinary paths and work.
 * `credit` / `license` / `source_page` are persisted per stored path in `services.metadata.image_sources`
   and in the ledger (`catalog_import_items.snapshot` of the file row). They are not rendered anywhere —
-  put a visible attribution line in `body_html`. **The admin form binds only `metadata.specs`, so saving
-  the product in the panel drops `metadata.image_sources`; the ledger copy stays.**
+  put a visible attribution line in `body_html`. **Since stage 1 of the product-form redesign, saving the
+  product in the panel keeps `metadata.image_sources`** (`EditService::mutateFormDataBeforeSave()` merges the
+  form's `metadata.specs` over the stored metadata); the ledger copy stays as well. Two consequences:
+  credits of files later removed in the panel stay in `image_sources` as orphaned entries, so attribution
+  and the ledger must not assume every entry is still attached to the product; and
+  `RevertCatalogImport` (`metadata LIKE %basename%`) now treats such a file as still used by a surviving
+  panel-edited product — conservative and safe: the file is kept, not deleted.
 * `path` images are resolved relative to the JSON file's directory, confined by `realpath()` (no `..`,
   no absolute path, no symlink escape), validated like a downloaded image. **Any file in that directory
   tree that is a valid jpeg/png/webp is readable by the JSON** — keep catalogue files in their own

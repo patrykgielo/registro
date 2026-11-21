@@ -13,9 +13,23 @@ Testy `*_known_gap_*` pinują ZNANE wady — świadoma poprawka zmienia dokładn
 się go zmienia, nie osłabia innych). Guard pól czyta formularz (`getFlatFields`), więc nowe pole
 bez fixture'a i klasyfikacji w E7 = czerwono.
 
+**Etap 1 (2026-11-21) naprawił trzy luki** (testy przemianowane z `known_gap`): **e1 — `metadata`**,
+**c6 — slug** i **etykiety typu**.
+- `metadata`: `EditService::mutateFormDataBeforeSave()` scala klucze formularza NA zapisane
+  (`array_replace` na najwyższym poziomie, nie rekurencyjnie — `specs` to lista, rekurencja
+  wskrzeszałaby usunięte wiersze). Klucze formularza wygrywają, więc `specs => []` nadal czyści.
+  Stan czytany z DB (`$record->fresh()`), nie ze starej kopii formularza; kopia z pamięci tylko gdy
+  wiersza już nie ma — NULL w DB jest realną wartością i nie wskrzesza starych kluczy. Brak `metadata` w `$data`
+  (time_slot) → bez zmian, NULL zostaje NULL. Dotyczy tylko edycji; NULL→`{"specs": []}` (e11/c3) bez zmian.
+- Slug: `name->afterStateUpdated()` przepisuje slug tylko gdy `$record === null` (create); na edycji
+  slug zmienia się wyłącznie ręcznie (helper text rozróżnia oba tryby).
+- Etykiety: `ServiceType implements Filament\Support\Contracts\HasLabel` (`getLabel()` → `label()`),
+  więc `->options(ServiceType::class)` w formularzu i filtrze tabeli pokazuje polskie nazwy.
+
 Co ta siatka pokazała o zapisie w Filament 4 (dotyczy KAŻDEGO formularza):
 - `getState()` zwraca tylko ścieżki powiązane z polami → kolumna JSON z polem na `metadata.specs`
-  traci pozostałe klucze `metadata` przy każdym zapisie.
+  traci pozostałe klucze `metadata` przy każdym zapisie (naprawione na `ServiceResource` — patrz wyżej;
+  każdy inny formularz z polem na podścieżkę JSON potrzebuje własnego scalenia).
 - FileUpload z hydratowaną ścieżką, której nie ma na dysku: `featured_image` → NULL, galeria gubi
   element po cichu, pojedynczy blok `image` blokuje zapis całej strony.
 - Zapisana wartość spoza opcji Selecta (`in`) blokuje zapis CAŁEGO rekordu.

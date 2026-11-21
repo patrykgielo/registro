@@ -17,6 +17,16 @@ class ServiceTypeTest extends TestCase
         $this->assertEquals('Wypożyczenie (przedmiot)', ServiceType::ItemRental->label());
     }
 
+    public function test_filament_label_is_the_polish_label(): void
+    {
+        // Select/SelectFilter ->options(ServiceType::class) read getLabel(), not label().
+        $this->assertInstanceOf(\Filament\Support\Contracts\HasLabel::class, ServiceType::TimeSlot);
+
+        foreach (ServiceType::cases() as $case) {
+            $this->assertSame($case->label(), $case->getLabel());
+        }
+    }
+
     public function test_time_slot_icon(): void
     {
         $this->assertEquals('heroicon-o-calendar', ServiceType::TimeSlot->icon());
