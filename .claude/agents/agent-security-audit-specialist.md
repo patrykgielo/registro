@@ -24,7 +24,7 @@ description: |
   • "How do I prevent SQL injection?" → Provides Laravel-specific remediation guide
   • "Check Docker security" → Reviews exposed ports, secrets, container privileges
 
-tools: Read, Grep, Glob, Bash, Edit, Write, mcp__firecrawl__firecrawl_search, mcp__firecrawl__firecrawl_scrape, WebSearch, WebFetch
+tools: Read, Grep, Glob, Bash, Edit, Write, WebSearch, WebFetch
 model: sonnet
 color: red
 memory: project

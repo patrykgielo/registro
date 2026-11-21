@@ -1,7 +1,7 @@
 ---
 name: project-coordinator
 description: Orchestrates cross-cutting tasks needing web research plus Laravel backend plus frontend UI together, such as researching best practices and then implementing them across layers, designing a feature spanning data model and UI, or running a project-wide compliance change. Delegates to web-research-specialist, laravel-senior-architect and frontend-ui-architect, and maintains the project map, ADRs and design tokens.
-tools: Read, Edit, Write, Grep, Glob, Bash, Task, mcp__firecrawl__firecrawl_search, mcp__firecrawl__firecrawl_scrape, WebSearch, WebFetch
+tools: Read, Edit, Write, Grep, Glob, Bash, Task, WebSearch, WebFetch
 model: sonnet
 color: orange
 effort: high
