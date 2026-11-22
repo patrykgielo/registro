@@ -17,8 +17,8 @@ use Tests\TestCase;
 
 /**
  * STAGE B of the admin product form (2026-11-21): a rental's `price` follows `price_per_day`, the stale rows are
- * backfilled, the JSON-LD never claims a price for a "price on request" product, and a time_slot's emptied price is
- * a validation error.
+ * backfilled, the JSON-LD never claims a price for a "price on request" product or for a zero price (and emits
+ * positive prices as the model's decimal:2 string), and a time_slot's emptied price is a validation error.
  *
  * Fixtures that must be STALE (price != price_per_day) are written with DB::table(): the model now normalises on
  * save, so no Eloquent write can produce one - which is the point of the model hook.
@@ -48,7 +48,7 @@ class ServiceFormRentalPriceTest extends TestCase
 
     private function priceOf(Service|int $service): string
     {
-        return $this->reload($service)->price; // the model's decimal:2 cast: SQLite hands back '150', MySQL '150.00'
+        return $this->reload($service)->price; // the model's decimal:2 cast: always the 2-decimal string ('150.00')
     }
 
     /** Forces a stale `price` past the model (no events), like the rows written before stage B. */
@@ -294,7 +294,7 @@ class ServiceFormRentalPriceTest extends TestCase
 
         $this->assertSame('Product', $schema['@type']);
         $this->assertSame('Offer', $schema['offers']['@type']);
-        $this->assertEquals(100, $schema['offers']['price']);
+        $this->assertSame('100.00', $schema['offers']['price']);
         $this->assertSame('PLN', $schema['offers']['priceCurrency']);
     }
 
@@ -316,8 +316,8 @@ class ServiceFormRentalPriceTest extends TestCase
         $schema = $this->schemaOf($service);
 
         $this->assertSame('Service', $schema['@type']);
-        $this->assertEquals(200, $schema['offers']['price']);
-        $this->assertEquals(150, $schema['offers']['priceSpecification']['minPrice']);
+        $this->assertSame('200.00', $schema['offers']['price']);
+        $this->assertSame('150.00', $schema['offers']['priceSpecification']['minPrice']);
     }
 
     public function test_a_time_slot_on_request_emits_no_offer_at_all(): void
@@ -331,6 +331,63 @@ class ServiceFormRentalPriceTest extends TestCase
 
         $this->assertSame('Service', $schema['@type']);
         $this->assertArrayNotHasKey('offers', $schema);
+    }
+
+    public function test_a_time_slot_priced_zero_emits_no_offer(): void
+    {
+        // Owner decision 2026-11-22: a price of 0 means "no price", not "free". The decimal:2 cast hands back the
+        // truthy string '0.00', which used to emit offers.price "0.00" (= free to Google).
+        $service = $this->timeSlotService(['price' => 0, 'price_from' => null, 'published_at' => now()->subDay()]);
+
+        $schema = $this->schemaOf($service);
+
+        $this->assertSame('Service', $schema['@type']);
+        $this->assertArrayNotHasKey('offers', $schema);
+        $this->assertSame($service->name, $schema['name']);
+    }
+
+    public function test_a_rental_without_a_daily_rate_and_a_zero_price_emits_no_offer(): void
+    {
+        $service = $this->rentalService(['price_per_day' => null, 'price' => 0, 'price_on_request' => false]);
+
+        $schema = $this->schemaOf($service);
+
+        $this->assertSame('Product', $schema['@type']);
+        $this->assertArrayNotHasKey('offers', $schema);
+        $this->assertSame($service->name, $schema['name']);
+    }
+
+    public function test_a_zero_from_price_emits_the_offer_without_a_price_specification(): void
+    {
+        $service = $this->timeSlotService(['price' => 50, 'price_from' => 0, 'published_at' => now()->subDay()]);
+
+        $schema = $this->schemaOf($service);
+
+        $this->assertSame('50.00', $schema['offers']['price']);
+        $this->assertArrayNotHasKey('priceSpecification', $schema['offers']);
+    }
+
+    public function test_a_zero_price_with_a_positive_from_price_emits_no_offer_at_all(): void
+    {
+        // The minPrice check is nested inside the price check: a from-price alone never produces an Offer.
+        $service = $this->timeSlotService(['price' => 0, 'price_from' => 80, 'published_at' => now()->subDay()]);
+
+        $schema = $this->schemaOf($service);
+
+        $this->assertSame('Service', $schema['@type']);
+        $this->assertArrayNotHasKey('offers', $schema);
+        $this->assertSame($service->name, $schema['name']);
+    }
+
+    public function test_the_smallest_positive_price_still_emits_an_offer_with_that_price(): void
+    {
+        $service = $this->timeSlotService(['price' => 0.01, 'price_from' => null, 'published_at' => now()->subDay()]);
+
+        $schema = $this->schemaOf($service);
+
+        $this->assertSame('Offer', $schema['offers']['@type']);
+        $this->assertSame('0.01', $schema['offers']['price']);
+        $this->assertSame('PLN', $schema['offers']['priceCurrency']);
     }
 
     // ---------------------------------------------------------------------------------------------

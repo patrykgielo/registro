@@ -42,8 +42,10 @@ Konsekwencja dla testów: stale `price` nie powstanie przez fabrykę/`create()`/
 modelu (`DB::table()`, `Service::query()->update()`, `saveQuietly()`; tych ścieżek hook nie obejmuje). Istniejące
 wiersze naprawia migracja `2026_11_21_100000_backfill_rental_price_from_price_per_day` (`down()` = świadomy no-op z `Log::info`,
 bo `MigrationRollbackTest` odrzuca pusty body). `price` time_slota jest `->required()` (warunek: nie-rental), więc opróżnione pole
-to błąd walidacji zamiast `QueryException` (c8 przemianowane z `known_gap`). JSON-LD: `price_on_request` → brak całego węzła
-`offers` (Google czyta `price: 0` jako „za darmo", a Offer bez `price` jest nieprawidłowy). Tracker `data-service-price`
+to błąd walidacji zamiast `QueryException` (c8 przemianowane z `known_gap`). JSON-LD: `price_on_request` LUB `price` = 0 → brak całego węzła
+`offers` (Google czyta `price: 0` jako „za darmo", a Offer bez `price` jest nieprawidłowy; decyzja właściciela 2026-11-22:
+0 = „brak ceny", nie „za darmo", oba typy). Warunek to `(float) $service->price > 0` — `decimal:2` zwraca string `'0.00'`,
+który jest truthy, więc goły `if ($service->price)` przepuszczał zero. Tracker `data-service-price`
 (`$service->price ?? $service->price_per_day ?? 0`) zostaje — po synchronizacji czyta już poprawną wartość.
 
 **Etap 1 (2026-11-21) naprawił trzy luki** (testy przemianowane z `known_gap`): **e1 — `metadata`**,
