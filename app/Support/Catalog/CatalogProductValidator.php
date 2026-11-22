@@ -222,7 +222,9 @@ final class CatalogProductValidator
             'specs.*.label' => 'required|string|max:100',
             'specs.*.value' => 'required',
             'specs.*.unit' => 'nullable|string|max:20',
-            'features' => 'nullable|array|max:4',
+            // Optional "show on the product tile" star; only a real JSON true/false (null = not starred).
+            'specs.*.highlight' => 'nullable|boolean:strict',
+            'features' => 'nullable|array|max:'.Service::TILE_POINTS_LIMIT,
             'features.*' => 'required|string|max:100',
             'seo' => 'nullable|array',
             'seo.meta_title' => 'nullable|string|max:60',
@@ -270,6 +272,14 @@ final class CatalogProductValidator
                 }
             }
 
+            // The panel form refuses a fifth star, so the importer must too (the tile shows 4 points in all).
+            $starred = is_array($p['specs'] ?? null)
+                ? count(array_filter($p['specs'], fn ($spec): bool => is_array($spec) && ($spec['highlight'] ?? null) === true))
+                : 0;
+            if ($starred > Service::TILE_POINTS_LIMIT) {
+                $v->errors()->add('specs', 'najwyżej '.Service::TILE_POINTS_LIMIT.' parametry mogą mieć highlight: true (kafelek pokazuje razem maks. '.Service::TILE_POINTS_LIMIT." punkty), jest {$starred}");
+            }
+
             foreach (array_merge(isset($p['featured_image']) ? ['featured_image' => $p['featured_image']] : [], $this->galleryWithKeys($p)) as $field => $img) {
                 if (! is_array($img)) {
                     continue;
@@ -307,7 +317,7 @@ final class CatalogProductValidator
 
         foreach ($p['specs'] ?? [] as $n => $spec) {
             if (is_array($spec)) {
-                $this->checkKeys($report, $i, $ext, $spec, ['label', 'value', 'unit'], "specs.{$n}.");
+                $this->checkKeys($report, $i, $ext, $spec, ['label', 'value', 'unit', 'highlight'], "specs.{$n}.");
             }
         }
     }

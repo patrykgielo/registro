@@ -38,7 +38,8 @@
         $totalReviews = $service->total_reviews ?? 0;
         $isPopular = $service->is_popular ?? false;
         $bookingCountWeek = $isRental ? 0 : ($service->booking_count_week ?? 0);
-        $features = $service->features ?? [];
+        // "✓" points: starred spec rows first (rentals), then `features`; max 4 (Service::tilePoints()).
+        $tilePoints = $service->tilePoints();
 
         // Featured image for background
         $featuredImage = $service->featured_image
@@ -59,7 +60,7 @@
         $totalReviews = 0;
         $isPopular = false;
         $bookingCountWeek = 0;
-        $features = [];
+        $tilePoints = [];
         $featuredImage = null;
         $rentalPrice = null;
         $quantityAvailable = null;
@@ -193,9 +194,9 @@
         @endif
 
         {{-- Features List (visible on all devices) --}}
-        @if(is_array($features) && count($features) > 0)
+        @if(count($tilePoints) > 0)
         <ul class="service-card__features space-y-1.5 md:space-y-2 mb-4 {{ $featuresListClasses }} rounded-lg p-3 md:p-4">
-            @foreach(array_slice($features, 0, 4) as $feature)
+            @foreach($tilePoints as $feature)
             <li class="service-card__feature flex items-start gap-2 text-xs md:text-sm {{ $featureTextClasses }}">
                 <x-heroicon-s-check-circle class="service-card__feature-icon w-4 h-4 {{ $featureIconClasses }} flex-shrink-0 mt-0.5" />
                 <span class="service-card__feature-text leading-relaxed">{{ $feature }}</span>

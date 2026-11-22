@@ -38,7 +38,8 @@ class ServiceFormTabsTest extends TestCase
         'Podstawowe' => ['Podstawowe informacje', 'Zdjęcie wyróżniające'],
         'Cena i czas trwania' => ['Cena i czas trwania'],
         'Cena i magazyn' => ['Cennik wypożyczenia', 'Magazyn i identyfikacja'],
-        'Specyfikacja' => ['Specyfikacja techniczna'],
+        // Stage C: the rental's features ("Dodatkowe punkty na kafelku") moved here.
+        'Specyfikacja' => ['Specyfikacja techniczna', 'Dodatkowe punkty na kafelku'],
         // Stage 3: renamed per the approved mockup; the fixture rental has no blocks, hence "(0)".
         // Stage A: Krótki opis and Co zawiera usługa moved here.
         'Treść' => ['Krótki opis', 'Opis produktu', 'Zaawansowane bloki (0)', 'Co zawiera usługa'],
@@ -223,8 +224,12 @@ class ServiceFormTabsTest extends TestCase
 
         foreach ($inventory as $name) {
             $this->assertArrayHasKey($name, $owners, "field `{$name}` is in no tab");
-            $this->assertCount(1, $owners[$name], "field `{$name}` is in several tabs: ".implode(', ', $owners[$name]));
+            // Stage C: `features` is deliberately in two tabs (Specyfikacja for a rental, Treść for a
+            // time slot); their visibility is mutually exclusive, so only one is ever shown and saved.
+            $this->assertCount($name === 'features' ? 2 : 1, $owners[$name], "field `{$name}` is in several tabs: ".implode(', ', $owners[$name]));
         }
+
+        $this->assertSame(['Specyfikacja', 'Treść'], $owners['features'], 'features: rental copy in Specyfikacja, time slot copy in Treść');
 
         $this->assertEqualsCanonicalizing($inventory, array_keys($owners), 'the tabs hold a field the form inventory does not know about');
 
@@ -270,7 +275,7 @@ class ServiceFormTabsTest extends TestCase
             }
         }
 
-        $this->assertSame(['metadata.specs'], $this->fieldNamesIn($tabs['Specyfikacja']), 'the specification tab holds only the specs repeater');
+        $this->assertSame(['metadata.specs', 'features'], $this->fieldNamesIn($tabs['Specyfikacja']), 'the specification tab holds the specs repeater plus the rental\'s features');
     }
 
     // ---------------------------------------------------------------------------------------------
