@@ -125,7 +125,7 @@ Wpięcie: `.claude/settings.json`. Skrypty: `.claude/hooks/*.sh` + `lib/`. Testy
 ### Odzyskiwanie, gdy hooki nie działają
 
 1. `scripts/cc-doctor.sh` (z Git Basha też — przekaże się do WSL) — mówi, co jest niewpięte / bez parsera / w dryfie.
-2. `wsl.exe -d Ubuntu-24.04 -e true` — czy dystrybucja startuje. Rozpoznanie błędu: komunikat `did NOT run` / `could NOT run inside WSL` w stderr hooka albo deny z `rc=` w PreToolUse.
+2. `wsl.exe -d Ubuntu-24.04 -e true` — czy dystrybucja startuje (cały lokalny stos po restarcie Windows: `scripts/local/start-wsl.ps1`, patrz `app/docs/guides/lokalny-start-wsl.md`). Rozpoznanie błędu: komunikat `did NOT run` / `could NOT run inside WSL` w stderr hooka albo deny z `rc=` w PreToolUse.
 3. Brak python3 w WSL: `sudo apt install python3` (robi to człowiek). Do czasu instalacji PreToolUse **odmawia komend strzeżonych** i przepuszcza resztę z ostrzeżeniem.
 4. `git checkout -- .claude/settings.json` — odtwarza wpięcie.
 5. Ręczny test dokładnie jak robi to Claude Code: `printf '%s' '{"tool_name":"Bash","cwd":"C:\\projects\\registro","tool_input":{"command":"git commit -m x"}}' | CLAUDE_PROJECT_DIR=C:/projects/registro bash -c '"$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-tool-use.sh'` — klon na `develop` ⇒ `deny`.
