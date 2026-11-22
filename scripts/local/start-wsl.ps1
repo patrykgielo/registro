@@ -189,11 +189,11 @@ if ($InstallAutostart -or $RemoveAutostart) {
         # the script), so the default 72 h ExecutionTimeLimit is not what
         # matters here; zero (= unlimited) is just not adding a second way to
         # be killed.
-        # THE REAL OPEN QUESTION, UNVERIFIED: the hidden keepalive is started by
-        # Start-Process from inside this task's process tree. Whether it
-        # SURVIVES once the task action exits / the task ends (Task Scheduler
-        # may tear the tree down) has never been run. Verification steps for
-        # the owner are in app/docs/guides/lokalny-start-wsl.md ("Autostart").
+        # The hidden keepalive is started by Start-Process from inside this
+        # task's process tree. VERIFIED 2026-11-22 (Win 11 10.0.26300): it
+        # survives the task action exiting (task back to Ready) and 5 idle
+        # minutes after it. Re-check steps: app/docs/guides/lokalny-start-wsl.md
+        # ("Autostart").
         $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
         $principal = New-ScheduledTaskPrincipal -UserId $who -LogonType Interactive -RunLevel Limited
         if ($PSCmdlet.ShouldProcess($TaskName, 'Register scheduled task')) {

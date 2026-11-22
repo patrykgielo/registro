@@ -1,6 +1,6 @@
 ---
 name: project-local-wsl-startup-2026-11-22
-description: Local Windows/WSL2 stack start (scripts/local/start-wsl.ps1 + up.sh) built 2026-11-22 on feature/local-wsl-startup; autostart task and cold start were never run; shellcheck via docker run was denied by the classifier
+description: Local Windows/WSL2 stack start (scripts/local/start-wsl.ps1 + up.sh) built 2026-11-22 on feature/local-wsl-startup; cold start and the logon autostart task both verified 2026-11-22 (task OK in 27 s, keepalive survives the task ending); shellcheck via docker run was denied by the classifier
 metadata:
   type: project
 ---
@@ -17,5 +17,6 @@ metadata:
 - Case 29 (`fake docker never hangs on open stdin`) flakes when the machine is loaded (it reruns case 16 under a timeout); it passed alone and on a quiet rerun. Not caused by new cases.
 - cc-doctor TIER 1 was already 12124 > 12000 before this change (no TIER 1 file touched).
 - AGENT MEMORY GOES ONLY IN THE WSL TREE (`\\wsl.localhost\Ubuntu-24.04\...\app\.claude\agent-memory\...`), never `C:\projects\registro` (stale clone; the coordinator had to move my files once).
-- Review round 1 lessons: never `2>&1` into a value you parse (compose WARN became a "service"); `--no-build` does not stop registry pulls, add `--pull never`; a one-sample health check can catch a restart loop in "running" (two consecutive samples); `wsl -l` is UTF-8 when `WSL_UTF8=1` (verified: UTF-16 decode then fails to match); when reasoning about a scheduled task, check what actually bounds it (action ends in ~2 min, so the 72 h limit was a red herring; the real question is whether a Start-Process child survives the task tree, still unverified).
+- Review round 1 lessons: never `2>&1` into a value you parse (compose WARN became a "service"); `--no-build` does not stop registry pulls, add `--pull never`; a one-sample health check can catch a restart loop in "running" (two consecutive samples); `wsl -l` is UTF-8 when `WSL_UTF8=1` (verified: UTF-16 decode then fails to match); when reasoning about a scheduled task, check what actually bounds it (action ends in ~2 min, so the 72 h limit was a red herring; the real question was whether a Start-Process child survives the task tree: VERIFIED 2026-11-22, it does, and is still up after 5 idle minutes).
+- Verifying the keepalive: check ONLY from the Windows side (`Get-CimInstance Win32_Process` for `sleep infinity` + `wsl -l -v`). `-Status`, the Bash tool (wsl.exe) or any read of `\\wsl.localhost` wakes or holds the distro and masks a stop.
 - wsl.exe spawns a child wsl.exe with an IDENTICAL command line: one keepalive = 2 matching processes (parent+child). Count only roots (ParentProcessId not itself a match). My first version miscounted this as "2 keepalives"; I had also misread the pre-existing 14564/18888 pair, never checked their parentage.

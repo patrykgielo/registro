@@ -144,28 +144,32 @@ startuje dystrybucję (`wsl -- true`), czeka na ścieżkę i dopiero wtedy odpal
 przebiegu: `%LOCALAPPDATA%\registro-local-start.log`. Gdy rejestracja zgłosi „Access is denied" — powtórz
 z PowerShella uruchomionego jako administrator.
 
-**Niesprawdzone — otwarte pytanie:** autostart nie został zarejestrowany ani uruchomiony (decyzja
-właściciela); zweryfikowano tylko jego definicję (`-WhatIf`) i sam skrypt uruchamiany ręcznie. Kluczowa
-niewiadoma: ukryty keepalive startuje przez `Start-Process` **wewnątrz drzewa procesów zadania** — czy
-**przeżyje**, gdy akcja zadania się skończy (Harmonogram zadań może to drzewo zamknąć), nie było nigdy
-uruchomione. Jeśli nie przeżyje, po zalogowaniu stos wstanie, ale WSL zatrzyma się w bezczynności.
+**Zweryfikowane 2026-11-22** (Windows 11 Home 10.0.26300, autostart zarejestrowany na życzenie
+właściciela): po `wsl.exe --shutdown` i `Start-ScheduledTask` log skończył się `RESULT: OK` po **27 s**
+(7/7 serwisów, panel tenanta HTTP 200). Zadanie wróciło do `Ready`, a ukryty keepalive (`wsl.exe -d
+Ubuntu-24.04 -- sleep infinity`, rodzic + dziecko) **przeżył koniec zadania** — Harmonogram zadań nie
+zamyka drzewa procesów. Po 5 minutach bezczynności (nic nie dotykało WSL) keepalive nadal żył, a
+dystrybucja była `Running`.
 
-Jak to sprawdzić po `-InstallAutostart` (zaczynamy od zera, żeby istniejący keepalive nie dał fałszywego
-„OK"):
+Jak to powtórzyć (np. po aktualizacji Windows/WSL). Zaczynamy od zera, żeby istniejący keepalive nie dał
+fałszywego „OK":
 
 ```powershell
 wsl.exe --shutdown                                   # zatrzymuje dystrybucję, keepalive i kontenery
 Start-ScheduledTask -TaskName 'Registro Local Start' # to samo, co zrobi logowanie
-# po ok. 2 minutach:
+# po ok. 30 s – 2 min:
 Get-Content "$env:LOCALAPPDATA\registro-local-start.log"   # musi kończyć się: RESULT: OK
-Get-ScheduledTask -TaskName 'Registro Local Start' | Select-Object State   # Ready albo Running — oba możliwe
-# ZADANIE JUŻ SKOŃCZYŁO AKCJĘ — teraz sprawdź keepalive:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu-24.04\var\www\projects\registro\app\scripts\local\start-wsl.ps1" -Status
+Get-ScheduledTask -TaskName 'Registro Local Start' | Select-Object State   # Ready = akcja zadania skończona
+# keepalive i stan dystrybucji — sprawdzane WYŁĄCZNIE od strony Windows:
+Get-CimInstance Win32_Process -Filter "Name='wsl.exe'" | Select-Object ProcessId,ParentProcessId,CommandLine
+wsl.exe -l -v
 ```
 
-Poprawny wynik: `keepalive: already running (PID n)` i `RESULT: OK`. Powtórz `-Status` po kilku minutach
-bezczynności. `keepalive: NOT running` albo zatrzymana dystrybucja = keepalive nie przeżył zadania:
-usuń autostart (`-RemoveAutostart`) i zgłoś to.
+Poprawny wynik: dwa procesy `wsl.exe ... -- sleep infinity` i `Ubuntu-24.04  Running`. Powtórz ostatnie
+dwie komendy po kilku minutach bezczynności. **Nie sprawdzaj tego przez `-Status`** ani nic, co czyta
+`\\wsl.localhost` — samo otwarcie tej ścieżki budzi dystrybucję, więc zamaskuje to, że się zatrzymała.
+Brak procesu `sleep infinity` albo `Stopped` = keepalive nie przeżył zadania: usuń autostart
+(`-RemoveAutostart`) i zgłoś to.
 
 ## Testy
 
