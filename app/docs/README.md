@@ -109,6 +109,7 @@ for the conceptual overview these deep-dive.
 | CMS Layouts | `guides/cms-layouts.md` |
 | Localisation (pl + en) | `guides/localisation.md` |
 | Druga maszyna i Remote Control | `guides/druga-maszyna-i-remote-control.md` |
+| Lokalny start na Windows/WSL2 (jedna komenda, keepalive, 502 po starcie, autostart) | `guides/lokalny-start-wsl.md` |
 
 ---
 

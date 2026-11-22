@@ -99,6 +99,10 @@ Nie wstawiaj tam **identyfikatorów ani linków do ClickUpa** — to tracker wew
 ## Quick Commands
 
 ```bash
+# Start lokalnego stosu po restarcie Windows (PowerShell; szczegóły: app/docs/guides/lokalny-start-wsl.md):
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu-24.04\var\www\projects\registro\app\scripts\local\start-wsl.ps1"
+# Z terminala WSL: bash scripts/local/up.sh   (--status = tylko raport). Nigdy nie startuje `node`.
+
 # OBOWIĄZKOWE po każdej zmianie Blade/CSS/JS — bez wyjątków!
 docker compose exec -T app npm run build
 # Jeśli po build nadal są stare style → plik public/hot blokuje → usuń go:
