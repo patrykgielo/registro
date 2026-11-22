@@ -313,6 +313,52 @@ class Service extends Model
     // Methods
 
     /**
+     * Product tile: the most "✓" points it shows. One number for the tile, the admin form's
+     * `features` limit, the importer, and the cap on starred spec rows (`metadata.specs[].highlight`).
+     */
+    public const TILE_POINTS_LIMIT = 4;
+
+    /**
+     * The "✓" points on the product tile, at most TILE_POINTS_LIMIT: first the spec rows the owner
+     * starred (`metadata.specs[].highlight === true`, rental only), formatted "Label: value unit",
+     * then the `features` strings. With nothing starred (and for every time_slot) this is just
+     * `features`, as the tile always showed. A starred row without a label or a value has nothing
+     * to show and is skipped, like a blank feature.
+     *
+     * @return array<int, string>
+     */
+    public function tilePoints(): array
+    {
+        $points = [];
+
+        if ($this->service_type === ServiceType::ItemRental && is_array($this->metadata['specs'] ?? null)) {
+            foreach ($this->metadata['specs'] as $spec) {
+                if (! is_array($spec) || ($spec['highlight'] ?? false) !== true) {
+                    continue;
+                }
+
+                $label = is_scalar($spec['label'] ?? null) ? trim((string) $spec['label']) : '';
+                $value = is_scalar($spec['value'] ?? null) ? trim((string) $spec['value']) : '';
+                $unit = is_scalar($spec['unit'] ?? null) ? trim((string) $spec['unit']) : '';
+
+                if ($label === '' || $value === '') {
+                    continue;
+                }
+
+                $points[] = "{$label}: {$value}".($unit !== '' ? " {$unit}" : '');
+            }
+        }
+
+        foreach (is_array($this->features) ? $this->features : [] as $feature) {
+            if (is_scalar($feature) && trim((string) $feature) !== '') {
+                $points[] = (string) $feature;
+            }
+        }
+
+        return array_slice($points, 0, self::TILE_POINTS_LIMIT);
+    }
+
+    /**
      * Check if the service is published (published_at in the past)
      */
     public function isPublished(): bool

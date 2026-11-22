@@ -632,10 +632,13 @@ class ImportCatalog
             }
         }
 
+        // `highlight: true` (starred for the product tile) is kept; an un-starred row has NO key
+        // (same rule as NormalizesSpecsShape, which backs it up on save).
         $specs = array_map(fn (array $s) => [
             'label' => $s['label'],
             'value' => $s['value'],
             'unit' => filled($s['unit'] ?? null) ? $s['unit'] : null,
+            ...(($s['highlight'] ?? null) === true ? ['highlight' => true] : []),
         ], array_values($p['specs'] ?? []));
 
         $metadata = array_filter([

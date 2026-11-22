@@ -48,6 +48,27 @@ to błąd walidacji zamiast `QueryException` (c8 przemianowane z `known_gap`). J
 który jest truthy, więc goły `if ($service->price)` przepuszczał zero. Tracker `data-service-price`
 (`$service->price ?? $service->price_per_day ?? 0`) zostaje — po synchronizacji czyta już poprawną wartość.
 
+**Etap C (2026-11-22) — gwiazdki na kafelku.** Wiersz `metadata.specs` ma opcjonalne `highlight`: `{label, value, unit, highlight: true}`.
+Wiersz NIEwyróżniony **nie ma klucza w ogóle** (nie `false`, nie `null`) — inaczej pierwszy zapis nietkniętego produktu dopisałby
+`highlight: false` do każdego wiersza i żaden zapis nie byłby no-opem (`ServiceResourceSpecsUnitNoopSaveTest`). Toggle w wierszu odsyła
+`false` dla każdego niewłączonego wiersza, więc klucz zdejmuje **model**, nie formularz: `NormalizesSpecsShape` (hook `saving`,
+`normalizeSpecHighlights()`) — wszystko, co `filter_var(FILTER_VALIDATE_BOOLEAN)` czyta jako prawdę (`true`/`1`/`"1"`/`"true"`/`"on"`/`"yes"`) → prawdziwe `true`, wszystko inne → klucz znika. Warstwa modelu, bo obejmuje też
+import (`ImportCatalog` i tak pomija klucz), seedery i konsolę; formularz nie ma jak usunąć klucza z jednego pola wiersza. Czytnik
+(`Service::tilePoints()`) może więc ufać „klucz = gwiazdka" (`=== true`). Limit: `Service::TILE_POINTS_LIMIT` (4) — jedna liczba dla
+kafelka, `features`, kapu gwiazdek i walidatora importu; egzekwuje go WYŁĄCZNIE `->rules([fn (): Closure => …])` na repeaterze
+(zdisablowane toggle'e to UI, `live()` + `->disabled()` liczące wiersze z `$get('../')` = stan samego repeatera; `isAbsolute: true` to pełna ścieżka Livewire `data.metadata.specs`, nie `metadata.specs`). Licznik „Na kafelku: N z 4”
+to `Text::make(js)->js()` w `Section::afterHeader()` czytający `$wire.$get('data.metadata.specs')` — zero round-tripów, jak „N / 500”.
+Gwiazdka to `Toggle` z `onIcon(Heroicon::Star)`/`offIcon(OutlinedStar)` (Filament nie ma pojedynczej kontrolki-gwiazdki); `TableColumn` nie ma
+tooltipa, więc objaśnienie siedzi na `hintIcon(..., tooltip:)` repeatera. `features` (ta sama kolumna) mieszka teraz w DWÓCH miejscach
+zależnie od typu: rental → „Specyfikacja” / „Dodatkowe punkty na kafelku”, time_slot → „Treść” / „Co zawiera usługa”; dwie sekcje z jednym
+`featuresRepeater()`, wzajemnie wykluczające się `visible()` (dokładnie jedna dehydratuje). **Pułapka dwóch komponentów z jednym
+`statePath`:** hydratują się OBA (także ukryty), a hook Repeatera opakowuje każdy zapisany string w wiersz — drugi opakowałby wiersze pierwszego
+(`[['feature' => ['feature' => 'x']]]`) i nietknięty zapis wpisałby do bazy wiersze zamiast stringów. Dlatego `featuresRepeater()` nadpisuje
+`afterStateHydrated`: stan niepusty, którego KAŻDA wartość jest tablicą (wiersze), to stan już zahydratowany, więc pomija `hydrateItems()` (NIE „nie-lista”: zapisany słownik z dziurami `{"0":"a","2":"b"}` też nie jest listą, a jest jeszcze nieopakowany). Test, który tylko ustawia
+`features` przez `fillForm()`, tego NIE wykryje — trzeba zapisu bez zmian i porównania z bazą (`test_features_round_trip_unchanged_for_both_types`). Kafelek (`ios/service-card`) woła
+`$service->tilePoints()`; strona produktu (tabela specyfikacji) ignoruje gwiazdki. Importer tylko tworzy (nigdy nie aktualizuje istniejącego
+produktu — `catalog-json-importer.md`), więc ponowny import nie zetrze gwiazdek ustawionych w panelu.
+
 **Etap 1 (2026-11-21) naprawił trzy luki** (testy przemianowane z `known_gap`): **e1 — `metadata`**,
 **c6 — slug** i **etykiety typu**.
 - `metadata`: `EditService::mutateFormDataBeforeSave()` scala klucze formularza NA zapisane

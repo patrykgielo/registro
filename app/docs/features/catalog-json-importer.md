@@ -121,7 +121,7 @@ catalog:import {organization} {file}
       "sort_order": 10,
       "published_at": "2026-11-01 08:00:00",
       "stock": { "quantity": 3 },
-      "specs": [ { "label": "Moc", "value": 800, "unit": "W" }, { "label": "Waga", "value": 3.2, "unit": "kg" } ],
+      "specs": [ { "label": "Moc", "value": 800, "unit": "W", "highlight": true }, { "label": "Waga", "value": 3.2, "unit": "kg" } ],
       "features": [ "Walizka w komplecie", "3 wiertła SDS" ],
       "seo": { "meta_title": "Wynajem młota Bosch GBH 2-26", "meta_description": "Wypożycz młot udarowy Bosch GBH 2-26." },
       "featured_image": {
@@ -159,8 +159,8 @@ catalog:import {organization} {file}
 | `stock.quantity` | | int ≥ 1; only for an organization with exactly ONE active location (the form's "Ilość w magazynie") |
 | `stock.locations` | | `{"<location-slug>": int ≥ 0}`, active locations only, sum ≥ 1 |
 | `units[]` | | ≤ 500 per product; `{identifier?, inventory_number?, status?, acquired_at?, notes?, location? (string or int slug)}`; `status` ∈ `available|maintenance|in_transit|retired`; `location` slug required unless exactly one active location; `identifier` unique per organization (trim-/case-insensitive, also inside the file). Quantity is then derived by `ServiceUnitObserver` (available units only) |
-| `specs[]` | no | ≤ 30; `{label ≤100 (required), value ≤100 chars/number (required), unit ≤20 or null}` — stored as a LIST (`NormalizesSpecsShape`) |
-| `features` | no | list, ≤ 4 items, each ≤ 100 |
+| `specs[]` | no | ≤ 30; `{label ≤100 (required), value ≤100 chars/number (required), unit ≤20 or null, highlight? (JSON `true`/`false`/`null`)}` — stored as a LIST (`NormalizesSpecsShape`). `highlight: true` puts the row on the product tile as a "Label: value unit" point; **at most 4 rows per product** may have it (a fifth is an error, like the panel's). A row that is not starred is stored with **no** `highlight` key (never `false`) |
+| `features` | no | list, ≤ 4 items (`Service::TILE_POINTS_LIMIT`), each ≤ 100. The tile shows the starred specs first, then these, 4 points in all |
 | `seo.meta_title` / `seo.meta_description` | no | ≤ 60 / ≤ 160 |
 | `featured_image`, `gallery[]` (list of objects, ≤ 10) | no | `{url \| path, alt?, caption?, credit?, license?, source_page?}` — exactly one of `url`/`path`; a non-object entry (`"abc"`, `null`, `5`) is a validation error |
 
@@ -191,7 +191,7 @@ Where it is **deliberately stricter**:
 
 * prices ≥ 0, ≤ 99999999.99, at most 2 decimals (the form accepts negatives and silently rounds);
 * slugs must match `^[a-z0-9]+(-[a-z0-9]+)*$`; category slugs likewise;
-* specs need both `label` and `value` (the form allows empty rows);
+* specs need both `label` and `value` (the form allows empty rows); `highlight` must be a real JSON boolean (the form's toggle sends nothing else);
 * unknown keys are errors; `gallery`/`features`/`specs` must be lists;
 * upper bounds the form lacks: `sort_order` ≤ INT max, ≤ 500 units, ≤ 30 specs, TEXT columns ≤ 65535
   **bytes** (the form would hit "Data too long");
@@ -453,7 +453,8 @@ while a run is alive allows concurrent runs of the same organization.
   warning on `--skip-existing` for fields with surrounding whitespace or `""`. It is only a warning.
 
 * v1 creates only; it never updates an existing product (a changed payload for an already-imported
-  `external_id` is skipped with a warning).
+  `external_id` is skipped with a warning). So a re-import can never wipe the tile stars an owner set
+  in the panel: the payload's `highlight` flags apply to NEW products only.
 * `audit_logs` entries written by the import (units, and stock rows updated through Eloquent) survive a revert.
 * Edited-after-import detection uses second-resolution timestamps; an admin edit in the same second as
   the import's end is not seen.

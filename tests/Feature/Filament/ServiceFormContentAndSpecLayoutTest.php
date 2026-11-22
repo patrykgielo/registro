@@ -91,7 +91,7 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
     // Specyfikacja: compact table rows
     // ---------------------------------------------------------------------------------------------
 
-    public function test_the_spec_repeater_is_a_three_column_table_that_is_not_collapsible(): void
+    public function test_the_spec_repeater_is_a_four_column_table_that_is_not_collapsible(): void
     {
         /** @var Repeater $specs */
         $specs = $this->field($this->openEdit($this->rentalService()), 'metadata.specs');
@@ -99,14 +99,14 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
         $this->assertInstanceOf(Repeater::class, $specs);
         $this->assertTrue($specs->isTable());
         $this->assertSame(
-            ['Parametr', 'Wartość', 'Jednostka'],
+            ['Parametr', 'Wartość', 'Jednostka', 'Na kafelku'],
             array_map(fn ($column): string => (string) $column->getLabel(), $specs->getTableColumns()),
-            'column headings, in order',
+            'column headings, in order (stage C added "Na kafelku")',
         );
         $this->assertSame(
-            ['label', 'value', 'unit'],
+            ['label', 'value', 'unit', 'highlight'],
             array_map(fn ($field): string => $field->getName(), $specs->getChildSchema()->getComponents()),
-            'the table columns line up with the same three fields, same order',
+            'the table columns line up with the same four fields, same order',
         );
         $this->assertFalse($specs->isCollapsible(), 'no collapse/expand');
         $this->assertFalse($specs->hasItemLabels(), 'no item label');

@@ -59,13 +59,50 @@ trait NormalizesSpecsShape
                 return;
             }
 
-            if (array_is_list($metadata['specs'])) {
-                return;
+            $specs = $metadata['specs'];
+
+            if (! array_is_list($specs)) {
+                $specs = static::specsDictToList($specs);
             }
 
-            $metadata['specs'] = static::specsDictToList($metadata['specs']);
-            $model->metadata = $metadata;
+            $specs = static::normalizeSpecHighlights($specs);
+
+            if ($specs !== $metadata['specs']) {
+                $metadata['specs'] = $specs;
+                $model->metadata = $metadata;
+            }
         });
+    }
+
+    /**
+     * A starred row (shown with a tick on the product tile) is stored `highlight: true`; a row that
+     * is not starred has NO `highlight` key at all - never `false`, never `null`. The panel's toggle
+     * submits `false` for every un-starred row, so without this an untouched product would gain a
+     * `highlight: false` key on its first save and no save would be a no-op any more. Hanging it on
+     * `saving` (not on the form) also covers the importer, seeders and the console, so
+     * `Service::tilePoints()` may trust "key present = starred".
+     *
+     * Anything that reads as true (`true`, `1`, `"1"`, `"true"`) becomes the real `true`; everything
+     * else loses the key. Row order and every other key are left exactly as they were.
+     *
+     * @param  array<int, mixed>  $specs
+     * @return array<int, mixed>
+     */
+    public static function normalizeSpecHighlights(array $specs): array
+    {
+        foreach ($specs as $i => $row) {
+            if (! is_array($row) || ! array_key_exists('highlight', $row)) {
+                continue;
+            }
+
+            if (filter_var($row['highlight'], FILTER_VALIDATE_BOOLEAN)) {
+                $specs[$i]['highlight'] = true;
+            } else {
+                unset($specs[$i]['highlight']);
+            }
+        }
+
+        return $specs;
     }
 
     /**

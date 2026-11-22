@@ -13,6 +13,7 @@ use App\Filament\Support\TenantScopedUniqueRule;
 use App\Models\Service;
 use App\Support\TenantFeature;
 use BackedEnum;
+use Closure;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Schemas\Components\Grid;
@@ -20,7 +21,9 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Text;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
@@ -423,6 +426,23 @@ class ServiceResource extends BaseResource
                                                     ->label('Jednostka')
                                                     ->placeholder('np. W')
                                                     ->maxLength(20),
+                                                // Stage C: a star per row = "show this parameter with a tick on the product tile".
+                                                // Filament has no star-shaped control: a Toggle whose knob carries a star is the
+                                                // closest native one. The key is stored ONLY when on (`highlight: true`): the toggle
+                                                // submits `false` for every other row, and NormalizesSpecsShape (model, `saving`)
+                                                // drops it, so an untouched product saves byte-identical. Live so that once four are
+                                                // on the others disable; the counter in the section header is client-side.
+                                                Forms\Components\Toggle::make('highlight')
+                                                    ->label(fn (Get $get): string => filled($get('label'))
+                                                        ? 'Pokaż „'.trim((string) $get('label')).'” na kafelku'
+                                                        : 'Pokaż parametr na kafelku')
+                                                    ->onIcon(Heroicon::Star)
+                                                    ->offIcon(Heroicon::OutlinedStar)
+                                                    ->onColor('warning')
+                                                    ->live()
+                                                    ->disabled(fn (Get $get): bool => ! $get('highlight')
+                                                        // `../` = the container one level up = the repeater's own state (all rows)
+                                                        && self::countHighlightedSpecs($get('../')) >= Service::TILE_POINTS_LIMIT),
                                             ])
                                             // Stage 3: one compact row per parameter. Column headings sit once above the rows;
                                             // below Filament's container breakpoint a row stacks and shows per-field labels.
@@ -430,13 +450,33 @@ class ServiceResource extends BaseResource
                                                 Forms\Components\Repeater\TableColumn::make('Parametr'),
                                                 Forms\Components\Repeater\TableColumn::make('Wartość'),
                                                 Forms\Components\Repeater\TableColumn::make('Jednostka')->width('9rem'),
+                                                Forms\Components\Repeater\TableColumn::make('Na kafelku')->width('6rem')->alignment(Alignment::Center),
                                             ])
                                             ->compact()
                                             ->reorderable()
                                             ->addActionLabel('Dodaj parametr')
                                             ->columnSpanFull()
                                             ->defaultItems(0)
-                                            ->helperText('Wyświetlane na stronie produktowej jako tabela specyfikacji'),
+                                            ->helperText('Wyświetlane na stronie produktowej jako tabela specyfikacji')
+                                            // A TableColumn has no tooltip, so the explanation sits on the repeater's own hint.
+                                            ->hintIcon(Heroicon::InformationCircle, tooltip: 'Zaznaczone parametry (maks. '.Service::TILE_POINTS_LIMIT.') pokazują się z ✓ na kafelku produktu: na liście wypożyczalni, w kategoriach i w blokach „Siatka treści”. Tabela na stronie produktu pokazuje zawsze wszystkie parametry.')
+                                            // The ONLY server-side guard for the cap: the disabled toggles are UI.
+                                            ->rules([
+                                                fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
+                                                    if (self::countHighlightedSpecs($value) > Service::TILE_POINTS_LIMIT) {
+                                                        $fail('Na kafelku mogą być maks. '.Service::TILE_POINTS_LIMIT.' parametry. Odznacz jeden, żeby wybrać inny.');
+                                                    }
+                                                },
+                                            ]),
+                                    ])
+                                    // Live counter, no round-trip: `$wire.$get()` reads the already-entangled state (same trick
+                                    // as the "N / 500" counter under `excerpt`). `headerActions()` is itself an `afterHeader()`
+                                    // (Section::setUp), so a bare `afterHeader()` would drop the template action: re-add it.
+                                    ->afterHeader(fn (Section $component): array => [
+                                        Text::make('\'Na kafelku: \' + Object.values($wire.$get(\'data.metadata.specs\') ?? {}).filter((row) => row?.highlight === true).length + \' z '.Service::TILE_POINTS_LIMIT.'\'')
+                                            ->js()
+                                            ->badge(),
+                                        ...$component->getHeaderActions(),
                                     ])
                                     ->headerActions([
                                         Actions\Action::make('loadSpecTemplate')
@@ -461,6 +501,14 @@ class ServiceResource extends BaseResource
                                             ->modalHeading('Wstawić szablon specyfikacji?')
                                             ->modalDescription('Obecne parametry zostaną zastąpione szablonem branżowym. Uzupełnij wartości po wstawieniu.'),
                                     ])
+                                    ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
+
+                                // `features` for a rental: the tile fills its ✓ points from the starred rows above, then these.
+                                // A time_slot keeps the same field in "Treść" as "Co zawiera usługa" (same column, same rules;
+                                // only one of the two sections is visible at a time, so exactly one is dehydrated).
+                                Section::make('Dodatkowe punkty na kafelku')
+                                    ->description('Dla cech, które nie są parametrem, np. „Cicha praca”. Kafelek dobiera je po wyróżnionych parametrach, razem maks. '.Service::TILE_POINTS_LIMIT.'.')
+                                    ->schema([self::featuresRepeater('Dodatkowe punkty na kafelku')])
                                     ->visible(fn (callable $get): bool => self::isRentalType($get('service_type'))),
                             ]),
 
@@ -549,26 +597,13 @@ class ServiceResource extends BaseResource
                                             ->helperText('Opcjonalne: dodaj galerie, wideo, przyciski CTA, hero sections i więcej'),
                                     ]),
 
-                                // Moved from "Optymalizacja konwersji", unchanged and visible for both types (stage C reworks it
-                                // for rentals). The section description replaces the old helper text, so that is dropped and
-                                // the label is hidden visually like `body`'s.
+                                // Moved from "Optymalizacja konwersji". Time slots only since stage C: a rental edits the same
+                                // `features` column in "Specyfikacja" ("Dodatkowe punkty na kafelku"). The section description
+                                // replaces the old helper text, so that is dropped and the label is hidden visually like `body`'s.
                                 Section::make('Co zawiera usługa')
-                                    ->description('Do 4 punktów z ✓ na kafelku produktu na liście.')
-                                    ->schema([
-                                        Forms\Components\Repeater::make('features')
-                                            ->label('Co zawiera usługa')
-                                            ->hiddenLabel()
-                                            ->simple(
-                                                Forms\Components\TextInput::make('feature')
-                                                    ->label('Cecha')
-                                                    ->required()
-                                                    ->maxLength(100)
-                                            )
-                                            ->minItems(0)
-                                            ->maxItems(4)
-                                            ->columnSpanFull()
-                                            ->defaultItems(0),
-                                    ]),
+                                    ->description('Do '.Service::TILE_POINTS_LIMIT.' punktów z ✓ na kafelku produktu na liście.')
+                                    ->schema([self::featuresRepeater('Co zawiera usługa')])
+                                    ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type'))),
                             ]),
 
                         Tab::make('SEO i konwersja')
@@ -824,6 +859,55 @@ class ServiceResource extends BaseResource
     private static function countBlocks(mixed $state): int
     {
         return is_array($state) ? count($state) : 0;
+    }
+
+    /** How many rows of the `metadata.specs` repeater state are starred (`highlight` on). */
+    private static function countHighlightedSpecs(mixed $rows): int
+    {
+        if (! is_array($rows)) {
+            return 0;
+        }
+
+        return count(array_filter(
+            $rows,
+            fn (mixed $row): bool => is_array($row) && filter_var($row['highlight'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ));
+    }
+
+    /**
+     * The `features` repeater. Built here because it exists twice in the form - "Specyfikacja" for a rental,
+     * "Treść" for a time slot - with the same rules; the heading above it names the field, so its own label
+     * is hidden visually (kept for screen readers).
+     */
+    private static function featuresRepeater(string $label): Forms\Components\Repeater
+    {
+        return Forms\Components\Repeater::make('features')
+            ->label($label)
+            ->hiddenLabel()
+            // Both copies hydrate (hidden components included) from the SAME `data.features`. A Repeater's own hook
+            // wraps every stored string into an item row, so the second copy would wrap the first one's rows again
+            // - `[['feature' => ['feature' => 'x']]]` - and an untouched save would write rows instead of strings.
+            // Stored `features` holds strings (a list, or a dict with gaps like {"0":"a","2":"b"}); item rows are arrays.
+            // So the state is already hydrated only when it is non-empty and EVERY value is an array - not "is not a list".
+            ->afterStateHydrated(static function (Forms\Components\Repeater $component): void {
+                $state = $component->getRawState();
+
+                if (is_array($state) && $state !== [] && collect($state)->every(fn (mixed $value): bool => is_array($value))) {
+                    return;
+                }
+
+                $component->hydrateItems();
+            })
+            ->simple(
+                Forms\Components\TextInput::make('feature')
+                    ->label('Cecha')
+                    ->required()
+                    ->maxLength(100)
+            )
+            ->minItems(0)
+            ->maxItems(Service::TILE_POINTS_LIMIT)
+            ->columnSpanFull()
+            ->defaultItems(0);
     }
 
     private static function isRentalType(mixed $value): bool
