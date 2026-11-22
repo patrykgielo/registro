@@ -575,6 +575,17 @@ class ServiceFormTileHighlightsTest extends TestCase
         $this->assertSame(['Walizka', 'Cicha praca'], $this->createdBySlug('mlot')->features);
     }
 
+    public function test_the_features_add_button_reads_dodaj_punkt_for_both_types(): void
+    {
+        foreach (['rental' => fn (): Service => $this->rentalService(), 'time_slot' => fn (): Service => $this->timeSlotService()] as $type => $make) {
+            $this->openEdit($make())->assertFormFieldExists('features', function (Repeater $features) use ($type): bool {
+                $this->assertSame('Dodaj punkt', (string) $features->getAddActionLabel(), "{$type}: add button label");
+
+                return true;
+            });
+        }
+    }
+
     public function test_the_add_action_of_the_features_repeater_works_for_both_types(): void
     {
         foreach (['rental' => fn (): Service => $this->rentalService(), 'time_slot' => fn (): Service => $this->timeSlotService()] as $type => $make) {

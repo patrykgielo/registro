@@ -906,6 +906,8 @@ class ServiceResource extends BaseResource
             )
             ->minItems(0)
             ->maxItems(Service::TILE_POINTS_LIMIT)
+            // The default is "Dodaj do <label>", which reads badly with these lowercase headings.
+            ->addActionLabel('Dodaj punkt')
             ->columnSpanFull()
             ->defaultItems(0);
     }
