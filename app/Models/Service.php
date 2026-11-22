@@ -6,6 +6,7 @@ use App\Enums\ServiceType;
 use App\Models\Concerns\HasRentalBehavior;
 use App\Models\Concerns\HasTimeSlotBehavior;
 use App\Models\Concerns\NormalizesSpecsShape;
+use App\Models\Concerns\SyncsRentalPriceWithDailyRate;
 use App\Support\Services\ServiceQueryParams;
 use App\Traits\BelongsToOrganization;
 use App\Traits\NormalizesEmptyJsonToNull;
@@ -19,7 +20,7 @@ use Illuminate\Support\Str;
 
 class Service extends Model
 {
-    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior, NormalizesEmptyJsonToNull, NormalizesSpecsShape;
+    use BelongsToOrganization, HasFactory, HasRentalBehavior, HasTimeSlotBehavior, NormalizesEmptyJsonToNull, NormalizesSpecsShape, SyncsRentalPriceWithDailyRate;
 
     protected $fillable = [
         'organization_id',

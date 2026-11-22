@@ -216,7 +216,9 @@ class ServiceResource extends BaseResource
 
                         // time_slot only (the mirror of the rental tabs below): same condition as its one section, so a
                         // hidden tab is hidden like a hidden section - its fields are neither validated nor saved.
-                        // A rental's `price` is not editable (stage B computes it); the stored value is left alone.
+                        // A rental's `price` is not editable: the model copies `price_per_day` into it on every save
+                        // (SyncsRentalPriceWithDailyRate). A time_slot's `price` is NOT NULL in the DB, so it is required
+                        // here (stage B) - an emptied field is a validation error, not a QueryException.
                         Tab::make('Cena i czas trwania')
                             ->visible(fn (callable $get): bool => ! self::isRentalType($get('service_type')))
                             ->schema([
@@ -224,6 +226,7 @@ class ServiceResource extends BaseResource
                                     ->schema([
                                         Forms\Components\TextInput::make('price')
                                             ->label('Cena')
+                                            ->required(fn (callable $get): bool => ! self::isRentalType($get('service_type')))
                                             ->numeric()
                                             ->default(0.00)
                                             ->prefix('PLN')

@@ -230,16 +230,20 @@ class ServiceController extends Controller
             'url' => route('service.show', $service),
         ];
 
-        // Add offers if price exists
-        if ($service->price) {
+        // Emit an Offer only for a POSITIVE price, and never for a "price on request" service. Owner decision
+        // (2026-11-22): a price of 0 means "no price", not "free" - Google reads a numeric Offer price literally
+        // ("0" = free), and an Offer without `price` is invalid (price is required). So the whole Offer is
+        // omitted; the Product/Service node stays valid schema.org, it just advertises no price. The explicit
+        // float cast matters: the `decimal:2` cast hands back the string '0.00', which is truthy in PHP.
+        if ((float) $service->price > 0 && ! $service->price_on_request) {
             $schema['offers'] = [
                 '@type' => 'Offer',
                 'price' => $service->price,
                 'priceCurrency' => 'PLN',
             ];
 
-            // Add price specification if price_from exists
-            if ($service->price_from) {
+            // Add price specification only for a positive price_from (0 = "no price"; '0.00' is a truthy string)
+            if ((float) $service->price_from > 0) {
                 $schema['offers']['priceSpecification'] = [
                     '@type' => 'UnitPriceSpecification',
                     'minPrice' => $service->price_from,

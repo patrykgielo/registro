@@ -167,7 +167,9 @@ catalog:import {organization} {file}
 Prices are **gross (brutto) PLN** — net is only displayed, computed from the tenant's
 `general.vat_rate`. There are no VAT/currency fields. `deposit_amount` (kaucja) is not VAT-able.
 `price` is set equal to `price_per_day` (seeder parity; the product page's JS and schema.org read
-it). `area_served` is left null (the form's "Poznań" default is wrong for other tenants). Rating,
+it) — since 2026-11-21 the `Service` model keeps that equality on every later save too
+(`SyncsRentalPriceWithDailyRate`), so the import's own copy is now redundant but harmless.
+`area_served` is left null (the form's "Poznań" default is wrong for other tenants). Rating,
 review and popularity counters are not importable.
 
 ### Name / key folding

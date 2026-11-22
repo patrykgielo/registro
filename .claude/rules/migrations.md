@@ -185,7 +185,7 @@ docker compose exec -T app php artisan migrate
 ### Rules
 - **MANDATORY:** Every `down()` must have a non-empty body. Empty body = blocked by `pre-commit` hook.
 - **ALWAYS:** `Schema::dropIfExists()` not `Schema::drop()` — never fails on missing table.
-- **Data-only migrations:** Cannot be reversed → use `throw new \RuntimeException('...')` explicitly.
+- **Data-only migrations:** Cannot be reversed → use `throw new \RuntimeException('...')` explicitly. Sanctioned exception: an idempotent backfill of a derived value whose old values are unrecoverable and carry no information (e.g. `2026_09_10_090001_backfill_location_id_for_active_carts`, `2026_11_21_100000_backfill_rental_price_from_price_per_day`) may have a deliberate no-op `down()` that only calls `Log::info(...)` and documents why in its docblock — never a silently empty body.
 - `MigrationRollbackTest` catches violations in CI before they reach develop.
 - Manual audit: `php artisan migrations:check-rollback`
 - Auto-run on merge/checkout: `.githooks/post-merge` + `.githooks/post-checkout` (activated via `composer install`)

@@ -10,7 +10,6 @@ use App\Filament\Resources\ServiceResource\Pages\CreateService;
 use App\Filament\Resources\ServiceResource\Pages\ListServices;
 use App\Models\Organization;
 use App\Models\Service;
-use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -126,8 +125,8 @@ class ServiceFormCreateCharacterizationTest extends TestCase
             'slug' => 'wiertarka-pelna',
             'icon' => 'star',
             'excerpt' => 'Krótki opis produktu',
-            // Stage A: `price` is hidden for rentals, so the typed 12.5 is ignored and the DB default applies.
-            'price' => '0.00',
+            // Stage A hides `price` for rentals (the typed 12.5 is ignored); stage B copies `price_per_day` into it.
+            'price' => '100.00',
             'price_from' => null,
             'is_active' => false,
             'sort_order' => 9,
@@ -353,7 +352,7 @@ class ServiceFormCreateCharacterizationTest extends TestCase
             'slug' => 'minimalna-wiertarka',
             'icon' => 'sparkles',
             'excerpt' => null,
-            'price' => '0.00',
+            'price' => '10.00', // stage B: a rental's price follows price_per_day
             'price_from' => null,
             'is_active' => true,
             'sort_order' => 0,
@@ -667,33 +666,28 @@ class ServiceFormCreateCharacterizationTest extends TestCase
         $this->assertSame($this->tenant->id, $this->created('mlot-udarowy')->organization_id);
     }
 
-    public function test_c8_known_gap_clearing_the_base_price_on_create_throws_a_database_exception(): void
+    public function test_c8_clearing_the_base_price_on_create_is_a_validation_error(): void
     {
-        // KNOWN GAP (stage 1 will change this): `price` is NOT NULL in the DB, optional in the form (no ->required()),
-        // so an emptied "Cena bazowa" reaches the INSERT as NULL.
+        // Fixed in stage B (was a QueryException: `price` is NOT NULL in the DB but the field was optional).
+        // Only a time_slot can reach it - the field is hidden, so not validated, for a rental.
         $this->addLocation();
 
-        try {
-            // Stage A: only a time_slot can still reach the gap (the field is hidden for rentals).
-            $this->submit(['service_type' => ServiceType::TimeSlot->value, 'name' => 'Młot', 'slug' => 'mlot', 'price' => null]);
-            $this->fail('expected a QueryException');
-        } catch (QueryException) {
-            $this->assertSame(0, Service::withoutGlobalScopes()->where('slug', 'mlot')->count());
-        }
+        $component = $this->submit(['service_type' => ServiceType::TimeSlot->value, 'name' => 'Młot', 'slug' => 'mlot', 'price' => null]);
+
+        $this->assertTrue($this->hasErrorOn($component, 'data.price'));
+        $this->assertSame(0, Service::withoutGlobalScopes()->where('slug', 'mlot')->count());
     }
 
-    public function test_c8_known_gap_clearing_the_base_price_on_edit_throws_a_database_exception(): void
+    public function test_c8_clearing_the_base_price_on_edit_is_a_validation_error(): void
     {
-        // KNOWN GAP (stage 1 will change this): same, on UPDATE - the stored price is kept.
+        // Fixed in stage B: same, on UPDATE - the stored price is kept.
         $this->addLocation();
-        $service = $this->timeSlotService(['price' => 100]); // stage A: rentals cannot reach it any more
+        $service = $this->timeSlotService(['price' => 100]);
 
-        try {
-            $this->saveForm($this->openEdit($service)->set('data.price', null));
-            $this->fail('expected a QueryException');
-        } catch (QueryException) {
-            $this->assertSame('100.00', $this->reload($service)->price);
-        }
+        $component = $this->saveForm($this->openEdit($service)->set('data.price', null));
+
+        $this->assertTrue($this->hasErrorOn($component, 'data.price'));
+        $this->assertSame('100.00', $this->reload($service)->price);
     }
 
     // ---------------------------------------------------------------------------------------------
