@@ -143,7 +143,10 @@ class SuperAdminPasswordResetTest extends TestCase
 
         // The Filament login page has no slot for a plain flash `status`; the message has to
         // reach the user as a Filament notification or it is set and never seen.
-        $this->get(self::ROOT.'/platform/login')
+        // Filament 4.17 delivers pending notifications only on a full page load, which a real
+        // browser marks with `Sec-Fetch-Dest: document`.
+        $this->withHeaders(['Sec-Fetch-Dest' => 'document'])
+            ->get(self::ROOT.'/platform/login')
             ->assertOk()
             ->assertSee(__('passwords.reset_sign_in'));
     }

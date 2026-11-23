@@ -199,3 +199,55 @@ Wersję czytaj z `composer.lock` (`"name": "filament/filament"` → `version`), 
 wpisana tu liczba (4.5.2) rozjechała się z instalacją (4.11.5 w 2026-11) i dwa razy wprowadziła
 w błąd. Kod vendora jest tylko w drzewie WSL (`/var/www/projects/registro/app/vendor`).
 Przed nowymi metodami: https://filamentphp.com/docs/4.x/
+
+## Aktualizacja 4.11.5 → 4.17.0 (2026-11-22) — co z 4.12–4.17 dotyka tego repo
+
+Ta sama wersja główna (Livewire zostaje na 3.x: 3.8.0 → 3.8.12, wymuszone przez `filament/support ^4.17`
+→ `livewire ^3.8.12`; `composer update filament/filament livewire/livewire --with-dependencies`,
+samo `filament/filament` zatrzymuje się na 4.13.4, bo Livewire to root requirement i bez wskazania nie rusza).
+Zmiany, które realnie dotykają kodu/testów:
+
+- **Repeater, Builder, Text, Fieldset, Flex… renderują się z PHP (`toEmbeddedHtml()`), nie z Blade.**
+  `Repeater::getDefaultView()` zwraca `null` — nazwa widoku to teraz tylko `getPublishedViewOverrideCheckPath()`.
+  Markup liczników/tabów się zmienił: `x-on:expand="revealTab('<klucz>::data::tab')"` (było `tab = …`), item Buildera ma
+  `x-data="item(JSON.parse('{"isCollapsed":true,…}'))"` (było `isCollapsed: true,`). Testy `->html()` pinują
+  markup — trzy z nich (`ServiceFormContentAndSpecLayoutTest` ×2, `ServiceFormTabsTest` ×1) zaktualizowano za zgodą
+  właściciela do nowego markupu, logika asercji bez zmian. Przy kolejnym bumpie zmiany markupu będą się objawiać
+  właśnie tam: czytaj diff markupu, nie „naprawiaj" logiki.
+- **Pusty/„disabled" root schema nic nie zwraca (4.17, #21076/#21070).** `getState()` na schemacie rootowym z
+  `->disabled()` (np. `EditAction::disabledSchema()`) waliduje i zwraca `[]`; relacje, `FileUpload` i `RichEditor`
+  w wyłączonym schemacie/komponencie nie zapisują się same. Pole z `->disabled()->dehydrated()` w AKTYWNYM schemacie
+  działa jak dotąd (grep po `app/Filament/**`: ani jeden wyłączony root, ani wyłączony kontener Section/Group/Fieldset —
+  wszystkie `->disabled(` stoją na polach). Wzorzec „wyłącz pole, ale zapisz jego wartość" zostaje
+  `->disabled()->dehydrated()`; NIE „wyłączaj cały formularz i licz na zapis". Uwaga: `->disabled()` ustawia
+  `saved(false)` (`CanBeDisabled`, 4.11 i 4.17), więc wyłączone pole BEZ `->dehydrated()` NIE jest zapisywane.
+- **Deploy: otwarte strony przestają działać do przeładowania.** Livewire 3.8.12 zapisuje w snapshocie `memo.origin` i
+  `memo.route` i zwraca 404 dla snapshotu bez nich lub z inną domeną/trasą — każda strona `/admin` i `/platform`
+  otwarta w trakcie wdrożenia zawiedzie przy następnej akcji, aż do odświeżenia (Livewire: „Refresh already-open
+  pages"). To zewnętrzna warstwa PRZED naszym `ResolveTenant`/`RequireTenant`, nie ich zamiennik — patrz
+  `app/docs/security/patterns/livewire-tenant-isolation.md`, test `LivewireTenantReplaySameOriginTest`.
+- **Powiadomienia Filamenta nie leżą już w sesji (4.17, `NotificationMailbox`).** `Notification::send()` odkłada je w
+  pamięci; middleware `PublishNotifications` zapisuje je do cache (klucz zależny od sesji), a komponent
+  `Notifications` odbiera je przy `GET` z nagłówkiem `Sec-Fetch-Dest: document` (przeglądarka go wysyła, klient testowy
+  NIE) albo przez Livewire. `session('filament.notifications')` to teraz tylko znacznik skrzynki, nie lista. Test, który
+  woła metodę strony poza kernelem, czyta `app(NotificationMailbox::class)` → `flush()` + `pull()`; test, który
+  sprawdza treść strony po redirecie, musi wysłać `Sec-Fetch-Dest: document`. Dotyczy:
+  `ClosureRequestRecipientTest` (helper `flashed()`), `SuperAdminPasswordResetTest`,
+  `SuperAdminPasswordResetPinnedStackTest` — poprawki zweryfikowane na kopiach (47 zielonych), do zatwierdzenia przez
+  właściciela.
+- **`composer audit` po bumpie: 14 ostrzeżeń, wszystkie istniały wcześniej (żadne nie pochodzi z tego bumpu); bump
+  naprawił 15 innych** (m.in. omijanie MFA w Filamencie, XSS w Livewire, DoS w tiptap). Pozostałe, w tym krytyczny
+  `laravel/framework <12.68` (TokenGuard), wymagają OSOBNEGO bumpu frameworka.
+- **`Repeater`/`Builder::partiallyRenderAfterActionsCalled()` ma teraz domyślnie `! isLive()`** (było `true`). Dotyka
+  tylko repeaterów `->live()` (pełny rerender po dodaniu/usunięciu wiersza — tańsze dla nas niż błąd, wolniejsze o
+  rerender). Nasz Builder ma `false` jawnie.
+- **Livewire (#20812, 4.16):** metody zwracające komponent Filamenta są niedostępne z frontu, a „server-managed"
+  właściwości `#[Locked]`. Własne `wire:click`/`$wire.set()` w `resources/views/filament/**` (metody `void`, `data.*`)
+  nie są dotknięte; nowa własna integracja wołająca metodę zwracającą `Component` wymaga `#[Exposed]`.
+- Inline kolumny (`TextInputColumn`/`ToggleColumn`): 4.17 dodaje opt-in `authorize()` — domyślnie nadal NIE sprawdzają
+  polityki (komentarz w `LocationStocksRelationManager` pozostaje prawdziwy).
+- `->reactive()` (`MaintenanceSettings`) jest oznaczone `@deprecated` na rzecz `->live()` — działa, tylko metadane.
+- Dla porządku: wbudowanego licznika znaków `Textarea`/`TextInput` w 4.17 nadal NIE ma (`grep` po `packages/forms`).
+- Assety: `public/{css,js,fonts}/filament/**` i `public/vendor/livewire/**` są w gicie — po każdym bumpie
+  `php artisan filament:assets && php artisan livewire:publish --assets`; `filament:assets` NIE kasuje starych czcionek
+  `inter-*.woff2` (hash w nazwie), więc osierocone pliki trzeba usunąć ręcznie (zostają tylko te z `index.css`).

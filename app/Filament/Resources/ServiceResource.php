@@ -377,9 +377,10 @@ class ServiceResource extends BaseResource
                                             // used to have two active locations deactivates one,
                                             // "looking" single-location again while the old split
                                             // still exists in the DB) — it is disabled AND
-                                            // un-dehydrated (Filament dehydrates disabled fields by
-                                            // DEFAULT unless told not to — the second call is not
-                                            // redundant), so a save can never silently overwrite a
+                                            // un-dehydrated (Filament's disabled() already implies
+                                            // saved(false) — 4.11 and 4.17 — so the explicit
+                                            // dehydrated() states the intent in the same condition
+                                            // rather than relying on that implication), so a save can never silently overwrite a
                                             // deliberately per-location split with the stale
                                             // aggregate this field would otherwise submit, NOR let
                                             // quantity_total drift away from
@@ -516,7 +517,7 @@ class ServiceResource extends BaseResource
                             ->schema([
                                 // Krótki opis. As with `body` below, the heading names the field, so its label is hidden
                                 // visually (kept for screen readers). The "N / 500" counter is client-side only: `$wire.$get()`
-                                // reads the already-entangled state, so typing causes no server round-trip (Filament 4.11.5 has
+                                // reads the already-entangled state, so typing causes no server round-trip (Filament 4.17 has
                                 // no built-in counter for a Textarea). JS length counts code points, like PHP's mb_strlen.
                                 Section::make('Krótki opis')
                                     ->description('Na kafelku (2 linie) i w Google, gdy nie ma meta opisu.')

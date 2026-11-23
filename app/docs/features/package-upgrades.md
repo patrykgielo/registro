@@ -1,5 +1,49 @@
 # Package Upgrades Log
 
+## 2026-11-22 — Filament 4.11.5→4.17.0 (+ Livewire 3.8.0→3.8.12)
+
+**Branch:** `feature/filament-4-17` · `composer.json` bez zmian (`filament/filament: ^4.11` już dopuszcza 4.17).
+
+```bash
+composer update filament/filament livewire/livewire --with-dependencies
+php artisan filament:assets && php artisan livewire:publish --assets
+```
+
+Samo `filament/filament` zatrzymuje się na 4.13.4 (4.14+ wymaga `livewire ^3.8.6`, a Livewire jest root requirement,
+więc bez wskazania nie rusza). `-W` / `filament/*` ciągnie `laravel/framework` 12.66→12.73 i ~50 pakietów — niepotrzebnie.
+
+| Package | Before | After |
+|---|---|---|
+| `filament/*` (actions, filament, forms, infolists, notifications, query-builder, schemas, support, tables, widgets) | 4.11.5 | 4.17.0 |
+| `livewire/livewire` | 3.8.0 | 3.8.12 |
+| `laravel/prompts` | 0.3.22 | 0.3.27 |
+| `symfony/{console,error-handler,event-dispatcher,http-foundation,http-kernel,html-sanitizer,finder,process,string,var-dumper,polyfill-*,*-contracts}` | 7.4.1x | 7.4.17–7.4.23 |
+| `anourvalar/eloquent-serialize`, `composer/class-map-generator`, `composer/pcre` | — | nowe (zależności Filamenta) |
+| `blade-icons`, `danharrin/livewire-rate-limiting`, `eloquent-power-joins`, `league/{csv,uri*}`, `masterminds/html5`, `nette/{php-generator,utils}`, `openspout`, `paragonie/constant_time_encoding`, `pragmarx/google2fa(-qrcode)`, `spatie/{invade,laravel-package-tools}`, `ueberdosis/tiptap-php` | — | patch/minor |
+
+`guava/calendar` zostaje 2.1.1 (wymaga `filament/filament ^4.0-beta`). Assety w gicie: 29 plików zmienionych,
+11 nowych (`builder.js`, `repeater.js`, `toggle-buttons.js`, `text-input/*`, 7 czcionek Inter), 20 osieroconych czcionek
+`inter-*.woff2` usuniętych (nie są w `index.css` ani w vendorze), `public/vendor/livewire/**` — 6 zmienionych.
+
+Wpływ na kod/testy i lista zmian 4.12–4.17, które nas dotykają: `.claude/rules/filament.md` →
+„Aktualizacja 4.11.5 → 4.17.0". Trzy istniejące testy `->html()`/widoku (`ServiceFormContentAndSpecLayoutTest` ×2,
+`ServiceFormTabsTest` ×1) zaktualizowano za zgodą właściciela do nowego markupu (Repeater/Builder/Tabs renderują się
+teraz z PHP) — zmieniły się asercje markupu, nie logika.
+
+**Audyt wyłączonych pól:** grep po `app/Filament/**` nie znalazł ani wyłączonego roota (`disabledSchema`,
+`$form->disabled()`), ani wyłączonego kontenera (Section/Group/Fieldset) — każde `->disabled(` stoi na polu, więc zmiana
+4.17 „disabled schemas no longer persist or submit state" nie zmienia niczego, co zapisujemy. Przypomnienie:
+`->disabled()` ustawia `saved(false)`, wartość wyłączonego pola zapisuje dopiero `->disabled()->dehydrated()`.
+
+**Deploy (ważne dla operatora):** Livewire 3.8.12 wiąże snapshot z `memo.origin` i `memo.route`; snapshot bez nich
+(strona otwarta przed wdrożeniem) dostaje 404, więc każda otwarta strona `/admin` i `/platform` zawiedzie przy następnej
+akcji, dopóki nie zostanie odświeżona (Livewire: „Refresh already-open pages"). Warstwa ta stoi PRZED naszym
+`ResolveTenant`/`RequireTenant` (które nadal są wymagane) — `app/docs/security/patterns/livewire-tenant-isolation.md`.
+
+**`composer audit`:** po bumpie 14 ostrzeżeń, wszystkie istniały wcześniej (żadne nie pochodzi z tego bumpu); bump
+naprawił 15 innych, m.in. omijanie MFA w Filamencie, XSS w Livewire i DoS w tiptap. Pozostałe, w tym krytyczny
+`laravel/framework <12.68` (TokenGuard), wymagają osobnego bumpu frameworka.
+
 ## 2026-05-23 — Laravel 12.46→12.60.2 + Filament 4.5.2→4.11.5
 
 **Branch:** `feature/package-upgrade-may-2026`
