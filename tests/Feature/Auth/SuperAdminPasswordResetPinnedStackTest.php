@@ -126,7 +126,10 @@ class SuperAdminPasswordResetPinnedStackTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertFalse($rows->first()->new_values['signed_in']);
 
-        $this->get(self::HOST.'/admin/login')
+        // Filament 4.17 delivers pending notifications only on a full page load, which a real
+        // browser marks with `Sec-Fetch-Dest: document`.
+        $this->withHeaders(['Sec-Fetch-Dest' => 'document'])
+            ->get(self::HOST.'/admin/login')
             ->assertOk()
             ->assertSee(__('passwords.reset_sign_in'));
     }

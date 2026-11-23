@@ -283,10 +283,10 @@ class ServiceFormTabsTest extends TestCase
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * Filament 4.11.5 already handles this in the browser: on a failed save the server dispatches
+     * Filament 4.x already handles this in the browser: on a failed save the server dispatches
      * `form-validation-error`, the root schema's `handleFormValidationError` finds the FIRST
      * `[data-validation-error]` in the DOM and fires an `expand` event on it and each ancestor, and every tab
-     * panel answers `x-on:expand` with `tab = <its key>`. JavaScript cannot run here, so the three server-side
+     * panel answers `x-on:expand` by activating itself (`revealTab('<key>')` since 4.12). JavaScript cannot run here, so the three server-side
      * halves of that contract are pinned instead: the event is dispatched, the error marker is rendered INSIDE
      * the right panel (and only that one), and the panel/root carry the listeners.
      */
@@ -309,7 +309,9 @@ class ServiceFormTabsTest extends TestCase
         $this->assertStringContainsString('handleFormValidationError', $html, 'root schema listener for form-validation-error');
         $this->assertSame(
             count($this->visibleTabLabels($component)), // a hidden tab renders no panel
-            substr_count($html, 'x-on:expand="tab ='),
+            // Filament 4.12+: each top-level tab panel answers with `revealTab('<key>::data::tab')`
+            // (nested tab-like components also use revealTab, so anchor to the form's own tabs).
+            preg_match_all('/x-on:expand="revealTab\(\'[^\']*::data::tab\'\)"/', $html),
             'every rendered tab panel must answer the `expand` event by activating itself',
         );
     }

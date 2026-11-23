@@ -84,7 +84,12 @@ class ClosureRequestRecipientTest extends TestCase
      */
     private function flashed(): array
     {
-        return array_values((array) session()->get('filament.notifications', []));
+        // Filament 4.17 no longer keeps pending notifications in the session: they wait in a
+        // session-scoped mailbox until the next full page load pulls them.
+        $mailbox = app(\Filament\Notifications\NotificationMailbox::class);
+        $mailbox->flush();
+
+        return array_values((array) $mailbox->pull());
     }
 
     public function test_the_request_is_mailed_to_the_global_address_when_no_super_admin_exists(): void

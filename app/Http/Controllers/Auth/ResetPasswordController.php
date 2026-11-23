@@ -92,7 +92,7 @@ class ResetPasswordController extends Controller
         $message = __('passwords.reset_sign_in');
 
         // The Filament login page renders no flash `status`, so the message also goes out
-        // as a Filament notification (session-backed, shown by the layout on the next page).
+        // as a Filament notification (since Filament 4.17 held in a cache-backed, session-scoped mailbox and pulled by the layout on the next browser document GET).
         Notification::make()->success()->title($message)->send();
 
         // A dedicated tenant stack (TENANT_SLUG) does not register the platform panel at all

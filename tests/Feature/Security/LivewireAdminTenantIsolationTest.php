@@ -216,6 +216,11 @@ class LivewireAdminTenantIsolationTest extends TestCase
      * domain. `ResolveTenant` sets no tenant there (by design — marketplace/no
      * tenant context); `RequireTenant`'s replay must hard-abort rather than
      * silently letting the update continue.
+     *
+     * Since Livewire 3.8.12 the 404 here comes earlier, from Livewire's own
+     * origin binding (`memo.origin` differs from the replay host), so this test
+     * no longer reaches `RequireTenant`. The proof that `RequireTenant` still
+     * aborts when the origin matches lives in `LivewireTenantReplaySameOriginTest`.
      */
     public function test_replaying_a_valid_snapshot_where_no_tenant_can_be_resolved_hard_aborts(): void
     {
