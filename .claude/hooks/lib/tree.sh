@@ -15,11 +15,15 @@
 ###############################################################################
 
 # registro_git TREE ARGS... -- git that does not trip on "dubious ownership"
-# (a worktree on /mnt/c is owned by someone else as far as WSL can tell).
+# (a worktree on /mnt/c is owned by someone else as far as WSL can tell), and
+# that prints paths verbatim. core.quotePath=false matters: by default git wraps
+# a path containing non-ASCII bytes in double quotes and octal-escapes it, so it
+# misses every `^app/...` anchor, and a PHP file whose name then ends in `.php"`
+# never matches `\.php$` -- a changed file the gate cannot see.
 registro_git() {
     local tree="$1"
     shift
-    git -c safe.directory='*' -C "$tree" "$@"
+    git -c safe.directory='*' -c core.quotePath=false -C "$tree" "$@"
 }
 
 # registro_tree_changes TREE -- every changed path: tracked diff vs HEAD, staged,
@@ -34,6 +38,25 @@ registro_tree_changes() {
     } | sort -u | sed '/^$/d'
 }
 
+# registro_tree_scope_changes TREE -- the paths used to pick WHICH tests run:
+# everything registro_tree_changes reports PLUS what this branch has already
+# committed since it left origin/develop. Without the second part, an agent that
+# commits its work before stopping (or a branch with earlier commits) would look
+# like "no product-form change" and get the fast scope. Falls back silently to
+# the plain working-tree set when origin/develop does not resolve (no remote, or
+# never fetched): a narrower scope is the old behaviour, not an error.
+# NOT used for "is there anything to check" / "did any PHP change" -- those stay
+# on the working-tree set, so a clean tree on a branch with commits still skips.
+registro_tree_scope_changes() {
+    local tree="$1" base
+    {
+        registro_tree_changes "$tree"
+        if base="$(registro_git "$tree" merge-base origin/develop HEAD 2>/dev/null)" && [ -n "$base" ]; then
+            registro_git "$tree" diff --name-only "$base"..HEAD 2>/dev/null
+        fi
+    } | sort -u | sed '/^$/d'
+}
+
 # registro_candidate_trees -- one tree per line.
 registro_candidate_trees() {
     if [ "${REGISTRO_HOOK_ORIGIN:-}" = windows ]; then
@@ -43,13 +66,15 @@ registro_candidate_trees() {
     fi
 }
 
-# registro_active_tree -- sets REGISTRO_ACTIVE_TREE and REGISTRO_ACTIVE_CHANGES (its
-# changed paths); non-zero when no tree has changes. Not a $(...) function on
-# purpose: a subshell would swallow the second variable.
+# registro_active_tree -- sets REGISTRO_ACTIVE_TREE, REGISTRO_ACTIVE_CHANGES (its
+# changed paths) and REGISTRO_ACTIVE_SCOPE_CHANGES (those plus the branch's
+# commits, see registro_tree_scope_changes); non-zero when no tree has changes.
+# Not a $(...) function on purpose: a subshell would swallow the variables.
 registro_active_tree() {
     local tree best="" best_mtime=-1 changes f m newest
     REGISTRO_ACTIVE_TREE=""
     REGISTRO_ACTIVE_CHANGES=""
+    REGISTRO_ACTIVE_SCOPE_CHANGES=""
     while IFS= read -r tree; do
         [ -n "$tree" ] && [ -d "$tree" ] || continue
         changes="$(registro_tree_changes "$tree")"
@@ -67,4 +92,5 @@ registro_active_tree() {
     done < <(registro_candidate_trees)
     [ -n "$best" ] || return 1
     REGISTRO_ACTIVE_TREE="$best"
+    REGISTRO_ACTIVE_SCOPE_CHANGES="$(registro_tree_scope_changes "$best")"
 }

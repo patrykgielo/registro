@@ -13,6 +13,7 @@ use App\Support\Catalog\CatalogProductValidator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -26,7 +27,10 @@ use Tests\TestCase;
  * Deliberately NOT compared: rules that exist only on one side by design (see the
  * validator's class docblock — negative prices, unknown keys, name uniqueness the form
  * leaves to the DB).
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class CatalogImportFormParityTest extends TestCase
 {
     use CatalogTestHelpers, RefreshDatabase;

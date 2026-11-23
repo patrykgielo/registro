@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -37,7 +38,10 @@ use Tests\TestCase;
  * Reading guide - where the architect's analysis and reality differ (all pinned as reality):
  * - a "no-op save" is NOT byte-identical for `content` (Builder blocks gain their default keys on the
  *   first save) nor for `metadata` (unbound keys are dropped) - see the first-save / second-save split.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormEditCharacterizationTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;

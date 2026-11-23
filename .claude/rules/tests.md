@@ -14,6 +14,39 @@ tests/
 └── Browser/        # Dusk browser tests (if used)
 ```
 
+## Poziomy: `#[Group('slow')]` i `--parallel` (od 2026-11-22)
+
+**Problem:** pełny Unit+Feature = ~608 s sekwencyjnie (~306 s z `--parallel`), a bramka SubagentStop
+ma limit 600 s — mieściła się tylko przypadkiem. **Rozwiązanie:** klasy, które dotyczą wąskiego
+obszaru i kosztują dużo (dziś: `ServiceForm*`, `PanelWalkthroughTest`, `CatalogImportFormParityTest`)
+dostają atrybut `#[Group('slow')]`; reszta biegnie zawsze.
+
+| Co | Komenda (w kontenerze `app`) |
+|---|---|
+| Codziennie, szybko | `php artisan test --parallel --exclude-group=slow` |
+| Pełny zestaw (CI na PR robi to zawsze) | `php artisan test --parallel` |
+| Tylko wolne | `php artisan test --parallel --group=slow` |
+
+- **Kiedy tagować:** klasa jest zmierzenie wolna (`--profile`) **i** jej sens kończy się na jednym obszarze kodu (formularz
+  produktu, import katalogu). Test, który ochrania coś szeroko (autoryzacja, tenant-scoping,
+  dostępność/oversell), **nie jest** `slow` — krótszy czas nie jest warty dziury w siatce.
+- **Zakres wybiera bramka** (`.claude/hooks/subagent-quality-gate.sh`): pełny, gdy zmieniona ścieżka
+  pasuje do `SLOW_TRIGGERS_RE` (Filament, cały `app/Models/`, Policies, katalog, Inventory/Onboarding,
+  widoki `components/ios` i `filament`, migracje, fabryki, ich testy); „zmieniona" liczy też commity
+  gałęzi od `origin/develop`. `REGISTRO_TESTS=full|fast` wymusza. Nowa klasa `slow` obejmująca nowy
+  obszar → dopisz ścieżkę do `SLOW_TRIGGERS_RE`, inaczej bramka nigdy jej nie uruchomi (zostaje tylko
+  CI na PR). Bramka ma własny budżet 540 s na Pint+testy; po jego przekroczeniu mówi `NOT VERIFIED`
+  (to nie pass) — szczegóły i test: `claude-code-config.md`, case `52`.
+- **Zielone „fast" ≠ zielone „full".** Bramka drukuje, który zakres przeszedł. Przed merge'em ufaj CI
+  (`test.yml`, zawsze pełny), nie bramce.
+- `--parallel` z SQLite `:memory:` nie wymaga niczego; z MySQL (CI) każdy proces dostaje bazę
+  `<DB_DATABASE>_test_<N>`, tworzoną przez `CREATE DATABASE` — użytkownik DB musi mieć to uprawnienie.
+- **Wspólny dysk = wyścig między procesami.** Baza jest per proces, `storage_path()` NIE. Kod, który
+  pisze lub sprząta katalog roboczy, bierze go z jednego miejsca, a `tests/TestCase.php` podmienia
+  go per `ParallelTesting::token()` (wzór: `CatalogImportConfig::scratchRoot()`; przed poprawką
+  testy importu padały 3/5 przebiegów `--parallel`, po niej 0/5). Asercja „katalog jest pusty" na
+  współdzielonej ścieżce to ten sam błąd.
+
 ## Naming Conventions
 
 ```php

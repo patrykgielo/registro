@@ -138,6 +138,14 @@ registro_wsl_forward() {
         # Git for Windows', the second MSYS2's.
         out="$(
             export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+            # An env var does not cross wsl.exe unless WSLENV lists it (measured:
+            # without it the forwarded hook sees REGISTRO_TESTS empty). The quality
+            # gate reads it to force the full/fast test scope; an unset var arrives
+            # as empty, which the gate treats as "no override".
+            case ":${WSLENV:-}:" in
+                *:REGISTRO_TESTS:* | *:REGISTRO_TESTS/*) ;;
+                *) export WSLENV="${WSLENV:+$WSLENV:}REGISTRO_TESTS" ;;
+            esac
             set +o pipefail # the hook may exit before reading all of stdin (SIGPIPE != failure)
             printf '%s' "$HOOK_INPUT" | ${bound[@]+"${bound[@]}"} wsl.exe -d "$REGISTRO_WSL_DISTRO" -e bash "$boot" \
                 "$REGISTRO_WSL_TREE" "$clone" "$winhome" "$wscript" "$@"

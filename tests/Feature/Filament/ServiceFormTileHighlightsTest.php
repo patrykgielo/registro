@@ -17,13 +17,17 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
  * STAGE C of the product form redesign: a rental's spec rows get a star ("show on the product tile",
  * `metadata.specs[].highlight`, max 4) and its `features` move to "Specyfikacja" as "Dodatkowe punkty na kafelku";
  * the tile prints the starred rows first. Nothing may be lost: an untouched product saves byte-identical.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormTileHighlightsTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;

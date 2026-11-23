@@ -31,7 +31,7 @@ Stack is in `composer.json` / `package.json`; services in `docker compose config
 
 **Local:** https://registro.local:8444
 
-**Note:** CI/CD workflows are disabled (workflow_dispatch only). **UAT is live** — `srv1342834.hstgr.cloud`, app domain `registrolabs.com`. PreProd (`registroapps.com`) is a machine not yet bought. See `app/docs/deployment/instalacja-tenanta-od-zera.md`.
+**Note:** `test.yml` runs on every PR into `develop`; every other workflow is `workflow_dispatch` only (nothing deploys by itself). **UAT is live** — `srv1342834.hstgr.cloud`, app domain `registrolabs.com`. PreProd (`registroapps.com`) is a machine not yet bought. See `app/docs/deployment/instalacja-tenanta-od-zera.md`.
 
 ---
 
@@ -110,6 +110,11 @@ docker compose exec -T app rm -f public/hot
 
 # Tests (in Docker — .env.testing forces SQLite)
 docker compose exec -T app ./vendor/bin/pint --test && docker compose exec -T app php artisan test
+
+# Szybko — bez grupy `slow` (formularz produktu, panel, import katalogu); domyślny zakres bramki SubagentStop:
+docker compose exec -T app php artisan test --parallel --exclude-group=slow
+# Pełny zestaw równolegle (~5 min) — gdy zmieniasz formularz produktu / zasoby Filament / import katalogu:
+docker compose exec -T app php artisan test --parallel
 ```
 
 ---

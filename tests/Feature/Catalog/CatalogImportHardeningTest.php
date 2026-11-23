@@ -10,6 +10,7 @@ use App\Models\CatalogImportBatch;
 use App\Models\Organization;
 use App\Models\Service;
 use App\Support\Catalog\CatalogDocument;
+use App\Support\Catalog\CatalogImportConfig;
 use App\Support\Catalog\CatalogProductValidator;
 use App\Support\Catalog\ImageInspector;
 use App\Support\Catalog\SafeImageFetcher;
@@ -385,7 +386,7 @@ class CatalogImportHardeningTest extends TestCase
         $this->assertLessThanOrEqual(100_000, array_sum($sleeps), 'total sleeping never exceeds the budget');
         $this->assertSame(0, $this->services($org)->count());
         $this->assertSame([], Storage::disk('public')->allFiles());
-        $this->assertSame([], File::directories(storage_path('app/tmp/catalog-import')), 'scratch cleaned up');
+        $this->assertSame([], File::directories(CatalogImportConfig::scratchRoot()), 'scratch cleaned up');
     }
 
     public function test_the_image_phase_has_a_byte_budget(): void
@@ -442,7 +443,7 @@ class CatalogImportHardeningTest extends TestCase
     public function test_stale_scratch_directories_older_than_six_hours_are_removed_at_start(): void
     {
         $org = $this->rentalTenant();
-        $root = storage_path('app/tmp/catalog-import');
+        $root = CatalogImportConfig::scratchRoot();
         File::ensureDirectoryExists($root.'/old-run');
         File::ensureDirectoryExists($root.'/fresh-run');
         file_put_contents($root.'/old-run/leftover.png', 'x');

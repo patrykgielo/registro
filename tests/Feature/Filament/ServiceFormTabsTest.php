@@ -14,6 +14,7 @@ use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -21,7 +22,10 @@ use Tests\TestCase;
  * each field saves is pinned by ServiceForm{Edit,Create}CharacterizationTest, which stay unmodified. These
  * tests pin the layout itself: which tabs exist, which hide for a time_slot, that no field escaped the tabs
  * or sits in two of them, and what the form does on a validation error in a tab the user is not looking at.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormTabsTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;

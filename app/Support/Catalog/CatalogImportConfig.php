@@ -38,6 +38,14 @@ final class CatalogImportConfig
         return self::imagePhaseSeconds() + 3600;
     }
 
+    /** Where image-phase scratch dirs live. Only a test run overrides it (tests/TestCase.php, per paratest worker). */
+    public static function scratchRoot(): string
+    {
+        $override = config('catalog_import.scratch_root');
+
+        return is_string($override) && $override !== '' ? $override : storage_path('app/tmp/catalog-import');
+    }
+
     /** Scratch directories untouched for longer than this are leftovers of killed runs. */
     public static function staleScratchSeconds(): int
     {

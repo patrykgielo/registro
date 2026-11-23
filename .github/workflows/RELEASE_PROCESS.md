@@ -3,8 +3,8 @@
 **Rewritten 2026-08-16, corrected same day** — everything below the original version of this
 document described a push-to-tag / auto-deploy-staging model that predates the "Disabled for
 Registro migration" comment now sitting at the top of every workflow file. That model has not
-matched reality for a long time: **all workflows are `workflow_dispatch` only.** Nothing deploys
-automatically from a push, a PR merge, or a tag push. `git push origin v4.2.0` today does nothing
+matched reality for a long time: **every workflow is `workflow_dispatch` only, except `test.yml`**
+(PR checks into `develop`, added 2026-11-22). Nothing deploys automatically from a push, a PR merge, or a tag push. `git push origin v4.2.0` today does nothing
 but push a tag.
 
 **Branch model (adopted 2026-08-16):** `feature/* → develop (PR) → staging (PR) → main (PR)`.
@@ -32,8 +32,8 @@ git checkout -b feature/my-feature develop
 git push -u origin feature/my-feature
 gh pr create --base develop --title "feat: ..."
 ```
-`test.yml` (Run Tests) is `workflow_dispatch` only — it does **not** run automatically on push or
-PR. Dispatch it manually if you want a clean-room check of `develop` before tagging.
+`test.yml` (Run Tests) runs automatically on every PR into `develop` (and can still be dispatched
+by hand). It is the only workflow that does; push and tag events trigger nothing.
 
 Promote `develop` to `staging` the same way, once develop is ready to cut a release candidate:
 `gh pr create --base staging --title "chore: promote develop to staging"` (from `develop`).
@@ -165,7 +165,8 @@ mechanism; nothing in this repo triggers off tag pushes at all.
 
 ## Best Practices
 
-1. Dispatch `test.yml` on `develop` before tagging, if you want a signal before committing to a tag.
+1. Check that `test.yml` is green on the PRs merged into `develop` (dispatch it on `develop` itself
+   if you want a clean-room signal before committing to a tag).
 2. Use semantic versioning for tags (`v4.2.0`, `v4.2.1`, `v4.3.0`) — `deploy-production.yml`'s
    "Resolve version" step rejects anything not shaped `vMAJOR.MINOR.PATCH[-suffix]`.
 3. Never force-push tags — cut a new patch version instead.

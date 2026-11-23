@@ -1,5 +1,8 @@
 # Test Engineer — Project Memory
 
+## Slow tier + parallel findings (added 2026-11-23)
+- [project_slow_group_and_parallel_findings_2026-11-23.md](project_slow_group_and_parallel_findings_2026-11-23.md) — `#[Group('slow')]` on 9 classes pinned by `SlowGroupIsDeclaredTest`; `--parallel` "passed" is 18 short only because PHPUnit-notice tests print `!` (JUnit identical); catalog-import scratch-dir parallel race (fixed via per-token scratch root); fresh-worktree runner needs `public/build`.
+
 ## Product form STAGE 0 safety net (added 2026-11-21)
 - [project_service_form_stage0_safety_net_2026-11-21.md](project_service_form_stage0_safety_net_2026-11-21.md) — `tests/Feature/Filament/ServiceForm{Edit,Create}CharacterizationTest.php` + `ServiceFormTestSupport` trait pin ServiceResource's form before the tabs refactor; KNOWN GAP tests flip on deliberate fixes. Lists the Filament/Livewire facts that contradicted the architect's analysis (content/metadata not byte-identical on no-op save, FileUpload drops missing files, `fillForm([])` resets defaults).
 

@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -22,7 +23,10 @@ use Tests\TestCase;
  *
  * Fixtures that must be STALE (price != price_per_day) are written with DB::table(): the model now normalises on
  * save, so no Eloquent write can produce one - which is the point of the model hook.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormRentalPriceTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;
