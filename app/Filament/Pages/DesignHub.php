@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Filament\Traits\HasGroupedSettings;
+use App\Support\Media\SvgLogoSanitizer;
 use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
 use BackedEnum;
-use enshrined\svgSanitize\Sanitizer;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
@@ -20,7 +20,6 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use UnitEnum;
 
@@ -355,19 +354,7 @@ class DesignHub extends Page implements HasForms
 
         // Sanitize SVG to prevent XSS
         if ($mimeType === 'image/svg+xml') {
-            $storage = Storage::disk('public');
-            $content = $storage->get($path);
-
-            $sanitizer = new Sanitizer;
-            $sanitizer->removeRemoteReferences(true);
-            $cleanSvg = $sanitizer->sanitize($content);
-
-            if ($cleanSvg === false) {
-                $storage->delete($path);
-                throw new \Exception('SVG contains dangerous content');
-            }
-
-            $storage->put($path, $cleanSvg);
+            app(SvgLogoSanitizer::class)->sanitizeStoredFile($path);
         }
 
         return $path;

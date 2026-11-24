@@ -110,7 +110,7 @@ Published views at `resources/views/vendor/mail/html/`:
 
 - `ColorScaleGenerator` validates strict hex before injecting CSS → no CSS injection possible
 - `$fontFamily` comes from a whitelist enum, not free text
-- Logo uploads use magic bytes validation + SVG sanitization (same as SystemSettings)
+- Logo uploads use magic bytes validation + SVG sanitization via the shared `SvgLogoSanitizer` (see `svg-logo-sanitization.md`)
 - Mail view composer fails silently (`try/catch`) — email must never be blocked by settings errors
 
 ---
