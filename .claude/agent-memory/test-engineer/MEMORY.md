@@ -1,5 +1,8 @@
 # Test Engineer — Project Memory
 
+## MySQL JSON key order (PR #316 CI, added 2026-11-24)
+- [project_mysql_json_key_order_pr316_2026-11-24.md](project_mysql_json_key_order_pr316_2026-11-24.md) — 7 tests failed only on MySQL: native JSON re-orders object keys + adds spaces. Use `Tests\TestCase::assertSameJson()` (never `assertEquals`); decode raw JSON strings. Measured prod consequence: re-assigning a same-content array in different key order is dirty on MySQL (phantom `audit_logs` row on Location, `updated_at` bump) but Filament no-op saves are NOT affected.
+
 ## Slow tier + parallel findings (added 2026-11-23)
 - [project_slow_group_and_parallel_findings_2026-11-23.md](project_slow_group_and_parallel_findings_2026-11-23.md) — `#[Group('slow')]` on 9 classes pinned by `SlowGroupIsDeclaredTest`; `--parallel` "passed" is 18 short only because PHPUnit-notice tests print `!` (JUnit identical); catalog-import scratch-dir parallel race (fixed via per-token scratch root); fresh-worktree runner needs `public/build`.
 

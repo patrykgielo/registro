@@ -300,7 +300,7 @@ class ServiceFormEditCharacterizationTest extends TestCase
 
         $this->saveForm($component)->assertHasNoFormErrors();
 
-        $this->assertSame(['specs' => $specs], $this->reload($service)->metadata, 'only the form keys; the stale image_sources must not come back');
+        $this->assertSameJson(['specs' => $specs], $this->reload($service)->metadata, 'only the form keys; the stale image_sources must not come back');
     }
 
     public function test_e1_the_merge_ignores_a_stale_in_memory_record_when_the_stored_metadata_is_null(): void

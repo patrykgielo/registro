@@ -511,7 +511,8 @@ class ServiceFormTileHighlightsTest extends TestCase
             $service = $make();
             // A dict-shaped value, as an importer / API / old save could leave it: not a list, and not yet item rows.
             \Illuminate\Support\Facades\DB::table('services')->where('id', $service->id)->update(['features' => '{"0":"a","2":"b"}']);
-            $this->assertSame('{"0":"a","2":"b"}', $this->reload($service)->getRawOriginal('features'));
+            // Decoded, not compared as text: MySQL prints a JSON column back as `{"0": "a", "2": "b"}`. Keys 0 and 2 (a gap) prove it is not a list.
+            $this->assertSame([0 => 'a', 2 => 'b'], json_decode((string) $this->reload($service)->getRawOriginal('features'), true), "{$type}: the fixture is a dict with a gap");
 
             $page = $this->openEdit($service);
             $this->assertSame(['a', 'b'], array_values(array_column($page->get('data.features'), 'feature')), "{$type}: both values open as rows");
@@ -520,7 +521,8 @@ class ServiceFormTileHighlightsTest extends TestCase
 
             $this->assertSame(['a', 'b'], $this->reload($service)->features, "{$type}: no value lost");
             // What the old single repeater did too: a save rewrites the dict as a plain list.
-            $this->assertSame('["a","b"]', $this->reload($service)->getRawOriginal('features'), "{$type}: stored back as a list");
+            // Object mode: a JSON array decodes to a PHP array, a JSON object (`{"0":"a","1":"b"}`) to stdClass - so this still tells a list from a dict.
+            $this->assertSame(['a', 'b'], json_decode((string) $this->reload($service)->getRawOriginal('features')), "{$type}: stored back as a list");
         }
     }
 

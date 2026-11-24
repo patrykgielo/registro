@@ -282,6 +282,11 @@ Znane w tym repo: cytowanie identyfikatorów, kolejność kluczy JSON, typ wynik
 (MySQL oddaje string), wiele `NULL` w UNIQUE, `ONLY_FULL_GROUP_BY`, niejawny COMMIT przy DDL,
 brak egzekwowania FK przy `DROP TABLE` na SQLite. Cztery z nich kosztowały już wdrożenie.
 
+**Kolejność kluczy JSON:** MySQL oddaje kolumnę JSON z kluczami posortowanymi (krótszy klucz pierwszy,
+potem bajtowo) i ze spacją po `:`/`,`; SQLite oddaje tekst bez zmian. Asercję na tablicy asocjacyjnej
+z kolumny JSON pisz przez `assertSameJson()` (`Tests\TestCase`: sortuje klucze obiektów, zachowuje
+kolejność list, typy porównuje ściśle - NIE `assertEquals`); surowy string JSON najpierw `json_decode`.
+
 **Praktycznie:** każda asercja na `DB::getQueryLog()`, każdy surowy SQL i każde porównanie
 wyniku agregatu wymaga przebiegu na `mysql:8.0`, choćby zmiana nie tknęła bazy.
 

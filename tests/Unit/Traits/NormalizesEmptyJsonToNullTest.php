@@ -124,7 +124,7 @@ class NormalizesEmptyJsonToNullTest extends TestCase
 
         $portfolioItem->save();
 
-        $this->assertSame([['type' => 'text', 'data' => ['content' => 'hello']]], $portfolioItem->fresh()->content);
+        $this->assertSameJson([['type' => 'text', 'data' => ['content' => 'hello']]], $portfolioItem->fresh()->content);
         $this->assertSame(['gallery/one.jpg'], $portfolioItem->fresh()->gallery);
     }
 

@@ -157,7 +157,7 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
 
         $this->saveUnchanged($service);
 
-        $this->assertSame($this->threeSpecs(), $this->reload($service)->metadata['specs']);
+        $this->assertSameJson($this->threeSpecs(), $this->reload($service)->metadata['specs']);
     }
 
     public function test_spec_rows_can_be_reordered_and_saved_in_the_new_order(): void
@@ -173,7 +173,7 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
         );
         $this->saveForm($page)->assertHasNoFormErrors();
 
-        $this->assertSame(array_reverse($this->threeSpecs()), $this->reload($service)->metadata['specs']);
+        $this->assertSameJson(array_reverse($this->threeSpecs()), $this->reload($service)->metadata['specs']);
     }
 
     public function test_the_spec_row_rules_still_apply_inside_the_table(): void

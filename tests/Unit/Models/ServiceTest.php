@@ -225,7 +225,7 @@ class ServiceTest extends TestCase
         $service->save();
         $service->refresh();
 
-        $this->assertSame($specs, $service->metadata['specs']);
+        $this->assertSameJson($specs, $service->metadata['specs']);
         $this->assertFalse($service->wasChanged());
     }
 
@@ -243,7 +243,7 @@ class ServiceTest extends TestCase
         $service->save();
         $service->refresh();
 
-        $this->assertSame([
+        $this->assertSameJson([
             ['label' => 'Moc', 'value' => 800, 'unit' => 'W'],
             ['label' => 'Waga', 'value' => 4.2, 'unit' => 'kg'],
         ], $service->metadata['specs']);
