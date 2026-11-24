@@ -1,5 +1,68 @@
 # Package Upgrades Log
 
+## 2026-11-24 — Laravel 12.66.0→12.73.0 + svg-sanitize 0.22.0→1.1.1 (bump bezpieczeństwa)
+
+**Branch:** `feature/laravel-12-73-security` · cel: `composer audit --locked` = 0 (było 14 ostrzeżeń w 7 pakietach,
+wszystkie sprzed bumpu Filamenta 4.17).
+
+```bash
+composer update laravel/framework league/commonmark league/flysystem symfony/mime symfony/routing symfony/yaml --with-dependencies
+composer require "enshrined/svg-sanitize:^1.1.1"
+```
+
+`--with-dependencies` (nie `-W`): 36 pakietów zmienionych + 1 nowy, `filament/*` i `livewire/livewire` **bez zmian** —
+więc bez `filament:assets`/`livewire:publish`. `-W` ruszyłby 72 pakiety. `svg-sanitize` nie ma łatki 0.22.x —
+jedyna droga to 1.x, stąd zmiana w `composer.json` (`^0.22.0` → `^1.1.1`). Laravel 12.73.0 to najnowsze 12.x
+(12.74 nie istnieje — sprawdzone w Packagist i GitHub releases).
+
+| Package | Before | After | Ostrzeżenia naprawione |
+|---|---|---|---|
+| `laravel/framework` | 12.66.0 | 12.73.0 | krytyczne TokenGuard (<12.68), JSON:API relationship inclusion (<12.68), XSS strony debug (<12.69), Concurrency output injection (<12.71) |
+| `enshrined/svg-sanitize` | 0.22.0 | 1.1.1 | ×3: XSS przez DTD/encje, DoS `<use>` z `XLINK:HREF`, crash na deklaracji atrybutu DTD |
+| `league/commonmark` | 2.10.0 | 2.10.7 | ×2 (DoS tabel GFM — high; obejście DisallowedRawHtml) |
+| `league/flysystem` | 3.35.2 | 3.36.0 | normalizacja ścieżek (znaki kontrolne); `flysystem-local` 3.31.0→3.35.3 |
+| `symfony/mime` · `routing` · `yaml` | 7.4.15–16 | 7.4.22–23 | wstrzykiwanie nagłówka maila; host placeholder w URL matcherze; DoS parsera YAML ×2 (jedno high) |
+| zależności | | | `nesbot/carbon` 3.13.2→3.15.1, `monolog` 3.10→3.13, `vlucas/phpdotenv` 5.6.4→5.8.1, `guzzle` 7.15.3→7.17.0 (+promises/psr7), `laravel/serializable-closure` 2.0.15→2.2.0, `ramsey/uuid` 4.9.3→4.10.0, `symfony/{mailer,translation,clock,uid,css-selector,polyfill-*}`, `doctrine/*`, `nette/schema`, `webmozart/assert`, `phpoption`, `egulias/email-validator`, `cron-expression`, `termwind`; nowy `symfony/polyfill-time` |
+
+**Czy fixy w ogóle nas dotyczą:** TokenGuard — nie (guard `session`, brak Sanctum); JSON:API resources i
+`Concurrency::` — nieużywane. To higiena, nie łatanie otwartej dziury.
+
+**Przegląd zmian zachowania 12.67→12.73 vs. nasz kod** (odczyt upstream diffów; żadna zmiana kodu niepotrzebna):
+
+- `Rule::exists/unique()->where()` — wartości porównywane dosłownie (`'NULL'`/`'NOT_NULL'` to już zwykłe stringi),
+  ale `where($col, null)` nadal = `whereNull`. Nie przekazujemy tych stringów; `where('organization_id', $tenant?->id)`
+  działa jak wcześniej.
+- `<x-dynamic-component>` — nazwa komponentu musi pasować do `/^[\w\-:.]+$/`, inaczej `InvalidArgumentException`
+  (500 na stronie publicznej). Ikony pochodzą z `Select`/`Rule::in(heroicon)`, więc zła wartość nie powinna trafić
+  do bazy. Reguła dla programisty: `.claude/rules/blade-components.md`.
+- `email` odrzuca >254 znaki (RFC 5321) — mamy `max:255`, nieszkodliwe. `in` ścisłe (`===` na stringach), wildcard
+  na pustych kluczach, `decimal` z kwantyfikatorami possessive — bez wpływu.
+- `AuthenticateSession` zapisuje hash hasła w sesji przy następnym żądaniu — **wdrożenie nikogo nie wyloguje**.
+- Carbon 3.14–3.15 (CarbonPeriod unserialize, `round()` ≥60 s, `#[NoDiscard]`) — nie używamy dotkniętych API.
+- `svg-sanitize` 1.1: API bez zmian (`sanitize()` → `string|false`; teraz `false` zamiast wyjątku), ale ostrzej:
+  odrzuca SVG z DTD/encjami, wycina zdalne odwołania i `javascript:`. Nasz kod już kasuje plik i rzuca wyjątek
+  na `false`. **Skutek dla użytkownika:** eksport ze starszego Illustratora (DOCTYPE z wewnętrznym podzbiorem,
+  `[<!ENTITY ns_svg …>]`) jest teraz odrzucany przy wgrywaniu logo („SVG contains dangerous content"). Zwykły DOCTYPE
+  bez podzbioru, `<style>`, gradienty i BOM przechodzą. Obejście dla tenanta: zapisać plik ponownie jako „SVG 1.1" bez
+  DTD albo wgrać PNG.
+
+**Nowy test:** `tests/Feature/Security/SvgSanitizationTest.php` (8 testów) — prawdziwa ścieżka
+`DesignHub::processLogoUpload()` (czyste SVG, `<script>`/`onload`, `javascript:`, zdalne odwołania, DTD z encją →
+odrzucone, DTD z `ATTLIST` → bez crasha, `<use XLINK:HREF>` → bez crasha) + test kontraktu dla dwóch kopii w
+`SystemSettings`. Wcześniej nic nie testowało sanitizera. Sprawdzone mutacją: bez wywołania `sanitize()` w `DesignHub`
+pada 6 z 8. Downgrade do 0.22 łapie test odrzucenia DTD z encją i kontrakt na śmieciowe wejście; testy `ATTLIST`
+i `<use XLINK:HREF>` to tylko smoke testy 1.x — ich payloady nie wywracają też 0.22, więc nie odtwarzają tamtych
+ostrzeżeń. Kopie w `SystemSettings` są pokryte tylko kontraktem — usunięcie tam `sanitize()` nie zostanie złapane.
+
+**Testy:** `pint --test` PASS (1136 plików) · pełny suite: 2874 passed, 12 skipped, 0 failed.
+`CatalogImportRound3Test::…stale_scratch_threshold…` padł raz w baseline przed bumpem (wyścig na współdzielonym
+`storage/app/tmp/catalog-import` przy `--parallel`) — po bumpie przeszedł; to niestabilny test, nie regresja.
+
+**Deploy (ważne dla operatora):**
+- `phpdotenv` 5.8: niezamknięty `"` w `.env` to teraz **błąd startu**, nie cicho zgubiona wartość. Szablony w repo
+  są poprawne — przed wdrożeniem sprawdź `.env` na serwerze (oraz pliki z sekretami) pod kątem pojedynczego `"`.
+- Po `composer install` zrestartuj długożyjące procesy (Horizon, scheduler), żeby załadowały nowy framework.
+
 ## 2026-11-22 — Filament 4.11.5→4.17.0 (+ Livewire 3.8.0→3.8.12)
 
 **Branch:** `feature/filament-4-17` · `composer.json` bez zmian (`filament/filament: ^4.11` już dopuszcza 4.17).
