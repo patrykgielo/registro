@@ -385,7 +385,7 @@ class CatalogImportHardeningTest extends TestCase
         $this->assertLessThanOrEqual(100_000, array_sum($sleeps), 'total sleeping never exceeds the budget');
         $this->assertSame(0, $this->services($org)->count());
         $this->assertSame([], Storage::disk('public')->allFiles());
-        $this->assertSame([], File::directories(storage_path('app/tmp/catalog-import')), 'scratch cleaned up');
+        $this->assertSame([], File::directories(config('catalog_import.scratch_dir')), 'scratch cleaned up');
     }
 
     public function test_the_image_phase_has_a_byte_budget(): void
@@ -442,7 +442,7 @@ class CatalogImportHardeningTest extends TestCase
     public function test_stale_scratch_directories_older_than_six_hours_are_removed_at_start(): void
     {
         $org = $this->rentalTenant();
-        $root = storage_path('app/tmp/catalog-import');
+        $root = config('catalog_import.scratch_dir');
         File::ensureDirectoryExists($root.'/old-run');
         File::ensureDirectoryExists($root.'/fresh-run');
         file_put_contents($root.'/old-run/leftover.png', 'x');

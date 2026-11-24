@@ -44,6 +44,17 @@ final class CatalogImportConfig
         return max(6 * 3600, 2 * self::importLockSeconds());
     }
 
+    /** Root of the per-run scratch directories; no trailing slash. Default: storage/app/tmp/catalog-import. */
+    public static function scratchRoot(): string
+    {
+        $default = storage_path('app/tmp/catalog-import');
+        $value = config('catalog_import.scratch_dir');
+        $path = is_string($value) ? rtrim(trim($value), '/\\') : '';
+
+        // '' also covers "/" — never sweep (or write per-run dirs into) the filesystem root.
+        return $path !== '' ? $path : $default;
+    }
+
     private static function positive(string $key, int $default): int
     {
         $value = config($key, $default);

@@ -157,7 +157,7 @@ class ImportCatalog
     /** Scratch dirs of killed runs: untouched for longer than a live run could possibly take. */
     private function removeStaleScratch(): void
     {
-        $root = storage_path('app/tmp/catalog-import');
+        $root = CatalogImportConfig::scratchRoot();
 
         if (! is_dir($root)) {
             return;
@@ -266,7 +266,7 @@ class ImportCatalog
         $fetchImages = $options->images !== 'skip' && (! $options->dryRun || $options->checkImagesInDryRun);
 
         if ($fetchImages) {
-            $scratch = storage_path('app/tmp/catalog-import/'.Str::uuid());
+            $scratch = CatalogImportConfig::scratchRoot().'/'.Str::uuid();
             File::ensureDirectoryExists($scratch);
             $fetched = $this->prefetchImages($normalized, dirname((string) realpath($file)), $scratch, $options, $report, fn (): bool => $this->heartbeat($lock));
 
