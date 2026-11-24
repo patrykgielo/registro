@@ -424,7 +424,7 @@ class CatalogImportRound3Test extends TestCase
     {
         config(['catalog_import.image_phase_max_seconds' => 20000]); // lock TTL 23600 s => threshold 47200 s (13.1 h)
         $org = $this->rentalTenant();
-        $root = storage_path('app/tmp/catalog-import');
+        $root = config('catalog_import.scratch_dir');
         File::ensureDirectoryExists($root.'/seven-hours');
         File::ensureDirectoryExists($root.'/fourteen-hours');
         touch($root.'/seven-hours', time() - 7 * 3600);

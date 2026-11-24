@@ -7,12 +7,15 @@ namespace Tests\Feature\Catalog;
 use App\Models\Location;
 use App\Models\Organization;
 use App\Support\Catalog\HostResolver;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * Shared fixtures for the catalog:import test suite. Runs on SQLite and MySQL 8.0 alike, with
- * Storage::fake('public'), Http::fake() and a fake DNS resolver — no network, no real disk.
+ * Storage::fake('public'), Http::fake() and a fake DNS resolver — no network. The importer's scratch
+ * directory is real disk, but a private per-test temp dir (setUpCatalog()), so parallel workers never
+ * share -- or sweep -- each other's scratch.
  */
 trait CatalogTestHelpers
 {
@@ -21,6 +24,11 @@ trait CatalogTestHelpers
     protected function setUpCatalog(): void
     {
         Storage::fake('public');
+
+        $scratch = sys_get_temp_dir().'/catalog-scratch-'.bin2hex(random_bytes(6));
+        config(['catalog_import.scratch_dir' => $scratch]);
+        $this->beforeApplicationDestroyed(static fn () => File::deleteDirectory($scratch));
+
         $this->resolver = new FakeHostResolver;
         $this->app->instance(HostResolver::class, $this->resolver);
         Http::preventStrayRequests();

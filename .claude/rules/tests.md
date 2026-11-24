@@ -639,6 +639,23 @@ seamem. `bindRevert()` to prywatny seam jednej klasy,
 zasertuj, bo sam komunikat „cofnięty" pojawia się też, gdy ALTER nigdy nie poszedł.
 Prawdziwy ALTER zostaw w `CatalogImportAutoIncrementMysqlTest` (`DatabaseTruncation`, baza `catalog_test_*`; poza CI, odpalany ręcznie na jednorazowym MySQL).
 
+## Real disk under `--parallel`: one directory per test, never a shared `storage_path()`
+
+`php artisan test --parallel` runs 8 ParaTest workers against the SAME `storage/`. `Storage::fake()` isolates a disk
+per worker; a hardcoded `storage_path('app/tmp/...')` does not. Code that sweeps, lists or cleans a directory then
+deletes or sees another worker's fixtures — a test that is green alone and red in the suite.
+Incident 2026-11-24: `catalog:import`'s stale-scratch sweep (every run) deleted `CatalogImportRound3Test`'s
+back-dated dir, and `CatalogImportHardeningTest`'s "scratch cleaned up" saw other workers' dirs. Fix: path from
+config (`catalog_import.scratch_dir`, default unchanged), test sets `sys_get_temp_dir().'/x-'.bin2hex(random_bytes(6))`
+in setUp and deletes it in `beforeApplicationDestroyed()`. Per TEST, not per worker (`ParallelTesting::token()`), so
+nothing leaks from test to test either. Green alone + red in the suite = look for a shared directory first.
+
+The reverse (red alone, green in the suite) after switching to a branch with another **framework version**: stale
+compiled Blade views. `storage/framework/views` is not invalidated by a `composer install`; views compiled by 12.73
+call `DynamicComponent::withBoundAttributes()`, which 12.66 lacks → 500 in every page using `<x-dynamic-component>`.
+ParaTest workers compile into their own dirs, so only the serial run sees it. `php artisan view:clear` after every
+branch switch that changes `composer.lock` (deploy scripts already run `optimize:clear`).
+
 ## Two requests in one test: `forgetScopedInstances()`
 
 php-fpm builds a fresh container per request; the test app is reused. A `scoped` binding (`LocationContext`, which the

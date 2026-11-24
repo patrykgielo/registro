@@ -50,7 +50,8 @@ migration `2026_11_07_100000_create_catalog_import_tables.php`, config `config/c
    ones no `services.featured_image` / `services.content` row references.
 
 `--dry-run` runs steps 1-5. It is **not** side-effect free: it takes the per-organization lock, creates
-(and removes) a scratch directory under `storage/app/tmp/catalog-import/`, and makes the network calls
+(and removes) a scratch directory under the scratch root (`catalog_import.scratch_dir`, env
+`CATALOG_IMPORT_SCRATCH_DIR`, default `storage/app/tmp/catalog-import/`), and makes the network calls
 of step 5 — unless `--no-image-check` or `--images=skip` is given. It writes no rows and stores no
 files. Errors are printed as a table `#index | external_id | field | message`; everything
 JSON-derived in it (field names are attacker-chosen keys, external ids, paths) has C0/C1 control
@@ -74,7 +75,14 @@ then two racing imports cannot duplicate products: the unique indexes on name/sl
 the second one. The revert protects itself independently with row locks (below).
 
 At the start of a run, scratch directories untouched for longer than `max(6 h, 2 × lock TTL)` — i.e.
-longer than a live run can take — are removed (leftovers of killed runs). Non-positive
+longer than a live run can take — are removed (leftovers of killed runs). The sweep covers the whole
+scratch root, not just this organization's runs, so two processes sharing a root share the sweep: tests give
+each test its own root (`CatalogTestHelpers::setUpCatalog()`), otherwise ParaTest workers delete each
+other's fixtures. **The root must be dedicated to the importer:** every direct subdirectory older than the
+threshold is deleted, so never point `CATALOG_IMPORT_SCRATCH_DIR` at a shared directory such as `/tmp` or a
+data folder. A value that is empty or trims to nothing (e.g. `/`) falls back to the default.
+
+Non-positive
 `image_phase_max_seconds` / `image_phase_max_bytes` / `auto_increment_lock_wait_seconds` fall back to
 the documented defaults (900 s / 1 GiB / 5 s) instead of being used. One in-flight request cannot
 overshoot the budget either: its connect/total timeouts are clipped to the time left.
