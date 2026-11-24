@@ -27,4 +27,8 @@ return [
     // `ALTER TABLE … AUTO_INCREMENT` waits on the metadata lock of any open transaction that touched
     // the table — and every later query on that table queues behind the ALTER. Bound the wait.
     'auto_increment_lock_wait_seconds' => (int) env('CATALOG_IMPORT_AI_LOCK_WAIT_SECONDS', 5),
+
+    // Root of the per-run scratch directories (prefetched images). Also swept for stale leftovers at the
+    // start of every run, so concurrent test workers (ParaTest) must NOT share it -- tests override it.
+    'scratch_dir' => env('CATALOG_IMPORT_SCRATCH_DIR', storage_path('app/tmp/catalog-import')),
 ];

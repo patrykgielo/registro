@@ -239,7 +239,55 @@ The only two things that actually protect this path are:
   no-op for that one request — no different from today's behavior, not a regression, but not a
   hard guarantee either. No such gap was found in this codebase's current route set.
 
+## Outer layer added by Livewire 3.8.12: origin + route binding (2026-11-22)
+
+Since Livewire 3.8.12 (Filament 4.17 upgrade) `PersistentMiddleware` stores two more memos next to
+`memo.path`/`memo.method`: `memo.origin` (scheme + host the component was rendered on) and
+`memo.route` (`uri` + `domain` of the matched route). On every `/livewire/update` it `abort(404)`s
+— **before any persistent middleware runs** — when:
+
+- `memo.origin` or `memo.route` is missing (a snapshot rendered by an older Livewire), or
+- `memo.origin` differs from the real request's scheme+host, or
+- the route matched by the replayed path has a different `uri`/`domain` than `memo.route`.
+
+So a snapshot replayed from another tenant's host, from the root domain, or over another scheme now
+dies on Livewire's own 404 and never reaches `ResolveTenant`/`RequireTenant`. This is an **extra
+outer layer, not a replacement**: our replay (above) is still required, because
+
+- it is the only place `ResolveTenant::staffCanAccessTenant()` runs on this path (the real request
+  path is `livewire/update`, not `admin*`) — membership revoked between render and update is
+  refused only by the replay, on the SAME origin;
+- on the shared-stack model (`architecture-models.md`) the origin check only says "same host as the
+  render"; whether that host's tenant is still active and the user still belongs to it is decided
+  at update time, by us;
+- origin binding is satisfied whenever a snapshot is re-signed with the same key (key compromise,
+  or any future change in how Livewire binds it) — the replay is then the last line.
+
+`LivewireAdminTenantIsolationTest::test_replaying_a_valid_snapshot_where_no_tenant_can_be_resolved_hard_aborts`
+(mounted on a tenant host, replayed on the root domain) now gets Livewire's origin 404, so it no
+longer exercises `RequireTenant` — it stays green with `RequireTenant` removed. The layers are pinned
+separately in `LivewireTenantReplaySameOriginTest` (below).
+
+**Deploy consequence:** a page that was open across the upgrade holds a snapshot without
+`memo.origin`/`memo.route`, so its next action 404s until the page is reloaded (Livewire's own
+release note: "Refresh already-open pages"). Applies to `/admin` and `/platform` alike.
+
 ## Tests
+
+`tests/Feature/Security/LivewireTenantReplaySameOriginTest.php` — separates the two layers (added
+with the 3.8.12 upgrade; each section-B test goes red when the middleware it names is dropped from
+`registerLivewireTenantIsolation()`, verified by mutation):
+
+- A (Livewire's binding, pinned): `test_a_snapshot_records_the_origin_and_route_it_was_rendered_on`,
+  `test_the_same_origin_replay_works` (positive control),
+  `test_livewire_rejects_a_replay_from_a_different_origin` (other tenant, root domain, http),
+  `test_livewire_rejects_a_snapshot_without_origin_or_route_memo`,
+  `test_livewire_rejects_a_snapshot_whose_route_memo_no_longer_matches`.
+- B (ours, origin and route matching): `test_a_staff_member_removed_from_the_organisation_after_the_render_is_refused_on_the_same_origin`
+  and `test_a_cross_tenant_replay_that_satisfies_the_origin_binding_is_still_refused` (need
+  `ResolveTenant`), `test_a_replay_on_the_root_domain_that_satisfies_the_origin_binding_is_aborted_by_require_tenant`
+  (needs `RequireTenant`). The last two re-sign a real snapshot with `Checksum::generate()` after
+  rewriting `memo.origin` — a legitimate mount can never produce them.
 
 `tests/Feature/Security/LivewireAdminTenantIsolationTest.php` — dispatches a **real** HTTP
 `POST /livewire/update` with a genuine, checksum-signed snapshot extracted from an actual page

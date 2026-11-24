@@ -72,6 +72,12 @@ workflow (or a second one) is wired to it — it is not yet enforced by any code
 | `build` | Builds the image with `docker/build-push-action`, pushes `:VERSION` and `:latest` to GHCR, then scans it for OS-package vulnerabilities with Trivy (report-only) | No |
 | `deploy` | SSHes to the VPS, runs `deploy.sh`, health-checks `/up` | No |
 
+**Open admin pages during a deploy (Livewire 3.8.12+, since 2026-11-22).** A page that was open across a deploy of
+this version or later is fine; a page opened on an older build holds a snapshot without `memo.origin`/`memo.route`,
+and Livewire answers its next action (`/admin`, `/platform`) with 404 until the page is reloaded. Tell anyone
+working in the panel to refresh after the deploy — it is expected, not an outage. Background:
+`app/docs/security/patterns/livewire-tenant-isolation.md`.
+
 ### Security scanning (added 2026-08-16, report-only)
 
 `composer audit --locked` (in `test`) and a Trivy OS-layer scan of the built image (in `build`)

@@ -117,7 +117,9 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
         $this->assertTrue($specs->isReorderable());
         $this->assertTrue($specs->isReorderableWithDragAndDrop());
         $this->assertSame('Dodaj parametr', $specs->getAddActionLabel());
-        $this->assertSame('filament-forms::components.repeater.table', $specs->getDefaultView());
+        // Filament 4.12+ renders the Repeater from PHP (getDefaultView() is null); the table-mode view name
+        // survives as the published-override check path.
+        $this->assertSame('filament-forms::components.repeater.table', $specs->getPublishedViewOverrideCheckPath());
     }
 
     public function test_the_spec_rows_render_as_a_table_with_headings_once_and_no_item_headers(): void
@@ -280,8 +282,10 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
         $html = $page->html();
 
         // Only the Builder's own items listen for `builder-expand` (a nested Repeater uses another event).
-        $this->assertSame(3, preg_match_all('/isCollapsed:\s+true\s*,\s*\}"\s*x-on:builder-expand\.window/', $html), 'all three items start collapsed');
-        $this->assertSame(0, preg_match_all('/isCollapsed:\s+false\s*,\s*\}"\s*x-on:builder-expand\.window/', $html), 'none starts open');
+        // Filament 4.12+ renders the item state as `item(JSON.parse('{"isCollapsed":true,...}'))` with the
+        // quotes JSON-escaped ("), hence the `.` in front of `u0022`.
+        $this->assertSame(3, preg_match_all('/x-data="item\(JSON\.parse\(\'[^\']*isCollapsed.u0022:true[^\']*\'\)\)"\s+x-on:builder-expand\.window/', $html), 'all three items start collapsed');
+        $this->assertSame(0, preg_match_all('/x-data="item\(JSON\.parse\(\'[^\']*isCollapsed.u0022:false[^\']*\'\)\)"\s+x-on:builder-expand\.window/', $html), 'none starts open');
         $this->assertStringContainsString('Blok tekstowy — Pierwszy akapit opisu.', $html);
         $this->assertStringContainsString('Cytat — Najlepsza wiertarka w mieście', $html);
         $this->assertStringContainsString('fi-fo-builder-item-header-start-actions', $html, 'move buttons / handle');

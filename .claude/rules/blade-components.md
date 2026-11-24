@@ -166,3 +166,10 @@ already enforces — never `whereIn('id', $ids)` alone. Single definition: `Cont
 Nothing visible → the block renders **nothing** (no heading, no warning box). Never blanket `is_active`: Post / Portfolio
 use `published_at`, Promotion adds a date window, Service depends on `service_type`. A new content type = new arm in
 `visibleQuery()` + a case in `ContentGridVisibilityTest`.
+
+### `<x-dynamic-component>`: the name is validated (since Laravel 12.73)
+
+`:component=` must match `/^[\w\-:.]+$/`, otherwise Blade throws `InvalidArgumentException` — a **500 on a public
+page**, not a missing icon. We build names from stored data (`'heroicon-o-' . strtolower($feature['icon'])`, rentals,
+`components/ios/*`), so any field that feeds an icon name must be a `Select`/`Rule::in()` over Heroicon slugs, never free
+text. An empty/unknown slug still fails as before with `SvgNotFound`. Background: `app/docs/features/package-upgrades.md`.
