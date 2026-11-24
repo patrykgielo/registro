@@ -4,16 +4,59 @@ namespace App\Filament\Resources\ServiceResource\Pages;
 
 use App\Actions\Inventory\RouteQuantityFieldToPrimaryLocationStock;
 use App\Filament\Resources\ServiceResource;
+use App\Filament\Traits\SavesFormPerTab;
 use App\Filament\Traits\StaysOnPageAfterSave;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Support\Components\Attributes\Exposed;
 use Livewire\Attributes\On;
 
 class EditService extends EditRecord
 {
+    use SavesFormPerTab;
     use StaysOnPageAfterSave;
 
     protected static string $resource = ServiceResource::class;
+
+    /**
+     * `duration_minutes` is a Hidden in "Podstawowe" (it must dehydrate for every type, see ServiceResource), but the
+     * hours/minutes inputs that edit it live in "Cena i czas trwania" and are not dehydrated themselves. So saving
+     * THAT tab persists the duration, and saving "Podstawowe" must not persist a duration edit made in the other tab.
+     *
+     * @return array<string, string>
+     */
+    protected function tabPathOwnershipOverrides(): array
+    {
+        return ['duration_minutes' => 'cena-i-czas-trwania'];
+    }
+
+    protected function tabSavedEventName(): string
+    {
+        return 'service-form-tab-saved';
+    }
+
+    /**
+     * Which tabs (and fields) are visible is decided by `data.service_type`, a Livewire property the client can write
+     * (the Select is only `disabled()`, which does not lock it). The type is immutable, so the record is the truth:
+     * without this a rental spoofed to `time_slot` would validate and write the time-slot tab's fields.
+     */
+    private function pinServiceType(): void
+    {
+        $this->data['service_type'] = $this->record->service_type->value;
+    }
+
+    protected function beforeSavingTab(): void
+    {
+        $this->pinServiceType();
+    }
+
+    #[Exposed]
+    public function save(bool $shouldRedirect = true, bool $shouldSendSavedNotification = true): void
+    {
+        $this->pinServiceType();
+
+        parent::save($shouldRedirect, $shouldSendSavedNotification);
+    }
 
     protected function getHeaderActions(): array
     {
@@ -56,8 +99,17 @@ class EditService extends EditRecord
         return $data;
     }
 
+    /**
+     * Routing writes the stock row of the primary location (re-activating it, creating it if missing) and the
+     * `quantity_total` mirror. A full save always did it; a single-tab save does it ONLY when the tab sent
+     * `quantity_total` - otherwise saving e.g. "Treść" would rewrite stock the user never touched here.
+     */
     protected function afterSave(): void
     {
+        if ($this->isSavingSingleTab() && ! $this->tabSaveSentKey('quantity_total')) {
+            return;
+        }
+
         RouteQuantityFieldToPrimaryLocationStock::handle($this->record);
     }
 

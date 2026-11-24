@@ -82,6 +82,64 @@ produktu — `catalog-json-importer.md`), więc ponowny import nie zetrze gwiazd
 - Etykiety: `ServiceType implements Filament\Support\Contracts\HasLabel` (`getLabel()` → `label()`),
   więc `->options(ServiceType::class)` w formularzu i filtrze tabeli pokazuje polskie nazwy.
 
+**Etap 5a (2026-11-24) — silnik zapisu per zakładka** (`App\Filament\Traits\SavesFormPerTab`, użyty w `EditService`; testy
+`ServiceFormPerTabSaveTest`; bez UI — pasek to 5b). `saveTab('<klucz>')` woła `EditRecord::saveFormComponentOnly($tab)`: walidowane i
+zapisywane są TYLKO pola tej zakładki, reszta wierszy/kluczy JSON zostaje bajt w bajt (dla wierszy już znormalizowanych — patrz „Hooki
+`saving`" niżej), a niezapisane edycje innych zakładek zostają w `$this->data` (nie w bazie). Pełne `save()` bez zmian poza przypięciem
+`service_type` (testy charakterystyczne bez zmian).
+- **Klucz zakładki** = ten z `?tab=`: względny `cena-i-magazyn::data::tab` (klucze `getTabSaveMap()`; UI 5b ma słać ten), też pełny
+  `form.cena-i-magazyn::data::tab` i sam slug `cena-i-magazyn`. Nieznany lub aktualnie UKRYTY klucz = `abort(403)` przed zapisem. Zakładki
+  bierze `getFormTabs()`, które NIE schodzi w pola: Builder ma własne `Tab`y w blokach (`tresc::data.content.<uuid>.data::tab`), a
+  `getFlatComponents()` je wylicza — slug `tresc` pasowałby do bloku, a pełny klucz z uuid (znany klientowi) do zakładki bloku.
+- **Dostęp z przeglądarki**: `saveTab()` ma `#[Exposed]`, `saveFormComponentOnly()` zostaje `#[Unexposed]` (403), `getTabSaveMap()` też.
+  W teście Livewire po przerwanym żądaniu (403) komponent nie ma już ważnego snapshotu — KOLEJNE `call()` na nim da 404, nie 403; jeden
+  komponent na jedno wywołanie.
+- **Pułapki `saveFormComponentOnly()`**: kolejność hooków `afterValidate` → `mutateFormDataBeforeSave` → `beforeSave` (inna niż w `save()`);
+  brak `RecordUpdated/RecordSaved` i brak powiadomienia (trait wysyła własne „Zapisano: {zakładka}” i zdarzenie przeglądarki
+  `service-form-tab-saved` z `{tab, savedAt}`); `Halt` to CICHE wyjście — sukces wykrywa flaga z hooka `afterSave` (`afterSaveSavesFormPerTab`,
+  nazwa = `after`+hook+nazwa traita, woła ją `callHook`); relacje (`saveRelationships`) zapisują się PRZED odwodnieniem stanu; wyjątek
+  nie odtwarza kontenera zakładki (trait robi to w `finally`); `rememberData()` hashuje CAŁY `$this->data`, więc `savedDataHash`
+  nie mówi nic o tym, która zakładka jest zapisana — **etap 6 (kropki, ostrzeżenie przy wyjściu) NIE może się na nim opierać**;
+  udana walidacja robi `resetErrorBag()` dla całej strony, więc czerwone pole innej, niezapisanej zakładki gaśnie (wartość nadal zła i
+  niezapisana: brak znacznika błędu ≠ poprawne; przypięte testem `test_known_behaviour_...`).
+- **Własność ścieżek** (`tabPathOwnershipOverrides()`): ścieżka zapisywana przez INNĄ zakładkę niż ta, w której leży jej pole. Naprawa 1
+  (`duration_minutes`): Hidden mieszka w „Podstawowe” (musi dehydrować dla każdego typu), a wejścia godz./min w „Cena i czas trwania” są
+  `dehydrated(false)`. Override `['duration_minutes' => 'cena-i-czas-trwania']`: zapis tej zakładki wstrzykuje wartość ze stanu
+  formularza, zapis każdej innej ją wycina (rental: duration nie zapisuje żadna zakładka — nie jest edytowalna). Pełne `save()` bez
+  override'u. Zmiana etykiety zakładki zmienia jej slug i cicho wyłącza override — pilnuje tego
+  `test_the_duration_is_saved_with_cena_i_czas_trwania_and_not_with_podstawowe`. `getTabSaveMap()` uwzględnia override'y (nie wylicza wierszy
+  repeatera/buildera, tylko ścieżkę pola).
+- **Naprawa 2 (stan magazynowy)**: `EditService::afterSave()` routuje `quantity_total` do wiersza stanu (reaktywuje go, tworzy brakujący)
+  przy KAŻDYM zapisie; zapis pojedynczej zakładki robi to tylko gdy zakładka wysłała `quantity_total` (`tabSaveSentKey()` czyta finalne `$data`
+  z `handleRecordUpdate`, po override'ach i scaleniu metadanych). Bez tego zapis „Treść” zmieniałby `is_active` nieaktywnego wiersza stanu.
+- **Naprawa 3 (wyjątek po zapisie)**: po `Throwable` innym niż `ValidationException` trait przeładowuje rekord z bazy (`refresh()`,
+  fallback: surowe oryginały + `unsetRelations()`). Zasada: po KAŻDEJ awarii prawdą jest baza, niezależnie od tego, czy `UPDATE` już
+  poszedł. Livewire i tak pobiera model od nowa w każdym żądaniu (`ModelSynth::hydrate`), więc rozjazd pamięci z bazą istnieje tylko
+  WEWNĄTRZ jednego żądania (dwa zapisy z rzędu na tym samym obiekcie strony) — dlatego testy wołają `$component->instance()->saveTab()` dwa
+  razy, a nie dwa `call()`. Dwa testy: wyjątek PRZED `UPDATE` (`updating`: pamięć brudna) i PO `UPDATE` (`saved`: wiersz już zapisany,
+  `original` jeszcze niezsynchronizowany) — drugi wymaga pamięci równej bazie, czego sam reset do surowych oryginałów nie da.
+- **Istniejąca luka (nie z 5a): brak transakcji.** Panel nie woła `->databaseTransactions()` (domyślnie wyłączone), więc `begin/rollback`
+  w `save()` i `saveFormComponentOnly()` to no-opy: awaria PO `UPDATE` (hook `afterSave`, routing stanu) zostawia już zapisane wartości.
+  Dotyczy też pełnego `save()`. Nie włączono transakcji (osobna decyzja).
+- **Hooki `saving` modelu działają na CAŁYM modelu** (`NormalizesEmptyJsonToNull`, `SyncsRentalPriceWithDailyRate`, `NormalizesSpecsShape`),
+  tak samo przy zapisie zakładki i pełnym: „bajt w bajt" dotyczy wierszy już znormalizowanych. Wiersz historyczny (`features='[]'`,
+  `body='<p></p>'`, rental z `price != price_per_day`) zostanie znormalizowany przez KAŻDY zapis, także cudzej zakładki
+  (`test_a_tab_save_normalises_a_legacy_row_exactly_like_a_full_save`).
+- **Spoof `data.service_type`**: widoczność zakładek czyta zapisywalny przez klienta `data.service_type`. `EditService` przypina go do
+  `$this->record->service_type` na początku `saveTab()` (hook `beforeSavingTab()`) i `save()`; bez tego rental z `time_slot` w stanie
+  zapisywał pola zakładki czasu. Create bez zmian.
+- **Napis „Zapisano: …"** jest po polsku na sztywno (jak `StaysOnPageAfterSave`) — nie przechodzi przez `lang/`.
+- Trait zakłada, że strona NIE nadpisuje `handleRecordUpdate()` (trait go opakowuje: override'y, zapis kluczy). Nieistniejący slug
+  właściciela w `tabPathOwnershipOverrides()` rzuca `LogicException` (przy `saveTab()` i `getTabSaveMap()`).
+- Bezpieczne (przypięte testami): `metadata` (scalenie z bazą działa dla samego `metadata.specs`; zakładka bez `metadata` go nie rusza, nawet NULL),
+  `features` (dwie kopie, dokładnie jedna dehydruje), slug/`service_type`, upload (plik zapisuje dopiero zakładka „Podstawowe”), Builder
+  (zapis przez zakładkę = zapis pełny), kategoria (zmiana i czyszczenie; cudzy tenant = błąd walidacji pola, nic nie zapisane, następna
+  zakładka nie dopisuje kategorii), cena rentala (`price` = zapisane `price_per_day`; edycja stawki w formularzu przesuwa `price` dopiero
+  przy zapisie „Cena i magazyn”).
+- `services.name` ma w bazie `UNIQUE(organization_id, name)` bez żadnej reguły w formularzu — bliźniacze fixtury testowe muszą mieć różne nazwy.
+- Nowy zasób z zakładkami: `use SavesFormPerTab` + (opcjonalnie) `tabPathOwnershipOverrides()` / `tabSavedEventName()`; zakładki MUSZĄ mieć
+  unikalne etykiety (slug etykiety jest ich krótkim kluczem).
+
 Co ta siatka pokazała o zapisie w Filament 4 (dotyczy KAŻDEGO formularza):
 - `getState()` zwraca tylko ścieżki powiązane z polami → kolumna JSON z polem na `metadata.specs`
   traci pozostałe klucze `metadata` przy każdym zapisie (naprawione na `ServiceResource` — patrz wyżej;
