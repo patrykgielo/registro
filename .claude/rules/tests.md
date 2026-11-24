@@ -653,7 +653,7 @@ nothing leaks from test to test either. Green alone + red in the suite = look fo
 The reverse (red alone, green in the suite) after switching to a branch with another **framework version**: stale
 compiled Blade views. `storage/framework/views` is not invalidated by a `composer install`; views compiled by 12.73
 call `DynamicComponent::withBoundAttributes()`, which 12.66 lacks → 500 in every page using `<x-dynamic-component>`.
-ParaTest workers compile into their own dirs, so only the serial run sees it. `php artisan view:clear` after every
+ParaTest workers compile into per-token dirs (`TestViews`), so the serial run sees it first. `php artisan view:clear` after every
 branch switch that changes `composer.lock` (deploy scripts already run `optimize:clear`).
 
 ## Two requests in one test: `forgetScopedInstances()`
