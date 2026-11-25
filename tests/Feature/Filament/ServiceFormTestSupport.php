@@ -280,25 +280,6 @@ trait ServiceFormTestSupport
     }
 
     /**
-     * @param  array<mixed>  $value
-     * @return array<mixed>
-     */
-    protected function ksortDeep(array $value): array
-    {
-        foreach ($value as $key => $item) {
-            if (is_array($item)) {
-                $value[$key] = $this->ksortDeep($item);
-            }
-        }
-
-        if (! array_is_list($value)) {
-            ksort($value);
-        }
-
-        return $value;
-    }
-
-    /**
      * @return array<int, array{location_id: int, quantity: int, is_active: bool}>
      */
     protected function stockRows(Service|int $service): array

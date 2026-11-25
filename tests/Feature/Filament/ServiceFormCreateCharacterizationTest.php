@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 use TypeError;
 
@@ -27,7 +28,10 @@ use TypeError;
  *
  * Columns the form never binds (description, booking_count_month, ...) are asserted too: they define what
  * "create" leaves behind for the rest of the system.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormCreateCharacterizationTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;

@@ -13,6 +13,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Features\SupportTesting\Testable;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -21,7 +22,10 @@ use Tests\TestCase;
  * and collapsed, reorderable, summarised block items. PRESENTATION ONLY - what is saved is pinned by
  * ServiceForm{Edit,Create}CharacterizationTest; the round-trips here only prove that the new presentation
  * (table mode, label closures, move buttons) hands the same data to the save.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormContentAndSpecLayoutTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;
@@ -155,7 +159,7 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
 
         $this->saveUnchanged($service);
 
-        $this->assertSame($this->threeSpecs(), $this->reload($service)->metadata['specs']);
+        $this->assertSameJson($this->threeSpecs(), $this->reload($service)->metadata['specs']);
     }
 
     public function test_spec_rows_can_be_reordered_and_saved_in_the_new_order(): void
@@ -171,7 +175,7 @@ class ServiceFormContentAndSpecLayoutTest extends TestCase
         );
         $this->saveForm($page)->assertHasNoFormErrors();
 
-        $this->assertSame(array_reverse($this->threeSpecs()), $this->reload($service)->metadata['specs']);
+        $this->assertSameJson(array_reverse($this->threeSpecs()), $this->reload($service)->metadata['specs']);
     }
 
     public function test_the_spec_row_rules_still_apply_inside_the_table(): void

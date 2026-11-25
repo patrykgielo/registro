@@ -34,6 +34,7 @@ use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -88,7 +89,10 @@ use Tests\TestCase;
  * guessed form data was invalid would be indistinguishable from a real regression. Team lead
  * asked to be told plainly where the delivered scope differs from the brief -- this is that
  * disclosure, not a silent narrowing.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class PanelWalkthroughTest extends TestCase
 {
     use RefreshDatabase;

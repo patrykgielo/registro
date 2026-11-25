@@ -31,9 +31,9 @@ cat >"$PROJ/.claude/hooks/probe.sh" <<'EOS'
 source "${BASH_SOURCE[0]%/*}/lib/wsl-forward.sh"
 registro_wsl_forward "${BASH_SOURCE[0]}" "$@"
 hook_read_input
-printf 'PWD=%s\nCLAUDE_PROJECT_DIR=%s\nORIGIN=%s\nCLONE=%s\nASSUME=%s\nARGS=%s\nSTDIN=%s\n' \
+printf 'PWD=%s\nCLAUDE_PROJECT_DIR=%s\nORIGIN=%s\nCLONE=%s\nASSUME=%s\nARGS=%s\nWSLENV=%s\nSTDIN=%s\n' \
     "$PWD" "$CLAUDE_PROJECT_DIR" "${REGISTRO_HOOK_ORIGIN:-}" "${REGISTRO_WIN_CLONE:-}" \
-    "${REGISTRO_HOOK_ASSUME_WINDOWS:-unset}" "$*" "$HOOK_INPUT"
+    "${REGISTRO_HOOK_ASSUME_WINDOWS:-unset}" "$*" "${WSLENV:-}" "$HOOK_INPUT"
 exit "${PROBE_RC:-0}"
 EOS
 chmod +x "$PROJ/.claude/hooks/probe.sh"
@@ -67,6 +67,14 @@ assert_contains "$OUT" "ARGS=--flag value" "hook arguments are forwarded"
 assert_contains "$OUT" 'STDIN={"k":"v with \"quotes\""}' "stdin is preserved byte for byte"
 assert_eq '{"k":"v with \"quotes\""}' "$(cat "$SANDBOX/wsl.stdin")" "wsl.exe received the original stdin"
 assert_eq "1" "$(wsl_calls)" "exactly one wsl.exe call"
+# REGISTRO_TESTS (read by subagent-quality-gate.sh) only crosses wsl.exe if WSLENV lists it.
+assert_contains "$OUT" "WSLENV=REGISTRO_TESTS" "REGISTRO_TESTS is exported across wsl.exe via WSLENV"
+OUT2="$(printf '{}' | REGISTRO_HOOK_ASSUME_WINDOWS=1 WSLENV='FOO/p:REGISTRO_TESTS/u' REGISTRO_WSL_TREE="$TREE" \
+    bash "$PROJ/.claude/hooks/probe.sh" 2>/dev/null)"
+assert_contains "$OUT2" "WSLENV=FOO/p:REGISTRO_TESTS/u"$'\n' "an existing WSLENV entry for it is kept, not duplicated"
+OUT2="$(printf '{}' | REGISTRO_HOOK_ASSUME_WINDOWS=1 WSLENV='FOO/p' REGISTRO_WSL_TREE="$TREE" \
+    bash "$PROJ/.claude/hooks/probe.sh" 2>/dev/null)"
+assert_contains "$OUT2" "WSLENV=FOO/p:REGISTRO_TESTS" "other WSLENV entries are preserved"
 
 # --- 2. the command line the shim builds, with NO configuration at all -----------
 : >"$CALL_LOG"

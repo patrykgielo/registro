@@ -14,6 +14,36 @@ tests/
 └── Browser/        # Dusk browser tests (if used)
 ```
 
+## Poziomy: `#[Group('slow')]` i `--parallel` (od 2026-11-22)
+
+**Problem:** pełny Unit+Feature = ~608 s sekwencyjnie (~306 s z `--parallel`), a bramka SubagentStop
+ma limit 600 s — mieściła się tylko przypadkiem. **Rozwiązanie:** klasy, które dotyczą wąskiego
+obszaru i kosztują dużo (dziś: `ServiceForm*`, `PanelWalkthroughTest`, `CatalogImportFormParityTest`)
+dostają atrybut `#[Group('slow')]`; reszta biegnie zawsze.
+
+| Co | Komenda (w kontenerze `app`) |
+|---|---|
+| Codziennie, szybko | `php artisan test --parallel --exclude-group=slow` |
+| Pełny zestaw (CI na PR robi to zawsze) | `php artisan test --parallel` |
+| Tylko wolne | `php artisan test --parallel --group=slow` |
+
+- **Kiedy tagować:** klasa jest zmierzenie wolna (`--profile`) **i** jej sens kończy się na jednym obszarze kodu (formularz
+  produktu, import katalogu). Test, który ochrania coś szeroko (autoryzacja, tenant-scoping,
+  dostępność/oversell), **nie jest** `slow` — krótszy czas nie jest warty dziury w siatce.
+- **Zakres wybiera bramka** (`.claude/hooks/subagent-quality-gate.sh`): pełny, gdy zmieniona ścieżka
+  pasuje do `SLOW_TRIGGERS_RE` (Filament, cały `app/Models/`, Policies, katalog, Inventory/Onboarding,
+  widoki `components/ios` i `filament`, migracje, fabryki, ich testy); „zmieniona" liczy też commity
+  gałęzi od `origin/develop`. `REGISTRO_TESTS=full|fast` wymusza. Nowa klasa `slow` obejmująca nowy
+  obszar → dopisz ścieżkę do `SLOW_TRIGGERS_RE`, inaczej bramka nigdy jej nie uruchomi (zostaje tylko
+  CI na PR). Bramka ma własny budżet 540 s na Pint+testy; po jego przekroczeniu mówi `NOT VERIFIED`
+  (to nie pass) — szczegóły i test: `claude-code-config.md`, case `52`.
+- **Zielone „fast" ≠ zielone „full".** Bramka drukuje, który zakres przeszedł. Przed merge'em ufaj CI
+  (`test.yml`, zawsze pełny), nie bramce.
+- `--parallel` z SQLite `:memory:` nie wymaga niczego; z MySQL (CI) każdy proces dostaje bazę
+  `<DB_DATABASE>_test_<N>`, tworzoną przez `CREATE DATABASE` — użytkownik DB musi mieć to uprawnienie.
+- **Wspólny dysk = wyścig między procesami** (baza jest per proces, `storage_path()` nie): patrz
+  sekcja „Real disk under `--parallel`" niżej.
+
 ## Naming Conventions
 
 ```php
@@ -248,6 +278,11 @@ To prawda i to **nieistotne**. Właściwe kryterium nie brzmi „czy zmieniam sc
 Znane w tym repo: cytowanie identyfikatorów, kolejność kluczy JSON, typ wyniku `SUM()`
 (MySQL oddaje string), wiele `NULL` w UNIQUE, `ONLY_FULL_GROUP_BY`, niejawny COMMIT przy DDL,
 brak egzekwowania FK przy `DROP TABLE` na SQLite. Cztery z nich kosztowały już wdrożenie.
+
+**Kolejność kluczy JSON:** MySQL oddaje kolumnę JSON z kluczami posortowanymi (krótszy klucz pierwszy,
+potem bajtowo) i ze spacją po `:`/`,`; SQLite oddaje tekst bez zmian. Asercję na tablicy asocjacyjnej
+z kolumny JSON pisz przez `assertSameJson()` (`Tests\TestCase`: sortuje klucze obiektów, zachowuje
+kolejność list, typy porównuje ściśle - NIE `assertEquals`); surowy string JSON najpierw `json_decode`.
 
 **Praktycznie:** każda asercja na `DB::getQueryLog()`, każdy surowy SQL i każde porównanie
 wyniku agregatu wymaga przebiegu na `mysql:8.0`, choćby zmiana nie tknęła bazy.

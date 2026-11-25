@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -27,7 +28,10 @@ use Tests\TestCase;
  * is no longer editable (hidden), so a rental save neither reads nor writes it.
  *
  * The existing ServiceForm* tests stay untouched; this file pins what stage A adds.
+ *
+ * Slow tier: skipped by the post-agent hook's fast scope; CI runs it. List: Tests\Unit\SlowGroupIsDeclaredTest.
  */
+#[Group('slow')]
 class ServiceFormFieldMovesTest extends TestCase
 {
     use RefreshDatabase, ServiceFormTestSupport;

@@ -1,19 +1,34 @@
 name: Run Tests
 
-# Disabled for Registro migration - manual trigger only
+# Runs on every pull request into develop (the integration branch) and on demand.
+# This is the ONLY workflow that runs automatically; every other workflow in this
+# directory is still workflow_dispatch only (see RELEASE_PROCESS.md).
+# `pull_request` with no `types:` = opened / synchronize / reopened. It runs the
+# PR's merge result with a read-only token, so a fork PR gets no secrets (none are used).
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [develop]
 
-# Cancel in-progress runs for same branch (faster feedback on new pushes)
+# Cancel in-progress runs of the SAME pull request (faster feedback on new pushes).
+# Keyed on the PR number, not the branch name: on a public repo two fork PRs can
+# share a branch name (`patch-1`) and would cancel each other. workflow_dispatch
+# has no PR number and falls back to the unique run_id, so it never cancels (or is
+# cancelled by) anything.
 concurrency:
-  group: tests-${{ github.head_ref || github.run_id }}
+  group: tests-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   test:
     name: PHPUnit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 25, not 10: a run is setup (composer + npm ci + vite build) plus
+    # Unit+Feature (~2800 tests, ~5 min measured locally on SQLite). The CI figure is
+    # NOT measured yet -- MySQL 8 on a hosted runner may be slower or faster --
+    # so 25 is a deliberately generous estimate, not a calibrated value.
+    # Tighten it once real run durations are known; a hang still ends in 25.
+    timeout-minutes: 25
     permissions:
       contents: read
 
@@ -179,6 +194,10 @@ jobs:
       - name: Run Laravel Pint (Code Style)
         run: ./vendor/bin/pint --test
 
+      # config:cache here only feeds the migrate step below; the test step starts
+      # with `config:clear`, so the cache never reaches the suite. That matters:
+      # a cached config freezes env() at cache time, and this step does not set
+      # QUEUE_CONNECTION / CACHE_* / SESSION_DRIVER / MAIL_MAILER (the test step does).
       - name: Prepare test environment
         run: |
           cp .env.example .env
@@ -192,6 +211,10 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: secret
 
+      # Smoke of the migrations + seeders on MySQL 8.0 in the `registro_test`
+      # database. The suite itself does NOT use this database under --parallel
+      # (see the test step), so this step is what proves a plain `migrate` works
+      # on the engine we deploy to.
       - name: Run migrations and seeders
         run: |
           php artisan migrate --force
@@ -215,10 +238,24 @@ jobs:
       # production (correctness of the code under test); queue/cache driver
       # tracks .env.testing (determinism of the test), not production -- see
       # .claude/rules/tests.md and .claude/rules/ci-cd-troubleshooting.md.
+      #
+      # Unit + Feature, in parallel, INCLUDING the `slow` group. This is the full
+      # suite on purpose: the local quality gate skips `slow` unless the product
+      # form / Filament / catalog importer changed, and this job is the net under
+      # that shortcut. No --testsuite flag: phpunit.xml defaultTestSuite is
+      # "Unit,Feature" (Browser and Concurrency need Chromium / a throwaway MySQL
+      # and must never run implicitly), and the same flag-less command is what was
+      # measured locally with --parallel (2799 passed).
+      #
+      # Parallel + MySQL: Laravel gives each worker its own database named
+      # `<DB_DATABASE>_test_<token>` (here registro_test_test_1 .. _N) and creates
+      # it with CREATE DATABASE through this connection, so DB_USERNAME must be
+      # allowed to -- the service's root user is. The processes default to the
+      # runner's core count. On SQLite :memory: Laravel skips all of this.
       - name: Run PHPUnit tests
         run: |
           php artisan config:clear
-          php artisan test --testsuite=Feature
+          php artisan test --parallel
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
