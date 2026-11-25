@@ -166,6 +166,25 @@ Tailwind v4 w Filament: używaj `@theme { }` (nie `:root { }`) — tylko `@theme
 
 Alpine.js w filament-admin.js: rejestruj przez `alpine:init`, BEZ `Alpine.start()`.
 
+## Transakcje zapisu — per strona, NIGDY `->databaseTransactions()` na panelu (2026-11-25, ADR-016)
+
+Bez transakcji `begin/commit/rollBack` w `create()`/`save()`/`saveFormComponentOnly()` to no-opy: wyjątek w
+`afterSave`/`afterCreate` albo w hooku `saved` zostawia już zapisane wiersze. Flaga PANELU włącza też transakcję
+w **każdej akcji** (`Panel::register` → `Action::configureUsing`), a akcje offboardingu, zamówień, `CreateUser` i ról
+wysyłają joby/powiadomienia do kolejki PRZED commitem (`after_commit=false`) albo czyszczą cache Spatie — lista
+blokerów i warunek przejścia na flagę panelu: `app/docs/decisions/ADR-016-filament-save-transactions.md`.
+
+```php
+// ✅ na stronie Create/Edit, PO audycie jej efektów ubocznych (joby, maile, cache, HTTP, pliki)
+protected ?bool $hasDatabaseTransactions = true;
+```
+
+Dziś: `EditService` (pełny zapis + `saveTab()`), `CreateService`, `CreateEmployee`, `CreateCustomer`. Lista jest
+przypięta testem `FilamentSaveTransactionsTest` — nowa strona albo akcja z `->databaseTransaction()` = audyt + wpis
+w teście i w ADR. `Halt` domyślnie COMMITUJE (rollback: `halt(true)`). Pliki z FileUpload nie są cofane (sieroty).
+Test rollbacku: wyjątek wstrzyknięty po `UPDATE` (np. `ServiceLocationStock::saving` rzuca) + test kontrolny z flagą
+`false` na instancji — bez niego test rollbacku przechodzi też wtedy, gdy scenariusz w ogóle nie dochodzi do zapisu.
+
 ## Livewire Assets (gdy `->live()` nie działa)
 
 ```bash

@@ -40,10 +40,12 @@ use Throwable;
  *   - it does not restore the tab's container when it throws (restored here);
  *   - `rememberData()` hashes the WHOLE `$this->data`, so `savedDataHash` says nothing about which tab is saved.
  *
- * There is NO database transaction around a save unless the panel calls `->databaseTransactions()` (this one does not):
- * a failure after the UPDATE leaves the values written. So after ANY failure that is not a validation error the DB is
- * the truth: the in-memory record is reloaded from it, whether or not the UPDATE ran. Livewire re-fetches the model on
- * every request, so that only matters within one request (two saves on one page object).
+ * `saveFormComponentOnly()` runs in a DB transaction only if the PAGE opts in (`$hasDatabaseTransactions = true`; the
+ * panels do not enable it - `.claude/rules/filament.md` "Transakcje zapisu"). `EditService` does, so a failure after
+ * the UPDATE rolls the tab save back; files a FileUpload already stored are not rolled back. Either way, after ANY
+ * failure that is not a validation error the DB is the truth: the in-memory record is reloaded from it (with the
+ * transaction that is the row as it was before the save; without one, whatever the UPDATE left). Livewire re-fetches
+ * the model on every request, so that only matters within one request (two saves on one page object).
  *
  * A using page must not override `handleRecordUpdate()`: the trait wraps it (ownership overrides, sent-key record).
  * The model's `saving` hooks run on the WHOLE model, exactly as in a full save, so "other tabs' columns untouched"
@@ -320,7 +322,7 @@ trait SavesFormPerTab
     }
 
     /**
-     * After a failed tab save the DB is the truth, whether or not the UPDATE ran (there is no transaction to undo it).
+     * After a failed tab save the DB is the truth, whether or not the UPDATE ran (rolled back on a transactional page).
      * Reload from it: a reset to the model's raw original would be wrong when the failure came after the UPDATE
      * (memory old, DB new). The raw-original reset is only the fallback when the reload itself fails.
      */

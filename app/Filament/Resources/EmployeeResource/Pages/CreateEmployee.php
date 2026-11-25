@@ -10,6 +10,13 @@ class CreateEmployee extends CreateRecord
 {
     protected static string $resource = EmployeeResource::class;
 
+    /**
+     * The user row, the `staff` role and the tenant pivot commit together: a failure in `afterCreate()` no longer
+     * leaves an account that exists but cannot log in. Opt-in per page, NOT panel-wide - see
+     * `.claude/rules/filament.md` ("Transakcje zapisu").
+     */
+    protected ?bool $hasDatabaseTransactions = true;
+
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');

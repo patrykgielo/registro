@@ -15,6 +15,12 @@ class CreateService extends CreateRecord
     protected static string $resource = ServiceResource::class;
 
     /**
+     * The INSERT and the stock rows `afterCreate()` writes commit together or not at all. Opt-in per page, NOT
+     * panel-wide - see `.claude/rules/filament.md` ("Transakcje zapisu").
+     */
+    protected ?bool $hasDatabaseTransactions = true;
+
+    /**
      * ClickUp 123k99cvcc3: without this, a MULTI-location tenant creating a
      * new item_rental product through the panel got zero
      * service_location_stocks rows at all until an admin happened to open

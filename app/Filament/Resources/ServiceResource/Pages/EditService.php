@@ -19,6 +19,13 @@ class EditService extends EditRecord
     protected static string $resource = ServiceResource::class;
 
     /**
+     * Full `save()` and per-tab `saveTab()` run in one DB transaction: a failure after the UPDATE (stock routing in
+     * `afterSave`, a model hook) rolls the whole save back instead of leaving half of it written. Opt-in per page, NOT
+     * panel-wide - the list and the reasons are in `.claude/rules/filament.md` ("Transakcje zapisu").
+     */
+    protected ?bool $hasDatabaseTransactions = true;
+
+    /**
      * `duration_minutes` is a Hidden in "Podstawowe" (it must dehydrate for every type, see ServiceResource), but the
      * hours/minutes inputs that edit it live in "Cena i czas trwania" and are not dehydrated themselves. So saving
      * THAT tab persists the duration, and saving "Podstawowe" must not persist a duration edit made in the other tab.
