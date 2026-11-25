@@ -88,6 +88,7 @@ for the conceptual overview these deep-dive.
 | Tenant-Stack Provisioning | `features/tenant-stack-provisioning.md` | CLI provisioning + singleton lock for dedicated per-client stacks |
 | CMS Page Menu | `features/cms-page-menu.md` | Stable |
 | Catalog JSON importer | `features/catalog-json-importer.md` | `catalog:import` / `catalog:import-revert` / `catalog:import-status`: all-or-nothing import of a rental catalogue from JSON, ledger-scoped revert |
+| SVG logo sanitisation | `features/svg-logo-sanitization.md` | `SvgLogoSanitizer`: the one place uploaded SVG logos are cleaned (DesignHub + SystemSettings header/footer); fail closed; every caller pinned by a test |
 | Content-grid visibility | `features/content-grid-visibility.md` | Block "Siatka treści": what the public sees per type, picker = renderer |
 | Password reset flow | `features/password-reset-flow.md` | Entry from the `/admin` and `/platform` login screens; why not Filament's `passwordReset()` |
 | SMS System | `features/sms-system/` | Stable |

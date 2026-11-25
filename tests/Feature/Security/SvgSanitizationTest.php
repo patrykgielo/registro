@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Security;
 
 use App\Filament\Pages\DesignHub;
-use enshrined\svgSanitize\Sanitizer;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -20,18 +19,16 @@ use Tests\TestCase;
  * so a downgrade or a removed sanitize() call would have gone unnoticed.
  *
  * What catches what: a removed sanitize() call fails the stripping / javascript: / remote-ref /
- * DTD tests. A downgrade to <=0.22 fails the DTD-entity rejection test and the garbage-input
- * contract assertion (0.22 strips the entity and returns a string). The ATTLIST and mixed-case
- * <use> tests are smoke tests of 1.x behaviour only: their payloads do not crash 0.22 either, so
- * they do NOT reproduce those advisories.
+ * DTD tests. A downgrade to <=0.22 fails the DTD-entity rejection test (0.22 strips the entity and
+ * returns a string). The ATTLIST and mixed-case <use> tests are smoke tests of 1.x behaviour only:
+ * their payloads do not crash 0.22 either, so they do NOT reproduce those advisories.
  *
  * REAL path: DesignHub::processLogoUpload() (private) is driven via reflection with a genuine
  * Livewire TemporaryUploadedFile, writing to a faked `public` disk.
  *
- * CONTRACT path: SystemSettings::appearanceTab() contains two byte-identical copies of the same
- * closure (header/footer logo). They live inside Filament FileUpload definitions and cannot be
- * invoked in isolation, so the last test pins the Sanitizer configured exactly like all three call
- * sites (`new Sanitizer` + `removeRemoteReferences(true)`).
+ * The SystemSettings header/footer uploads share the same code (App\Support\Media\SvgLogoSanitizer)
+ * and are pinned through the real page in Tests\Feature\Filament\SystemSettingsLogoSvgSanitizationTest;
+ * the class contract (incl. garbage/empty input -> reject) lives in SvgLogoSanitizerTest.
  */
 class SvgSanitizationTest extends TestCase
 {
@@ -182,33 +179,5 @@ class SvgSanitizationTest extends TestCase
         $this->assertStringNotContainsStringIgnoringCase('xlink:href', $stored);
         $this->assertStringNotContainsStringIgnoringCase('data:', $stored);
         $this->assertStringContainsString('<path', $stored);
-    }
-
-    public function test_sanitizer_contract_as_configured_by_every_call_site(): void
-    {
-        // Exactly the configuration used in DesignHub and both SystemSettings logo closures.
-        $sanitizer = new Sanitizer;
-        $sanitizer->removeRemoteReferences(true);
-
-        $clean = $sanitizer->sanitize(self::CLEAN_SVG);
-        $this->assertIsString($clean);
-        $this->assertStringContainsString('<path', $clean);
-
-        $dirty = $sanitizer->sanitize(
-            '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" onload="alert(1)">'
-            .'<script>alert(2)</script>'
-            .'<a xlink:href="javascript:alert(3)"><path d="M0 0h10v10H0z"/></a>'
-            .'<image href="https://evil.example/x.png"/>'
-            .'</svg>'
-        );
-        $this->assertIsString($dirty);
-        $this->assertStringNotContainsStringIgnoringCase('<script', $dirty);
-        $this->assertStringNotContainsStringIgnoringCase('onload', $dirty);
-        $this->assertStringNotContainsStringIgnoringCase('javascript:', $dirty);
-        $this->assertStringNotContainsString('evil.example', $dirty);
-
-        // Garbage that is not XML must come back as `false` (the app's "reject" signal), not a
-        // string and not an exception: our `=== false` check depends on this 1.x behaviour.
-        $this->assertFalse($sanitizer->sanitize('this is not xml at all <<<'));
     }
 }

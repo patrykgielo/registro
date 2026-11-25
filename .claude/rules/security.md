@@ -77,26 +77,20 @@ SVG files can contain embedded JavaScript (`<script>` tags).
 FileUpload::make('logo')
     ->acceptedFileTypes(['image/svg+xml'])  // XSS vector!
 
-// ✅ BEZPIECZNE - SVG z sanityzacją
-use enshrined\svgSanitize\Sanitizer;
-
+// ✅ BEZPIECZNE - jedna implementacja: App\Support\Media\SvgLogoSanitizer
 ->saveUploadedFileUsing(function (TemporaryUploadedFile $file) {
-    $path = $file->storePublicly('logos', 'public');
+    $path = $file->storePublicly('settings/logos', 'public');
 
     if ($file->getMimeType() === 'image/svg+xml') {
-        $storage = Storage::disk('public');
-        $sanitizer = new Sanitizer();
-        $sanitizer->removeRemoteReferences(true);
-        $cleanSvg = $sanitizer->sanitize($storage->get($path));
-        if ($cleanSvg === false) {
-            $storage->delete($path);
-            throw new \Exception('SVG contains dangerous content');
-        }
-        $storage->put($path, $cleanSvg);
+        // fail closed: odrzucony/pusty SVG -> plik usunięty + \Exception('SVG contains dangerous content')
+        app(SvgLogoSanitizer::class)->sanitizeStoredFile($path);
     }
     return $path;
 })
 ```
+
+Nigdy `new Sanitizer` w wywołującym: przez kontener, żeby test strony mógł podmienić klasę i
+udowodnić, że pole przez nią przechodzi. Szczegóły: `app/docs/features/svg-logo-sanitization.md`.
 
 ### Path Traversal Prevention
 

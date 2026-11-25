@@ -312,7 +312,7 @@ Settings Pages NIE używają Eloquent modeli, więc Filament FileUpload:
 
 ```php
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
-use enshrined\svgSanitize\Sanitizer;  // composer require enshrined/svg-sanitize
+use App\Support\Media\SvgLogoSanitizer;
 
 FileUpload::make('appearance.header_logo')
     ->disk('public')
@@ -347,23 +347,18 @@ FileUpload::make('appearance.header_logo')
         // Store file
         $path = $file->storePublicly('settings/logos', 'public');
 
-        // SVG Sanitization (XSS prevention)
+        // SVG Sanitization (XSS prevention) — ONLY via the shared class, never an inline Sanitizer:
+        // tests swap the container binding to prove each upload field goes through it.
         if ($mimeType === 'image/svg+xml') {
-            $storage = Storage::disk('public');
-            $content = $storage->get($path);
-            $sanitizer = new Sanitizer();
-            $sanitizer->removeRemoteReferences(true);
-            $cleanSvg = $sanitizer->sanitize($content);
-            if ($cleanSvg === false) {
-                $storage->delete($path);
-                throw new \Exception('SVG contains dangerous content');
-            }
-            $storage->put($path, $cleanSvg);
+            app(SvgLogoSanitizer::class)->sanitizeStoredFile($path);
         }
 
         return $path;
     }),
 ```
+
+Nowe pole z SVG = nowy przypadek w `tests/Feature/Filament/SystemSettingsLogoSvgSanitizationTest.php`
+(albo analogiczny test strony) — inaczej usunięcie wywołania przejdzie niezauważone.
 
 ### Bezpieczne pobieranie ścieżki (SettingsManager)
 

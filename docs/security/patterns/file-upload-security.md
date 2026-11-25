@@ -545,7 +545,7 @@ at SettingsManager.php:315
 #### Layer 1: saveUploadedFileUsing() + SVG Sanitization
 
 ```php
-use enshrined\svgSanitize\Sanitizer;
+use App\Support\Media\SvgLogoSanitizer;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 FileUpload::make('appearance.header_logo')
@@ -581,21 +581,10 @@ FileUpload::make('appearance.header_logo')
         // Store file
         $path = $file->storePublicly('settings/logos', 'public');
 
-        // SVG Sanitization - CRITICAL for XSS prevention
+        // SVG Sanitization - CRITICAL for XSS prevention. Only via the shared class
+        // (app/docs/features/svg-logo-sanitization.md), never an inline Sanitizer.
         if ($mimeType === 'image/svg+xml') {
-            $storage = Storage::disk('public');
-            $content = $storage->get($path);
-
-            $sanitizer = new Sanitizer();
-            $sanitizer->removeRemoteReferences(true);
-            $cleanSvg = $sanitizer->sanitize($content);
-
-            if ($cleanSvg === false) {
-                $storage->delete($path);
-                throw new \Exception('SVG contains dangerous content');
-            }
-
-            $storage->put($path, $cleanSvg);
+            app(SvgLogoSanitizer::class)->sanitizeStoredFile($path);
         }
 
         return $path;

@@ -12,10 +12,10 @@ use App\Models\Page as PageModel;
 use App\Notifications\OrganizationClosureRequestedNotification;
 use App\Notifications\OrganizationClosureWithdrawnNotification;
 use App\Services\Sms\SmsService;
+use App\Support\Media\SvgLogoSanitizer;
 use App\Support\Settings\SettingsManager;
 use App\Support\TenantFeature;
 use BackedEnum;
-use enshrined\svgSanitize\Sanitizer;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
@@ -35,7 +35,6 @@ use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use UnitEnum;
@@ -734,19 +733,7 @@ class SystemSettings extends Page implements HasForms
 
                                 // Sanitize SVG to prevent XSS
                                 if ($mimeType === 'image/svg+xml') {
-                                    $storage = Storage::disk('public');
-                                    $content = $storage->get($path);
-
-                                    $sanitizer = new Sanitizer;
-                                    $sanitizer->removeRemoteReferences(true);
-                                    $cleanSvg = $sanitizer->sanitize($content);
-
-                                    if ($cleanSvg === false) {
-                                        $storage->delete($path);
-                                        throw new \Exception('SVG contains dangerous content');
-                                    }
-
-                                    $storage->put($path, $cleanSvg);
+                                    app(SvgLogoSanitizer::class)->sanitizeStoredFile($path);
                                 }
 
                                 return $path;
@@ -796,19 +783,7 @@ class SystemSettings extends Page implements HasForms
 
                                 // Sanitize SVG to prevent XSS
                                 if ($mimeType === 'image/svg+xml') {
-                                    $storage = Storage::disk('public');
-                                    $content = $storage->get($path);
-
-                                    $sanitizer = new Sanitizer;
-                                    $sanitizer->removeRemoteReferences(true);
-                                    $cleanSvg = $sanitizer->sanitize($content);
-
-                                    if ($cleanSvg === false) {
-                                        $storage->delete($path);
-                                        throw new \Exception('SVG contains dangerous content');
-                                    }
-
-                                    $storage->put($path, $cleanSvg);
+                                    app(SvgLogoSanitizer::class)->sanitizeStoredFile($path);
                                 }
 
                                 return $path;
