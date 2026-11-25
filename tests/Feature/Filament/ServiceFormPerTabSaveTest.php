@@ -833,9 +833,10 @@ class ServiceFormPerTabSaveTest extends TestCase
 
     public function test_after_a_failure_that_comes_after_the_update_the_record_matches_the_database_and_the_next_save_does_not_rewrite_it(): void
     {
-        // No transaction exists (the panel never calls ->databaseTransactions()), so the failed tab's UPDATE stays in the DB.
-        // `saved` fires before Eloquent syncs the original, so the record is dirty AND ahead of its "original": a reset to
-        // the raw original would put the OLD value back in memory while the DB holds the new one - the DB is the truth.
+        // EditService saves in a transaction, so the failed tab's UPDATE is rolled back. `saved` fires before Eloquent
+        // syncs the original, so the record is dirty AND ahead of its "original" at the moment of the throw; the trait
+        // reloads it from the DB, which is the truth (here: the row as it was before the failed save).
+        // The rollback itself is proven in FilamentSaveTransactionsTest; this test is about memory matching the DB.
         $service = $this->baseline('rental');
         $component = $this->openEdit($service)->set('data.meta_title', 'BOOM')->set('data.name', 'Nazwa z drugiej zakładki');
 
@@ -857,9 +858,9 @@ class ServiceFormPerTabSaveTest extends TestCase
             // expected
         }
 
-        $this->assertSame('BOOM', $this->reload($service)->meta_title, 'precondition: the UPDATE ran and nothing undid it');
+        $this->assertSame('Meta początkowy', $this->reload($service)->meta_title, 'the transaction did not roll the failed tab save back');
         $this->assertFalse($page->getRecord()->isDirty());
-        $this->assertSame('BOOM', $page->getRecord()->meta_title, 'the in-memory record must match the database after a failure');
+        $this->assertSame('Meta początkowy', $page->getRecord()->meta_title, 'the in-memory record must match the database after a failure');
 
         $updates = [];
         DB::listen(function ($query) use (&$updates): void {

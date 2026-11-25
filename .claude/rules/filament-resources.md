@@ -118,9 +118,8 @@ zapisywane są TYLKO pola tej zakładki, reszta wierszy/kluczy JSON zostaje bajt
   WEWNĄTRZ jednego żądania (dwa zapisy z rzędu na tym samym obiekcie strony) — dlatego testy wołają `$component->instance()->saveTab()` dwa
   razy, a nie dwa `call()`. Dwa testy: wyjątek PRZED `UPDATE` (`updating`: pamięć brudna) i PO `UPDATE` (`saved`: wiersz już zapisany,
   `original` jeszcze niezsynchronizowany) — drugi wymaga pamięci równej bazie, czego sam reset do surowych oryginałów nie da.
-- **Istniejąca luka (nie z 5a): brak transakcji.** Panel nie woła `->databaseTransactions()` (domyślnie wyłączone), więc `begin/rollback`
-  w `save()` i `saveFormComponentOnly()` to no-opy: awaria PO `UPDATE` (hook `afterSave`, routing stanu) zostawia już zapisane wartości.
-  Dotyczy też pełnego `save()`. Nie włączono transakcji (osobna decyzja).
+- **Transakcje (2026-11-25, ADR-016):** `EditService`/`CreateService` mają `$hasDatabaseTransactions = true` — awaria PO `UPDATE` (hook
+  `afterSave`, routing stanu, `saved` modelu) cofa cały zapis, pełny i zakładki. Panel NADAL bez flagi — patrz `filament.md` „Transakcje zapisu”.
 - **Hooki `saving` modelu działają na CAŁYM modelu** (`NormalizesEmptyJsonToNull`, `SyncsRentalPriceWithDailyRate`, `NormalizesSpecsShape`),
   tak samo przy zapisie zakładki i pełnym: „bajt w bajt" dotyczy wierszy już znormalizowanych. Wiersz historyczny (`features='[]'`,
   `body='<p></p>'`, rental z `price != price_per_day`) zostanie znormalizowany przez KAŻDY zapis, także cudzej zakładki

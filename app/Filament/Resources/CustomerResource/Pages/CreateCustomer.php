@@ -9,6 +9,12 @@ class CreateCustomer extends CreateRecord
 {
     protected static string $resource = CustomerResource::class;
 
+    /**
+     * The user row and the `customer` role commit together. Opt-in per page, NOT panel-wide - see
+     * `.claude/rules/filament.md` ("Transakcje zapisu").
+     */
+    protected ?bool $hasDatabaseTransactions = true;
+
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
